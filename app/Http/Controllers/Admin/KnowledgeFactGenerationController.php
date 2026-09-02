@@ -6,11 +6,9 @@ use App\Exceptions\AiModelAccessException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\KnowledgeFacts\KnowledgeFactGenerationRequest;
 use App\Models\Admin;
-use App\Models\AiModel;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeFactGenerationRun;
 use App\Models\KnowledgeFactLibrary;
-use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactGenerationCoordinator;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactLibraryPresenter;
 use Illuminate\Http\JsonResponse;
@@ -23,18 +21,22 @@ class KnowledgeFactGenerationController extends Controller
         int $knowledgeBaseId,
         KnowledgeFactGenerationCoordinator $coordinator,
         KnowledgeFactLibraryPresenter $presenter,
-        AdminAiModelAccessResolver $modelAccessResolver,
     ): JsonResponse|RedirectResponse {
         $data = $request->validated();
-        $model = AiModel::query()->findOrFail($data['ai_model_id']);
         try {
-            $modelAccessResolver->assertUsable($this->admin($request), $model);
+            $run = $coordinator->start(
+                $this->library($knowledgeBaseId),
+                (int) $data['ai_model_id'],
+                $this->admin($request),
+                $data['mode'],
+                (int) $data['target_count'],
+                $data['request_key'],
+            );
         } catch (AiModelAccessException $exception) {
             return $request->expectsJson()
                 ? response()->json(['error' => ['code' => $exception->getErrorCode()]], 404)
                 : back()->withInput()->withErrors(['ai_model_id' => $exception->getErrorCode()]);
         }
-        $run = $coordinator->start($this->library($knowledgeBaseId), $model, $this->admin($request), $data['mode'], (int) $data['target_count'], $data['request_key']);
 
         return $request->expectsJson()
             ? response()->json(['data' => ['run' => $presenter->generationRun($run, $knowledgeBaseId)]], 202)

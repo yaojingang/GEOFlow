@@ -3,9 +3,13 @@
 namespace App\Services\GeoFlow\KnowledgeFacts;
 
 use App\Ai\Agents\KnowledgeFactGeneratorAgent;
+use App\Data\Ai\KnowledgeFactGenerationExecutionContext;
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\KnowledgeFactAiGenerationException;
 use App\Models\AiModel;
 use App\Services\AiWorkspace\AiWorkspaceModelReadiness;
 use App\Services\GeoFlow\AiUsageQuotaService;
+use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Support\Facades\DB;
@@ -19,11 +23,17 @@ class KnowledgeFactAiGenerator
         private readonly AiUsageQuotaService $quota,
         private readonly AiWorkspaceModelReadiness $readiness,
         private readonly KnowledgeFactStableKeyPolicy $stableKeyPolicy,
+        private readonly KnowledgeFactGenerationAiExecutionGuard $executionGuard,
+        private readonly AiModelFailoverDecider $failoverDecider,
     ) {}
 
     /** @param list<array<string,string>> $evidence @return list<array<string,mixed>> */
-    public function generate(AiModel $model, array $evidence, int $count): array
-    {
+    public function generate(
+        AiModel $model,
+        array $evidence,
+        int $count,
+        ?KnowledgeFactGenerationExecutionContext $executionContext = null,
+    ): array {
         if (data_get($model->ai_workspace_readiness_profile, 'knowledge_fact_structured_output.status') === 'unsupported') {
             throw new RuntimeException('knowledge_fact_structured_output_unsupported');
         }
@@ -47,10 +57,15 @@ class KnowledgeFactAiGenerator
             $facts = is_array($response->structured['facts'] ?? null) ? array_slice($response->structured['facts'], 0, $count) : [];
             $allowed = array_column($evidence, 'evidence_key');
             $facts = array_values(array_filter(array_map(fn (mixed $fact): ?array => $this->normalizeCandidate($fact, $allowed), $facts)));
-            $this->quota->recordModelSuccess($reservation);
-            $finalized = true;
-            try {
-                DB::transaction(function () use ($model): void {
+            DB::transaction(function () use ($model, $executionContext, $reservation): void {
+                if ($executionContext instanceof KnowledgeFactGenerationExecutionContext) {
+                    $this->executionGuard->assertCurrent($executionContext, $model);
+                }
+                $this->quota->recordModelSuccess($reservation);
+                try {
+                    if ($executionContext instanceof KnowledgeFactGenerationExecutionContext) {
+                        $this->executionGuard->assertCurrent($executionContext, $model);
+                    }
                     $current = AiModel::query()->whereKey($model->id)->lockForUpdate()->first();
                     if (! $current || ! hash_equals($this->readiness->configurationFingerprint($model), $this->readiness->configurationFingerprint($current))) {
                         return;
@@ -58,17 +73,27 @@ class KnowledgeFactAiGenerator
                     $profile = (array) $current->ai_workspace_readiness_profile;
                     $profile['knowledge_fact_structured_output'] = ['status' => 'ready', 'observed' => true, 'last_success_at' => now()->toIso8601String(), 'configuration_fingerprint' => $this->readiness->configurationFingerprint($current)];
                     $current->forceFill(['ai_workspace_readiness_profile' => $profile])->save();
-                }, 3);
-            } catch (Throwable $exception) {
-                report($exception);
-            }
+                } catch (AiModelAccessException $exception) {
+                    throw $exception;
+                } catch (Throwable $exception) {
+                    report($exception);
+                }
+            }, 3);
+            $finalized = true;
 
             return $facts;
         } catch (Throwable $exception) {
             if ($requested && ! $finalized) {
                 $this->quota->recordModelAttempt($reservation);
             }
-            throw $exception;
+            if ($exception instanceof AiModelAccessException
+                || $exception instanceof KnowledgeFactAiGenerationException) {
+                throw $exception;
+            }
+
+            throw new KnowledgeFactAiGenerationException(
+                $this->failoverDecider->shouldFailover($exception),
+            );
         }
     }
 

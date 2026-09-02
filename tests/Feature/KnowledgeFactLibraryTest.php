@@ -206,6 +206,10 @@ class KnowledgeFactLibraryTest extends TestCase
         Bus::fake();
         $admin = Admin::query()->create(['username' => 'generator', 'password' => 'password', 'role' => 'super_admin', 'status' => 'active']);
         $model = AiModel::query()->create(['name' => 'Facts', 'model_id' => 'facts-model', 'model_type' => 'chat', 'status' => 'active']);
+        $model->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
         $knowledgeBase = KnowledgeBase::query()->create(['name' => 'Generate', 'chunk_sync_status' => 'ready', 'chunk_source_hash' => str_repeat('d', 64)]);
         KnowledgeChunk::query()->create(['knowledge_base_id' => $knowledgeBase->id, 'chunk_index' => 0, 'content' => '公司成立于 2020 年。', 'content_hash' => str_repeat('e', 64), 'source_hash' => str_repeat('d', 64)]);
         $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $knowledgeBase->id]);
@@ -266,6 +270,10 @@ class KnowledgeFactLibraryTest extends TestCase
         config()->set('ai-workspace.require_verified_model', false);
         $admin = Admin::query()->create(['username' => 'cancel', 'password' => 'password', 'role' => 'super_admin', 'status' => 'active']);
         $model = AiModel::query()->create(['name' => 'Facts', 'model_id' => 'facts-model', 'model_type' => 'chat', 'status' => 'active']);
+        $model->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
         $base = KnowledgeBase::query()->create(['name' => 'Cancel', 'chunk_sync_status' => 'ready', 'chunk_source_hash' => str_repeat('a', 64)]);
         KnowledgeChunk::query()->create(['knowledge_base_id' => $base->id, 'chunk_index' => 0, 'content' => '有效证据', 'content_hash' => str_repeat('b', 64), 'source_hash' => str_repeat('c', 64)]);
         $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]);
@@ -344,15 +352,33 @@ class KnowledgeFactLibraryTest extends TestCase
 
     public function test_finalize_marks_run_obsolete_when_working_copy_changed(): void
     {
+        $admin = Admin::query()->create(['username' => 'obsolete-finalizer', 'password' => 'password', 'role' => 'super_admin', 'status' => 'active']);
+        $model = AiModel::query()->create(['name' => 'Obsolete facts', 'model_id' => 'obsolete-facts-model', 'model_type' => 'chat', 'status' => 'active']);
+        $model->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
         $base = KnowledgeBase::query()->create(['name' => 'Drift', 'chunk_sync_status' => 'ready', 'chunk_source_hash' => str_repeat('a', 64)]);
         $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id, 'working_version' => 2, 'workflow_status' => 'generating']);
         $run = KnowledgeFactGenerationRun::query()->create([
             'library_id' => $library->id, 'mode' => 'initial', 'target_count' => 1, 'source_hash' => str_repeat('a', 64),
-            'base_working_version' => 1, 'status' => 'running', 'request_key' => (string) Str::uuid(), 'active_key' => 'active',
+            'base_working_version' => 1, 'status' => 'running', 'ai_model_id' => $model->id, 'created_by_admin_id' => $admin->id,
+            'request_key' => (string) Str::uuid(), 'active_key' => 'active',
             'result_json' => ['candidates' => [], 'conflicts' => [], 'batches' => []],
         ]);
+        $finalizerToken = (string) Str::uuid7();
+        $run->forceFill([
+            'model_access_admin_id' => $admin->id,
+            'model_access_admin_role' => 'super_admin',
+            'ai_config_access_version' => 1,
+            'requested_ai_model_id' => $model->id,
+            'resolver_policy_version' => 1,
+            'execution_attempt' => 1,
+            'batch_claims_json' => [],
+            'finalizer_lease_token' => $finalizerToken,
+        ])->save();
 
-        app(KnowledgeFactGenerationCoordinator::class)->finalize($run->id);
+        app(KnowledgeFactGenerationCoordinator::class)->finalize($run->id, 1, $finalizerToken);
 
         $this->assertSame('obsolete', $run->fresh()->status);
         $this->assertNull($run->fresh()->active_key);
@@ -482,19 +508,42 @@ class KnowledgeFactLibraryTest extends TestCase
     public function test_generation_finalize_appends_review_candidates_with_scoped_evidence(): void
     {
         $admin = Admin::query()->create(['username' => 'finalizer', 'password' => 'password', 'role' => 'super_admin', 'status' => 'active']);
+        $model = AiModel::query()->create(['name' => 'Finalize facts', 'model_id' => 'finalize-facts-model', 'model_type' => 'chat', 'status' => 'active']);
+        $model->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
         $knowledgeBase = KnowledgeBase::query()->create(['name' => 'Finalize', 'chunk_sync_status' => 'ready', 'chunk_source_hash' => str_repeat('f', 64)]);
         $chunk = KnowledgeChunk::query()->create(['knowledge_base_id' => $knowledgeBase->id, 'chunk_index' => 0, 'content' => '公司成立于 2020 年。', 'content_hash' => str_repeat('1', 64), 'source_hash' => str_repeat('f', 64)]);
         $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $knowledgeBase->id, 'workflow_status' => 'generating']);
         $run = KnowledgeFactGenerationRun::query()->create([
             'library_id' => $library->id, 'mode' => 'initial', 'target_count' => 1, 'source_hash' => str_repeat('f', 64),
-            'base_working_version' => 1, 'status' => 'running', 'created_by_admin_id' => $admin->id, 'request_key' => (string) Str::uuid(),
+            'base_working_version' => 1, 'status' => 'running', 'ai_model_id' => $model->id,
+            'created_by_admin_id' => $admin->id, 'request_key' => (string) Str::uuid(),
             'active_key' => 'knowledge-fact-library:'.$library->id, 'result_json' => ['candidates' => [[
                 'stable_key' => 'company.founded_at', 'label' => '成立时间', 'subject' => '公司', 'predicate' => '成立于', 'value_type' => 'date',
                 'canonical_value' => '2020', 'canonical_answer' => '公司成立于 2020 年。', 'unit' => '年', 'evidence_keys' => ['chunk:'.$chunk->id.':'.substr($chunk->content_hash, 0, 12)],
             ]], 'conflicts' => [], 'batches' => ['1' => ['status' => 'completed']]],
         ]);
+        $finalizerToken = (string) Str::uuid7();
+        $run->forceFill([
+            'model_access_admin_id' => $admin->id,
+            'model_access_admin_role' => 'super_admin',
+            'ai_config_access_version' => 1,
+            'requested_ai_model_id' => $model->id,
+            'resolved_ai_model_id' => $model->id,
+            'resolved_model_source' => 'personal',
+            'resolver_policy_version' => 1,
+            'execution_attempt' => 1,
+            'batch_claims_json' => ['1' => [
+                'status' => 'completed',
+                'resolved_ai_model_id' => $model->id,
+                'resolved_model_source' => 'personal',
+            ]],
+            'finalizer_lease_token' => $finalizerToken,
+        ])->save();
 
-        app(KnowledgeFactGenerationCoordinator::class)->finalize($run->id);
+        app(KnowledgeFactGenerationCoordinator::class)->finalize($run->id, 1, $finalizerToken);
 
         $this->assertSame('completed', $run->fresh()->status);
         $this->assertSame('review_required', $library->fresh()->workflow_status);

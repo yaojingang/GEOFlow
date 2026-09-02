@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactGenerationCoordinator;
 use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -27,8 +29,14 @@ class GenerateKnowledgeFactBatchJob implements ShouldBeUnique, ShouldQueue
 
     public int $uniqueFor = 3600;
 
-    public function __construct(public readonly int $runId, public readonly int $sequence, public readonly string $inputHash, public readonly array $evidence)
-    {
+    public function __construct(
+        public readonly int $runId,
+        public readonly int $sequence,
+        public readonly string $inputHash,
+        public readonly array $evidence,
+        public readonly int $executionAttempt = 1,
+        public readonly string $claimToken = '',
+    ) {
         $this->onQueue('knowledge');
     }
 
@@ -39,7 +47,7 @@ class GenerateKnowledgeFactBatchJob implements ShouldBeUnique, ShouldQueue
 
     public function uniqueId(): string
     {
-        return "{$this->runId}:{$this->sequence}:{$this->inputHash}";
+        return "{$this->runId}:{$this->executionAttempt}:{$this->sequence}:{$this->inputHash}";
     }
 
     public function tags(): array
@@ -49,11 +57,38 @@ class GenerateKnowledgeFactBatchJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(KnowledgeFactGenerationCoordinator $coordinator): void
     {
-        $coordinator->processBatch($this->runId, $this->sequence, $this->inputHash, $this->evidence);
+        try {
+            $coordinator->processBatch(
+                $this->runId,
+                $this->sequence,
+                $this->inputHash,
+                $this->evidence,
+                $this->executionAttempt,
+                $this->claimToken,
+            );
+        } catch (AiModelAccessException|PermanentAiProviderException $exception) {
+            $coordinator->recordBatchFailure(
+                $this->runId,
+                $this->sequence,
+                $this->inputHash,
+                $exception,
+                $this->executionAttempt,
+                $this->claimToken,
+                false,
+            );
+        }
     }
 
     public function failed(?Throwable $exception = null): void
     {
-        app(KnowledgeFactGenerationCoordinator::class)->recordBatchFailure($this->runId, $this->sequence, $this->inputHash, $exception);
+        app(KnowledgeFactGenerationCoordinator::class)->recordBatchFailure(
+            $this->runId,
+            $this->sequence,
+            $this->inputHash,
+            $exception,
+            $this->executionAttempt,
+            $this->claimToken,
+            true,
+        );
     }
 }
