@@ -729,6 +729,75 @@ class AdminKnowledgeFactAiExecutionIdentityTest extends TestCase
         $this->assertNull($run->error_code);
     }
 
+    public function test_old_worker_cannot_mark_a_new_attempt_obsolete_for_stale_chunk_evidence(): void
+    {
+        config()->set('ai-workspace.require_verified_model', false);
+        Bus::fake();
+        $admin = $this->admin('knowledge-stale-evidence-worker');
+        $model = $this->model($admin, 'knowledge-stale-evidence-worker-model');
+        [$base, $chunk] = $this->knowledgeFixtures('Knowledge stale evidence worker');
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]);
+        $run = app(KnowledgeFactGenerationCoordinator::class)
+            ->start($library, $model, $admin, 'initial', 1);
+        $oldClaim = data_get($run->fresh()->batch_claims_json, '1');
+        $oldEvidence = $this->evidenceDescriptors($chunk);
+        $guard = app(KnowledgeFactGenerationAiExecutionGuard::class);
+        $oldContext = $guard->claimBatch(
+            (int) $run->id,
+            1,
+            (string) data_get($oldClaim, 'input_hash'),
+            1,
+            (string) data_get($oldClaim, 'dispatch_token'),
+            fake()->uuid(),
+        );
+        $this->assertNotNull($oldContext);
+
+        $chunk->forceFill([
+            'content' => '公司成立于 2021 年。',
+            'content_hash' => hash('sha256', 'new chunk content'),
+        ])->save();
+        $newEvidence = $this->evidenceDescriptors($chunk->fresh());
+        $newInputHash = hash('sha256', json_encode($newEvidence, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
+        $newDispatchToken = fake()->uuid();
+        $newLeaseToken = fake()->uuid();
+        $run->forceFill([
+            'execution_attempt' => 2,
+            'batch_claims_json' => ['1' => [
+                'input_hash' => $newInputHash,
+                'status' => 'queued',
+                'dispatch_token' => $newDispatchToken,
+                'execution_attempt' => 2,
+                'attempt_count' => 0,
+            ]],
+        ])->save();
+        $newContext = $guard->claimBatch(
+            (int) $run->id,
+            1,
+            $newInputHash,
+            2,
+            $newDispatchToken,
+            $newLeaseToken,
+        );
+        $this->assertNotNull($newContext);
+        KnowledgeFactGeneratorAgent::fake()->preventStrayPrompts();
+
+        app(KnowledgeFactGenerationCoordinator::class)->processClaimedBatch(
+            $oldContext,
+            $oldEvidence,
+        );
+
+        $run->refresh();
+        $this->assertSame(KnowledgeFactGenerationRun::STATUS_RUNNING, $run->status);
+        $this->assertSame(2, $run->execution_attempt);
+        $this->assertSame('running', data_get($run->batch_claims_json, '1.status'));
+        $this->assertSame(1, data_get($run->batch_claims_json, '1.attempt_count'));
+        $this->assertSame($newLeaseToken, data_get($run->batch_claims_json, '1.lease_token'));
+        $this->assertSame([], (array) data_get($run->result_json, 'candidates'));
+        $this->assertNull($run->error_code);
+        $this->assertTrue($guard->assertCurrent($newContext)->is($admin));
+        KnowledgeFactGeneratorAgent::assertNeverPrompted();
+    }
+
     public function test_current_finalize_lease_materializes_facts_and_evidence(): void
     {
         config()->set('ai-workspace.require_verified_model', false);

@@ -263,7 +263,7 @@ class KnowledgeFactGenerationCoordinator
         $run = KnowledgeFactGenerationRun::query()->with(['library.knowledgeBase'])->findOrFail($runId);
         if (! hash_equals((string) $run->source_hash, $run->library->knowledgeBase->servingChunkSourceHash())
             || (int) $run->base_working_version !== (int) $run->library->working_version) {
-            $this->markObsolete($runId);
+            $this->markObsolete($context);
 
             return;
         }
@@ -280,7 +280,7 @@ class KnowledgeFactGenerationCoordinator
         foreach ($evidence as $descriptor) {
             $chunk = $chunks->get((int) $descriptor['chunk_id']);
             if (! $chunk || ! hash_equals((string) $descriptor['content_hash'], (string) $chunk->content_hash)) {
-                $this->markObsolete($runId);
+                $this->markObsolete($context);
 
                 return;
             }
@@ -690,10 +690,15 @@ class KnowledgeFactGenerationCoordinator
         }, 3);
     }
 
-    private function markObsolete(int $runId): void
+    private function markObsolete(KnowledgeFactGenerationExecutionContext $context): void
     {
-        DB::transaction(function () use ($runId): void {
-            $run = KnowledgeFactGenerationRun::query()->whereKey($runId)->lockForUpdate()->firstOrFail();
+        DB::transaction(function () use ($context): void {
+            try {
+                $this->executionGuard->assertCurrent($context);
+            } catch (AiModelAccessException) {
+                return;
+            }
+            $run = KnowledgeFactGenerationRun::query()->whereKey($context->runId)->lockForUpdate()->firstOrFail();
             if (! $run->isActive()) {
                 return;
             }
