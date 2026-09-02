@@ -20,6 +20,8 @@ final class BackfillAdminAiAccessCommand extends Command
         {--created-before= : Historical administrator cutoff with an explicit timezone}
         {--admin-max-id= : Stable administrator ID snapshot captured before deployment}
         {--model-max-id= : Stable AI model ID snapshot captured before deployment}
+        {--task-max-id= : Stable task ID snapshot captured before deployment}
+        {--task-run-max-id= : Stable task run ID snapshot captured before deployment}
         {--apply : Apply the audited backfill in one transaction}
         {--maintenance-confirmed : Confirm Web and AI workers are stopped and maintenance mode is active}
         {--dry-run : Explicitly request preflight-only mode}
@@ -30,7 +32,7 @@ final class BackfillAdminAiAccessCommand extends Command
      *
      * @var string
      */
-    protected $description = 'Preflight or apply administrator AI model ownership and sharing backfill';
+    protected $description = 'Preflight or apply administrator AI ownership, sharing, and task execution identity backfill';
 
     public function __construct(private readonly AdminAiAccessBackfillService $backfillService)
     {
@@ -43,7 +45,17 @@ final class BackfillAdminAiAccessCommand extends Command
     public function handle(): int
     {
         try {
-            [$ownerId, $cutoff, $adminMaxId, $modelMaxId, $apply, $maintenanceConfirmed, $batchSize] = $this->argumentsForRun();
+            [
+                $ownerId,
+                $cutoff,
+                $adminMaxId,
+                $modelMaxId,
+                $taskMaxId,
+                $taskRunMaxId,
+                $apply,
+                $maintenanceConfirmed,
+                $batchSize,
+            ] = $this->argumentsForRun();
         } catch (AdminAiAccessBackfillException $exception) {
             $this->error('Invalid arguments: '.$exception->getErrorCode());
 
@@ -59,8 +71,17 @@ final class BackfillAdminAiAccessCommand extends Command
                     $modelMaxId,
                     $maintenanceConfirmed,
                     $batchSize,
+                    $taskMaxId,
+                    $taskRunMaxId,
                 )
-                : $this->backfillService->preview($ownerId, $cutoff, $adminMaxId, $modelMaxId);
+                : $this->backfillService->preview(
+                    $ownerId,
+                    $cutoff,
+                    $adminMaxId,
+                    $modelMaxId,
+                    $taskMaxId,
+                    $taskRunMaxId,
+                );
         } catch (AdminAiAccessBackfillException $exception) {
             $this->error('Preflight failed: '.$exception->getErrorCode());
             if (in_array($exception->getErrorCode(), [
@@ -82,6 +103,8 @@ final class BackfillAdminAiAccessCommand extends Command
         $this->line('Created before: '.$result['created_before']);
         $this->line('Admin max ID: '.($result['admin_max_id'] ?? 'not set'));
         $this->line('Model max ID: '.($result['model_max_id'] ?? 'not set'));
+        $this->line('Task max ID: '.($result['task_max_id'] ?? 'not set'));
+        $this->line('Task run max ID: '.($result['task_run_max_id'] ?? 'not set'));
         $this->line('Unowned models: '.$result['unowned_models']);
         $this->line('Historical administrators to share: '.$result['historical_administrators']);
         $this->line('Super administrator bindings to clear: '.$result['super_admin_bindings_to_clear']);
@@ -91,6 +114,14 @@ final class BackfillAdminAiAccessCommand extends Command
         $this->line('Invalid system bindings: '.count($result['invalid_bindings']));
         $this->line('Historical structured model references: '.$result['historical_structured_reference_count']);
         $this->line('Structured model reference findings: '.$result['structured_reference_finding_count']);
+        $this->line('Tasks recovered from historical runs: '.$result['tasks_recovered_from_historical_runs']);
+        $this->line('Tasks recovered from creation audit: '.$result['tasks_recovered_from_creation_audit']);
+        $this->line('Tasks mapped to legacy owner: '.$result['tasks_mapped_to_legacy_owner']);
+        $this->line('Task runs inherited from task: '.$result['task_runs_inherited_from_task']);
+        $this->line('Legacy-inferred tasks paused: '.$result['legacy_inferred_tasks_to_pause']);
+        $this->line('Legacy-inferred active runs frozen: '.$result['legacy_inferred_active_runs_to_freeze']);
+        $this->line('Manual execution identity findings: '.$result['manual_execution_identity_finding_count']);
+        $this->line('Execution identity blocking conflicts: '.$result['execution_identity_blocking_conflict_count']);
 
         foreach ($result['conflict_model_ids'] as $modelId) {
             $this->line('Conflict model ID: '.$modelId);
@@ -112,6 +143,15 @@ final class BackfillAdminAiAccessCommand extends Command
                 $finding['reason'],
             ));
         }
+        foreach ($result['task_execution_identity_findings'] as $finding) {
+            $this->line(sprintf(
+                'Task execution identity finding: %s#%d %s (%s)',
+                $finding['subject_type'],
+                $finding['subject_id'],
+                $finding['severity'],
+                $finding['reason'],
+            ));
+        }
 
         if ($apply) {
             $this->line('Models assigned: '.$result['models_assigned']);
@@ -119,12 +159,16 @@ final class BackfillAdminAiAccessCommand extends Command
             $this->line('Super administrator bindings cleared: '.$result['super_admin_bindings_cleared']);
             $this->line('Access versions normalized: '.$result['access_versions_normalized']);
             $this->line('System-only models marked: '.$result['system_models_marked']);
+            $this->line('Tasks recovered: '.$result['tasks_recovered']);
+            $this->line('Task runs inherited: '.$result['task_runs_inherited']);
+            $this->line('Tasks paused: '.$result['legacy_inferred_tasks_paused']);
+            $this->line('Active runs frozen: '.$result['legacy_inferred_active_runs_frozen']);
         }
 
         return self::SUCCESS;
     }
 
-    /** @return array{?int, CarbonImmutable, ?int, ?int, bool, bool, int} */
+    /** @return array{?int, CarbonImmutable, ?int, ?int, ?int, ?int, bool, bool, int} */
     private function argumentsForRun(): array
     {
         $apply = (bool) $this->option('apply');
@@ -154,6 +198,8 @@ final class BackfillAdminAiAccessCommand extends Command
 
         $adminMaxId = $this->optionalSnapshotId('admin-max-id');
         $modelMaxId = $this->optionalSnapshotId('model-max-id');
+        $taskMaxId = $this->optionalSnapshotId('task-max-id');
+        $taskRunMaxId = $this->optionalSnapshotId('task-run-max-id');
 
         $batchValue = trim((string) $this->option('batch'));
         if (! ctype_digit($batchValue) || (int) $batchValue < 1 || (int) $batchValue > 1000) {
@@ -165,6 +211,8 @@ final class BackfillAdminAiAccessCommand extends Command
             $cutoff,
             $adminMaxId,
             $modelMaxId,
+            $taskMaxId,
+            $taskRunMaxId,
             $apply,
             (bool) $this->option('maintenance-confirmed'),
             (int) $batchValue,

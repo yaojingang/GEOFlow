@@ -11,7 +11,10 @@ use Illuminate\Support\Facades\DB;
 
 final class AdminAiAccessBackfillService
 {
-    public function __construct(private readonly SystemAiModelReferenceInspector $referenceInspector) {}
+    public function __construct(
+        private readonly SystemAiModelReferenceInspector $referenceInspector,
+        private readonly HistoricalTaskExecutionIdentityBackfillService $taskIdentityBackfill,
+    ) {}
 
     /** @return array<string, mixed> */
     public function preview(
@@ -19,12 +22,21 @@ final class AdminAiAccessBackfillService
         CarbonImmutable $createdBefore,
         ?int $adminMaxId,
         ?int $modelMaxId,
+        ?int $taskMaxId = null,
+        ?int $taskRunMaxId = null,
     ): array {
         $owner = $this->resolveLegacyOwner($legacyOwnerId);
 
-        $this->assertSnapshotsCoverNullTimestamps($adminMaxId, $modelMaxId);
+        $this->assertSnapshotsCoverNullTimestamps($adminMaxId, $modelMaxId, $taskMaxId, $taskRunMaxId);
 
-        return $this->buildPlan($owner, $createdBefore, $adminMaxId, $modelMaxId);
+        return $this->buildPlan(
+            $owner,
+            $createdBefore,
+            $adminMaxId,
+            $modelMaxId,
+            $taskMaxId,
+            $taskRunMaxId,
+        );
     }
 
     /** @return array<string, mixed> */
@@ -35,6 +47,8 @@ final class AdminAiAccessBackfillService
         ?int $modelMaxId,
         bool $maintenanceConfirmed,
         int $batchSize,
+        ?int $taskMaxId = null,
+        ?int $taskRunMaxId = null,
     ): array {
         return DB::transaction(function () use (
             $legacyOwnerId,
@@ -43,14 +57,33 @@ final class AdminAiAccessBackfillService
             $modelMaxId,
             $maintenanceConfirmed,
             $batchSize,
+            $taskMaxId,
+            $taskRunMaxId,
         ): array {
             $this->assertMaintenanceGate($maintenanceConfirmed);
             $owner = $this->resolveLegacyOwner($legacyOwnerId, true);
-            $this->assertSnapshotsCoverNullTimestamps($adminMaxId, $modelMaxId);
-            $this->lockHistoricalCandidates($createdBefore, $adminMaxId, $modelMaxId);
-            $plan = $this->buildPlan($owner, $createdBefore, $adminMaxId, $modelMaxId, true);
+            $this->assertSnapshotsCoverNullTimestamps($adminMaxId, $modelMaxId, $taskMaxId, $taskRunMaxId);
+            $this->lockHistoricalCandidates(
+                $createdBefore,
+                $adminMaxId,
+                $modelMaxId,
+                $taskMaxId,
+                $taskRunMaxId,
+            );
+            $plan = $this->buildPlan(
+                $owner,
+                $createdBefore,
+                $adminMaxId,
+                $modelMaxId,
+                $taskMaxId,
+                $taskRunMaxId,
+                true,
+            );
             if ($plan['active_blocking_structured_reference_finding_count'] > 0) {
                 throw new AdminAiAccessBackfillException('active_structured_model_reference_invalid');
+            }
+            if ($plan['execution_identity_blocking_conflict_count'] > 0) {
+                throw new AdminAiAccessBackfillException('historical_task_execution_identity_conflict');
             }
 
             $modelsAssigned = $this->historicalModels($createdBefore, $modelMaxId)
@@ -121,6 +154,7 @@ final class AdminAiAccessBackfillService
                         ]);
                     }
                 });
+            $taskIdentityResult = $this->taskIdentityBackfill->applyPlan($plan);
 
             return [
                 ...$plan,
@@ -129,6 +163,7 @@ final class AdminAiAccessBackfillService
                 'super_admin_bindings_cleared' => $superBindingsCleared,
                 'access_versions_normalized' => $versionsNormalized,
                 'system_models_marked' => $systemModelsMarked,
+                ...$taskIdentityResult,
             ];
         }, 3);
     }
@@ -179,11 +214,19 @@ final class AdminAiAccessBackfillService
         CarbonImmutable $createdBefore,
         ?int $adminMaxId,
         ?int $modelMaxId,
+        ?int $taskMaxId,
+        ?int $taskRunMaxId,
         bool $lockReferences = false,
     ): array {
         $references = $this->referenceInspector->inspect(
             (int) $owner->getKey(),
             $lockReferences,
+        );
+        $taskIdentity = $this->taskIdentityBackfill->buildPlan(
+            $owner,
+            $createdBefore,
+            $taskMaxId,
+            $taskRunMaxId,
         );
 
         return [
@@ -191,6 +234,7 @@ final class AdminAiAccessBackfillService
             'created_before' => $createdBefore->toIso8601String(),
             'admin_max_id' => $adminMaxId,
             'model_max_id' => $modelMaxId,
+            ...$taskIdentity,
             'unowned_models' => $this->historicalModels($createdBefore, $modelMaxId)
                 ->whereNull('owner_admin_id')
                 ->count(),
@@ -277,14 +321,19 @@ final class AdminAiAccessBackfillService
             });
     }
 
-    private function assertSnapshotsCoverNullTimestamps(?int $adminMaxId, ?int $modelMaxId): void
-    {
+    private function assertSnapshotsCoverNullTimestamps(
+        ?int $adminMaxId,
+        ?int $modelMaxId,
+        ?int $taskMaxId,
+        ?int $taskRunMaxId,
+    ): void {
         if ($adminMaxId === null && Admin::query()->whereNull('created_at')->exists()) {
             throw new AdminAiAccessBackfillException('admin_max_id_required_for_null_created_at');
         }
         if ($modelMaxId === null && AiModel::query()->whereNull('created_at')->exists()) {
             throw new AdminAiAccessBackfillException('model_max_id_required_for_null_created_at');
         }
+        $this->taskIdentityBackfill->assertSnapshotsCoverNullTimestamps($taskMaxId, $taskRunMaxId);
     }
 
     private function assertMaintenanceGate(bool $maintenanceConfirmed): void
@@ -301,6 +350,8 @@ final class AdminAiAccessBackfillService
         CarbonImmutable $createdBefore,
         ?int $adminMaxId,
         ?int $modelMaxId,
+        ?int $taskMaxId,
+        ?int $taskRunMaxId,
     ): void {
         $this->historicalAdmins($createdBefore, $adminMaxId)
             ->select(['id'])
@@ -312,5 +363,10 @@ final class AdminAiAccessBackfillService
             ->orderBy('id')
             ->lockForUpdate()
             ->get();
+        $this->taskIdentityBackfill->lockHistoricalCandidates(
+            $createdBefore,
+            $taskMaxId,
+            $taskRunMaxId,
+        );
     }
 }
