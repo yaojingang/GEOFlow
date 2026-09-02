@@ -448,6 +448,54 @@ final class AdminAiWorkspaceExecutionIdentityTest extends TestCase
         }
     }
 
+    public function test_missing_parameter_clarification_rejects_a_changed_plan_receipt(): void
+    {
+        [$coordinator, $run, $lease, $receipt, $model] = $this->planningReceiptFixture('missing-parameter');
+        $model->forceFill(['api_url' => 'https://changed.example.invalid/v1'])->save();
+        $clarify = new \ReflectionMethod($coordinator, 'clarify');
+        $clarify->setAccessible(true);
+
+        try {
+            $clarify->invoke(
+                $coordinator,
+                $run->modelAccessAdmin,
+                $run,
+                ['title'],
+                [],
+                $lease,
+                $receipt,
+            );
+            self::fail('A changed plan receipt must stop missing-parameter clarification.');
+        } catch (AiModelAccessException) {
+            self::assertSame(0, AiConversationMessage::query()->where('role', 'assistant')->count());
+            self::assertSame('planning', $run->fresh()->state);
+        }
+    }
+
+    public function test_compilation_failure_clarification_rejects_a_changed_plan_receipt(): void
+    {
+        [$coordinator, $run, $lease, $receipt, $model] = $this->planningReceiptFixture('compile-failure');
+        $model->forceFill(['model_id' => 'workspace-compile-failure-model-v2'])->save();
+        $clarify = new \ReflectionMethod($coordinator, 'clarify');
+        $clarify->setAccessible(true);
+
+        try {
+            $clarify->invoke(
+                $coordinator,
+                $run->modelAccessAdmin,
+                $run,
+                [],
+                ['目标对象不存在或已经变化，请补充有效对象。'],
+                $lease,
+                $receipt,
+            );
+            self::fail('A changed plan receipt must stop compilation-failure clarification.');
+        } catch (AiModelAccessException) {
+            self::assertSame(0, AiConversationMessage::query()->where('role', 'assistant')->count());
+            self::assertSame('planning', $run->fresh()->state);
+        }
+    }
+
     public function test_verified_readiness_fails_closed_on_permanent_personal_failure_before_shared_model(): void
     {
         config()->set('ai-workspace.require_verified_model', true);
@@ -837,6 +885,32 @@ final class AdminAiWorkspaceExecutionIdentityTest extends TestCase
             ['Content-Type' => 'application/json'],
             json_encode(['error' => ['message' => $message]], JSON_THROW_ON_ERROR),
         )));
+    }
+
+    /** @return array{AiWorkspaceCoordinator,AiWorkspaceRun,string,AiWorkspaceModelExecutionReceipt,AiModel} */
+    private function planningReceiptFixture(string $suffix): array
+    {
+        Queue::fake();
+        $admin = $this->admin('workspace-'.$suffix, 'super_admin');
+        $model = $this->model($admin, 'workspace-'.$suffix.'-model');
+        $coordinator = app(AiWorkspaceCoordinator::class);
+        $run = $coordinator->createRun(
+            $admin,
+            app(AiConversationRepository::class)->create($admin),
+            '请生成受控计划。',
+        );
+        $lease = (string) Str::uuid7();
+        $run->forceFill([
+            'state' => 'planning',
+            'resolution_lease_owner' => $lease,
+            'resolution_lease_expires_at' => now()->addMinute(),
+        ])->save();
+        $receipt = app(AiWorkspaceExecutionAccessGuard::class)->receiptFor(
+            app(AiWorkspaceExecutionAccessGuard::class)->contextFromResolutionRun($run->fresh(), $lease),
+            $model,
+        );
+
+        return [$coordinator, $run->fresh(['modelAccessAdmin']), $lease, $receipt, $model];
     }
 }
 

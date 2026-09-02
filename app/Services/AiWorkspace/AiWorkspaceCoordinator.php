@@ -403,18 +403,32 @@ final readonly class AiWorkspaceCoordinator
                     ->keys()->all();
             })->unique()->values()->all();
             if ($draftMissing !== []) {
-                $this->clarify($admin, $planning, $draftMissing, [], $leaseOwner);
+                $this->clarify($admin, $planning, $draftMissing, [], $leaseOwner, $planSourceReceipt);
 
                 return;
             }
             try {
                 $plan = $this->compiler->compile($admin, $resolution->intent, $draftSteps);
             } catch (ValidationException $exception) {
-                $this->clarify($admin, $planning, array_keys($exception->errors()), ['部分参数格式需要重新确认。'], $leaseOwner);
+                $this->clarify(
+                    $admin,
+                    $planning,
+                    array_keys($exception->errors()),
+                    ['部分参数格式需要重新确认。'],
+                    $leaseOwner,
+                    $planSourceReceipt,
+                );
 
                 return;
             } catch (InvalidArgumentException) {
-                $this->clarify($admin, $planning, [], ['目标对象不存在或已经变化，请补充有效对象。'], $leaseOwner);
+                $this->clarify(
+                    $admin,
+                    $planning,
+                    [],
+                    ['目标对象不存在或已经变化，请补充有效对象。'],
+                    $leaseOwner,
+                    $planSourceReceipt,
+                );
 
                 return;
             }
@@ -826,8 +840,14 @@ final readonly class AiWorkspaceCoordinator
     }
 
     /** @param list<string> $missing @param list<string> $ambiguities */
-    private function clarify(Admin $admin, AiWorkspaceRun $run, array $missing, array $ambiguities, string $leaseOwner): void
-    {
+    private function clarify(
+        Admin $admin,
+        AiWorkspaceRun $run,
+        array $missing,
+        array $ambiguities,
+        string $leaseOwner,
+        ?AiWorkspaceModelExecutionReceipt $modelReceipt = null,
+    ): void {
         $labels = [
             'query' => '要诊断的品牌或主题', 'name' => '名称', 'title' => '文章标题',
             'content' => '正文内容', 'category_id' => '分类', 'author_id' => '作者', 'url' => 'URL',
@@ -841,7 +861,7 @@ final readonly class AiWorkspaceCoordinator
         }
         $clarifying = $this->completeResolutionWithMessage($admin, $run, $leaseOwner, 'clarifying', $answer, [
             'status_message' => '需要补充信息后才能生成计划。',
-        ], ['clarification' => true]);
+        ], ['clarification' => true], $modelReceipt);
         if (! $clarifying instanceof AiWorkspaceRun) {
             return;
         }
