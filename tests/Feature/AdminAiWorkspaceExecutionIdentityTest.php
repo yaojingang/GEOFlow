@@ -276,6 +276,99 @@ final class AdminAiWorkspaceExecutionIdentityTest extends TestCase
         );
     }
 
+    public function test_direct_answer_blocks_model_update_and_delete_during_the_provider_call(): void
+    {
+        $admin = $this->admin('workspace-direct-answer-model-lock', 'super_admin');
+        $model = $this->model($admin, 'workspace-direct-answer-model');
+        $updated = null;
+        $deleted = null;
+        AdminHelpAssistant::fake(function () use (&$updated, &$deleted, $admin, $model): string {
+            $mutations = app(AdminAiModelMutationService::class);
+            $updated = $mutations->update(
+                $admin,
+                (int) $model->id,
+                ['name' => 'blocked during direct answer'],
+                AiModel::ACCESS_SCOPE_USER_CONTENT,
+            );
+            $deleted = $mutations->delete($admin, (int) $model->id);
+
+            return 'direct answer';
+        })->preventStrayPrompts();
+
+        self::assertSame('direct answer', app(AiWorkspaceModelRuntime::class)->answer('问题', '上下文', [], $admin));
+        self::assertFalse($updated->succeeded());
+        self::assertFalse($deleted->succeeded());
+        self::assertSame('task', $updated->error);
+        self::assertSame('task', $deleted->error);
+        self::assertTrue(app(AdminAiModelMutationService::class)->update(
+            $admin,
+            (int) $model->id,
+            ['name' => 'allowed after direct answer'],
+            AiModel::ACCESS_SCOPE_USER_CONTENT,
+        )->succeeded());
+    }
+
+    public function test_direct_stream_discards_output_after_an_uncoordinated_model_configuration_change(): void
+    {
+        $admin = $this->admin('workspace-direct-stream-model-lock', 'super_admin');
+        $model = $this->model($admin, 'workspace-direct-stream-model');
+        $blocked = null;
+        AdminHelpAssistant::fake(function () use (&$blocked, $admin, $model): string {
+            $blocked = app(AdminAiModelMutationService::class)->update(
+                $admin,
+                (int) $model->id,
+                ['name' => 'blocked during direct stream'],
+                AiModel::ACCESS_SCOPE_USER_CONTENT,
+            );
+            AiModel::query()->whereKey($model->id)->update([
+                'api_url' => 'https://changed.example.invalid/v1',
+            ]);
+
+            return 'stale direct stream';
+        })->preventStrayPrompts();
+
+        $stream = app(AiWorkspaceModelRuntime::class)->stream('问题', '上下文', [], $admin);
+        try {
+            iterator_to_array($stream);
+            self::fail('A changed direct-stream model configuration must invalidate the result.');
+        } catch (AiModelAccessException $exception) {
+            self::assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $exception->getErrorCode());
+        }
+        self::assertFalse($blocked->succeeded());
+        self::assertSame('task', $blocked->error);
+    }
+
+    public function test_direct_fallback_claim_builds_the_provider_from_the_latest_configuration(): void
+    {
+        $admin = $this->admin('workspace-direct-fallback-fresh', 'super_admin');
+        $this->model($admin, 'workspace-direct-fallback-primary', 1);
+        $secondary = $this->model($admin, 'workspace-direct-fallback-secondary', 2);
+        $calls = 0;
+        AdminHelpAssistant::fake(function () use (&$calls, $admin, $secondary): string {
+            $calls++;
+            if ($calls === 1) {
+                $updated = app(AdminAiModelMutationService::class)->update(
+                    $admin,
+                    (int) $secondary->id,
+                    ['model_id' => 'workspace-direct-fallback-secondary-v2'],
+                    AiModel::ACCESS_SCOPE_USER_CONTENT,
+                );
+                self::assertTrue($updated->succeeded());
+                throw $this->requestException(429, 'temporary primary failure');
+            }
+
+            return 'fresh direct fallback';
+        })->preventStrayPrompts();
+
+        self::assertSame('fresh direct fallback', app(AiWorkspaceModelRuntime::class)->answer('问题', '上下文', [], $admin));
+        AdminHelpAssistant::assertPrompted(
+            static fn ($prompt): bool => $prompt->model === 'workspace-direct-fallback-secondary-v2',
+        );
+        AdminHelpAssistant::assertNotPrompted(
+            static fn ($prompt): bool => $prompt->model === 'workspace-direct-fallback-secondary',
+        );
+    }
+
     public function test_model_call_renews_a_short_resolution_lease_for_the_outbound_budget(): void
     {
         Queue::fake();

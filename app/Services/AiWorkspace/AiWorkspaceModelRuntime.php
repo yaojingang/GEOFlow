@@ -35,6 +35,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         private AiUsageQuotaService $usageQuota,
         private AiWorkspaceModelReadiness $readiness,
         private AiWorkspaceExecutionAccessGuard $executionGuard,
+        private AiModelInvocationLock $invocationLocks,
         private AiModelFailoverDecider $failoverDecider,
         private AiExecutionErrorSanitizer $errorSanitizer,
     ) {}
@@ -75,8 +76,10 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                 $providerName = '';
                 $plainTextFallback = false;
                 $receipt = null;
+                $invocationLock = null;
 
                 try {
+                    $invocationLock = $this->invocationLocks->acquireForInvocation((int) $candidate->getKey());
                     [$model, $receipt] = $this->executionGuard->claimModelForCall($context, (int) $candidate->getKey());
                     $timeout = $this->remainingAttemptTimeout($deadline);
                     [$provider, $reservation, $driver] = $this->modelContext($model, $context->modelAccessAdminId);
@@ -246,6 +249,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                         $this->boundedBackoff($attempts, $deadline);
                     }
                 } finally {
+                    $this->invocationLocks->release($invocationLock);
                     if ($reservation !== null) {
                         $this->usageQuota->recordModelAttempt($reservation);
                     }
@@ -277,7 +281,9 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                 $attempt++;
                 $model = $candidate;
                 $reservation = null;
+                $invocationLock = null;
                 try {
+                    $invocationLock = $this->invocationLocks->acquireForInvocation((int) $candidate->getKey());
                     [$model, $receipt] = $this->executionGuard->claimModelForCall($context, (int) $candidate->getKey());
                     $timeout = $this->remainingAttemptTimeout($deadline);
                     [$provider, $reservation] = $this->modelContext($model, $context->modelAccessAdminId);
@@ -324,6 +330,8 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                         $this->recordProviderFailure($model);
                         $this->boundedBackoff($attempt, $deadline);
                     }
+                } finally {
+                    $this->invocationLocks->release($invocationLock);
                 }
             }
 

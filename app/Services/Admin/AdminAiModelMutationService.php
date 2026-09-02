@@ -9,6 +9,7 @@ use App\Models\AiWorkspaceRun;
 use App\Models\EnterpriseKnowledgeProject;
 use App\Models\TitleGenerationRun;
 use App\Models\UrlImportJob;
+use App\Services\AiWorkspace\AiModelInvocationLock;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -19,6 +20,7 @@ final class AdminAiModelMutationService
     public function __construct(
         private readonly AdminAiSettingsService $personalSettings,
         private readonly AdminAiSystemSettingsService $systemSettings,
+        private readonly AiModelInvocationLock $invocationLocks,
     ) {}
 
     /** @param array<string, mixed> $attributes */
@@ -54,22 +56,30 @@ final class AdminAiModelMutationService
             $lockedActor = $this->lockActiveActor($actor);
             $lockedModel = $this->lockConfigurableModel($lockedActor, $modelId, 'update');
             $scope = $this->authorizedScope($lockedActor, $requestedScope);
-
-            if ($this->activeTitleGenerationCount($modelId) > 0) {
-                return new AdminAiModelMutationResult($lockedModel, 'title_generation');
-            }
-            if ($this->activeAiWorkspaceRunCount($modelId) > 0) {
+            $invocationLock = $this->invocationLocks->acquireForMutation($modelId);
+            if ($invocationLock === null) {
                 return new AdminAiModelMutationResult($lockedModel, 'task');
             }
 
-            $lockedModel->fill(Arr::except($attributes, ['access_scope']));
-            $lockedModel->forceFill(['access_scope' => $scope])->save();
-            $this->personalSettings->clearIncompatibleDefaultsForModel($lockedModel, $lockedActor);
-            if (! $this->isUsableSystemEmbedding($lockedModel)) {
-                $this->systemSettings->clearDefaultEmbeddingForModel($lockedActor, $lockedModel);
-            }
+            try {
+                if ($this->activeTitleGenerationCount($modelId) > 0) {
+                    return new AdminAiModelMutationResult($lockedModel, 'title_generation');
+                }
+                if ($this->activeAiWorkspaceRunCount($modelId) > 0) {
+                    return new AdminAiModelMutationResult($lockedModel, 'task');
+                }
 
-            return new AdminAiModelMutationResult($lockedModel->refresh());
+                $lockedModel->fill(Arr::except($attributes, ['access_scope']));
+                $lockedModel->forceFill(['access_scope' => $scope])->save();
+                $this->personalSettings->clearIncompatibleDefaultsForModel($lockedModel, $lockedActor);
+                if (! $this->isUsableSystemEmbedding($lockedModel)) {
+                    $this->systemSettings->clearDefaultEmbeddingForModel($lockedActor, $lockedModel);
+                }
+
+                return new AdminAiModelMutationResult($lockedModel->refresh());
+            } finally {
+                $this->invocationLocks->release($invocationLock);
+            }
         }, 3);
     }
 
@@ -78,24 +88,33 @@ final class AdminAiModelMutationService
         return DB::transaction(function () use ($actor, $modelId): AdminAiModelMutationResult {
             $lockedActor = $this->lockActiveActor($actor);
             $lockedModel = $this->lockConfigurableModel($lockedActor, $modelId, 'delete');
-            if ($this->activeTitleGenerationCount($modelId) > 0) {
-                return new AdminAiModelMutationResult($lockedModel, 'title_generation');
+            $invocationLock = $this->invocationLocks->acquireForMutation($modelId);
+            if ($invocationLock === null) {
+                return new AdminAiModelMutationResult($lockedModel, 'task');
             }
 
-            $taskCount = $lockedModel->tasks()->withTrashed()->count()
-                + $lockedModel->qualityTasks()->withTrashed()->count();
-            $taskCount += $this->activeUrlImportCount($modelId);
-            $taskCount += $this->activeEnterpriseKnowledgeCount($modelId);
-            $taskCount += $this->activeAiWorkspaceRunCount($modelId);
-            if ($taskCount > 0) {
-                return new AdminAiModelMutationResult($lockedModel, 'task', $taskCount);
+            try {
+                if ($this->activeTitleGenerationCount($modelId) > 0) {
+                    return new AdminAiModelMutationResult($lockedModel, 'title_generation');
+                }
+
+                $taskCount = $lockedModel->tasks()->withTrashed()->count()
+                    + $lockedModel->qualityTasks()->withTrashed()->count();
+                $taskCount += $this->activeUrlImportCount($modelId);
+                $taskCount += $this->activeEnterpriseKnowledgeCount($modelId);
+                $taskCount += $this->activeAiWorkspaceRunCount($modelId);
+                if ($taskCount > 0) {
+                    return new AdminAiModelMutationResult($lockedModel, 'task', $taskCount);
+                }
+
+                $this->personalSettings->clearAllDefaultsForModel($lockedModel, $lockedActor);
+                $this->systemSettings->clearDefaultEmbeddingForModel($lockedActor, $lockedModel);
+                $lockedModel->delete();
+
+                return new AdminAiModelMutationResult($lockedModel);
+            } finally {
+                $this->invocationLocks->release($invocationLock);
             }
-
-            $this->personalSettings->clearAllDefaultsForModel($lockedModel, $lockedActor);
-            $this->systemSettings->clearDefaultEmbeddingForModel($lockedActor, $lockedModel);
-            $lockedModel->delete();
-
-            return new AdminAiModelMutationResult($lockedModel);
         }, 3);
     }
 
