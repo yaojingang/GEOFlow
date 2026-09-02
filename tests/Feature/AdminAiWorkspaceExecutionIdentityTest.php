@@ -25,6 +25,7 @@ use App\Services\AiWorkspace\AiWorkspaceModelRuntime;
 use App\Services\AiWorkspace\AiWorkspaceModelUsageDelivery;
 use App\Services\AiWorkspace\AiWorkspaceRuntimeGuardException;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Generator;
 use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Database\Events\QueryExecuted;
@@ -429,6 +430,45 @@ final class AdminAiWorkspaceExecutionIdentityTest extends TestCase
         $event = AiModelUsageEvent::query()->sole();
         self::assertSame(AiModelUsageEvent::STATUS_DISCARDED, $event->status);
         self::assertSame('ai_result_not_committed', $event->error_code);
+        self::assertSame('answering', $run->fresh()->state);
+        self::assertNull($run->fresh()->failure_code);
+    }
+
+    public function test_workspace_stream_lease_loss_after_the_first_delta_does_not_open_the_provider_circuit(): void
+    {
+        $admin = $this->admin('workspace-stream-lease-lost', 'super_admin');
+        $model = $this->model($admin, 'workspace-stream-lease-lost-model');
+        [$run, $context] = $this->answeringRunContext($admin, 'stream-lease-lost');
+        AdminHelpAssistant::fake(['第一段 第二段'])->preventStrayPrompts();
+        $deltas = [];
+
+        try {
+            foreach (app(AiWorkspaceModelRuntime::class)->stream('问题', '上下文', [], $context) as $event) {
+                if (($event['type'] ?? null) !== 'delta') {
+                    continue;
+                }
+                $deltas[] = (string) $event['content'];
+                if (count($deltas) === 1) {
+                    $run->forceFill([
+                        'resolution_lease_owner' => (string) Str::uuid7(),
+                        'resolution_lease_expires_at' => now()->addMinute(),
+                    ])->save();
+                }
+            }
+            self::fail('The second delta must be rejected after the resolution lease changes.');
+        } catch (AiWorkspaceRuntimeGuardException $exception) {
+            self::assertSame('AI 工作台执行状态或租约已经变化。', $exception->getMessage());
+        }
+
+        $fingerprint = hash('sha256', implode('|', [
+            (string) $model->id,
+            (string) $model->model_id,
+            OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url),
+        ]));
+        self::assertSame(['第一段'], $deltas);
+        self::assertFalse(Cache::has('ai-workspace:provider-failures:'.$fingerprint));
+        self::assertFalse(Cache::has('ai-workspace:provider-circuit:'.$fingerprint));
+        self::assertSame(AiModelUsageEvent::STATUS_DISCARDED, AiModelUsageEvent::query()->sole()->status);
         self::assertSame('answering', $run->fresh()->state);
         self::assertNull($run->fresh()->failure_code);
     }

@@ -215,6 +215,16 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
 
                         throw $exception;
                     }
+                    if ($exception instanceof AiWorkspaceRuntimeGuardException) {
+                        $this->finalizeWorkspaceFailure(
+                            $usageAttempt,
+                            $exception,
+                            $providerReturned,
+                            $usage,
+                        );
+
+                        throw $exception;
+                    }
                     if ($this->streamCompletedSuccessfully($streamEnded, $finishReason) && trim($answer) !== '') {
                         try {
                             if (! $receipt instanceof AiWorkspaceModelExecutionReceipt) {
