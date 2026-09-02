@@ -245,6 +245,181 @@ final class AdminAiWorkspaceExecutionIdentityTest extends TestCase
         }
     }
 
+    public function test_stream_stops_before_broadcasting_a_delta_after_access_is_revoked(): void
+    {
+        $admin = $this->admin('workspace-mid-stream-revoked', 'super_admin');
+        $model = $this->model($admin, 'workspace-mid-stream-revoked-model');
+        $conversation = app(AiConversationRepository::class)->create($admin);
+        $this->app->instance(AdminHelpResponder::class, new ReceiptAwareWorkspaceResponder(
+            app(AiWorkspaceExecutionAccessGuard::class),
+            $model,
+            static function () use ($admin): void {
+                $admin->forceFill([
+                    'ai_config_access_version' => (int) $admin->ai_config_access_version + 1,
+                ])->save();
+            },
+        ));
+
+        $stream = $this->actingAs($admin, 'admin')->postJson(
+            route('admin.ai-workspace.messages.store', ['conversation' => $conversation->id]),
+            ['prompt' => '请流式回答。'],
+        )->assertOk()->streamedContent();
+
+        self::assertSame(1, substr_count($stream, 'event: delta'));
+        self::assertStringContainsString(json_encode('第一段', JSON_THROW_ON_ERROR), $stream);
+        self::assertStringNotContainsString(json_encode('第二段', JSON_THROW_ON_ERROR), $stream);
+        self::assertSame(0, AiConversationMessage::query()->where('role', 'assistant')->count());
+    }
+
+    public function test_stream_stops_before_broadcasting_a_delta_after_model_configuration_changes(): void
+    {
+        $admin = $this->admin('workspace-mid-stream-model-change', 'super_admin');
+        $model = $this->model($admin, 'workspace-mid-stream-changing-model');
+        $conversation = app(AiConversationRepository::class)->create($admin);
+        $this->app->instance(AdminHelpResponder::class, new ReceiptAwareWorkspaceResponder(
+            app(AiWorkspaceExecutionAccessGuard::class),
+            $model,
+            static function () use ($model): void {
+                $model->forceFill(['api_url' => 'https://changed.example.invalid/v1'])->save();
+            },
+        ));
+
+        $stream = $this->actingAs($admin, 'admin')->postJson(
+            route('admin.ai-workspace.messages.store', ['conversation' => $conversation->id]),
+            ['prompt' => '请流式回答。'],
+        )->assertOk()->streamedContent();
+
+        self::assertSame(1, substr_count($stream, 'event: delta'));
+        self::assertStringContainsString(json_encode('第一段', JSON_THROW_ON_ERROR), $stream);
+        self::assertStringNotContainsString(json_encode('第二段', JSON_THROW_ON_ERROR), $stream);
+        self::assertSame(0, AiConversationMessage::query()->where('role', 'assistant')->count());
+    }
+
+    public function test_final_message_transaction_rejects_a_changed_model_receipt(): void
+    {
+        $admin = $this->admin('workspace-final-receipt-race', 'super_admin');
+        $model = $this->model($admin, 'workspace-final-receipt-model');
+        $conversation = app(AiConversationRepository::class)->create($admin);
+        $this->app->instance(AdminHelpResponder::class, new ReceiptAwareWorkspaceResponder(
+            app(AiWorkspaceExecutionAccessGuard::class),
+            $model,
+            static function () use ($model): void {
+                $model->forceFill(['api_url' => 'https://changed.example.invalid/v1'])->save();
+            },
+            emitSecondDelta: false,
+        ));
+
+        $stream = $this->actingAs($admin, 'admin')->postJson(
+            route('admin.ai-workspace.messages.store', ['conversation' => $conversation->id]),
+            ['prompt' => '请生成最终回答。'],
+        )->assertOk()->streamedContent();
+
+        self::assertStringContainsString('event: error', $stream);
+        self::assertSame(0, AiConversationMessage::query()->where('role', 'assistant')->count());
+        self::assertSame('failed', AiConversationMessage::query()->where('role', 'user')->firstOrFail()->meta['workspace_generation_state']);
+    }
+
+    public function test_partial_answer_transaction_rechecks_the_model_receipt_before_each_write(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('workspace-partial-receipt', 'super_admin');
+        $model = $this->model($admin, 'workspace-partial-receipt-model');
+        $coordinator = app(AiWorkspaceCoordinator::class);
+        $run = $coordinator->createRun(
+            $admin,
+            app(AiConversationRepository::class)->create($admin),
+            '请流式生成回答。',
+        );
+        $lease = (string) Str::uuid7();
+        $run->forceFill([
+            'state' => 'answering',
+            'resolution_lease_owner' => $lease,
+            'resolution_lease_expires_at' => now()->addMinute(),
+        ])->save();
+        $guard = app(AiWorkspaceExecutionAccessGuard::class);
+        $context = $guard->contextFromResolutionRun($run->fresh(), $lease);
+        $receipt = $guard->receiptFor($context, $model);
+        $persist = new \ReflectionMethod($coordinator, 'persistAndBroadcastAnswerChunk');
+        $persist->setAccessible(true);
+
+        $persist->invoke($coordinator, $context, $receipt, '第一段');
+        $model->forceFill(['model_id' => 'workspace-partial-receipt-model-v2'])->save();
+
+        try {
+            $persist->invoke($coordinator, $context, $receipt, '第二段');
+            self::fail('A changed model receipt must stop partial answer persistence.');
+        } catch (AiModelAccessException) {
+            self::assertSame('第一段', $run->fresh()->answer);
+            self::assertSame(1, (int) $run->fresh()->answer_chunk_sequence);
+        }
+    }
+
+    public function test_verified_readiness_fails_closed_on_permanent_personal_failure_before_shared_model(): void
+    {
+        config()->set('ai-workspace.require_verified_model', true);
+        $provider = $this->admin('workspace-readiness-provider', 'super_admin');
+        $admin = $this->admin('workspace-readiness-actor', 'admin', $provider);
+        $personal = $this->model($admin, 'workspace-readiness-personal', 1);
+        $shared = $this->model($provider, 'workspace-readiness-shared', 2);
+        $personal->forceFill([
+            'ai_workspace_readiness_status' => 'failed',
+            'ai_workspace_readiness_failure_code' => 'authentication_failed',
+            'ai_workspace_readiness_expires_at' => now()->addDay(),
+        ])->save();
+        $shared->forceFill([
+            'ai_workspace_readiness_status' => 'ready',
+            'ai_workspace_readiness_profile' => [
+                'configuration' => [
+                    'fingerprint' => app(AiWorkspaceModelReadiness::class)->configurationFingerprint($shared),
+                ],
+                'plain_text' => ['status' => 'ready'],
+            ],
+            'ai_workspace_readiness_expires_at' => now()->addDay(),
+        ])->save();
+
+        $status = app(AiWorkspaceModelReadiness::class)->status($admin);
+
+        self::assertFalse($status['ready']);
+        self::assertNull($status['model_id']);
+        AdminHelpAssistant::fake(['must not call shared'])->preventStrayPrompts();
+        try {
+            app(AiWorkspaceModelRuntime::class)->answer('问题', '上下文', [], $admin);
+            self::fail('Permanent readiness rejection must block the shared candidate.');
+        } catch (PermanentAiProviderException) {
+            AdminHelpAssistant::assertNotPrompted(static fn (): bool => true);
+        }
+    }
+
+    public function test_verified_readiness_can_use_shared_after_a_temporary_personal_failure(): void
+    {
+        config()->set('ai-workspace.require_verified_model', true);
+        $provider = $this->admin('workspace-temporary-readiness-provider', 'super_admin');
+        $admin = $this->admin('workspace-temporary-readiness-actor', 'admin', $provider);
+        $personal = $this->model($admin, 'workspace-temporary-readiness-personal', 1);
+        $shared = $this->model($provider, 'workspace-temporary-readiness-shared', 2);
+        $personal->forceFill([
+            'ai_workspace_readiness_status' => 'failed',
+            'ai_workspace_readiness_failure_code' => 'provider_timeout',
+            'ai_workspace_readiness_expires_at' => now()->addDay(),
+        ])->save();
+        $shared->forceFill([
+            'ai_workspace_readiness_status' => 'ready',
+            'ai_workspace_readiness_profile' => [
+                'configuration' => [
+                    'fingerprint' => app(AiWorkspaceModelReadiness::class)->configurationFingerprint($shared),
+                ],
+                'plain_text' => ['status' => 'ready'],
+            ],
+            'ai_workspace_readiness_expires_at' => now()->addDay(),
+        ])->save();
+
+        self::assertSame([
+            'ready' => true,
+            'reason' => null,
+            'model_id' => (int) $shared->id,
+        ], app(AiWorkspaceModelReadiness::class)->status($admin));
+    }
+
     public function test_provider_metadata_is_reduced_to_the_safe_workspace_allowlist(): void
     {
         $admin = $this->admin('workspace-safe-meta', 'super_admin');
@@ -623,5 +798,41 @@ final class WorkspaceMetadataResponder implements AdminHelpResponder
         if (! $actor instanceof AiWorkspaceExecutionContext) {
             throw new \RuntimeException('workspace execution context missing');
         }
+    }
+}
+
+final class ReceiptAwareWorkspaceResponder implements AdminHelpResponder
+{
+    /** @param \Closure():void $afterFirstDelta */
+    public function __construct(
+        private readonly AiWorkspaceExecutionAccessGuard $guard,
+        private readonly AiModel $model,
+        private readonly \Closure $afterFirstDelta,
+        private readonly bool $emitSecondDelta = true,
+    ) {}
+
+    public function stream(string $prompt, string $knowledgeContext, iterable $messages = [], mixed $actor = null): Generator
+    {
+        if (! $actor instanceof AiWorkspaceExecutionContext) {
+            throw new \RuntimeException('workspace execution context missing');
+        }
+        $receipt = $this->guard->receiptFor($actor, $this->model);
+        yield ['type' => 'delta', 'content' => '第一段', 'completion_receipt' => $receipt];
+        ($this->afterFirstDelta)();
+        if ($this->emitSecondDelta) {
+            yield ['type' => 'delta', 'content' => '第二段', 'completion_receipt' => $receipt];
+        }
+
+        return [
+            'answer' => $this->emitSecondDelta ? '第一段第二段' : '第一段',
+            'meta' => [],
+            'usage' => [],
+            'completion_receipt' => $receipt,
+        ];
+    }
+
+    public function answer(string $prompt, string $knowledgeContext, iterable $messages = [], mixed $actor = null): string
+    {
+        return '第一段';
     }
 }

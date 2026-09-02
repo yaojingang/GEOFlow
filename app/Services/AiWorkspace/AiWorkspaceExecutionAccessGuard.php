@@ -4,6 +4,7 @@ namespace App\Services\AiWorkspace;
 
 use App\Data\Ai\AiExecutionContext;
 use App\Data\Ai\AiWorkspaceExecutionContext;
+use App\Data\Ai\AiWorkspaceModelExecutionReceipt;
 use App\Exceptions\AiModelAccessException;
 use App\Models\Admin;
 use App\Models\AdminAiSetting;
@@ -170,6 +171,43 @@ final readonly class AiWorkspaceExecutionAccessGuard
             ->reject(static fn (AiModel $model): bool => (int) $model->getKey() === $context->requestedModelId)
             ->prepend($requested)
             ->values();
+    }
+
+    public function receiptFor(
+        AiWorkspaceExecutionContext $context,
+        AiModel $model,
+    ): AiWorkspaceModelExecutionReceipt {
+        $admin = $this->assertCurrent($context, $model);
+
+        return new AiWorkspaceModelExecutionReceipt(
+            modelId: (int) $model->getKey(),
+            modelSource: (int) $model->owner_admin_id === (int) $admin->getKey() ? 'personal' : 'shared',
+            configurationDigest: $this->modelConfigurationDigest($model),
+            requestId: $context->requestId,
+        );
+    }
+
+    public function assertReceiptCurrent(
+        AiWorkspaceExecutionContext $context,
+        AiWorkspaceModelExecutionReceipt $receipt,
+    ): Admin {
+        if (! hash_equals($context->requestId, $receipt->requestId)) {
+            throw AiModelAccessException::configAccessRevokedForAdminId($context->modelAccessAdminId);
+        }
+
+        $admin = $this->assertCurrent($context);
+        $model = $this->accessGuard->assertModelForPersistedAdminSnapshot(
+            $context->toSafeArray(),
+            $receipt->modelId,
+            currentAdmin: $admin,
+        );
+        $expectedSource = (int) $model->owner_admin_id === (int) $admin->getKey() ? 'personal' : 'shared';
+        if (! hash_equals($expectedSource, $receipt->modelSource)
+            || ! hash_equals($this->modelConfigurationDigest($model), $receipt->configurationDigest)) {
+            throw AiModelAccessException::configAccessRevokedForAdminId($context->modelAccessAdminId);
+        }
+
+        return $admin;
     }
 
     public function recordResolvedModel(AiWorkspaceExecutionContext $context, AiModel $model): void

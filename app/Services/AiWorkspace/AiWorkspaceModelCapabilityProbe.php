@@ -132,10 +132,16 @@ final readonly class AiWorkspaceModelCapabilityProbe
 
     public function failureCode(Throwable $exception): string
     {
-        $message = mb_strtolower($exception->getMessage());
+        $messages = [];
+        for ($current = $exception; $current instanceof Throwable; $current = $current->getPrevious()) {
+            $messages[] = $current->getMessage();
+        }
+        $message = mb_strtolower(implode(' ', $messages));
 
         return match (true) {
             str_contains($message, 'key'), str_contains($message, '鉴权'), str_contains($message, '401'), str_contains($message, '403') => 'authentication_failed',
+            str_contains($message, 'capability'), str_contains($message, '能力'), str_contains($message, 'unsupported') => 'capability_incompatible',
+            str_contains($message, 'configuration'), str_contains($message, '配置'), str_contains($message, '400'), str_contains($message, '402'), str_contains($message, '404'), str_contains($message, '422') => 'configuration_invalid',
             str_contains($message, '内容'), str_contains($message, '文本') => 'plain_text_invalid',
             str_contains($message, 'timeout'), str_contains($message, '超时') => 'provider_timeout',
             default => 'provider_unavailable',

@@ -8,6 +8,7 @@ use App\Ai\Workspace\AiIntentResolution;
 use App\Ai\Workspace\AiPlanCompiler;
 use App\Ai\Workspace\AiWorkspaceErrorSanitizer;
 use App\Data\Ai\AiWorkspaceExecutionContext;
+use App\Data\Ai\AiWorkspaceModelExecutionReceipt;
 use App\Exceptions\AiModelAccessException;
 use App\Exceptions\PermanentAiProviderException;
 use App\Jobs\ResolveAiWorkspaceRunJob;
@@ -543,17 +544,19 @@ final readonly class AiWorkspaceCoordinator
             $this->assertResolutionExecutionAllowed($answering, $admin);
             $buffer = '';
             $modelTelemetry = null;
+            $modelReceipt = null;
             $hasPersistedChunk = (int) $answering->answer_chunk_sequence > 0;
             $lastFlushAt = microtime(true);
             $generatedAnswer = $this->runtime->streamAnswer(
                 (string) $run->prompt,
-                function (string $delta) use ($answering, $admin, $leaseOwner, &$buffer, &$hasPersistedChunk, &$lastFlushAt): void {
-                    $this->assertAnswerStreamAllowed((string) $answering->id, $leaseOwner, (int) $admin->id);
+                function (string $delta, AiWorkspaceModelExecutionReceipt $receipt) use ($executionContext, &$buffer, &$hasPersistedChunk, &$lastFlushAt, &$modelReceipt): void {
+                    $modelReceipt = $receipt;
+                    $this->assertAnswerStreamAllowed($executionContext, $receipt);
                     $buffer .= $delta;
                     if (! $hasPersistedChunk
                         || mb_strlen($buffer) >= 96
                         || (microtime(true) - $lastFlushAt) >= 0.08) {
-                        $this->persistAndBroadcastAnswerChunk((string) $answering->id, $leaseOwner, (int) $admin->id, $buffer);
+                        $this->persistAndBroadcastAnswerChunk($executionContext, $receipt, $buffer);
                         $buffer = '';
                         $hasPersistedChunk = true;
                         $lastFlushAt = microtime(true);
@@ -561,20 +564,24 @@ final readonly class AiWorkspaceCoordinator
                 },
                 $context['messages'],
                 $executionContext,
-                function (array $telemetry) use (&$modelTelemetry): void {
+                function (array $telemetry, mixed $receipt = null) use (&$modelTelemetry, &$modelReceipt): void {
                     $modelTelemetry = $telemetry;
+                    if ($receipt instanceof AiWorkspaceModelExecutionReceipt) {
+                        $modelReceipt = $receipt;
+                    }
                 },
             );
             if ($buffer !== '') {
-                $this->persistAndBroadcastAnswerChunk((string) $answering->id, $leaseOwner, (int) $admin->id, $buffer);
+                if (! $modelReceipt instanceof AiWorkspaceModelExecutionReceipt) {
+                    throw AiModelAccessException::configAccessRevokedForAdminId($executionContext->modelAccessAdminId);
+                }
+                $this->persistAndBroadcastAnswerChunk($executionContext, $modelReceipt, $buffer);
             }
             if (! $hasPersistedChunk && trim($generatedAnswer) !== '') {
-                $this->persistAndBroadcastAnswerChunk(
-                    (string) $answering->id,
-                    $leaseOwner,
-                    (int) $admin->id,
-                    $generatedAnswer,
-                );
+                if (! $modelReceipt instanceof AiWorkspaceModelExecutionReceipt) {
+                    throw AiModelAccessException::configAccessRevokedForAdminId($executionContext->modelAccessAdminId);
+                }
+                $this->persistAndBroadcastAnswerChunk($executionContext, $modelReceipt, $generatedAnswer);
             }
             $cancelled = $this->preserveCancelledAnswer(
                 $admin,
@@ -656,6 +663,7 @@ final readonly class AiWorkspaceCoordinator
                     $persistedAnswer,
                     $attributes,
                     ['system_operations_executed' => false, 'state' => 'failed', 'incomplete' => true],
+                    $modelReceipt,
                 )
                 : $this->transitionResolutionOwned((string) $run->id, $leaseOwner, 'failed', $attributes);
             if ($failed instanceof AiWorkspaceRun && $failed->failure_code !== 'authorization_revoked') {
@@ -677,7 +685,7 @@ final readonly class AiWorkspaceCoordinator
             'status_message' => '回答已完成。',
             'answer_is_partial' => false,
             'resolution_finished_at' => now(),
-        ], ['system_operations_executed' => false]);
+        ], ['system_operations_executed' => false], $modelReceipt);
         if (! $completed instanceof AiWorkspaceRun) {
             return;
         }
@@ -988,10 +996,15 @@ final readonly class AiWorkspaceCoordinator
         string $answer,
         array $attributes,
         array $messageMeta,
+        ?AiWorkspaceModelExecutionReceipt $modelReceipt = null,
     ): ?AiWorkspaceRun {
         try {
-            return DB::transaction(function () use ($admin, $run, $leaseOwner, $state, $answer, $attributes, $messageMeta): AiWorkspaceRun {
+            return DB::transaction(function () use ($admin, $run, $leaseOwner, $state, $answer, $attributes, $messageMeta, $modelReceipt): AiWorkspaceRun {
                 $locked = $this->lockResolutionOwner((string) $run->id, $leaseOwner);
+                if ($modelReceipt instanceof AiWorkspaceModelExecutionReceipt) {
+                    $context = $this->executionGuard->contextFromResolutionRun($locked, $leaseOwner);
+                    $this->executionGuard->assertReceiptCurrent($context, $modelReceipt);
+                }
                 $completed = $this->states->transition($locked, $state, [
                     'answer' => $answer,
                     'answer_is_partial' => (bool) ($attributes['answer_is_partial'] ?? false),
@@ -1062,44 +1075,29 @@ final readonly class AiWorkspaceCoordinator
             && hash_equals((string) $allowed[0], (string) $requested[0]);
     }
 
-    private function assertAnswerStreamAllowed(string $runId, string $leaseOwner, int $adminId): void
-    {
+    private function assertAnswerStreamAllowed(
+        AiWorkspaceExecutionContext $context,
+        AiWorkspaceModelExecutionReceipt $receipt,
+    ): void {
         if (! (bool) config('ai-workspace.runtime_enabled', false)) {
             throw new RuntimeException('AI 工作台运行时已关闭。');
         }
 
-        $run = AiWorkspaceRun::query()->findOrFail($runId);
-        if ($run->state !== 'answering'
-            || ! hash_equals((string) $run->resolution_lease_owner, $leaseOwner)
-            || ! $run->resolution_lease_expires_at?->isFuture()) {
-            throw new RuntimeException($run->state === 'cancelled' ? '回答生成已取消。' : '请求理解租约已经失效。');
-        }
-        $admin = Admin::query()->whereKey($adminId)->where('status', 'active')->first();
-        if (! $admin instanceof Admin
-            || (int) $run->admin_auth_version <= 0
-            || (int) $run->admin_auth_version !== (int) $admin->auth_version) {
-            throw new RuntimeException('管理员授权已变化，已停止回答。');
-        }
+        $this->executionGuard->assertReceiptCurrent($context, $receipt);
     }
 
-    private function persistAndBroadcastAnswerChunk(string $runId, string $leaseOwner, int $adminId, string $delta): void
-    {
+    private function persistAndBroadcastAnswerChunk(
+        AiWorkspaceExecutionContext $context,
+        AiWorkspaceModelExecutionReceipt $receipt,
+        string $delta,
+    ): void {
         if ($delta === '') {
             return;
         }
 
-        $persisted = DB::transaction(function () use ($runId, $leaseOwner, $adminId, $delta): AiWorkspaceRun {
-            $admin = Admin::query()->whereKey($adminId)->where('status', 'active')->lockForUpdate()->first();
-            $run = AiWorkspaceRun::query()->lockForUpdate()->findOrFail($runId);
-            if (! (bool) config('ai-workspace.runtime_enabled', false)
-                || ! $admin instanceof Admin
-                || (int) $run->admin_auth_version <= 0
-                || (int) $run->admin_auth_version !== (int) $admin->auth_version
-                || $run->state !== 'answering'
-                || ! hash_equals((string) $run->resolution_lease_owner, $leaseOwner)
-                || ! $run->resolution_lease_expires_at?->isFuture()) {
-                throw new RuntimeException('回答持久化授权、状态或租约已经失效。');
-            }
+        $persisted = DB::transaction(function () use ($context, $receipt, $delta): AiWorkspaceRun {
+            $this->executionGuard->assertReceiptCurrent($context, $receipt);
+            $run = AiWorkspaceRun::query()->lockForUpdate()->findOrFail($context->runId);
 
             $firstToken = $run->first_token_at === null;
             $run->forceFill([

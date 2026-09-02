@@ -5,6 +5,7 @@ namespace App\Services\AiWorkspace;
 use App\Ai\Agents\AdminHelpAssistant;
 use App\Contracts\AiWorkspace\AdminHelpResponder;
 use App\Data\Ai\AiWorkspaceExecutionContext;
+use App\Data\Ai\AiWorkspaceModelExecutionReceipt;
 use App\Exceptions\AiModelAccessException;
 use App\Exceptions\PermanentAiProviderException;
 use App\Models\Admin;
@@ -40,7 +41,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
 
     /**
      * @param  iterable<int, mixed>  $messages
-     * @return Generator<int, array<string, mixed>, mixed, array{answer:string,meta:array<string,mixed>,usage:array<string,int>}>
+     * @return Generator<int, array<string, mixed>, mixed, array{answer:string,meta:array<string,mixed>,usage:array<string,int>,completion_receipt:AiWorkspaceModelExecutionReceipt}>
      */
     public function stream(
         string $prompt,
@@ -72,9 +73,10 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                 $driver = '';
                 $providerName = '';
                 $plainTextFallback = false;
+                $receipt = null;
 
                 try {
-                    $this->executionGuard->assertCurrent($context, $model);
+                    $receipt = $this->executionGuard->receiptFor($context, $model);
                     $timeout = $this->remainingAttemptTimeout($deadline);
                     [$provider, $reservation, $driver] = $this->modelContext($model, $context->modelAccessAdminId);
                     $agent = new AdminHelpAssistant(
@@ -99,13 +101,14 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                         $emitted = true;
                         $usage = $response->usage->toArray();
                         $finishReason = $response->steps->last()?->finishReason->value ?? 'stop';
+                        $this->executionGuard->assertReceiptCurrent($context, $receipt);
                         yield [
                             'type' => 'status',
                             'stage' => 'connected',
                             'provider' => $providerName,
                             'model' => (string) $model->model_id,
                         ];
-                        yield ['type' => 'delta', 'content' => $answer];
+                        yield ['type' => 'delta', 'content' => $answer, 'completion_receipt' => $receipt];
                     } else {
                         $stream = $agent->stream($prompt, [], $provider, (string) $model->model_id, $timeout);
                         foreach ($stream as $event) {
@@ -128,10 +131,11 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                                 continue;
                             }
                             if ($event instanceof TextDelta && $event->delta !== '') {
+                                $this->executionGuard->assertReceiptCurrent($context, $receipt);
                                 $emitted = true;
                                 $firstTextMilliseconds ??= $this->elapsedMilliseconds($startedAtNanoseconds);
                                 $answer .= $event->delta;
-                                yield ['type' => 'delta', 'content' => $event->delta];
+                                yield ['type' => 'delta', 'content' => $event->delta, 'completion_receipt' => $receipt];
 
                                 continue;
                             }
@@ -154,7 +158,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                     if ($answer === '') {
                         throw new RuntimeException('AI 模型未返回文本内容。');
                     }
-                    $this->executionGuard->assertCurrent($context, $model);
+                    $this->executionGuard->assertReceiptCurrent($context, $receipt);
                     $this->executionGuard->recordResolvedModel($context, $model);
                     $this->usageQuota->recordModelSuccess($reservation);
                     $this->recordProviderSuccess($model);
@@ -179,13 +183,17 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                             'finish_reason' => $finishReason,
                         ],
                         'usage' => $usage,
+                        'completion_receipt' => $receipt,
                     ];
                 } catch (Throwable $exception) {
                     if ($exception instanceof AiModelAccessException || $exception instanceof PermanentAiProviderException) {
                         throw $exception;
                     }
                     if ($this->streamCompletedSuccessfully($streamEnded, $finishReason) && trim($answer) !== '') {
-                        $this->executionGuard->assertCurrent($context, $model);
+                        if (! $receipt instanceof AiWorkspaceModelExecutionReceipt) {
+                            throw AiModelAccessException::configAccessRevokedForAdminId($context->modelAccessAdminId);
+                        }
+                        $this->executionGuard->assertReceiptCurrent($context, $receipt);
                         $this->executionGuard->recordResolvedModel($context, $model);
                         report(new RuntimeException($this->errorSanitizer->sanitize($exception)));
                         $this->usageQuota->recordModelSuccess($reservation);
@@ -212,6 +220,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                                 'late_stream_close' => true,
                             ],
                             'usage' => $usage,
+                            'completion_receipt' => $receipt,
                         ];
                     }
                     $lastException = $this->runtimeException($exception, $model);
@@ -266,7 +275,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                 $attempt++;
                 $reservation = null;
                 try {
-                    $this->executionGuard->assertCurrent($context, $model);
+                    $receipt = $this->executionGuard->receiptFor($context, $model);
                     $timeout = $this->remainingAttemptTimeout($deadline);
                     [$provider, $reservation] = $this->modelContext($model, $context->modelAccessAdminId);
                     $agent = new AdminHelpAssistant(
@@ -280,7 +289,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                     if ($answer === '') {
                         throw new RuntimeException('AI 模型未返回文本内容。');
                     }
-                    $this->executionGuard->assertCurrent($context, $model);
+                    $this->executionGuard->assertReceiptCurrent($context, $receipt);
                     $this->executionGuard->recordResolvedModel($context, $model);
                     $this->usageQuota->recordModelSuccess($reservation);
                     $this->recordProviderSuccess($model);
@@ -367,12 +376,21 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         $stream = $this->stream($prompt, '', $messages, $actor);
         foreach ($stream as $event) {
             if (is_array($event) && ($event['type'] ?? null) === 'delta') {
-                $onDelta((string) ($event['content'] ?? ''));
+                $receipt = $event['completion_receipt'] ?? null;
+                if (! $receipt instanceof AiWorkspaceModelExecutionReceipt) {
+                    throw AiModelAccessException::configAccessRevokedForAdminId(
+                        $actor instanceof AiWorkspaceExecutionContext ? $actor->modelAccessAdminId : 0,
+                    );
+                }
+                $onDelta((string) ($event['content'] ?? ''), $receipt);
             }
         }
         $result = $stream->getReturn();
         if ($onComplete !== null) {
-            $onComplete(is_array($result) ? (array) ($result['meta'] ?? []) : []);
+            $onComplete(
+                is_array($result) ? (array) ($result['meta'] ?? []) : [],
+                is_array($result) ? ($result['completion_receipt'] ?? null) : null,
+            );
         }
 
         return is_array($result) ? trim((string) ($result['answer'] ?? '')) : trim((string) $result);
@@ -497,14 +515,28 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
     /** @return iterable<int, AiModel> */
     private function models(AiWorkspaceExecutionContext $context): iterable
     {
-        $models = $this->executionGuard
-            ->resolveCandidates($context)
-            ->filter(fn (AiModel $model): bool => $this->readiness->canAttempt($model));
-        $available = $models
-            ->reject(fn (AiModel $model): bool => Cache::has($this->providerCircuitKey($model)))
-            ->values();
+        $firstAttemptable = null;
+        $yielded = false;
+        foreach ($this->executionGuard->resolveCandidates($context) as $model) {
+            if ($this->readiness->hasPermanentFailure($model)) {
+                throw PermanentAiProviderException::fromProviderFailure(
+                    new RuntimeException('ai_model_readiness_rejected'),
+                );
+            }
+            if (! $this->readiness->canAttempt($model)) {
+                continue;
+            }
+            $firstAttemptable ??= $model;
+            if (Cache::has($this->providerCircuitKey($model))) {
+                continue;
+            }
+            $yielded = true;
+            yield $model;
+        }
 
-        return $available->isNotEmpty() ? $available : $models->take(1)->values();
+        if (! $yielded && $firstAttemptable instanceof AiModel) {
+            yield $firstAttemptable;
+        }
     }
 
     private function executionContext(Admin|AiWorkspaceExecutionContext|int|null $actor): AiWorkspaceExecutionContext

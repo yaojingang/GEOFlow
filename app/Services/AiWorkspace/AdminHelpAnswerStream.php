@@ -3,6 +3,9 @@
 namespace App\Services\AiWorkspace;
 
 use App\Contracts\AiWorkspace\AdminHelpResponder;
+use App\Data\Ai\AiWorkspaceExecutionContext;
+use App\Data\Ai\AiWorkspaceModelExecutionReceipt;
+use App\Exceptions\AiModelAccessException;
 use App\Models\Admin;
 use App\Models\AiConversation;
 use App\Models\AiConversationMessage;
@@ -187,6 +190,10 @@ final readonly class AdminHelpAnswerStream
                     continue;
                 }
 
+                $this->assertModelReceiptCurrent(
+                    $executionContext,
+                    is_array($responseEvent) ? ($responseEvent['completion_receipt'] ?? null) : null,
+                );
                 $answer .= $delta;
                 if (! $firstDeltaSent) {
                     $firstDeltaSent = true;
@@ -234,6 +241,7 @@ final readonly class AdminHelpAnswerStream
         $usage = is_array($result) && is_array($result['usage'] ?? null)
             ? $this->safeUsage($result['usage'])
             : [];
+        $completionReceipt = is_array($result) ? ($result['completion_receipt'] ?? null) : null;
         $message = $this->conversations->completeGeneration($conversation, $generationId, $completedAnswer, [
             'knowledge_entry_ids' => array_values(array_map(static fn (array $entry): string => (string) $entry['id'], $entries)),
             'knowledge_sources' => $retrievedKnowledge['sources'],
@@ -249,7 +257,7 @@ final readonly class AdminHelpAnswerStream
                 'evidence_count' => $retrievedKnowledge['evidence_count'],
                 'followup_expanded' => (bool) ($queryContext['followup_expanded'] ?? false),
             ],
-        ], $usage, fn () => $this->executionGuard->assertCurrent($executionContext));
+        ], $usage, fn () => $this->assertModelReceiptCurrent($executionContext, $completionReceipt));
         if (! $message instanceof AiConversationMessage) {
             yield $this->errorEvent(
                 'conversation_closed',
@@ -282,6 +290,23 @@ final readonly class AdminHelpAnswerStream
             'related_media' => $relatedMedia,
             'generation' => $generationMeta,
         ]);
+    }
+
+    private function assertModelReceiptCurrent(
+        AiWorkspaceExecutionContext $context,
+        mixed $receipt,
+    ): void {
+        if ($receipt instanceof AiWorkspaceModelExecutionReceipt) {
+            $this->executionGuard->assertReceiptCurrent($context, $receipt);
+
+            return;
+        }
+
+        if ($this->responder instanceof AiWorkspaceModelRuntime || ! app()->environment('testing')) {
+            throw AiModelAccessException::configAccessRevokedForAdminId($context->modelAccessAdminId);
+        }
+
+        $this->executionGuard->assertCurrent($context);
     }
 
     /** @param array<string, mixed> $runtimeEvent */

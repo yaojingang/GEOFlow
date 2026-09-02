@@ -38,7 +38,17 @@ final readonly class AiWorkspaceModelReadiness
         } catch (AiModelAccessException) {
             return ['ready' => false, 'reason' => __('admin.ai_workspace.readiness_no_verified_model'), 'model_id' => null];
         }
-        $model = $models->first(fn (AiModel $model): bool => $this->canAttempt($model));
+        $model = null;
+        foreach ($models as $candidate) {
+            if ($this->hasPermanentFailure($candidate)) {
+                return ['ready' => false, 'reason' => __('admin.ai_workspace.readiness_no_verified_model'), 'model_id' => null];
+            }
+            if ($this->canAttempt($candidate)) {
+                $model = $candidate;
+
+                break;
+            }
+        }
 
         return $model instanceof AiModel
             ? ['ready' => true, 'reason' => null, 'model_id' => (int) $model->id]
@@ -68,6 +78,40 @@ final readonly class AiWorkspaceModelReadiness
         }
 
         return false;
+    }
+
+    public function hasPermanentFailure(AiModel $model): bool
+    {
+        if (! (bool) config('ai-workspace.require_verified_model', true)
+            || (string) $model->ai_workspace_readiness_status !== 'failed') {
+            return false;
+        }
+
+        $fingerprint = trim((string) data_get($model->ai_workspace_readiness_profile, 'configuration.fingerprint'));
+        if ($fingerprint !== '' && ! hash_equals($fingerprint, $this->configurationFingerprint($model))) {
+            return false;
+        }
+
+        $code = mb_strtolower(trim((string) $model->ai_workspace_readiness_failure_code));
+        if ($code === '') {
+            return false;
+        }
+
+        return in_array($code, [
+            'authentication_failed',
+            'configuration_invalid',
+            'ai_model_configuration_invalid',
+            'plain_text_invalid',
+            'capability_incompatible',
+            'unsupported_capability',
+            'parameter_invalid',
+            'provider_http_400',
+            'provider_http_401',
+            'provider_http_402',
+            'provider_http_403',
+            'provider_http_404',
+            'provider_http_422',
+        ], true);
     }
 
     public function prefersPlainTextFallback(AiModel $model): bool
