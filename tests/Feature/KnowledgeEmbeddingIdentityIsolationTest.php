@@ -165,6 +165,30 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer shared-key'));
     }
 
+    public function test_realtime_query_preserves_provider_path_case(): void
+    {
+        Http::fake([
+            'https://compatible.test/Gateway/V1/embeddings' => Http::response([
+                'data' => [['embedding' => [0.4, 0.5, 0.6]]],
+            ]),
+        ]);
+        $admin = $this->admin('path-case-owner', 'admin');
+        $model = $this->model($admin, 'personal-key', [
+            'api_url' => 'HTTPS://COMPATIBLE.TEST/Gateway/V1',
+        ]);
+        $knowledgeBase = $this->indexedKnowledgeBase($model, [0.4, 0.5, 0.6]);
+
+        $result = app(KnowledgeChunkSyncService::class)->generateCompatibleQueryEmbedding(
+            'Provider 路径大小写',
+            $knowledgeBase,
+            $admin,
+        );
+
+        $this->assertTrue($result->successful(), (string) $result->reason);
+        $this->assertSame($model->id, $result->modelId);
+        Http::assertSentCount(1);
+    }
+
     #[DataProvider('transientProviderStatusProvider')]
     public function test_transient_personal_embedding_failure_can_fall_through_to_a_compatible_shared_model(int $status): void
     {
@@ -697,6 +721,47 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         $this->assertTrue(Schema::hasColumn('knowledge_bases', 'chunk_embedding_provider'));
         $this->assertTrue(Schema::hasColumn('knowledge_chunks', 'embedding_provider'));
         $this->assertTrue(Schema::hasColumn('knowledge_chunk_sync_rows', 'embedding_provider'));
+    }
+
+    public function test_provider_width_rollback_is_blocked_until_long_values_are_cleaned(): void
+    {
+        $migration = require database_path('migrations/2026_09_02_155000_expand_knowledge_embedding_provider_columns.php');
+        $knowledgeBase = $this->knowledgeBase();
+        $chunk = KnowledgeChunk::query()->create([
+            'knowledge_base_id' => $knowledgeBase->id,
+            'chunk_index' => 0,
+            'content' => 'provider rollback guard',
+            'embedding_provider' => '',
+        ]);
+        $stagingId = DB::table('knowledge_chunk_sync_rows')->insertGetId([
+            'knowledge_base_id' => $knowledgeBase->id,
+            'sync_token' => 'provider-width-rollback',
+            'chunk_index' => 0,
+            'content' => 'provider rollback guard',
+            'embedding_provider' => '',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $targets = [
+            ['knowledge_bases', (int) $knowledgeBase->id, 'chunk_embedding_provider'],
+            ['knowledge_chunks', (int) $chunk->id, 'embedding_provider'],
+            ['knowledge_chunk_sync_rows', $stagingId, 'embedding_provider'],
+        ];
+
+        foreach ($targets as [$table, $id, $column]) {
+            DB::table($table)->where('id', $id)->update([$column => str_repeat('x', 256)]);
+            try {
+                $migration->down();
+                $this->fail('Rollback should reject provider values longer than 255 characters.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('knowledge_embedding_provider_downsize_blocked', $exception->getMessage());
+            }
+            DB::table($table)->where('id', $id)->update([$column => '']);
+        }
+
+        $migration->down();
+        $migration->up();
+        $this->assertTrue(Schema::hasColumn('knowledge_bases', 'chunk_embedding_provider'));
     }
 
     public function test_five_hundred_character_provider_url_survives_staging_and_serving(): void

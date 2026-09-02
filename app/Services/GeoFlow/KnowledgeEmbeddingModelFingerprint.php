@@ -34,7 +34,12 @@ final class KnowledgeEmbeddingModelFingerprint
 
     public function provider(AiModel $model): string
     {
-        $baseUrl = OpenAiRuntimeProvider::resolveEmbeddingBaseUrl((string) ($model->api_url ?? ''));
+        return $this->normalizeProvider((string) ($model->api_url ?? ''));
+    }
+
+    public function normalizeProvider(string $apiUrl): string
+    {
+        $baseUrl = OpenAiRuntimeProvider::resolveEmbeddingBaseUrl($apiUrl);
 
         return $this->normalizeProviderBase($baseUrl);
     }

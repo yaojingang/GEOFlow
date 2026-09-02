@@ -1362,7 +1362,9 @@ class KnowledgeChunkSyncService
         $fingerprint = trim((string) $knowledgeBase->chunk_embedding_fingerprint);
         $profileDigest = trim((string) $knowledgeBase->chunk_embedding_profile_digest);
         $profileVersion = (int) $knowledgeBase->chunk_embedding_profile_version;
-        $provider = strtolower(trim((string) $knowledgeBase->chunk_embedding_provider));
+        $provider = $this->embeddingFingerprint->normalizeProvider(
+            (string) $knowledgeBase->chunk_embedding_provider,
+        );
         $dimensions = (int) $knowledgeBase->chunk_embedding_dimensions;
         if ($profileVersion !== $this->embeddingFingerprint->profileVersion()) {
             return KnowledgeQueryEmbeddingResult::incompatible('index_embedding_profile_incompatible');
