@@ -15,7 +15,9 @@ use App\Models\Task;
 use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Services\GeoFlow\TaskLifecycleService;
+use App\Services\GeoFlow\TaskMonitoringQueryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -80,6 +82,151 @@ class AdminAiModelEntryAccessTest extends TestCase
             ->assertJsonCount(0, 'data.models');
     }
 
+    public function test_task_api_only_projects_model_references_the_token_admin_can_call(): void
+    {
+        $provider = $this->admin('task-response-provider', 'super_admin');
+        $actor = $this->admin('task-response-actor', 'admin', $provider);
+        $peer = $this->admin('task-response-peer', 'admin');
+        $personal = $this->model($actor, 'Task Response Personal', 'chat');
+        $shared = $this->model($provider, 'Task Response Shared', 'chat');
+        $peerModel = $this->model($peer, 'Task Response Peer Secret', 'chat');
+        $systemModel = $this->model(
+            $provider,
+            'Task Response System Secret',
+            'chat',
+            AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+        );
+        $archivedModel = $this->model($actor, 'Task Response Archived Secret', 'chat');
+        $archivedModel->forceFill(['archived_at' => now()])->save();
+
+        $personalTask = Task::query()->create([
+            'name' => 'Visible personal task',
+            'status' => 'paused',
+            'ai_model_id' => $personal->id,
+            'ai_quality_model_id' => $shared->id,
+        ]);
+        foreach ([$peerModel, $systemModel, $archivedModel] as $index => $hiddenModel) {
+            Task::query()->create([
+                'name' => 'Hidden reference task '.($index + 1),
+                'status' => 'paused',
+                'ai_model_id' => $hiddenModel->id,
+                'ai_quality_model_id' => $hiddenModel->id,
+            ]);
+        }
+
+        $token = $actor->createToken('task-response', ['tasks:read'])->plainTextToken;
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $response = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/tasks')
+            ->assertOk();
+        $modelQueries = collect(DB::getQueryLog())
+            ->filter(static fn (array $query): bool => str_contains(strtolower((string) $query['query']), 'ai_models'));
+        DB::disableQueryLog();
+        $this->assertCount(1, $modelQueries, 'Task model references must be projected in one resolver-scoped batch query.');
+        $items = collect($response->json('data.items'))->keyBy('id');
+        $visible = $items->get((int) $personalTask->id);
+        $this->assertSame((int) $personal->id, data_get($visible, 'ai_model_id'));
+        $this->assertSame('Task Response Personal', data_get($visible, 'ai_model_name'));
+        $this->assertTrue(data_get($visible, 'ai_model_accessible'));
+        $this->assertNull(data_get($visible, 'ai_model_access_reason'));
+        $this->assertSame((int) $shared->id, data_get($visible, 'ai_quality_model_id'));
+        $this->assertSame('Task Response Shared', data_get($visible, 'ai_quality_model_name'));
+        $this->assertTrue(data_get($visible, 'ai_quality_model_accessible'));
+        $this->assertNull(data_get($visible, 'ai_quality_model_access_reason'));
+
+        foreach ($items->except((int) $personalTask->id) as $hidden) {
+            foreach (['ai_model', 'ai_quality_model'] as $prefix) {
+                $this->assertNull(data_get($hidden, $prefix.'_id'));
+                $this->assertNull(data_get($hidden, $prefix.'_name'));
+                $this->assertFalse(data_get($hidden, $prefix.'_accessible'));
+                $this->assertSame('ai_model_not_accessible', data_get($hidden, $prefix.'_access_reason'));
+            }
+            $serialized = json_encode($hidden, JSON_THROW_ON_ERROR);
+            $this->assertStringNotContainsString('Task Response Peer Secret', $serialized);
+            $this->assertStringNotContainsString('Task Response System Secret', $serialized);
+            $this->assertStringNotContainsString('Task Response Archived Secret', $serialized);
+        }
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/tasks/'.(int) $personalTask->id)
+            ->assertOk()
+            ->assertJsonPath('data.ai_model_id', (int) $personal->id)
+            ->assertJsonPath('data.ai_model_accessible', true)
+            ->assertJsonPath('data.ai_quality_model_id', (int) $shared->id)
+            ->assertJsonPath('data.ai_quality_model_accessible', true);
+
+        $provider->forceFill(['status' => 'inactive'])->save();
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/tasks/'.(int) $personalTask->id)
+            ->assertOk()
+            ->assertJsonPath('data.ai_model_id', (int) $personal->id)
+            ->assertJsonPath('data.ai_quality_model_id', null)
+            ->assertJsonPath('data.ai_quality_model_name', null)
+            ->assertJsonPath('data.ai_quality_model_accessible', false)
+            ->assertJsonPath('data.ai_quality_model_access_reason', 'ai_model_not_accessible');
+
+        $provider->forceFill(['status' => 'active'])->save();
+        $actor->forceFill([
+            'shared_ai_config_owner_id' => null,
+            'ai_config_access_version' => (int) $actor->ai_config_access_version + 1,
+        ])->save();
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/tasks/'.(int) $personalTask->id)
+            ->assertOk()
+            ->assertJsonPath('data.ai_quality_model_id', null)
+            ->assertJsonPath('data.ai_quality_model_accessible', false)
+            ->assertJsonPath('data.ai_quality_model_access_reason', 'ai_model_not_accessible');
+    }
+
+    public function test_super_admin_task_api_hides_an_ordinary_admin_private_model_reference(): void
+    {
+        $superAdmin = $this->admin('task-response-super', 'super_admin');
+        $ordinaryAdmin = $this->admin('task-response-ordinary', 'admin');
+        $privateModel = $this->model($ordinaryAdmin, 'Ordinary Private Task Model', 'chat');
+        $task = Task::query()->create([
+            'name' => 'Task with ordinary private model',
+            'status' => 'paused',
+            'ai_model_id' => $privateModel->id,
+            'ai_quality_model_id' => $privateModel->id,
+        ]);
+
+        $response = $this->actingWithToken($superAdmin, ['tasks:read'])
+            ->getJson('/api/v1/tasks/'.(int) $task->id)
+            ->assertOk()
+            ->assertJsonPath('data.ai_model_id', null)
+            ->assertJsonPath('data.ai_model_name', null)
+            ->assertJsonPath('data.ai_model_accessible', false)
+            ->assertJsonPath('data.ai_model_access_reason', 'ai_model_not_accessible')
+            ->assertJsonPath('data.ai_quality_model_id', null)
+            ->assertJsonPath('data.ai_quality_model_name', null)
+            ->assertJsonPath('data.ai_quality_model_accessible', false);
+
+        $this->assertStringNotContainsString('Ordinary Private Task Model', $response->getContent());
+    }
+
+    public function test_admin_governance_task_projection_keeps_existing_model_references(): void
+    {
+        $owner = $this->admin('task-response-governance-owner', 'admin');
+        $model = $this->model($owner, 'Governance Model Reference', 'chat');
+        $model->forceFill(['status' => 'inactive', 'archived_at' => now()])->save();
+        $task = Task::query()->create([
+            'name' => 'Governance task detail',
+            'status' => 'paused',
+            'ai_model_id' => $model->id,
+            'ai_quality_model_id' => $model->id,
+        ]);
+
+        $detail = app(TaskMonitoringQueryService::class)->getTaskMonitoringDetail((int) $task->id);
+
+        $this->assertSame((int) $model->id, $detail['ai_model_id']);
+        $this->assertSame('Governance Model Reference', $detail['ai_model_name']);
+        $this->assertSame((int) $model->id, $detail['ai_quality_model_id']);
+        $this->assertSame('Governance Model Reference', $detail['ai_quality_model_name']);
+        $this->assertArrayNotHasKey('ai_model_accessible', $detail);
+        $this->assertArrayNotHasKey('ai_quality_model_accessible', $detail);
+    }
+
     public function test_task_api_rejects_peer_and_system_models_with_a_stable_error(): void
     {
         $actor = $this->admin('actor', 'admin');
@@ -128,26 +275,70 @@ class AdminAiModelEntryAccessTest extends TestCase
         $token = $actor->createToken('tasks', ['tasks:write', 'tasks:read'])->plainTextToken;
         $created = $this->withHeader('Authorization', 'Bearer '.$token)
             ->postJson('/api/v1/tasks', $this->taskPayload((int) $shared->id))
-            ->assertCreated();
+            ->assertCreated()
+            ->assertJsonPath('data.ai_model_id', (int) $shared->id)
+            ->assertJsonPath('data.ai_model_name', 'Shared Chat')
+            ->assertJsonPath('data.ai_model_accessible', true)
+            ->assertJsonPath('data.ai_model_access_reason', null);
         $taskId = (int) $created->json('data.id');
         $actor->forceFill([
             'shared_ai_config_owner_id' => null,
             'ai_config_access_version' => (int) $actor->ai_config_access_version + 1,
         ])->save();
 
-        $this->withHeader('Authorization', 'Bearer '.$token)
+        $response = $this->withHeader('Authorization', 'Bearer '.$token)
             ->patchJson('/api/v1/tasks/'.$taskId, [
                 'ai_model_id' => $shared->id,
                 'name' => 'Updated without changing model',
                 'config_version' => 1,
             ])
-            ->assertOk();
+            ->assertOk()
+            ->assertJsonPath('data.ai_model_id', null)
+            ->assertJsonPath('data.ai_model_name', null)
+            ->assertJsonPath('data.ai_model_accessible', false)
+            ->assertJsonPath('data.ai_model_access_reason', 'ai_model_not_accessible');
+
+        $this->assertStringNotContainsString('Shared Chat', $response->getContent());
 
         $this->assertDatabaseHas('tasks', [
             'id' => $taskId,
             'name' => 'Updated without changing model',
             'ai_model_id' => $shared->id,
         ]);
+    }
+
+    public function test_idempotent_task_store_replay_reprojects_model_access_after_sharing_is_revoked(): void
+    {
+        $provider = $this->admin('task-replay-provider', 'super_admin');
+        $actor = $this->admin('task-replay-actor', 'admin', $provider);
+        $shared = $this->model($provider, 'Replay Shared Secret Name', 'chat');
+        $token = $actor->createToken('task-replay', ['tasks:write', 'tasks:read'])->plainTextToken;
+        $payload = $this->taskPayload((int) $shared->id);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->withHeader('X-Idempotency-Key', 'task-model-access-replay')
+            ->postJson('/api/v1/tasks', $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.ai_model_id', (int) $shared->id)
+            ->assertJsonPath('data.ai_model_name', 'Replay Shared Secret Name')
+            ->assertJsonPath('data.ai_model_accessible', true);
+
+        $actor->forceFill([
+            'shared_ai_config_owner_id' => null,
+            'ai_config_access_version' => (int) $actor->ai_config_access_version + 1,
+        ])->save();
+
+        $replay = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->withHeader('X-Idempotency-Key', 'task-model-access-replay')
+            ->postJson('/api/v1/tasks', $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.ai_model_id', null)
+            ->assertJsonPath('data.ai_model_name', null)
+            ->assertJsonPath('data.ai_model_accessible', false)
+            ->assertJsonPath('data.ai_model_access_reason', 'ai_model_not_accessible');
+
+        $this->assertStringNotContainsString('Replay Shared Secret Name', $replay->getContent());
+        $this->assertDatabaseCount('tasks', 1);
     }
 
     public function test_reactivating_a_paused_task_revalidates_its_persisted_content_model(): void

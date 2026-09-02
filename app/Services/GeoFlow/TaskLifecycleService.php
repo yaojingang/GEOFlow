@@ -69,9 +69,13 @@ class TaskLifecycleService
      *     pagination:array{page:int,per_page:int,total:int,total_pages:int}
      * }
      */
-    public function listTasks(int $page = 1, int $perPage = 20, array $filters = []): array
-    {
-        return $this->taskMonitoringQueryService->listTasksPaginated($page, $perPage, $filters);
+    public function listTasks(
+        int $page = 1,
+        int $perPage = 20,
+        array $filters = [],
+        ?Admin $modelViewer = null,
+    ): array {
+        return $this->taskMonitoringQueryService->listTasksPaginated($page, $perPage, $filters, $modelViewer);
     }
 
     /**
@@ -90,6 +94,7 @@ class TaskLifecycleService
         array $data,
         ?int $auditAdminId = null,
         ?int $apiTokenId = null,
+        ?Admin $responseViewer = null,
     ): array {
         $accessAdmin = $this->accessAdmin($auditAdminId);
         $normalized = $this->normalizeTaskInput($data, false, $accessAdmin);
@@ -191,7 +196,7 @@ class TaskLifecycleService
             return $taskId;
         });
 
-        $task = $this->getTask($taskId);
+        $task = $this->getTask($taskId, $responseViewer);
         $this->broadcastOverviewAfterCommit();
 
         return $task;
@@ -309,10 +314,10 @@ class TaskLifecycleService
      *
      * @throws ApiException 当任务不存在时抛出 404
      */
-    public function getTask(int $taskId): array
+    public function getTask(int $taskId, ?Admin $modelViewer = null): array
     {
         try {
-            return $this->taskMonitoringQueryService->getTaskMonitoringDetail($taskId);
+            return $this->taskMonitoringQueryService->getTaskMonitoringDetail($taskId, $modelViewer);
         } catch (ModelNotFoundException) {
             throw new ApiException('task_not_found', '任务不存在', 404);
         }
@@ -334,6 +339,7 @@ class TaskLifecycleService
         bool $canManageHostedTask = false,
         ?int $auditAdminId = null,
         ?int $apiTokenId = null,
+        ?Admin $responseViewer = null,
     ): array {
         $this->ensureTaskExists($taskId);
         $accessAdmin = $this->accessAdmin($auditAdminId);
@@ -620,7 +626,7 @@ class TaskLifecycleService
             $this->articleAiQualityInvalidationService->invalidateTask($taskId, '任务质检配置或知识依据已更新');
         }
 
-        $task = $this->getTask($taskId);
+        $task = $this->getTask($taskId, $responseViewer);
         $this->broadcastOverviewAfterCommit();
 
         return $task;
@@ -885,6 +891,7 @@ class TaskLifecycleService
         bool $enqueueNow = false,
         bool $canManageHostedTask = false,
         Admin|int|null $operator = null,
+        ?Admin $responseViewer = null,
     ): array {
         $this->ensureTaskExists($taskId);
         $jobId = DB::transaction(function () use ($taskId, $enqueueNow, $canManageHostedTask, $operator): ?int {
@@ -916,7 +923,7 @@ class TaskLifecycleService
             return $jobId;
         });
 
-        $task = $this->getTask($taskId);
+        $task = $this->getTask($taskId, $responseViewer);
         if ($jobId !== null) {
             $task['started_job_id'] = $jobId;
         }
@@ -935,8 +942,11 @@ class TaskLifecycleService
      *
      * @return array<string,mixed>
      */
-    public function stopTask(int $taskId, bool $canManageHostedTask = false): array
-    {
+    public function stopTask(
+        int $taskId,
+        bool $canManageHostedTask = false,
+        ?Admin $responseViewer = null,
+    ): array {
         $this->ensureTaskExists($taskId);
         [$cancelledJobs, $runningJobs] = DB::transaction(function () use ($taskId, $canManageHostedTask): array {
             $task = Task::query()
@@ -952,7 +962,7 @@ class TaskLifecycleService
 
             return [$cancelledJobs, $runningJobs];
         });
-        $task = $this->getTask($taskId);
+        $task = $this->getTask($taskId, $responseViewer);
         $task['cancelled_jobs'] = $cancelledJobs;
         $task['running_jobs'] = $runningJobs;
         $this->broadcastOverviewAfterCommit();

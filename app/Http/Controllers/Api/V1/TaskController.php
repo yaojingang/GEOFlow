@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Exceptions\AiModelAccessException;
 use App\Exceptions\ApiException;
 use App\Http\Requests\Api\StoreTaskRequest;
 use App\Http\Requests\Api\UpdateTaskRequest;
@@ -27,6 +28,7 @@ class TaskController extends BaseApiController
      */
     public function index(Request $request, TaskLifecycleService $tasks): JsonResponse
     {
+        $viewer = $this->executionAdmin($request);
         $statusQuery = $request->query('status');
         $searchQuery = $request->query('search');
 
@@ -36,7 +38,8 @@ class TaskController extends BaseApiController
             [
                 'status' => is_string($statusQuery) ? trim($statusQuery) : null,
                 'search' => is_string($searchQuery) ? trim($searchQuery) : null,
-            ]
+            ],
+            $viewer,
         );
 
         return $this->success($request, $data);
@@ -49,18 +52,22 @@ class TaskController extends BaseApiController
      */
     public function store(StoreTaskRequest $request, TaskLifecycleService $tasks, ApiTokenService $tokens): JsonResponse
     {
+        $viewer = $this->executionAdmin($request);
         $data = $this->reviewBoundTaskData($request, $request->validated(), $tokens);
         $auth = $this->auth($request);
 
-        return IdempotencyService::executeJson(
+        $response = IdempotencyService::executeJson(
             $request,
             'POST /tasks',
             fn (): JsonResponse => $this->success($request, $tasks->createTask(
                 $data,
                 $auth->auditAdminId,
                 (int) ($auth->token['id'] ?? 0),
+                $viewer,
             ), 201),
         );
+
+        return $this->refreshTaskModelProjection($response, $tasks, $viewer);
     }
 
     /**
@@ -68,7 +75,7 @@ class TaskController extends BaseApiController
      */
     public function show(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
     {
-        return $this->success($request, $tasks->getTask($task));
+        return $this->success($request, $tasks->getTask($task, $this->executionAdmin($request)));
     }
 
     /**
@@ -78,20 +85,24 @@ class TaskController extends BaseApiController
      */
     public function update(UpdateTaskRequest $request, int $task, TaskLifecycleService $tasks, ApiTokenService $tokens): JsonResponse
     {
+        $viewer = $this->executionAdmin($request);
         $data = $this->reviewBoundTaskData($request, $request->validated(), $tokens);
         $auth = $this->auth($request);
 
-        return IdempotencyService::executeJson(
+        $response = IdempotencyService::executeJson(
             $request,
             'PATCH /tasks/{id}',
             fn (): JsonResponse => $this->success($request, $tasks->updateTask(
                 $task,
                 $data,
-                $this->canManageHostedTask($request),
+                $this->canManageHostedTask($viewer),
                 $auth->auditAdminId,
                 (int) ($auth->token['id'] ?? 0),
+                $viewer,
             )),
         );
+
+        return $this->refreshTaskModelProjection($response, $tasks, $viewer);
     }
 
     /**
@@ -100,10 +111,11 @@ class TaskController extends BaseApiController
     public function destroy(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
     {
         $auth = $this->auth($request);
+        $viewer = $this->executionAdmin($request);
 
         return $this->success($request, $tasks->deleteTask(
             $task,
-            $this->canManageHostedTask($request),
+            $this->canManageHostedTask($viewer),
             $auth->auditAdminId,
             (int) ($auth->token['id'] ?? 0),
         ));
@@ -116,20 +128,23 @@ class TaskController extends BaseApiController
      */
     public function start(Request $request, int $task, TaskLifecycleService $tasks, ApiTokenService $tokens): JsonResponse
     {
+        $viewer = $this->executionAdmin($request);
         $this->assertTaskExecutionScope($request, $task, $tokens);
         $enqueueNow = ! empty($request->input('enqueue_now'));
-        $auth = $this->auth($request);
 
-        return IdempotencyService::executeJson(
+        $response = IdempotencyService::executeJson(
             $request,
             'POST /tasks/{id}/start',
             fn (): JsonResponse => $this->success($request, $tasks->startTask(
                 $task,
                 $enqueueNow,
-                $this->canManageHostedTask($request),
-                $auth->auditAdminId,
+                $this->canManageHostedTask($viewer),
+                $viewer,
+                $viewer,
             )),
         );
+
+        return $this->refreshTaskModelProjection($response, $tasks, $viewer);
     }
 
     /**
@@ -139,14 +154,18 @@ class TaskController extends BaseApiController
      */
     public function stop(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
     {
-        return IdempotencyService::executeJson(
+        $viewer = $this->executionAdmin($request);
+        $response = IdempotencyService::executeJson(
             $request,
             'POST /tasks/{id}/stop',
             fn (): JsonResponse => $this->success($request, $tasks->stopTask(
                 $task,
-                $this->canManageHostedTask($request),
+                $this->canManageHostedTask($viewer),
+                $viewer,
             )),
         );
+
+        return $this->refreshTaskModelProjection($response, $tasks, $viewer);
     }
 
     /**
@@ -156,6 +175,7 @@ class TaskController extends BaseApiController
      */
     public function enqueue(Request $request, int $task, TaskLifecycleService $tasks, ApiTokenService $tokens): JsonResponse
     {
+        $viewer = $this->executionAdmin($request);
         $this->assertTaskExecutionScope($request, $task, $tokens);
         $body = $request->all();
         $jobType = trim((string) ($body['job_type'] ?? 'generate_article'));
@@ -167,16 +187,14 @@ class TaskController extends BaseApiController
                 $task,
                 $jobType,
                 ['source' => 'api_enqueue'],
-                $this->canManageHostedTask($request),
+                $this->canManageHostedTask($viewer),
             ), 201),
         );
     }
 
-    private function canManageHostedTask(Request $request): bool
+    private function canManageHostedTask(Admin $admin): bool
     {
-        $admin = Admin::query()->find($this->auth($request)->auditAdminId);
-
-        return $admin?->isSuperAdmin() === true;
+        return $admin->isSuperAdmin();
     }
 
     /** @param array<string,mixed> $data @return array<string,mixed> */
@@ -209,6 +227,7 @@ class TaskController extends BaseApiController
      */
     public function jobs(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
     {
+        $this->executionAdmin($request);
         $status = $request->query('status');
         $statusStr = is_string($status) ? trim($status) : '';
 
@@ -217,5 +236,53 @@ class TaskController extends BaseApiController
             $statusStr !== '' ? $statusStr : null,
             $request->integer('limit', 20)
         ));
+    }
+
+    private function executionAdmin(Request $request): Admin
+    {
+        $admin = Admin::query()
+            ->whereKey($this->auth($request)->auditAdminId)
+            ->active()
+            ->first();
+        if (! $admin instanceof Admin) {
+            throw new ApiException(
+                AiModelAccessException::AI_EXECUTION_ADMIN_INACTIVE,
+                'Token 所属管理员当前不可用',
+                403,
+            );
+        }
+
+        return $admin;
+    }
+
+    private function refreshTaskModelProjection(
+        JsonResponse $response,
+        TaskLifecycleService $tasks,
+        Admin $viewer,
+    ): JsonResponse {
+        $payload = $response->getData(true);
+        $taskId = is_array($payload) ? data_get($payload, 'data.id') : null;
+        if (! is_numeric($taskId) || (int) $taskId <= 0 || $response->getStatusCode() >= 400) {
+            return $response;
+        }
+
+        $current = $tasks->getTask((int) $taskId, $viewer);
+        $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+        foreach ([
+            'ai_model_id',
+            'ai_model_name',
+            'ai_model_accessible',
+            'ai_model_access_reason',
+            'ai_quality_model_id',
+            'ai_quality_model_name',
+            'ai_quality_model_accessible',
+            'ai_quality_model_access_reason',
+        ] as $key) {
+            $data[$key] = $current[$key] ?? null;
+        }
+        $payload['data'] = $data;
+        $response->setData($payload);
+
+        return $response;
     }
 }

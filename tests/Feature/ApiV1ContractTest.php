@@ -604,6 +604,8 @@ class ApiV1ContractTest extends TestCase
                     'ai_config_access_version' => 456789,
                     'execution_lease_token' => 'nested-lease-secret',
                 ]],
+                'used_model_id' => 246810,
+                'used_model_name' => 'Historical Private Model Name',
                 'note' => 'historical-note-secret',
                 'model_access_admin_id' => 999999,
             ],
@@ -630,6 +632,9 @@ class ApiV1ContractTest extends TestCase
         foreach (['execution_lease_token', 'model_access_admin_id', 'model_access_admin_role', 'ai_config_access_version', 'requested_ai_model_id', 'resolved_ai_model_id', 'resolved_model_source', 'resolver_policy_version', 'meta'] as $internalKey) {
             $this->assertArrayNotHasKey($internalKey, $listItem);
         }
+        foreach (['model_attempts', 'used_model_id', 'used_model_name'] as $modelReferenceKey) {
+            $this->assertArrayNotHasKey($modelReferenceKey, data_get($listItem, 'task_run_summary.meta', []));
+        }
 
         $detailResponse = $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
             ->getJson("/api/v1/jobs/{$run->id}")
@@ -639,6 +644,9 @@ class ApiV1ContractTest extends TestCase
         $this->assertSame((int) $run->id, (int) data_get($detail, 'id'));
         $this->assertSame('generate_article', data_get($detail, 'job_type'));
         $this->assertSame('api_enqueue', data_get($detail, 'payload.source'));
+        foreach (['model_attempts', 'used_model_id', 'used_model_name'] as $modelReferenceKey) {
+            $this->assertArrayNotHasKey($modelReferenceKey, data_get($detail, 'task_run_summary.meta', []));
+        }
 
         $serialized = json_encode([$listItem, $detail], JSON_THROW_ON_ERROR);
         foreach ([
@@ -657,6 +665,8 @@ class ApiV1ContractTest extends TestCase
             '999999',
             '456789',
             'nested-lease-secret',
+            '246810',
+            'Historical Private Model Name',
         ] as $secret) {
             $this->assertStringNotContainsString($secret, $serialized);
         }
@@ -968,6 +978,7 @@ class ApiV1ContractTest extends TestCase
         ]);
         $monitoring = Mockery::mock(TaskMonitoringQueryService::class);
         $monitoring->shouldReceive('getTaskMonitoringDetail')
+            ->with((int) $task->id, null)
             ->once()
             ->andThrow(new \RuntimeException('post-inner-read-failure'));
         $realtime = Mockery::mock(TaskRealtimeBroadcastService::class);

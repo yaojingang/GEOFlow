@@ -18,7 +18,6 @@ final class TaskRunData
         'image_count',
         'knowledge_length',
         'last_error',
-        'model_attempts',
         'model_selection_mode',
         'publish_interval',
         'reason',
@@ -26,8 +25,6 @@ final class TaskRunData
         'task_id',
         'title_id',
         'title_readiness',
-        'used_model_id',
-        'used_model_name',
     ];
 
     private const PUBLIC_PAYLOAD_SOURCES = [
