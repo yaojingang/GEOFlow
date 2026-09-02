@@ -496,9 +496,11 @@ class AdminAiModelEntryAccessTest extends TestCase
 
     public function test_secondary_ai_entry_points_reject_a_peer_model_before_dispatch_or_outbound_work(): void
     {
+        Queue::fake();
         $actor = $this->admin('actor', 'admin');
         $peer = $this->admin('peer', 'admin');
         $peerModel = $this->model($peer, 'Peer Chat', 'chat');
+        $systemModel = $this->model($actor, 'System Chat', 'chat', AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
         $titleLibrary = TitleLibrary::query()->create(['name' => 'Scoped title library']);
         $keywordLibrary = KeywordLibrary::query()->create(['name' => 'Scoped keyword library']);
         $knowledgeBase = KnowledgeBase::query()->create(['name' => 'Scoped knowledge base', 'content' => 'Evidence']);
@@ -516,15 +518,17 @@ class AdminAiModelEntryAccessTest extends TestCase
                 'title_style' => 'professional',
             ])
             ->assertSessionHasErrors('ai_model_id');
-        $this->actingAs($actor, 'admin')
-            ->postJson(route('admin.knowledge-bases.fact-generation.store', ['knowledgeBaseId' => $knowledgeBase->id]), [
-                'mode' => 'initial',
-                'target_count' => 1,
-                'ai_model_id' => $peerModel->id,
-                'request_key' => (string) Str::uuid(),
-            ])
-            ->assertNotFound()
-            ->assertJsonPath('error.code', 'ai_model_not_accessible');
+        foreach ([$peerModel, $systemModel] as $forbiddenModel) {
+            $this->actingAs($actor, 'admin')
+                ->postJson(route('admin.knowledge-bases.fact-generation.store', ['knowledgeBaseId' => $knowledgeBase->id]), [
+                    'mode' => 'initial',
+                    'target_count' => 1,
+                    'ai_model_id' => $forbiddenModel->id,
+                    'request_key' => (string) Str::uuid(),
+                ])
+                ->assertNotFound()
+                ->assertJsonPath('error.code', 'ai_model_not_accessible');
+        }
         $this->actingAs($actor, 'admin')
             ->postJson(route('admin.articles.editor.generate'), [
                 'title' => 'Scoped article',
@@ -534,6 +538,9 @@ class AdminAiModelEntryAccessTest extends TestCase
             ])
             ->assertNotFound()
             ->assertJsonPath('error_code', 'ai_model_not_accessible');
+
+        $this->assertDatabaseCount('knowledge_fact_generation_runs', 0);
+        Queue::assertNothingPushed();
     }
 
     public function test_api_article_optimization_rejects_a_peer_model_before_starting_a_run(): void

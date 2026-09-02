@@ -55,6 +55,7 @@ class KnowledgeFactGenerationCoordinator
 
                 return $existingRun;
             }
+            $identity = $this->executionGuard->snapshotForCreation($admin, $requestedModelId);
             $servingSourceHash = $locked->knowledgeBase->servingChunkSourceHash();
             if ($locked->knowledgeBase->chunk_sync_status !== 'ready'
                 || $servingSourceHash === '') {
@@ -63,7 +64,6 @@ class KnowledgeFactGenerationCoordinator
             if (KnowledgeFactGenerationRun::query()->where('active_key', $this->activeKey($locked->id))->exists()) {
                 throw new ConflictHttpException('knowledge_fact_generation_active');
             }
-            $identity = $this->executionGuard->snapshotForCreation($admin, $requestedModelId);
             $lockedModel = AiModel::query()->whereKey($identity['requested_ai_model_id'])->lockForUpdate()->firstOrFail();
             if (! in_array((string) ($lockedModel->model_type ?? ''), ['', 'chat'], true)
                 || ! $this->readiness->canAttempt($lockedModel)) {

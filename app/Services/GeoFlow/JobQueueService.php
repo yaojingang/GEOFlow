@@ -239,18 +239,8 @@ class JobQueueService
                 'execution_lease_token' => $executionLeaseToken,
                 'meta' => array_merge($meta, ['worker_id' => $workerId]),
             ]);
-            if ($this->executionBoundariesEnforced()) {
-                try {
-                    $context = $this->aiExecutionContextFactory->fromTaskRun($run);
-                    $this->aiExecutionAccessGuard->assertCurrent(
-                        $context,
-                        validateRequestedModel: $this->taskRunRequiresAiModel($run),
-                    );
-                } catch (AiModelAccessException $exception) {
-                    $this->permanentlyFailAuthorizationRun($run, $exception->getErrorCode());
-
-                    return null;
-                }
+            if (! $this->executionIdentityAllowsDispatch($run)) {
+                return null;
             }
 
             // 返回轻量执行上下文，供 ProcessGeoFlowTaskJob 使用。
@@ -727,6 +717,10 @@ class JobQueueService
                         return false;
                     }
 
+                    if (! $this->executionIdentityAllowsRecovery($run)) {
+                        return false;
+                    }
+
                     $meta = $this->normalizeMeta($run->meta);
                     $affected = TaskRun::query()
                         ->whereKey($jobId)
@@ -807,6 +801,10 @@ class JobQueueService
                                 'execution_lease_token' => null,
                             ]);
 
+                        return false;
+                    }
+
+                    if (! $this->executionIdentityAllowsRecovery($run)) {
                         return false;
                     }
 
@@ -1040,22 +1038,83 @@ class JobQueueService
 
     private function taskRunRequiresAiModel(TaskRun $run): bool
     {
-        if ($run->requested_ai_model_id === null) {
-            return false;
-        }
-
-        $task = Task::query()->whereKey((int) $run->task_id)->first(['id', 'next_publish_at']);
+        $task = Task::query()->whereKey((int) $run->task_id)->first(['id', 'ai_model_id', 'next_publish_at']);
         if (! $task instanceof Task
             || ($task->next_publish_at !== null && $task->next_publish_at->isFuture())) {
-            return true;
+            return $run->requested_ai_model_id !== null || $task?->ai_model_id !== null;
         }
 
-        return ! Article::query()
+        $hasDueDraft = Article::query()
             ->where('task_id', (int) $task->getKey())
             ->where('status', 'draft')
             ->whereIn('review_status', ['approved', 'auto_approved'])
             ->whereNull('deleted_at')
             ->exists();
+
+        return ! $hasDueDraft
+            && ($run->requested_ai_model_id !== null || $task->ai_model_id !== null);
+    }
+
+    private function executionIdentityAllowsDispatch(TaskRun $run): bool
+    {
+        $requiresAiModel = $this->taskRunRequiresAiModel($run);
+        if (! $requiresAiModel && ! $this->executionBoundariesEnforced()) {
+            return true;
+        }
+
+        try {
+            $context = $this->aiExecutionContextFactory->fromTaskRun($run);
+            if ($requiresAiModel && $context->requestedModelId === null) {
+                throw AiModelAccessException::configAccessRevokedForAdminId($context->modelAccessAdminId);
+            }
+            $this->aiExecutionAccessGuard->assertCurrent(
+                $context,
+                validateRequestedModel: $requiresAiModel,
+            );
+        } catch (AiModelAccessException $exception) {
+            $this->permanentlyFailAuthorizationRun($run, $exception->getErrorCode());
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private function executionIdentityAllowsRecovery(TaskRun $run): bool
+    {
+        $requiresAiModel = $this->taskRunRequiresAiModel($run);
+        if (! $requiresAiModel && ! $this->executionBoundariesEnforced()) {
+            return true;
+        }
+
+        try {
+            if ((string) $run->status === 'pending') {
+                $this->assertPendingRunIdentityComplete($run, $requiresAiModel);
+            } else {
+                $context = $this->aiExecutionContextFactory->fromTaskRun($run);
+                if ($requiresAiModel && $context->requestedModelId === null) {
+                    throw AiModelAccessException::configAccessRevokedForAdminId($context->modelAccessAdminId);
+                }
+            }
+        } catch (AiModelAccessException $exception) {
+            $this->permanentlyFailAuthorizationRun($run, $exception->getErrorCode());
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private function assertPendingRunIdentityComplete(TaskRun $run, bool $requiresAiModel): void
+    {
+        $adminId = (int) ($run->model_access_admin_id ?? 0);
+        if ($adminId <= 0
+            || ! in_array((string) ($run->model_access_admin_role ?? ''), ['admin', 'super_admin'], true)
+            || (int) ($run->ai_config_access_version ?? 0) <= 0
+            || (int) ($run->resolver_policy_version ?? 0) <= 0
+            || ($requiresAiModel && (int) ($run->requested_ai_model_id ?? 0) <= 0)) {
+            throw AiModelAccessException::configAccessRevokedForAdminId($adminId);
+        }
     }
 
     private function permanentlyFailAuthorizationRun(

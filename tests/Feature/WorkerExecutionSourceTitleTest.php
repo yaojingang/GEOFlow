@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Data\Ai\AiExecutionContext;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleAiQualityCheck;
@@ -10,13 +12,16 @@ use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
 use App\Models\Prompt;
 use App\Models\Task;
+use App\Models\TaskRun;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\GeoFlow\AiExecutionContextFactory;
 use App\Services\GeoFlow\WorkerExecutionService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class WorkerExecutionSourceTitleTest extends TestCase
@@ -82,7 +87,10 @@ class WorkerExecutionSourceTitleTest extends TestCase
         ]);
         $task->knowledgeBases()->sync([$knowledgeBase->id => ['sort_order' => 0]]);
 
-        $result = app(WorkerExecutionService::class)->executeTask((int) $task->id);
+        $result = app(WorkerExecutionService::class)->executeTask(
+            (int) $task->id,
+            $this->executionContext($task, $model, 'source-title-worker'),
+        );
         $article = $title->articles()->whereKey((int) $result['article_id'])->firstOrFail();
 
         $this->assertSame((int) $title->id, (int) $article->source_title_id);
@@ -155,7 +163,10 @@ class WorkerExecutionSourceTitleTest extends TestCase
             ]);
         });
 
-        $result = app(WorkerExecutionService::class)->executeTask((int) $task->id);
+        $result = app(WorkerExecutionService::class)->executeTask(
+            (int) $task->id,
+            $this->executionContext($task, $model, 'fresh-policy-worker'),
+        );
         $article = Article::query()->findOrFail((int) $result['article_id']);
 
         $this->assertTrue($article->ai_quality_required_at_creation);
@@ -163,5 +174,39 @@ class WorkerExecutionSourceTitleTest extends TestCase
         $this->assertSame('pending', $article->review_status);
         $this->assertSame(1, ArticleAiQualityCheck::query()->where('article_id', $article->id)->count());
         $this->assertTrue((bool) data_get($result, 'meta.ai_quality.required'));
+    }
+
+    private function executionContext(Task $task, AiModel $model, string $username): AiExecutionContext
+    {
+        $admin = Admin::query()->create([
+            'username' => $username,
+            'password' => 'safe-password',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $model->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
+        $task->forceFill([
+            'model_access_admin_id' => $admin->id,
+            'model_access_admin_role' => 'admin',
+            'model_access_policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
+        ])->save();
+        $run = TaskRun::query()->create([
+            'task_id' => $task->id,
+            'status' => 'running',
+            'started_at' => now(),
+        ]);
+        $run->forceFill([
+            'model_access_admin_id' => $admin->id,
+            'model_access_admin_role' => 'admin',
+            'ai_config_access_version' => (int) $admin->ai_config_access_version,
+            'requested_ai_model_id' => $model->id,
+            'resolver_policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
+            'execution_lease_token' => (string) Str::uuid(),
+        ])->save();
+
+        return app(AiExecutionContextFactory::class)->fromTaskRun($run);
     }
 }

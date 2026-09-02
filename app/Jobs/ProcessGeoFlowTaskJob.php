@@ -91,8 +91,14 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
         if ($run instanceof TaskRun) {
             $this->claimedExecutionLeaseToken = trim((string) $run->execution_lease_token);
             if ($run->model_access_admin_id !== null) {
-                $context = ($contextFactory ?? app(AiExecutionContextFactory::class))->fromTaskRun($run);
-                $this->executionContext = $context;
+                try {
+                    $context = ($contextFactory ?? app(AiExecutionContextFactory::class))->fromTaskRun($run);
+                    $this->executionContext = $context;
+                } catch (AiModelAccessException) {
+                    // WorkerExecutionService only permits a missing context for model-free work,
+                    // such as publishing an already generated approved draft.
+                    $context = null;
+                }
             }
         }
 

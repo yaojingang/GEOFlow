@@ -3,13 +3,18 @@
 namespace Tests\Feature;
 
 use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Data\Ai\AiExecutionContext;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Task;
+use App\Models\TaskRun;
+use App\Services\GeoFlow\AiExecutionContextFactory;
 use App\Services\GeoFlow\WorkerExecutionService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Laravel\Ai\Enums\Lab;
 use ReflectionMethod;
 use Tests\TestCase;
@@ -185,36 +190,70 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
         Log::shouldNotHaveReceived('warning');
     }
 
-    public function test_smart_failover_uses_an_active_fallback_when_the_primary_model_is_inactive(): void
+    public function test_smart_failover_uses_an_authorized_fallback_after_a_transient_primary_failure(): void
     {
         Http::fake([
+            'https://primary.test/v1/chat/completions' => Http::response(['error' => ['message' => 'temporary outage']], 503),
             'https://fallback.test/v1/chat/completions' => Http::response($this->completion('# 标题'."\n\n".'备用模型正文。')),
         ]);
 
         $primary = $this->createChatModel([
-            'name' => 'Inactive Primary',
+            'name' => 'Transient Primary',
             'api_url' => 'https://primary.test',
-            'status' => 'inactive',
         ]);
         $fallback = $this->createChatModel([
             'name' => 'Active Fallback',
             'api_url' => 'https://fallback.test',
             'failover_priority' => 1,
         ]);
-        $task = new Task;
-        $task->forceFill([
+        $admin = Admin::query()->create([
+            'username' => 'worker-failover-admin',
+            'password' => 'safe-password',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        foreach ([$primary, $fallback] as $model) {
+            $model->forceFill([
+                'owner_admin_id' => $admin->id,
+                'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            ])->save();
+        }
+        $task = Task::query()->create([
+            'name' => 'Worker failover task',
             'ai_model_id' => (int) $primary->id,
             'model_selection_mode' => 'smart_failover',
+            'status' => 'active',
+            'schedule_enabled' => 1,
         ]);
+        $task->forceFill([
+            'model_access_admin_id' => $admin->id,
+            'model_access_admin_role' => 'admin',
+            'model_access_policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
+        ])->save();
+        $run = TaskRun::query()->create([
+            'task_id' => $task->id,
+            'status' => 'running',
+            'started_at' => now(),
+        ]);
+        $run->forceFill([
+            'model_access_admin_id' => $admin->id,
+            'model_access_admin_role' => 'admin',
+            'ai_config_access_version' => (int) $admin->ai_config_access_version,
+            'requested_ai_model_id' => $primary->id,
+            'resolver_policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
+            'execution_lease_token' => (string) Str::uuid(),
+        ])->save();
+        $context = app(AiExecutionContextFactory::class)->fromTaskRun($run);
 
         $service = app(WorkerExecutionService::class);
         $method = new ReflectionMethod($service, 'generateContentWithModelSelection');
         $method->setAccessible(true);
-        $result = $method->invoke($service, $task, '写一篇文章。');
+        $result = $method->invoke($service, $task, '写一篇文章。', $context);
 
         $this->assertSame((int) $fallback->id, (int) $result['model']->id);
-        $this->assertSame(['skipped', 'success'], array_column($result['attempts'], 'status'));
-        Http::assertSentCount(1);
+        $this->assertSame(['failed', 'success'], array_column($result['attempts'], 'status'));
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://primary.test/v1/chat/completions');
         Http::assertSent(fn ($request): bool => $request->url() === 'https://fallback.test/v1/chat/completions');
     }
 

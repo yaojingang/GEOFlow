@@ -72,20 +72,20 @@ class WorkerExecutionService
             throw new RuntimeException('任务未激活');
         }
 
-        if ($this->executionBoundariesEnforced()) {
-            if (! $executionContext instanceof AiExecutionContext) {
-                throw AiModelAccessException::configAccessRevokedForAdminId(
-                    (int) ($task->model_access_admin_id ?? 0),
-                );
-            }
-            $this->aiExecutionAccessGuard->assertCurrent($executionContext);
-        }
-
         $publishResult = $this->publishDueDraftArticle($task, $executionContext, $executionStartedAt);
         if ($publishResult !== null) {
             $this->distributionOrchestrator->enqueueForArticle((int) $publishResult['article_id']);
 
             return $publishResult;
+        }
+
+        if ($task->ai_model_id !== null) {
+            if (! $executionContext instanceof AiExecutionContext || $executionContext->requestedModelId === null) {
+                throw AiModelAccessException::configAccessRevokedForAdminId(
+                    (int) ($task->model_access_admin_id ?? 0),
+                );
+            }
+            $this->aiExecutionAccessGuard->assertCurrent($executionContext);
         }
 
         $generationBlockReason = $this->getGenerationBlockReason($task);
@@ -117,6 +117,11 @@ class WorkerExecutionService
         $knowledgeContext = $knowledgeBundle['context'];
         $generationEvidenceSnapshot = $this->generationEvidenceSnapshot($knowledgeBundle['evidence']);
         $contentPrompt = $this->buildContentPrompt((string) $titleRow->title, $keyword, $prompt?->content, $knowledgeContext);
+        if (! $executionContext instanceof AiExecutionContext) {
+            throw AiModelAccessException::configAccessRevokedForAdminId(
+                (int) ($task->model_access_admin_id ?? 0),
+            );
+        }
         $generation = $this->generateContentWithModelSelection($task, $contentPrompt, $executionContext);
         $aiModel = $generation['model'];
         $generatedContent = $generation['content'];
@@ -134,11 +139,9 @@ class WorkerExecutionService
                 throw new RuntimeException('任务未激活');
             }
 
-            if ($this->executionBoundariesEnforced()) {
+            if ($task->ai_model_id !== null) {
                 if (! $executionContext instanceof AiExecutionContext) {
-                    throw AiModelAccessException::configAccessRevokedForAdminId(
-                        (int) ($task->model_access_admin_id ?? 0),
-                    );
+                    throw AiModelAccessException::configAccessRevokedForAdminId((int) ($task->model_access_admin_id ?? 0));
                 }
                 $executionAdmin = $this->aiExecutionAccessGuard->assertCurrent($executionContext);
                 $this->aiExecutionAccessGuard->assertModelCurrent($executionContext, $aiModel, $executionAdmin);
@@ -302,15 +305,6 @@ class WorkerExecutionService
                 return null;
             }
 
-            if ($this->executionBoundariesEnforced()) {
-                if (! $executionContext instanceof AiExecutionContext) {
-                    throw AiModelAccessException::configAccessRevokedForAdminId(
-                        (int) ($task->model_access_admin_id ?? 0),
-                    );
-                }
-                $this->aiExecutionAccessGuard->assertCurrent($executionContext);
-            }
-
             /** @var Article|null $article */
             $article = Article::query()
                 ->whereKey((int) $candidateArticleId)
@@ -406,7 +400,7 @@ class WorkerExecutionService
     /**
      * 解析并校验任务绑定的 AI 模型（必须是 active + chat）。
      */
-    private function resolveAiModel(Task $task, ?AiExecutionContext $executionContext = null): AiModel
+    private function resolveAiModel(Task $task, AiExecutionContext $executionContext): AiModel
     {
         $aiModel = $this->resolveConfiguredAiModel($task, $executionContext);
         if (($aiModel->status ?? 'inactive') !== 'active') {
@@ -419,26 +413,19 @@ class WorkerExecutionService
     /**
      * 读取任务绑定的聊天模型；智能切换会保留停用主模型的尝试记录并继续备用模型。
      */
-    private function resolveConfiguredAiModel(Task $task, ?AiExecutionContext $executionContext = null): AiModel
+    private function resolveConfiguredAiModel(Task $task, AiExecutionContext $executionContext): AiModel
     {
-        $aiModelId = $executionContext instanceof AiExecutionContext
-            ? (int) ($executionContext->requestedModelId ?? 0)
-            : (int) ($task->ai_model_id ?? 0);
+        $aiModelId = (int) ($executionContext->requestedModelId ?? 0);
         if ($aiModelId <= 0) {
             throw new RuntimeException('任务未配置 AI 模型');
         }
 
-        $aiModel = AiModel::query()
-            ->whereKey($aiModelId)
-            ->where(function ($query): void {
-                $query->whereNull('model_type')
-                    ->orWhere('model_type', '')
-                    ->orWhere('model_type', 'chat');
-            })
-            ->first();
-
-        if (! $aiModel) {
-            throw new RuntimeException('任务 AI 模型不可用');
+        $aiModel = $this->aiExecutionAccessGuard->assertModelCurrent($executionContext, $aiModelId);
+        if (! in_array((string) ($aiModel->model_type ?? ''), ['', 'chat'], true)) {
+            throw AiModelAccessException::modelUnavailable(
+                $this->aiExecutionAccessGuard->assertCurrent($executionContext),
+                $aiModel,
+            );
         }
 
         return $aiModel;
@@ -452,23 +439,14 @@ class WorkerExecutionService
     private function generateContentWithModelSelection(
         Task $task,
         string $contentPrompt,
-        ?AiExecutionContext $executionContext = null,
+        AiExecutionContext $executionContext,
     ): array {
         $mode = (string) ($task->model_selection_mode ?? 'fixed');
         $attempts = [];
         $lastMessage = '';
 
         foreach ($this->resolveAiModelCandidates($task, $executionContext) as $candidate) {
-            if ($this->executionBoundariesEnforced()) {
-                if (! $executionContext instanceof AiExecutionContext) {
-                    throw AiModelAccessException::configAccessRevokedForAdminId(
-                        (int) ($task->model_access_admin_id ?? 0),
-                    );
-                }
-                $candidate = $this->aiExecutionAccessGuard->assertModelCurrent($executionContext, $candidate);
-            } elseif ($executionContext instanceof AiExecutionContext) {
-                $candidate = $this->aiExecutionAccessGuard->assertModelCurrentForShadow($executionContext, $candidate);
-            }
+            $candidate = $this->aiExecutionAccessGuard->assertModelCurrent($executionContext, $candidate);
 
             $unavailableReason = $this->getAiModelUnavailableReason($candidate);
             if ($unavailableReason !== null) {
@@ -483,12 +461,7 @@ class WorkerExecutionService
 
             try {
                 $content = $this->generateContent($candidate, $contentPrompt);
-                if ($this->executionBoundariesEnforced() && $executionContext instanceof AiExecutionContext) {
-                    $this->aiExecutionAccessGuard->recordResolvedModel($executionContext, $candidate);
-                } elseif ($executionContext instanceof AiExecutionContext
-                    && (bool) config('geoflow.admin_ai_access.ownership_write_enabled', true)) {
-                    $this->aiExecutionAccessGuard->recordResolvedModelSnapshot($executionContext, $candidate);
-                }
+                $this->aiExecutionAccessGuard->recordResolvedModel($executionContext, $candidate);
                 $attempts[] = $this->buildModelAttempt($candidate, 'success', null);
 
                 return [
@@ -519,46 +492,21 @@ class WorkerExecutionService
         throw new RuntimeException('AI模型不可用或已达每日限制');
     }
 
-    private function executionBoundariesEnforced(): bool
-    {
-        return (bool) config('geoflow.admin_ai_access.access_enforce_enabled', false)
-            || (bool) config('geoflow.admin_ai_access.revocation_enforce_enabled', false);
-    }
-
     /**
      * @return list<AiModel>
      */
-    private function resolveAiModelCandidates(Task $task, ?AiExecutionContext $executionContext = null): array
+    private function resolveAiModelCandidates(Task $task, AiExecutionContext $executionContext): array
     {
         $primaryModel = $this->resolveConfiguredAiModel($task, $executionContext);
         if (($task->model_selection_mode ?? 'fixed') !== 'smart_failover') {
             return [$this->resolveAiModel($task, $executionContext)];
         }
 
-        if ($executionContext instanceof AiExecutionContext) {
-            $scopedCandidates = $this->executionBoundariesEnforced()
-                ? $this->aiExecutionAccessGuard->resolveModelCandidates($executionContext, 'chat')
-                : $this->aiExecutionAccessGuard->resolveModelCandidatesForShadow($executionContext, 'chat');
-            $fallbackModels = array_values(array_filter(
-                $scopedCandidates,
-                static fn (AiModel $model): bool => (int) $model->getKey() !== (int) $primaryModel->getKey(),
-            ));
-
-            return array_values(array_merge([$primaryModel], $fallbackModels));
-        }
-
-        $fallbackModels = AiModel::query()
-            ->whereKeyNot((int) $primaryModel->id)
-            ->where('status', 'active')
-            ->where(function ($query): void {
-                $query->whereNull('model_type')
-                    ->orWhere('model_type', '')
-                    ->orWhere('model_type', 'chat');
-            })
-            ->orderBy('failover_priority')
-            ->orderBy('id')
-            ->get()
-            ->all();
+        $scopedCandidates = $this->aiExecutionAccessGuard->resolveModelCandidates($executionContext, 'chat');
+        $fallbackModels = array_values(array_filter(
+            $scopedCandidates,
+            static fn (AiModel $model): bool => (int) $model->getKey() !== (int) $primaryModel->getKey(),
+        ));
 
         return array_values(array_merge([$primaryModel], $fallbackModels));
     }

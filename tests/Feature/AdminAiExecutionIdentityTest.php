@@ -211,6 +211,85 @@ class AdminAiExecutionIdentityTest extends TestCase
         Queue::assertPushed(ProcessGeoFlowTaskJob::class, 1);
     }
 
+    public function test_ai_queue_run_without_persisted_identity_fails_closed_even_when_rollout_switches_are_off(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('missing-worker-identity');
+        $model = $this->model($admin, 'missing-worker-identity-model');
+        [$task] = $this->generationTask($admin, $model, 'Missing worker identity task');
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        TaskRun::query()->whereKey($runId)->update([
+            'model_access_admin_id' => null,
+            'model_access_admin_role' => null,
+            'ai_config_access_version' => null,
+            'resolver_policy_version' => null,
+        ]);
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', false);
+        config()->set('geoflow.admin_ai_access.revocation_enforce_enabled', false);
+        Http::preventStrayRequests();
+
+        (new ProcessGeoFlowTaskJob((int) $runId))->handle(
+            app(JobQueueService::class),
+            app(WorkerExecutionService::class),
+        );
+
+        Http::assertNothingSent();
+        $run = TaskRun::query()->findOrFail((int) $runId);
+        $this->assertSame('failed', $run->status);
+        $this->assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $run->error_code);
+        $this->assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $run->error_message);
+        $this->assertFalse((bool) data_get($run->meta, 'retryable', true));
+        $this->assertSame(0, (int) data_get($run->meta, 'attempt_count', -1));
+        $this->assertDatabaseCount('articles', 0);
+    }
+
+    public function test_ai_queue_run_with_malformed_persisted_identity_fails_closed_before_worker_execution(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('malformed-worker-identity');
+        $model = $this->model($admin, 'malformed-worker-identity-model');
+        [$task] = $this->generationTask($admin, $model, 'Malformed worker identity task');
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        TaskRun::query()->whereKey($runId)->update([
+            'model_access_admin_role' => null,
+            'requested_ai_model_id' => null,
+            'resolver_policy_version' => null,
+        ]);
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', false);
+        config()->set('geoflow.admin_ai_access.revocation_enforce_enabled', false);
+        Http::preventStrayRequests();
+
+        (new ProcessGeoFlowTaskJob((int) $runId))->handle(
+            app(JobQueueService::class),
+            app(WorkerExecutionService::class),
+        );
+
+        Http::assertNothingSent();
+        $run = TaskRun::query()->findOrFail((int) $runId);
+        $this->assertSame('failed', $run->status);
+        $this->assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $run->error_code);
+        $this->assertFalse((bool) data_get($run->meta, 'retryable', true));
+        $this->assertDatabaseCount('articles', 0);
+    }
+
+    public function test_direct_ai_worker_execution_without_persisted_context_fails_closed(): void
+    {
+        $admin = $this->admin('direct-missing-worker-identity');
+        $model = $this->model($admin, 'direct-missing-worker-identity-model');
+        [$task] = $this->generationTask($admin, $model, 'Direct missing worker identity task');
+        Http::preventStrayRequests();
+
+        try {
+            app(WorkerExecutionService::class)->executeTask((int) $task->id);
+            $this->fail('AI worker execution must require a persisted execution context.');
+        } catch (AiModelAccessException $exception) {
+            $this->assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $exception->getErrorCode());
+        }
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('articles', 0);
+    }
+
     public function test_revocation_during_the_provider_call_discards_the_result_without_business_side_effects(): void
     {
         Queue::fake();
@@ -597,6 +676,58 @@ class AdminAiExecutionIdentityTest extends TestCase
         $this->assertSame(13, (int) $run->ai_config_access_version);
         $this->assertSame((int) $model->id, (int) $run->requested_ai_model_id);
         $this->assertSame(1, (int) $run->resolver_policy_version);
+    }
+
+    public function test_stale_pending_ai_recovery_accepts_a_complete_identity_before_a_claim_lease_exists(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('pending-recovery-identity');
+        $model = $this->model($admin, 'pending-recovery-identity-model');
+        [$task] = $this->generationTask($admin, $model, 'Pending recovery identity task');
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        $run = TaskRun::query()->findOrFail((int) $runId);
+        $run->forceFill([
+            'created_at' => now()->subMinutes(20),
+            'meta' => array_replace((array) $run->meta, [
+                'available_at' => now()->subMinutes(20)->toDateTimeString(),
+            ]),
+        ])->save();
+
+        $this->assertSame(1, app(JobQueueService::class)->recoverStaleJobs(600));
+
+        $run = TaskRun::query()->findOrFail((int) $runId);
+        $this->assertSame('pending', $run->status);
+        $this->assertNull($run->execution_lease_token);
+        $this->assertSame((int) $admin->id, (int) $run->model_access_admin_id);
+        $this->assertSame((int) $model->id, (int) $run->requested_ai_model_id);
+        Queue::assertPushed(ProcessGeoFlowTaskJob::class, 2);
+    }
+
+    public function test_stale_ai_recovery_permanently_fails_an_unrecoverable_missing_identity(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('missing-recovery-identity');
+        $model = $this->model($admin, 'missing-recovery-identity-model');
+        [$task] = $this->generationTask($admin, $model, 'Missing recovery identity task');
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        TaskRun::query()->whereKey($runId)->update([
+            'model_access_admin_id' => null,
+            'model_access_admin_role' => null,
+            'ai_config_access_version' => null,
+            'requested_ai_model_id' => null,
+            'resolver_policy_version' => null,
+            'created_at' => now()->subMinutes(20),
+        ]);
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', false);
+        config()->set('geoflow.admin_ai_access.revocation_enforce_enabled', false);
+
+        $this->assertSame(0, app(JobQueueService::class)->recoverStaleJobs(600));
+
+        $run = TaskRun::query()->findOrFail((int) $runId);
+        $this->assertSame('failed', $run->status);
+        $this->assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $run->error_code);
+        $this->assertFalse((bool) data_get($run->meta, 'retryable', true));
+        Queue::assertPushed(ProcessGeoFlowTaskJob::class, 1);
     }
 
     public function test_recovery_rotates_the_execution_lease_and_discards_the_old_workers_provider_result(): void
@@ -1113,6 +1244,51 @@ class AdminAiExecutionIdentityTest extends TestCase
             app(WorkerExecutionService::class),
         );
 
+        $this->assertSame('completed', TaskRun::query()->findOrFail((int) $runId)->status);
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertSame(1, (int) $task->fresh()->published_count);
+    }
+
+    public function test_due_draft_publication_remains_available_for_a_historical_run_without_ai_identity(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('historical-draft-publisher');
+        $model = $this->model($admin, 'historical-unused-publish-model');
+        [$task] = $this->generationTask($admin, $model, 'Historical due draft publication');
+        $task->forceFill([
+            'next_publish_at' => now()->subMinute(),
+            'publish_scope' => 'local_only',
+        ])->save();
+        $author = Author::query()->create(['name' => 'Historical draft publication author']);
+        $category = Category::query()->where('slug', 'execution-identity-category')->firstOrFail();
+        $article = Article::query()->create([
+            'title' => 'Historical generated draft',
+            'slug' => 'historical-generated-draft',
+            'content' => 'Existing historical draft content.',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'task_id' => $task->id,
+            'status' => 'draft',
+            'review_status' => 'approved',
+        ]);
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        TaskRun::query()->whereKey($runId)->update([
+            'model_access_admin_id' => null,
+            'model_access_admin_role' => null,
+            'ai_config_access_version' => null,
+            'requested_ai_model_id' => null,
+            'resolver_policy_version' => null,
+        ]);
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', false);
+        config()->set('geoflow.admin_ai_access.revocation_enforce_enabled', false);
+        Http::preventStrayRequests();
+
+        (new ProcessGeoFlowTaskJob((int) $runId))->handle(
+            app(JobQueueService::class),
+            app(WorkerExecutionService::class),
+        );
+
+        Http::assertNothingSent();
         $this->assertSame('completed', TaskRun::query()->findOrFail((int) $runId)->status);
         $this->assertSame('published', $article->fresh()->status);
         $this->assertSame(1, (int) $task->fresh()->published_count);
