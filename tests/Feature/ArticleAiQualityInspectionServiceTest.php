@@ -2,6 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Ai\Agents\ArticleQualityJsonReviewerAgent;
+use App\Ai\Agents\ArticleQualityReviewerAgent;
+use App\Ai\Agents\LegacyArticleQualityReviewerAgent;
 use App\Contracts\ArticleAiQualityReviewer;
 use App\Contracts\DeadlineAwareArticleAiQualityReviewer;
 use App\Contracts\VersionAwareArticleAiQualityReviewer;
@@ -11,9 +14,11 @@ use App\Jobs\ProcessArticleAiQualityJob;
 use App\Jobs\ReconcileArticleAiQualityJob;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\Article;
 use App\Models\ArticleAiQualityCheck;
 use App\Models\ArticleAiQualityRollout;
+use App\Models\ArticleAiQualitySegment;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\KnowledgeBase;
@@ -30,6 +35,7 @@ use App\Services\GeoFlow\ArticleFactCandidateExtractor;
 use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\KnowledgeFacts\ArticleAtomicFactInspector;
 use App\Services\GeoFlow\KnowledgeRetrievalService;
+use App\Support\GeoFlow\ApiKeyCrypto;
 use Carbon\Carbon;
 use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Contracts\Queue\Queue as QueueContract;
@@ -46,6 +52,511 @@ use UnexpectedValueException;
 class ArticleAiQualityInspectionServiceTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_production_quality_structured_fallback_records_each_provider_invocation_after_segment_commit(): void
+    {
+        $this->setQualityRollout(execution: 100);
+        $executor = $this->qualityAdmin('quality-ledger-structured', 'super_admin');
+        $article = $this->createQualityFixture('quality-ledger-structured', needReview: true);
+        $model = $article->task->aiModel;
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('quality-ledger-secret'),
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'model_type' => 'chat',
+        ])->save();
+        $article->task->forceFill([
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'super_admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+        LegacyArticleQualityReviewerAgent::fake(static function (): never {
+            throw new ArticleAiQualityRuntimeException('structured_output_unsupported');
+        })->preventStrayPrompts();
+        ArticleQualityReviewerAgent::fake(static function (): never {
+            throw new ArticleAiQualityRuntimeException('structured_output_unsupported');
+        })->preventStrayPrompts();
+        ArticleQualityJsonReviewerAgent::fake([[
+            'summary' => '质检通过。',
+            'promotion_context' => 'informational',
+            'knowledge_coverage' => 'sufficient',
+            'issues' => [],
+            'uncertainties' => [],
+        ]])->preventStrayPrompts();
+        $service = app(ArticleAiQualityInspectionService::class);
+
+        $completed = $service->process($service->createOrReuse($article->fresh(), dispatch: false));
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame('completed', $completed->status);
+        $this->assertCount(2, $events);
+        $this->assertSame($completed->request_key, $events[0]->request_id);
+        $this->assertSame($events[0]->request_id, $events[1]->request_id);
+        $this->assertSame(
+            [AiModelUsageEvent::STATUS_FAILED, AiModelUsageEvent::STATUS_SUCCEEDED],
+            $events->pluck('status')->all(),
+        );
+        $this->assertSame(['personal', 'personal'], $events->pluck('model_source')->all());
+        $this->assertSame([$executor->id, $executor->id], $events->pluck('execution_admin_id')->all());
+        $this->assertSame([1, 1], $events->pluck('ai_config_access_version')->all());
+        $this->assertSame(['article_ai_quality', 'article_ai_quality'], $events->pluck('business_source')->all());
+        $this->assertSame(
+            [ArticleAiQualitySegment::class, ArticleAiQualitySegment::class],
+            $events->pluck('source_type')->all(),
+        );
+        $this->assertSame(
+            [$completed->segments->first()->id, $completed->segments->first()->id],
+            $events->pluck('source_id')->map(static fn (string $id): int => (int) $id)->all(),
+        );
+        $this->assertStringContainsString('provider-1-structured', $events[0]->call_key);
+        $this->assertStringContainsString('provider-2-json_fallback', $events[1]->call_key);
+        $serializedEvents = $events->toJson();
+        $this->assertStringNotContainsString('quality-ledger-secret', $serializedEvents);
+        $this->assertStringNotContainsString('https://example.test', $serializedEvents);
+        $this->assertStringNotContainsString('质检通过。', $serializedEvents);
+    }
+
+    public function test_production_quality_records_personal_failure_and_shared_candidate_success_separately(): void
+    {
+        $this->setQualityRollout(execution: 100);
+        $provider = $this->qualityAdmin('quality-ledger-provider', 'super_admin');
+        $executor = $this->qualityAdmin('quality-ledger-executor', 'admin', $provider);
+        $article = $this->createQualityFixture('quality-ledger-candidates', needReview: true);
+        $personal = $article->task->aiModel;
+        $personal->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('quality-personal-secret'),
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'model_type' => 'chat',
+            'failover_priority' => 0,
+        ])->save();
+        $shared = $this->qualityModel($provider, 'quality-ledger-shared', 1);
+        $shared->forceFill(['api_key' => app(ApiKeyCrypto::class)->encrypt('quality-shared-secret')])->save();
+        $article->task->forceFill([
+            'model_selection_mode' => 'smart_failover',
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+        $providerCalls = 0;
+        ArticleQualityReviewerAgent::fake(function () use (&$providerCalls): array {
+            $providerCalls++;
+            if ($providerCalls === 1) {
+                throw new ArticleAiQualityRuntimeException('provider_gateway_error', true);
+            }
+
+            return $this->passingV2QualityResult();
+        })->preventStrayPrompts();
+        LegacyArticleQualityReviewerAgent::fake(function () use (&$providerCalls): array {
+            $providerCalls++;
+            if ($providerCalls === 1) {
+                throw new ArticleAiQualityRuntimeException('provider_gateway_error', true);
+            }
+
+            return $this->passingV2QualityResult();
+        })->preventStrayPrompts();
+        $service = app(ArticleAiQualityInspectionService::class);
+
+        $completed = $service->process($service->createOrReuse($article->fresh(), dispatch: false));
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame('completed', $completed->status);
+        $this->assertSame(2, $providerCalls);
+        $this->assertCount(2, $events);
+        $this->assertSame([$personal->id, $shared->id], $events->pluck('ai_model_id')->all());
+        $this->assertSame(['personal', 'shared'], $events->pluck('model_source')->all());
+        $this->assertSame([$executor->id, $provider->id], $events->pluck('config_owner_admin_id')->all());
+        $this->assertSame([$executor->id, $executor->id], $events->pluck('execution_admin_id')->all());
+        $this->assertSame(['article_ai_quality.inspect', 'article_ai_quality.inspect'], $events->pluck('operation')->all());
+        $this->assertSame(
+            [AiModelUsageEvent::STATUS_FAILED, AiModelUsageEvent::STATUS_SUCCEEDED],
+            $events->pluck('status')->all(),
+        );
+        $this->assertNotSame($events[0]->call_key, $events[1]->call_key);
+    }
+
+    public function test_production_quality_marks_provider_result_revoked_when_access_changes_before_segment_commit(): void
+    {
+        $this->setQualityRollout(execution: 100);
+        $executor = $this->qualityAdmin('quality-ledger-revoked', 'super_admin');
+        $article = $this->createQualityFixture('quality-ledger-revoked', needReview: true);
+        $model = $article->task->aiModel;
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('quality-revoked-secret'),
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'model_type' => 'chat',
+        ])->save();
+        $article->task->forceFill([
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'super_admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+        ArticleQualityReviewerAgent::fake([$this->passingV2QualityResult()])->preventStrayPrompts();
+        LegacyArticleQualityReviewerAgent::fake([$this->passingV2QualityResult()])->preventStrayPrompts();
+        $this->app->instance(
+            ArticleAiQualityExecutionBoundaryHook::class,
+            new class((int) $executor->id) extends ArticleAiQualityExecutionBoundaryHook
+            {
+                public function __construct(private readonly int $adminId) {}
+
+                public function beforeFullSegmentCommit(
+                    ArticleAiQualityCheck $check,
+                    ArticleAiQualitySegment $segment,
+                    AiModel $model,
+                ): void {
+                    Admin::query()->whereKey($this->adminId)->increment('ai_config_access_version');
+                }
+            },
+        );
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+
+        try {
+            $service->process($check);
+            $this->fail('Expected the frozen administrator access to be revoked.');
+        } catch (AiModelAccessException $exception) {
+            $this->assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $exception->getErrorCode());
+        }
+
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_REVOKED, $event->status);
+        $this->assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $event->error_code);
+        $this->assertSame(0, (int) $check->fresh()->completed_segment_count);
+    }
+
+    public function test_production_quality_discards_provider_result_when_segment_commit_loses_its_claim(): void
+    {
+        $this->setQualityRollout(execution: 100);
+        $executor = $this->qualityAdmin('quality-ledger-cancelled', 'super_admin');
+        $article = $this->createQualityFixture('quality-ledger-cancelled', needReview: true);
+        $model = $article->task->aiModel;
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('quality-cancelled-secret'),
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'model_type' => 'chat',
+        ])->save();
+        $article->task->forceFill([
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'super_admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+        $checkId = 0;
+        $cancel = function () use (&$checkId): array {
+            ArticleAiQualitySegment::query()
+                ->where('article_ai_quality_check_id', $checkId)
+                ->update(['status' => 'cancelled']);
+
+            return $this->passingV2QualityResult();
+        };
+        ArticleQualityReviewerAgent::fake($cancel)->preventStrayPrompts();
+        LegacyArticleQualityReviewerAgent::fake($cancel)->preventStrayPrompts();
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+        $checkId = (int) $check->id;
+
+        $processed = $service->process($check);
+
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame('running', $processed->status);
+        $this->assertSame(AiModelUsageEvent::STATUS_DISCARDED, $event->status);
+        $this->assertSame('ai_result_not_committed', $event->error_code);
+        $this->assertSame(0, (int) $processed->completed_segment_count);
+    }
+
+    public function test_production_quality_records_invalid_output_retry_as_a_new_provider_attempt(): void
+    {
+        $this->setQualityRollout(execution: 100);
+        $executor = $this->qualityAdmin('quality-ledger-invalid-retry', 'super_admin');
+        $article = $this->createQualityFixture('quality-ledger-invalid-retry', needReview: true);
+        $model = $article->task->aiModel;
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('quality-invalid-retry-secret'),
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'model_type' => 'chat',
+        ])->save();
+        $article->task->forceFill([
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'super_admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+        $providerCalls = 0;
+        $respond = function () use (&$providerCalls): array {
+            $providerCalls++;
+            $result = $this->passingV2QualityResult();
+            if ($providerCalls === 1) {
+                $result['unexpected'] = 'invalid';
+            }
+
+            return $result;
+        };
+        ArticleQualityReviewerAgent::fake($respond)->preventStrayPrompts();
+        LegacyArticleQualityReviewerAgent::fake($respond)->preventStrayPrompts();
+        $service = app(ArticleAiQualityInspectionService::class);
+
+        $completed = $service->process($service->createOrReuse($article->fresh(), dispatch: false));
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame('completed', $completed->status);
+        $this->assertSame(2, $providerCalls);
+        $this->assertSame(
+            [AiModelUsageEvent::STATUS_DISCARDED, AiModelUsageEvent::STATUS_SUCCEEDED],
+            $events->pluck('status')->all(),
+        );
+        $this->assertSame('invalid_model_output', $events[0]->error_code);
+        $this->assertStringContainsString('occurrence-1', $events[0]->call_key);
+        $this->assertStringContainsString('occurrence-2', $events[1]->call_key);
+    }
+
+    public function test_production_sampled_quality_records_success_only_after_the_check_transaction_commits(): void
+    {
+        $this->setQualityRollout(execution: 100);
+        $executor = $this->qualityAdmin('quality-ledger-sampled', 'super_admin');
+        $article = $this->createQualityFixture('quality-ledger-sampled', needReview: true);
+        $article->task->forceFill(['ai_quality_timeout_sampling_enabled' => true])->save();
+        $model = $article->task->aiModel;
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('quality-sampled-secret'),
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'model_type' => 'chat',
+        ])->save();
+        $article->task->forceFill([
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'super_admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+        ArticleQualityReviewerAgent::fake([$this->passingV2QualityResult()])->preventStrayPrompts();
+        LegacyArticleQualityReviewerAgent::fake([$this->passingV2QualityResult()])->preventStrayPrompts();
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+        $this->assertTrue($service->tryStartSampledFallback(
+            $check,
+            new ArticleAiQualityRuntimeException('provider_timeout', true),
+            dispatch: false,
+        ));
+
+        $completed = $service->process($check->fresh());
+
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame('completed', $completed->status);
+        $this->assertSame('fallback_sampled', $completed->inspection_scope);
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $event->status);
+        $this->assertSame(ArticleAiQualityCheck::class, $event->source_type);
+        $this->assertSame((string) $check->id, $event->source_id);
+        $this->assertStringStartsWith('sampled.segment-0.attempt-', $event->call_key);
+    }
+
+    public function test_production_sampled_quality_marks_returned_provider_result_revoked_before_check_commit(): void
+    {
+        $this->setQualityRollout(execution: 100);
+        $executor = $this->qualityAdmin('quality-ledger-sampled-revoked', 'super_admin');
+        $article = $this->createQualityFixture('quality-ledger-sampled-revoked', needReview: true);
+        $article->task->forceFill(['ai_quality_timeout_sampling_enabled' => true])->save();
+        $model = $article->task->aiModel;
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('quality-sampled-revoked-secret'),
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'model_type' => 'chat',
+        ])->save();
+        $article->task->forceFill([
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'super_admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+        ArticleQualityReviewerAgent::fake([$this->passingV2QualityResult()])->preventStrayPrompts();
+        LegacyArticleQualityReviewerAgent::fake([$this->passingV2QualityResult()])->preventStrayPrompts();
+        $this->app->instance(
+            ArticleAiQualityExecutionBoundaryHook::class,
+            new class((int) $executor->id) extends ArticleAiQualityExecutionBoundaryHook
+            {
+                public function __construct(private readonly int $adminId) {}
+
+                public function beforeSampledCommit(ArticleAiQualityCheck $check, AiModel $model): void
+                {
+                    Admin::query()->whereKey($this->adminId)->increment('ai_config_access_version');
+                }
+            },
+        );
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+        $this->assertTrue($service->tryStartSampledFallback(
+            $check,
+            new ArticleAiQualityRuntimeException('provider_timeout', true),
+            dispatch: false,
+        ));
+
+        try {
+            $service->process($check->fresh());
+            $this->fail('Expected sampled execution access to be revoked before commit.');
+        } catch (AiModelAccessException $exception) {
+            $this->assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $exception->getErrorCode());
+        }
+
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_REVOKED, $event->status);
+        $this->assertSame(ArticleAiQualityCheck::class, $event->source_type);
+        $this->assertNull($check->fresh()->decision);
+    }
+
+    public function test_production_sampled_quality_discards_returned_result_when_completion_claim_is_cancelled(): void
+    {
+        $this->setQualityRollout(execution: 100);
+        $executor = $this->qualityAdmin('quality-ledger-sampled-cancelled', 'super_admin');
+        $article = $this->createQualityFixture('quality-ledger-sampled-cancelled', needReview: true);
+        $article->task->forceFill(['ai_quality_timeout_sampling_enabled' => true])->save();
+        $model = $article->task->aiModel;
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('quality-sampled-cancelled-secret'),
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'model_type' => 'chat',
+        ])->save();
+        $article->task->forceFill([
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'super_admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+        ArticleQualityReviewerAgent::fake([$this->passingV2QualityResult()])->preventStrayPrompts();
+        LegacyArticleQualityReviewerAgent::fake([$this->passingV2QualityResult()])->preventStrayPrompts();
+        $this->app->instance(
+            ArticleAiQualityExecutionBoundaryHook::class,
+            new class extends ArticleAiQualityExecutionBoundaryHook
+            {
+                public function beforeSampledCommit(ArticleAiQualityCheck $check, AiModel $model): void
+                {
+                    ArticleAiQualityCheck::query()->whereKey($check->id)->update([
+                        'status' => 'cancelled',
+                        'active_dedupe_key' => null,
+                    ]);
+                }
+            },
+        );
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+        $this->assertTrue($service->tryStartSampledFallback(
+            $check,
+            new ArticleAiQualityRuntimeException('provider_timeout', true),
+            dispatch: false,
+        ));
+
+        try {
+            $service->process($check->fresh());
+            $this->fail('Expected the sampled completion claim to reject the provider result.');
+        } catch (ArticleAiQualityRuntimeException $exception) {
+            $this->assertSame('inspection_deadline_exceeded', $exception->safeCode());
+        }
+
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_DISCARDED, $event->status);
+        $this->assertSame('ai_result_not_committed', $event->error_code);
+        $this->assertSame('cancelled', $check->fresh()->status);
+    }
+
+    public function test_production_quality_worker_retry_allocates_new_call_identity_without_ledger_conflict(): void
+    {
+        $this->setQualityRollout(execution: 100);
+        $executor = $this->qualityAdmin('quality-ledger-worker-retry', 'super_admin');
+        $article = $this->createQualityFixture('quality-ledger-worker-retry', needReview: true);
+        $article->task->forceFill(['ai_quality_timeout_sampling_enabled' => false])->save();
+        $model = $article->task->aiModel;
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('quality-worker-retry-secret'),
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'model_type' => 'chat',
+        ])->save();
+        $article->task->forceFill([
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'super_admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+        $providerCalls = 0;
+        $respond = function () use (&$providerCalls): array {
+            $providerCalls++;
+            if ($providerCalls === 1) {
+                throw new ArticleAiQualityRuntimeException('provider_gateway_error', true);
+            }
+
+            return $this->passingV2QualityResult();
+        };
+        ArticleQualityReviewerAgent::fake($respond)->preventStrayPrompts();
+        LegacyArticleQualityReviewerAgent::fake($respond)->preventStrayPrompts();
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+
+        try {
+            $service->process($check);
+            $this->fail('Expected the first provider invocation to fail.');
+        } catch (ArticleAiQualityRuntimeException $exception) {
+            $this->assertSame('provider_gateway_error', $exception->safeCode());
+            $service->markRetryPending($check, $exception);
+            $this->assertSame('queued', $check->fresh()->status);
+        }
+        $completed = $service->process($check->id);
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame('completed', $completed->status);
+        $this->assertSame(2, $providerCalls);
+        $this->assertCount(2, $events);
+        $this->assertSame($events[0]->request_id, $events[1]->request_id);
+        $this->assertNotSame($events[0]->call_key, $events[1]->call_key);
+        $this->assertStringContainsString('attempt-1', $events[0]->call_key);
+        $this->assertStringContainsString('attempt-2', $events[1]->call_key);
+        $this->assertSame(
+            [AiModelUsageEvent::STATUS_FAILED, AiModelUsageEvent::STATUS_SUCCEEDED],
+            $events->pluck('status')->all(),
+        );
+    }
+
+    public function test_production_quality_records_one_delivered_provider_attempt_for_each_completed_segment(): void
+    {
+        Queue::fake();
+        $this->setQualityRollout(execution: 100);
+        $executor = $this->qualityAdmin('quality-ledger-segments', 'super_admin');
+        $article = $this->createQualityFixture('quality-ledger-segments', needReview: true);
+        Article::withoutEvents(function () use ($article): void {
+            $article->forceFill(['content' => str_repeat('逐段核验产品能力边界。', 2200)])->save();
+        });
+        $model = $article->task->aiModel;
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('quality-segments-secret'),
+            'owner_admin_id' => $executor->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'model_type' => 'chat',
+        ])->save();
+        $article->task->forceFill([
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'super_admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+        ArticleQualityReviewerAgent::fake(fn (): array => $this->passingV2QualityResult())->preventStrayPrompts();
+        LegacyArticleQualityReviewerAgent::fake(fn (): array => $this->passingV2QualityResult())->preventStrayPrompts();
+        $service = app(ArticleAiQualityInspectionService::class);
+        $result = $service->createOrReuse($article->fresh(), dispatch: false);
+
+        for ($attempt = 0; $attempt < 10 && $result->status !== 'completed'; $attempt++) {
+            $result = $service->process((int) $result->id);
+        }
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame('completed', $result->status);
+        $this->assertGreaterThan(1, $result->segment_count);
+        $this->assertCount((int) $result->segment_count, $events);
+        $this->assertSame(
+            array_fill(0, (int) $result->segment_count, AiModelUsageEvent::STATUS_SUCCEEDED),
+            $events->pluck('status')->all(),
+        );
+        $this->assertSame((int) $result->segment_count, $events->pluck('source_id')->unique()->count());
+        foreach (range(0, (int) $result->segment_count - 1) as $segmentIndex) {
+            $this->assertTrue($events->contains(
+                static fn (AiModelUsageEvent $event): bool => str_contains($event->call_key, 'segment-'.$segmentIndex.'.'),
+            ));
+        }
+    }
 
     public function test_sampling_enabled_checks_persist_primary_and_final_deadlines_with_an_immutable_policy_snapshot(): void
     {
@@ -2239,6 +2750,19 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
                 ];
             }
         });
+    }
+
+    /** @return array<string,mixed> */
+    private function passingV2QualityResult(): array
+    {
+        return [
+            'summary' => '质检通过。',
+            'promotion_context' => 'informational',
+            'reviewed_claim_hashes' => [],
+            'issues' => [],
+            'uncertainties' => [],
+            'truncated_issue_count' => 0,
+        ];
     }
 
     private function setQualityRollout(

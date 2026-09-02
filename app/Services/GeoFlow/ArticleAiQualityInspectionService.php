@@ -4,6 +4,7 @@ namespace App\Services\GeoFlow;
 
 use App\Contracts\ArticleAiQualityReviewer;
 use App\Contracts\DeadlineAwareArticleAiQualityReviewer;
+use App\Contracts\ProviderAttemptAwareArticleAiQualityReviewer;
 use App\Contracts\VersionAwareArticleAiQualityReviewer;
 use App\Data\Ai\AiExecutionContext;
 use App\Exceptions\AiModelAccessException;
@@ -12,6 +13,7 @@ use App\Exceptions\ArticleAiQualityRuntimeException;
 use App\Jobs\ProcessArticleAiQualityJob;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\Article;
 use App\Models\ArticleAiOptimizationRun;
 use App\Models\ArticleAiQualityCheck;
@@ -20,6 +22,7 @@ use App\Models\ArticleAiQualitySegment;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TaskRun;
+use App\Services\Admin\AiModelUsageAttemptFactory;
 use App\Services\GeoFlow\KnowledgeFacts\ArticleAtomicFactInspector;
 use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\AiQualityRetrievalBasis;
@@ -61,6 +64,7 @@ class ArticleAiQualityInspectionService
         private readonly AiExecutionContextFactory $aiExecutionContextFactory,
         private readonly AiModelFailoverDecider $aiModelFailoverDecider,
         private readonly ArticleAiQualityExecutionBoundaryHook $executionBoundaryHook,
+        private readonly AiModelUsageAttemptFactory $usageAttempts,
     ) {}
 
     public function requestManualInspection(
@@ -1026,6 +1030,11 @@ class ArticleAiQualityInspectionService
             $validationMs = 0;
             $candidateQueue = array_values($modelCandidates);
             $invalidOutputRetries = [];
+            $candidateOccurrences = [];
+            $winningUsageSession = null;
+            $segmentAttempt = (int) ArticleAiQualitySegment::query()
+                ->whereKey((int) $segment->id)
+                ->value('attempt_count');
             for ($candidateIndex = 0; $candidateIndex < count($candidateQueue); $candidateIndex++) {
                 $candidate = $candidateQueue[$candidateIndex];
                 if ((string) $candidate->status !== 'active'
@@ -1057,6 +1066,22 @@ class ArticleAiQualityInspectionService
                 }
 
                 $candidateStartedAt = hrtime(true);
+                $modelId = (int) $candidate->id;
+                $candidateOccurrences[$modelId] = (int) ($candidateOccurrences[$modelId] ?? 0) + 1;
+                $candidateOccurrence = $candidateOccurrences[$modelId];
+                $providerUsageSession = $this->qualityProviderUsageSession(
+                    check: $check,
+                    model: $candidate,
+                    aiExecutionSnapshot: $aiExecutionSnapshot,
+                    scope: 'full',
+                    sourceType: ArticleAiQualitySegment::class,
+                    sourceId: (int) $segment->id,
+                    segmentIndex: (int) $segmentData['index'],
+                    executionAttempt: $segmentAttempt,
+                    candidateOrdinal: $candidateIndex + 1,
+                    candidateOccurrence: $candidateOccurrence,
+                    requestPayload: $instructions,
+                );
                 try {
                     $remainingSeconds = $this->remainingDeadlineSeconds($deadlineAt);
                     if ($remainingSeconds <= $persistenceReserveSeconds) {
@@ -1077,16 +1102,25 @@ class ArticleAiQualityInspectionService
                     ));
                     $modelStartedAt = hrtime(true);
                     try {
-                        $candidateReview = $this->reviewer instanceof VersionAwareArticleAiQualityReviewer
-                            ? $this->reviewer->reviewWithinVersion(
+                        $candidateReview = $this->reviewer instanceof ProviderAttemptAwareArticleAiQualityReviewer
+                            && $providerUsageSession instanceof ArticleAiQualityProviderUsageSession
+                            ? $this->reviewer->reviewWithinVersionTrackingProviderAttempts(
                                 $candidate,
                                 $instructions,
                                 $requestTimeout,
                                 $executionVersion,
+                                $providerUsageSession,
                             )
-                            : ($this->reviewer instanceof DeadlineAwareArticleAiQualityReviewer
-                                ? $this->reviewer->reviewWithin($candidate, $instructions, $requestTimeout)
-                                : $this->reviewer->review($candidate, $instructions));
+                            : ($this->reviewer instanceof VersionAwareArticleAiQualityReviewer
+                                ? $this->reviewer->reviewWithinVersion(
+                                    $candidate,
+                                    $instructions,
+                                    $requestTimeout,
+                                    $executionVersion,
+                                )
+                                : ($this->reviewer instanceof DeadlineAwareArticleAiQualityReviewer
+                                    ? $this->reviewer->reviewWithin($candidate, $instructions, $requestTimeout)
+                                    : $this->reviewer->review($candidate, $instructions)));
                     } finally {
                         $modelTotalMs += $this->elapsedMilliseconds($modelStartedAt);
                     }
@@ -1129,13 +1163,17 @@ class ArticleAiQualityInspectionService
                         $this->elapsedMilliseconds($candidateStartedAt),
                     );
                     $review = $candidateReview;
+                    $winningUsageSession = $providerUsageSession;
                     break;
                 } catch (Throwable $exception) {
                     if ($exception instanceof AiModelAccessException) {
+                        $providerUsageSession?->revoked($exception->getErrorCode());
+
                         throw $exception;
                     }
                     $lastException = $exception;
                     $errorCode = $this->safeErrorCode($exception);
+                    $providerUsageSession?->discarded($errorCode);
                     $attempts[] = $this->modelAttempt(
                         $segmentData,
                         $candidate,
@@ -1143,7 +1181,6 @@ class ArticleAiQualityInspectionService
                         $errorCode,
                         $this->elapsedMilliseconds($candidateStartedAt),
                     );
-                    $modelId = (int) $candidate->id;
                     if ($errorCode === 'invalid_model_output'
                         && ! isset($invalidOutputRetries[$modelId])
                         && $this->remainingDeadlineSeconds($deadlineAt) > $persistenceReserveSeconds + 10) {
@@ -1196,17 +1233,28 @@ class ArticleAiQualityInspectionService
             ];
             [$storedSegmentRaw, $segmentRawTruncated] = $this->boundedRawPayload($raw);
             $runMeta['raw_model_output_truncated'] = $segmentRawTruncated;
-            if (! $this->completeSegment(
-                $checkId,
-                (int) $segment->id,
-                $storedSegmentRaw,
-                $validated,
-                $runMeta,
-                $aiExecutionSnapshot,
-                (int) data_get($review, 'model.id', (int) $candidate->id),
-            )) {
+            try {
+                $this->executionBoundaryHook->beforeFullSegmentCommit($check, $segment, $candidate);
+                $segmentCompleted = $this->completeSegment(
+                    $checkId,
+                    (int) $segment->id,
+                    $storedSegmentRaw,
+                    $validated,
+                    $runMeta,
+                    $aiExecutionSnapshot,
+                    (int) data_get($review, 'model.id', (int) $candidate->id),
+                );
+            } catch (AiModelAccessException $exception) {
+                $winningUsageSession?->revoked($exception->getErrorCode());
+
+                throw $exception;
+            }
+            if (! $segmentCompleted) {
+                $winningUsageSession?->discarded('ai_result_not_committed');
+
                 return $this->latestCheck($checkId);
             }
+            $winningUsageSession?->succeeded();
 
             $validatedResults[] = $validated;
             $rawResults[] = $raw;
@@ -1694,7 +1742,8 @@ class ArticleAiQualityInspectionService
             );
         }
         $model = null;
-        foreach ($candidates as $candidate) {
+        $selectedCandidateOrdinal = 0;
+        foreach ($candidates as $candidateIndex => $candidate) {
             if (! $candidate instanceof AiModel
                 || (string) $candidate->status !== 'active'
                 || ! in_array((string) ($candidate->model_type ?? ''), ['', 'chat'], true)) {
@@ -1721,6 +1770,7 @@ class ArticleAiQualityInspectionService
                 }
             }
             $model = $candidate;
+            $selectedCandidateOrdinal = $candidateIndex + 1;
             break;
         }
         if (! $model instanceof AiModel) {
@@ -1745,17 +1795,45 @@ class ArticleAiQualityInspectionService
                 $executionAdmin,
             );
         }
-        $review = $this->reviewer instanceof VersionAwareArticleAiQualityReviewer
-            ? $this->reviewer->reviewWithinVersion($model, $instructions, $requestTimeout, $executionVersion)
-            : ($this->reviewer instanceof DeadlineAwareArticleAiQualityReviewer
-                ? $this->reviewer->reviewWithin($model, $instructions, $requestTimeout)
-                : $this->reviewer->review($model, $instructions));
-        if ($aiExecutionSnapshot !== null) {
-            $this->aiExecutionAccessGuard->assertModelForPersistedAdminSnapshot(
-                $aiExecutionSnapshot,
+        $providerUsageSession = $this->qualityProviderUsageSession(
+            check: $check,
+            model: $model,
+            aiExecutionSnapshot: $aiExecutionSnapshot,
+            scope: 'sampled',
+            sourceType: ArticleAiQualityCheck::class,
+            sourceId: $checkId,
+            segmentIndex: 0,
+            executionAttempt: (int) $check->attempt_count,
+            candidateOrdinal: $selectedCandidateOrdinal,
+            candidateOccurrence: 1,
+            requestPayload: $instructions,
+        );
+        $review = $this->reviewer instanceof ProviderAttemptAwareArticleAiQualityReviewer
+            && $providerUsageSession instanceof ArticleAiQualityProviderUsageSession
+            ? $this->reviewer->reviewWithinVersionTrackingProviderAttempts(
                 $model,
-                $check->task_id ? (int) $check->task_id : null,
-            );
+                $instructions,
+                $requestTimeout,
+                $executionVersion,
+                $providerUsageSession,
+            )
+            : ($this->reviewer instanceof VersionAwareArticleAiQualityReviewer
+                ? $this->reviewer->reviewWithinVersion($model, $instructions, $requestTimeout, $executionVersion)
+                : ($this->reviewer instanceof DeadlineAwareArticleAiQualityReviewer
+                    ? $this->reviewer->reviewWithin($model, $instructions, $requestTimeout)
+                    : $this->reviewer->review($model, $instructions)));
+        if ($aiExecutionSnapshot !== null) {
+            try {
+                $this->aiExecutionAccessGuard->assertModelForPersistedAdminSnapshot(
+                    $aiExecutionSnapshot,
+                    $model,
+                    $check->task_id ? (int) $check->task_id : null,
+                );
+            } catch (AiModelAccessException $exception) {
+                $providerUsageSession?->revoked($exception->getErrorCode());
+
+                throw $exception;
+            }
         }
         if ($this->remainingDeadlineSeconds($this->sampledDeadlineAt($check)) <= $reserveSeconds) {
             throw new ArticleAiQualityRuntimeException('inspection_deadline_exceeded', false);
@@ -1849,7 +1927,7 @@ class ArticleAiQualityInspectionService
         $usage = $this->withRetrievalUsageBreakdown($primaryUsage, $atomicFacts);
 
         $completedAt = now();
-        $completed = DB::transaction(function () use (
+        $completeSampledCheck = function () use (
             $checkId,
             $completedAt,
             $score,
@@ -1924,10 +2002,21 @@ class ArticleAiQualityInspectionService
             ])->save();
 
             return 1;
-        });
+        };
+        try {
+            $this->executionBoundaryHook->beforeSampledCommit($check, $model);
+            $completed = DB::transaction($completeSampledCheck);
+        } catch (AiModelAccessException $exception) {
+            $providerUsageSession?->revoked($exception->getErrorCode());
+
+            throw $exception;
+        }
         if ($completed !== 1) {
+            $providerUsageSession?->discarded('ai_result_not_committed');
+
             throw new ArticleAiQualityRuntimeException('inspection_deadline_exceeded', false);
         }
+        $providerUsageSession?->succeeded();
 
         $completedCheck = $this->latestCheck($checkId);
         $this->continueAfterCompletedCheck($completedCheck->loadMissing(['article', 'task']));
@@ -3698,6 +3787,76 @@ class ArticleAiQualityInspectionService
         }
 
         return $snapshot;
+    }
+
+    private function qualityProviderUsageSession(
+        ArticleAiQualityCheck $check,
+        AiModel $model,
+        ?array $aiExecutionSnapshot,
+        string $scope,
+        string $sourceType,
+        int $sourceId,
+        int $segmentIndex,
+        int $executionAttempt,
+        int $candidateOrdinal,
+        int $candidateOccurrence,
+        string $requestPayload,
+    ): ?ArticleAiQualityProviderUsageSession {
+        if (! $this->reviewer instanceof ProviderAttemptAwareArticleAiQualityReviewer
+            || $aiExecutionSnapshot === null
+            || ! Str::isUuid((string) $check->request_key)) {
+            return null;
+        }
+
+        $providerOrdinal = 0;
+        $executionAdminId = (int) ($aiExecutionSnapshot['model_access_admin_id'] ?? 0);
+        $accessVersion = (int) ($aiExecutionSnapshot['ai_config_access_version'] ?? 0);
+        $modelSource = $this->usageAttempts->sourceFor($model, $executionAdminId);
+
+        return new ArticleAiQualityProviderUsageSession(function (string $mode) use (
+            &$providerOrdinal,
+            $accessVersion,
+            $candidateOccurrence,
+            $candidateOrdinal,
+            $check,
+            $executionAdminId,
+            $executionAttempt,
+            $model,
+            $modelSource,
+            $requestPayload,
+            $scope,
+            $segmentIndex,
+            $sourceId,
+            $sourceType,
+        ) {
+            $providerOrdinal++;
+            $callKey = sprintf(
+                '%s.segment-%d.attempt-%d.candidate-%d.occurrence-%d.retry-%d.provider-%d-%s',
+                $scope,
+                $segmentIndex,
+                $executionAttempt,
+                $candidateOrdinal,
+                $candidateOccurrence,
+                max(0, $candidateOccurrence - 1),
+                $providerOrdinal,
+                $mode,
+            );
+
+            return $this->usageAttempts->beginForAdmin(
+                model: $model,
+                executionAdminId: $executionAdminId,
+                accessVersion: $accessVersion,
+                executionScope: AiModelUsageEvent::EXECUTION_SCOPE_PERSISTED_ADMIN,
+                modelSource: $modelSource,
+                requestId: (string) $check->request_key,
+                requestPayload: $requestPayload,
+                callKey: $callKey,
+                operation: 'article_ai_quality.inspect',
+                businessSource: 'article_ai_quality',
+                sourceType: $sourceType,
+                sourceId: $sourceId,
+            );
+        });
     }
 
     private function safeErrorCode(Throwable $exception): string

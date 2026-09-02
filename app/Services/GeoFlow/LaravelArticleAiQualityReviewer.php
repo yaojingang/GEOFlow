@@ -65,6 +65,35 @@ final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptA
         );
     }
 
+    public function reviewWithinVersionTrackingProviderAttempts(
+        AiModel $model,
+        string $instructions,
+        int $timeoutSeconds,
+        string $executionVersion,
+        ArticleAiQualityProviderUsageSession $usageSession,
+    ): array {
+        if (! in_array($executionVersion, ['legacy', 'fast_v2'], true)) {
+            throw new RuntimeException('ai_quality_execution_version_invalid');
+        }
+        $this->circuitBreaker->beforeRequest($model);
+        $reservation = $this->usageQuota->reserveModel($model);
+        if ($reservation === null) {
+            $exception = new ArticleAiQualityRuntimeException('provider_quota_exhausted');
+            $this->circuitBreaker->recordFailure($model, $exception);
+
+            throw $exception;
+        }
+
+        return $this->reviewWithReservation(
+            $model,
+            $instructions,
+            $timeoutSeconds,
+            $executionVersion,
+            $reservation,
+            $usageSession,
+        );
+    }
+
     public function reviewWithinReservedVersionTrackingProviderAttempts(
         AiModel $model,
         string $instructions,
