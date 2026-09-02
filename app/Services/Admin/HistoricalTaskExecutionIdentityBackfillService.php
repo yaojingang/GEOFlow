@@ -52,7 +52,7 @@ final class HistoricalTaskExecutionIdentityBackfillService
         );
         $adminIds = $tasks->pluck('model_access_admin_id')
             ->merge($runs->pluck('model_access_admin_id'))
-            ->merge($creationAudits->flatten(1)->pluck('admin_id'))
+            ->merge($creationAudits->flatten())
             ->push((int) $legacyOwner->getKey())
             ->filter(static fn (mixed $id): bool => is_numeric($id) && (int) $id > 0)
             ->map(static fn (mixed $id): int => (int) $id)
@@ -460,7 +460,7 @@ final class HistoricalTaskExecutionIdentityBackfillService
 
     /**
      * @param  list<int>  $taskIds
-     * @return Collection<int, Collection<int, array{admin_id: int, policy_version: int}>>
+     * @return Collection<int, Collection<int, int>>
      */
     private function creationAuditEvidenceByTask(array $taskIds, CarbonImmutable $createdBefore): Collection
     {
@@ -473,17 +473,15 @@ final class HistoricalTaskExecutionIdentityBackfillService
                 ->whereIn('task_id', $taskIdChunk)
                 ->where('occurred_at', '<=', $createdBefore->format('Y-m-d H:i:s'))
                 ->orderBy('id')
-                ->get(['task_id', 'admin_id', 'policy_version']));
+                ->get(['task_id', 'admin_id']));
         }
 
         return $rows
             ->groupBy(static fn (AiQualityAuditEvent $event): int => (int) $event->task_id)
             ->map(static fn (Collection $events): Collection => $events
-                ->map(static fn (AiQualityAuditEvent $event): array => [
-                    'admin_id' => (int) $event->admin_id,
-                    'policy_version' => (int) $event->policy_version,
-                ])
-                ->unique(static fn (array $evidence): string => implode(':', $evidence))
+                ->pluck('admin_id')
+                ->map(static fn (mixed $adminId): int => (int) $adminId)
+                ->unique()
                 ->values());
     }
 
@@ -554,7 +552,7 @@ final class HistoricalTaskExecutionIdentityBackfillService
     }
 
     /**
-     * @param  Collection<int, array{admin_id: int, policy_version: int}>  $auditEvidence
+     * @param  Collection<int, int>  $auditEvidence
      * @param  Collection<int, Admin>  $admins
      * @param  list<array<string, int|string>>  $findings
      */
@@ -564,8 +562,7 @@ final class HistoricalTaskExecutionIdentityBackfillService
         Collection $admins,
         array &$findings,
     ): ?array {
-        if ($auditEvidence->contains(static fn (array $evidence): bool => $evidence['admin_id'] <= 0
-            || $evidence['policy_version'] < 1)) {
+        if ($auditEvidence->contains(static fn (int $adminId): bool => $adminId <= 0)) {
             $findings[] = $this->finding('task', $taskId, 'blocking', 'invalid_creation_audit');
 
             return null;
@@ -575,11 +572,10 @@ final class HistoricalTaskExecutionIdentityBackfillService
 
             return null;
         }
-        $evidence = $auditEvidence->first();
-        if (! is_array($evidence)) {
+        $adminId = $auditEvidence->first();
+        if (! is_int($adminId)) {
             return null;
         }
-        $adminId = $evidence['admin_id'];
         if (! $admins->has($adminId)) {
             return null;
         }
@@ -593,7 +589,7 @@ final class HistoricalTaskExecutionIdentityBackfillService
         return [
             'admin_id' => $adminId,
             'role' => $role,
-            'policy_version' => $evidence['policy_version'],
+            'policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
         ];
     }
 
