@@ -6,6 +6,7 @@ use App\Data\Ai\AiExecutionContext;
 use App\Exceptions\AiModelAccessException;
 use App\Exceptions\ArticleAiQualityGateException;
 use App\Exceptions\ArticleRiskGateException;
+use App\Exceptions\PermanentAiProviderException;
 use App\Exceptions\TaskTitleReadinessException;
 use App\Models\AiModel;
 use App\Models\Article;
@@ -495,6 +496,10 @@ class WorkerExecutionService
             } catch (Throwable $exception) {
                 $lastMessage = $this->aiExecutionErrorSanitizer->sanitize($exception);
                 $attempts[] = $this->buildModelAttempt($candidate, 'failed', $lastMessage);
+
+                if ($this->aiModelFailoverDecider->isPermanentProviderFailure($exception)) {
+                    throw PermanentAiProviderException::fromProviderFailure($exception);
+                }
 
                 if ($mode !== 'smart_failover' || ! $this->aiModelFailoverDecider->shouldFailover($exception)) {
                     throw $exception;

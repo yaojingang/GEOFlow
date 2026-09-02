@@ -9,6 +9,25 @@ use Throwable;
 
 final class AiModelFailoverDecider
 {
+    public function isPermanentProviderFailure(Throwable $exception): bool
+    {
+        $current = $exception;
+
+        for ($depth = 0; $depth < 8 && $current instanceof Throwable; $depth++) {
+            if ($current instanceof RequestException && $current->response !== null) {
+                $status = $current->response->status();
+
+                return $status >= 400
+                    && $status < 500
+                    && ! in_array($status, [402, 408, 425, 429], true);
+            }
+
+            $current = $current->getPrevious();
+        }
+
+        return false;
+    }
+
     public function shouldFailover(Throwable $exception): bool
     {
         $current = $exception;

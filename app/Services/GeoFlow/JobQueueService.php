@@ -4,6 +4,7 @@ namespace App\Services\GeoFlow;
 
 use App\Data\Ai\AiExecutionContext;
 use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
 use App\Jobs\ProcessGeoFlowTaskJob;
 use App\Models\Article;
 use App\Models\Task;
@@ -473,6 +474,66 @@ class JobQueueService
             }
 
             $this->permanentlyFailAuthorizationRun($run, $errorCode, $durationMs);
+
+            Task::query()->whereKey($taskId)->update([
+                'last_run_at' => now(),
+                'last_error_at' => now(),
+                'last_error_message' => $errorCode,
+                'updated_at' => now(),
+            ]);
+
+            return true;
+        });
+
+        if ($changed) {
+            $this->broadcastOverviewUpdate();
+        }
+    }
+
+    public function failForPermanentAiProviderError(
+        int $jobId,
+        int $taskId,
+        string $errorCode,
+        int $durationMs,
+        ?AiExecutionContext $executionContext = null,
+        ?string $executionLeaseToken = null,
+    ): void {
+        $errorCode = $errorCode === PermanentAiProviderException::ERROR_CODE
+            ? $errorCode
+            : PermanentAiProviderException::ERROR_CODE;
+        $changed = DB::transaction(function () use ($jobId, $taskId, $errorCode, $durationMs, $executionContext, $executionLeaseToken): bool {
+            $task = Task::query()
+                ->whereKey($taskId)
+                ->lockForUpdate()
+                ->first(['id']);
+            if (! $task instanceof Task) {
+                return false;
+            }
+
+            $runQuery = TaskRun::query()
+                ->whereKey($jobId)
+                ->where('task_id', $taskId)
+                ->where('status', 'running');
+            $this->constrainRunToExecutionContext($runQuery, $executionContext, $executionLeaseToken);
+            $run = $runQuery->lockForUpdate()->first();
+            if (! $run instanceof TaskRun) {
+                return false;
+            }
+
+            $meta = $this->normalizeMeta($run->meta);
+            $meta['retryable'] = false;
+            $meta['failure_class'] = 'provider_permanent';
+            $meta['error_code'] = $errorCode;
+            $meta['last_error'] = $errorCode;
+            $run->forceFill([
+                'status' => 'failed',
+                'error_code' => $errorCode,
+                'error_message' => $errorCode,
+                'duration_ms' => $durationMs,
+                'finished_at' => now(),
+                'execution_lease_token' => null,
+                'meta' => $meta,
+            ])->save();
 
             Task::query()->whereKey($taskId)->update([
                 'last_run_at' => now(),

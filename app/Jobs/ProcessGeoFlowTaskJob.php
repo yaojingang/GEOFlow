@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Data\Ai\AiExecutionContext;
 use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
 use App\Exceptions\TaskTitleReadinessException;
 use App\Models\Task;
 use App\Models\TaskRun;
@@ -136,6 +137,16 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
                 $context,
                 $this->effectiveExecutionLeaseToken(),
             );
+        } catch (PermanentAiProviderException $exception) {
+            $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
+            $queueService->failForPermanentAiProviderError(
+                $this->taskRunId,
+                $taskId,
+                $exception->getErrorCode(),
+                $durationMs,
+                $context,
+                $this->effectiveExecutionLeaseToken(),
+            );
         } catch (TaskTitleReadinessException $exception) {
             $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
             try {
@@ -214,6 +225,18 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
             }
             if ($exception instanceof AiModelAccessException) {
                 $queueService->failForAiAuthorization(
+                    (int) $run->id,
+                    (int) $run->task_id,
+                    $exception->getErrorCode(),
+                    0,
+                    $context,
+                    $this->effectiveExecutionLeaseToken(),
+                );
+
+                return;
+            }
+            if ($exception instanceof PermanentAiProviderException) {
+                $queueService->failForPermanentAiProviderError(
                     (int) $run->id,
                     (int) $run->task_id,
                     $exception->getErrorCode(),

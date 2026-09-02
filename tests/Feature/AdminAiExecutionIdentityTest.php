@@ -849,7 +849,7 @@ class AdminAiExecutionIdentityTest extends TestCase
             ['status' => 422, 'message' => 'model capability is incompatible', 'suffix' => 'capability'],
         ];
 
-        foreach ($cases as $case) {
+        foreach ($cases as $caseIndex => $case) {
             $admin = $this->admin('permanent-error-'.$case['suffix'], [
                 'shared_ai_config_owner_id' => $provider->id,
             ]);
@@ -889,10 +889,50 @@ class AdminAiExecutionIdentityTest extends TestCase
                 array_values(array_unique($requestedModels)),
             );
             $this->assertNotContains('permanent-error-shared-model', $requestedModels);
-            $this->assertNotSame('completed', TaskRun::query()->findOrFail((int) $runId)->status);
+            $run = TaskRun::query()->findOrFail((int) $runId);
+            $this->assertSame('failed', $run->status);
+            $this->assertSame('ai_provider_request_rejected', $run->error_code);
+            $this->assertFalse((bool) data_get($run->meta, 'retryable', true));
+            $this->assertSame(0, (int) data_get($run->meta, 'attempt_count', 0));
+            $this->assertSame(0, app(JobQueueService::class)->recoverStaleJobs(60));
+            Queue::assertPushed(ProcessGeoFlowTaskJob::class, $caseIndex + 1);
             $this->assertSame(0, Article::query()->where('task_id', $task->id)->count());
         }
         $this->assertSame('active', $sharedModel->fresh()->status);
+    }
+
+    public function test_transient_provider_errors_still_follow_the_existing_retry_policy(): void
+    {
+        Queue::fake();
+        $provider = $this->admin('transient-error-provider', ['role' => 'super_admin']);
+        $admin = $this->admin('transient-error-runner', [
+            'shared_ai_config_owner_id' => $provider->id,
+        ]);
+        $personalModel = $this->model($admin, 'transient-error-personal-model');
+        $sharedModel = $this->model($provider, 'transient-error-shared-model');
+        $personalModel->forceFill(['failover_priority' => 10])->save();
+        $sharedModel->forceFill(['failover_priority' => 20])->save();
+        [$task] = $this->generationTask($admin, $personalModel, 'Transient provider failure');
+        $task->forceFill(['model_selection_mode' => 'smart_failover'])->save();
+        $runId = app(JobQueueService::class)->enqueueTaskJob((int) $task->id);
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', true);
+        $requestedModels = [];
+        Http::fake(function ($request) use (&$requestedModels) {
+            $requestedModels[] = (string) $request['model'];
+
+            return Http::response(['error' => ['message' => 'temporary upstream failure']], 503);
+        });
+
+        (new ProcessGeoFlowTaskJob((int) $runId))->handle(
+            app(JobQueueService::class),
+            app(WorkerExecutionService::class),
+        );
+
+        $run = TaskRun::query()->findOrFail((int) $runId);
+        $this->assertSame(['transient-error-personal-model', 'transient-error-shared-model'], $requestedModels);
+        $this->assertSame('pending', $run->status);
+        $this->assertNull($run->error_code);
+        $this->assertSame(1, (int) data_get($run->meta, 'attempt_count'));
     }
 
     public function test_each_run_executes_the_requested_model_snapshot_captured_at_enqueue_time(): void
