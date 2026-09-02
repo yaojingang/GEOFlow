@@ -20,6 +20,7 @@ use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
 use App\Models\Prompt;
 use App\Models\Task;
+use App\Services\GeoFlow\ArticleAiQualityExecutionBoundaryHook;
 use App\Services\GeoFlow\ArticleAiQualityInspectionService;
 use App\Services\GeoFlow\ArticleAiQualityPolicyResolver;
 use App\Services\GeoFlow\ArticleAiQualityReconciliationService;
@@ -38,6 +39,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Queue;
 use InvalidArgumentException;
 use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 use UnexpectedValueException;
 
@@ -1052,6 +1054,90 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $this->assertSame('running', $sampled->status);
         $this->assertNull($sampled->raw_model_output);
         $this->assertNull($sampled->decision);
+    }
+
+    #[DataProvider('sampledOutboundRevocationProvider')]
+    public function test_sampled_fallback_reloads_execution_access_immediately_before_outbound(
+        string $mutation,
+        string $expectedCode,
+    ): void {
+        $provider = $this->qualityAdmin('sampled-boundary-provider-'.$mutation, 'super_admin');
+        $executor = $this->qualityAdmin('sampled-boundary-executor-'.$mutation, 'admin', $provider);
+        $article = $this->createQualityFixture('sampled-boundary-'.$mutation, needReview: true);
+        $model = $article->task->aiModel;
+        $model->forceFill([
+            'owner_admin_id' => $provider->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
+        $article->task->forceFill([
+            'model_access_admin_id' => $executor->id,
+            'model_access_admin_role' => 'admin',
+            'model_access_policy_version' => 1,
+            'ai_quality_timeout_sampling_enabled' => true,
+        ])->save();
+        $reviewer = new class implements ArticleAiQualityReviewer
+        {
+            public int $calls = 0;
+
+            public function review(AiModel $model, string $instructions): array
+            {
+                $this->calls++;
+
+                throw new UnexpectedValueException('Revoked sampled execution must not reach the provider.');
+            }
+        };
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        $this->app->instance(
+            ArticleAiQualityExecutionBoundaryHook::class,
+            new class($mutation, (int) $executor->id) extends ArticleAiQualityExecutionBoundaryHook
+            {
+                public function __construct(
+                    private readonly string $mutation,
+                    private readonly int $adminId,
+                ) {}
+
+                public function beforeSampledOutbound(ArticleAiQualityCheck $check, AiModel $model): void
+                {
+                    $admin = Admin::query()->findOrFail($this->adminId);
+                    match ($this->mutation) {
+                        'access_version' => $admin->forceFill([
+                            'ai_config_access_version' => (int) $admin->ai_config_access_version + 1,
+                        ])->save(),
+                        'inactive' => $admin->forceFill(['status' => 'inactive'])->save(),
+                        'role_changed' => $admin->forceFill(['role' => 'super_admin'])->save(),
+                        'shared_revoked' => $admin->forceFill(['shared_ai_config_owner_id' => null])->save(),
+                        default => throw new UnexpectedValueException('Unknown revocation mutation.'),
+                    };
+                }
+            },
+        );
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+        $this->assertTrue($service->tryStartSampledFallback(
+            $check,
+            new ArticleAiQualityRuntimeException('provider_timeout', true),
+            dispatch: false,
+        ));
+
+        try {
+            $service->process($check->fresh());
+            $this->fail('Expected sampled access to be revoked before provider execution.');
+        } catch (AiModelAccessException $exception) {
+            $this->assertSame($expectedCode, $exception->getErrorCode());
+        }
+
+        $this->assertSame(0, $reviewer->calls);
+        $this->assertNull($check->fresh()->raw_model_output);
+        $this->assertNull($check->fresh()->decision);
+    }
+
+    /** @return iterable<string,array{string,string}> */
+    public static function sampledOutboundRevocationProvider(): iterable
+    {
+        yield 'access version changed' => ['access_version', 'ai_config_access_revoked'];
+        yield 'administrator inactive' => ['inactive', 'ai_execution_admin_inactive'];
+        yield 'administrator role changed' => ['role_changed', 'ai_config_access_revoked'];
+        yield 'shared provider revoked' => ['shared_revoked', 'ai_model_not_accessible'];
     }
 
     public function test_enforced_sampled_fallback_marks_a_legacy_check_without_execution_identity_stale(): void

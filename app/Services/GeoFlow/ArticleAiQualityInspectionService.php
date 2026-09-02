@@ -60,6 +60,7 @@ class ArticleAiQualityInspectionService
         private readonly AiExecutionAccessGuard $aiExecutionAccessGuard,
         private readonly AiExecutionContextFactory $aiExecutionContextFactory,
         private readonly AiModelFailoverDecider $aiModelFailoverDecider,
+        private readonly ArticleAiQualityExecutionBoundaryHook $executionBoundaryHook,
     ) {}
 
     public function requestManualInspection(
@@ -1731,6 +1732,19 @@ class ArticleAiQualityInspectionService
             (int) config('geoflow.ai_quality_sampled_request_timeout_seconds', 35),
             $remaining,
         );
+        $this->executionBoundaryHook->beforeSampledOutbound($check, $model);
+        if ($aiExecutionSnapshot !== null) {
+            $executionAdmin = $this->aiExecutionAccessGuard->assertPersistedAdminSnapshot(
+                $aiExecutionSnapshot,
+                $check->task_id ? (int) $check->task_id : null,
+            );
+            $model = $this->aiExecutionAccessGuard->assertModelForPersistedAdminSnapshot(
+                $aiExecutionSnapshot,
+                $model,
+                $check->task_id ? (int) $check->task_id : null,
+                $executionAdmin,
+            );
+        }
         $review = $this->reviewer instanceof VersionAwareArticleAiQualityReviewer
             ? $this->reviewer->reviewWithinVersion($model, $instructions, $requestTimeout, $executionVersion)
             : ($this->reviewer instanceof DeadlineAwareArticleAiQualityReviewer
