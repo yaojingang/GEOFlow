@@ -243,6 +243,43 @@ class AdminAiExecutionIdentityTest extends TestCase
         $this->assertDatabaseCount('articles', 0);
     }
 
+    public function test_model_less_generation_run_without_identity_fails_before_worker_or_outbound_work(): void
+    {
+        Queue::fake();
+        $task = Task::query()->create([
+            'name' => 'Model-less historical generation task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+        ]);
+        $run = TaskRun::query()->create([
+            'task_id' => $task->id,
+            'status' => 'pending',
+            'meta' => [
+                'attempt_count' => 0,
+                'max_attempts' => 3,
+                'available_at' => now()->toDateTimeString(),
+            ],
+        ]);
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', false);
+        config()->set('geoflow.admin_ai_access.revocation_enforce_enabled', false);
+        Http::preventStrayRequests();
+        $worker = Mockery::mock(WorkerExecutionService::class);
+        $worker->shouldNotReceive('executeTask');
+
+        (new ProcessGeoFlowTaskJob((int) $run->id))->handle(
+            app(JobQueueService::class),
+            $worker,
+        );
+
+        Http::assertNothingSent();
+        $run = $run->fresh();
+        $this->assertSame('failed', $run->status);
+        $this->assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $run->error_code);
+        $this->assertFalse((bool) data_get($run->meta, 'retryable', true));
+        $this->assertSame(0, (int) data_get($run->meta, 'attempt_count', -1));
+        $this->assertDatabaseCount('articles', 0);
+    }
+
     public function test_ai_queue_run_with_malformed_persisted_identity_fails_closed_before_worker_execution(): void
     {
         Queue::fake();

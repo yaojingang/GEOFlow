@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use App\Jobs\ProcessGeoFlowTaskJob;
+use App\Models\Article;
+use App\Models\Author;
+use App\Models\Category;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Services\GeoFlow\JobQueueService;
@@ -87,6 +90,7 @@ class TaskTransactionSafetyTest extends TestCase
             'status' => 'active',
             'schedule_enabled' => 1,
         ]);
+        $this->addDueDraft($task);
         $run = TaskRun::query()->create([
             'task_id' => $task->id,
             'status' => 'pending',
@@ -146,6 +150,7 @@ class TaskTransactionSafetyTest extends TestCase
             'status' => 'active',
             'schedule_enabled' => 1,
         ]);
+        $this->addDueDraft($task);
         $run = TaskRun::query()->create([
             'task_id' => $task->id,
             'status' => 'pending',
@@ -172,6 +177,7 @@ class TaskTransactionSafetyTest extends TestCase
             'status' => 'active',
             'schedule_enabled' => 1,
         ]);
+        $this->addDueDraft($task);
         $run = TaskRun::query()->create([
             'task_id' => $task->id,
             'status' => 'pending',
@@ -263,6 +269,7 @@ class TaskTransactionSafetyTest extends TestCase
             'status' => 'active',
             'schedule_enabled' => 1,
         ]);
+        $this->addDueDraft($task);
         $run = TaskRun::query()->create([
             'task_id' => $task->id,
             'status' => 'pending',
@@ -304,6 +311,7 @@ class TaskTransactionSafetyTest extends TestCase
             'schedule_enabled' => 1,
             'next_run_at' => now()->subMinute(),
         ]);
+        $this->addDueDraft($task);
         $run = TaskRun::query()->create([
             'task_id' => $task->id,
             'status' => 'pending',
@@ -368,6 +376,7 @@ class TaskTransactionSafetyTest extends TestCase
                     'status' => 'active',
                     'schedule_enabled' => 1,
                 ]);
+                $this->addDueDraft($task);
                 $run = TaskRun::query()->create([
                     'task_id' => $task->id,
                     'status' => 'pending',
@@ -447,6 +456,7 @@ class TaskTransactionSafetyTest extends TestCase
                     'status' => 'active',
                     'schedule_enabled' => 1,
                 ]);
+                $this->addDueDraft($task);
 
                 return TaskRun::query()->create([
                     'task_id' => $task->id,
@@ -480,5 +490,24 @@ class TaskTransactionSafetyTest extends TestCase
         Exceptions::assertReported(
             fn (\RuntimeException $exception): bool => $exception->getMessage() === 'redis running recovery publish failed'
         );
+    }
+
+    private function addDueDraft(Task $task): void
+    {
+        $category = Category::query()->firstOrCreate(
+            ['slug' => 'recovery-draft-category'],
+            ['name' => 'Recovery draft category'],
+        );
+        $author = Author::query()->firstOrCreate(['name' => 'Recovery draft author']);
+        Article::query()->create([
+            'title' => 'Existing draft for '.$task->name,
+            'slug' => 'existing-draft-'.$task->id,
+            'content' => 'Existing approved draft.',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'task_id' => $task->id,
+            'status' => 'draft',
+            'review_status' => 'approved',
+        ]);
     }
 }

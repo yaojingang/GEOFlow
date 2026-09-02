@@ -79,14 +79,12 @@ class WorkerExecutionService
             return $publishResult;
         }
 
-        if ($task->ai_model_id !== null) {
-            if (! $executionContext instanceof AiExecutionContext || $executionContext->requestedModelId === null) {
-                throw AiModelAccessException::configAccessRevokedForAdminId(
-                    (int) ($task->model_access_admin_id ?? 0),
-                );
-            }
-            $this->aiExecutionAccessGuard->assertCurrent($executionContext);
+        if (! $executionContext instanceof AiExecutionContext || $executionContext->requestedModelId === null) {
+            throw AiModelAccessException::configAccessRevokedForAdminId(
+                (int) ($task->model_access_admin_id ?? 0),
+            );
         }
+        $this->aiExecutionAccessGuard->assertCurrent($executionContext);
 
         $generationBlockReason = $this->getGenerationBlockReason($task);
         if ($generationBlockReason !== null) {
@@ -117,11 +115,6 @@ class WorkerExecutionService
         $knowledgeContext = $knowledgeBundle['context'];
         $generationEvidenceSnapshot = $this->generationEvidenceSnapshot($knowledgeBundle['evidence']);
         $contentPrompt = $this->buildContentPrompt((string) $titleRow->title, $keyword, $prompt?->content, $knowledgeContext);
-        if (! $executionContext instanceof AiExecutionContext) {
-            throw AiModelAccessException::configAccessRevokedForAdminId(
-                (int) ($task->model_access_admin_id ?? 0),
-            );
-        }
         $generation = $this->generateContentWithModelSelection($task, $contentPrompt, $executionContext);
         $aiModel = $generation['model'];
         $generatedContent = $generation['content'];
@@ -139,19 +132,14 @@ class WorkerExecutionService
                 throw new RuntimeException('任务未激活');
             }
 
-            if ($task->ai_model_id !== null) {
-                if (! $executionContext instanceof AiExecutionContext) {
-                    throw AiModelAccessException::configAccessRevokedForAdminId((int) ($task->model_access_admin_id ?? 0));
-                }
-                $executionAdmin = $this->aiExecutionAccessGuard->assertCurrent($executionContext);
-                $this->aiExecutionAccessGuard->assertModelCurrent($executionContext, $aiModel, $executionAdmin);
-            }
+            $executionAdmin = $this->aiExecutionAccessGuard->assertCurrent($executionContext);
+            $this->aiExecutionAccessGuard->assertModelCurrent($executionContext, $aiModel, $executionAdmin);
 
             $generationBlockReason = $this->getGenerationBlockReason($freshTask, true);
             if ($generationBlockReason !== null) {
                 throw new RuntimeException($generationBlockReason);
             }
-            $freshTask->loadMissing(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
+            $freshTask->loadMissing(['qualityPrompt', 'knowledgeBases']);
             $qualityPolicy = $this->articleAiQualityPolicyResolver->fromTask($freshTask);
             $qualityPolicySnapshot = $this->articleAiQualityPolicyResolver->snapshot($qualityPolicy);
             $workflow = [

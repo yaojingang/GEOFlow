@@ -1038,10 +1038,9 @@ class JobQueueService
 
     private function taskRunRequiresAiModel(TaskRun $run): bool
     {
-        $task = Task::query()->whereKey((int) $run->task_id)->first(['id', 'ai_model_id', 'next_publish_at']);
-        if (! $task instanceof Task
-            || ($task->next_publish_at !== null && $task->next_publish_at->isFuture())) {
-            return $run->requested_ai_model_id !== null || $task?->ai_model_id !== null;
+        $task = Task::query()->whereKey((int) $run->task_id)->first(['id', 'next_publish_at']);
+        if (! $task instanceof Task || ($task->next_publish_at !== null && $task->next_publish_at->isFuture())) {
+            return true;
         }
 
         $hasDueDraft = Article::query()
@@ -1051,8 +1050,7 @@ class JobQueueService
             ->whereNull('deleted_at')
             ->exists();
 
-        return ! $hasDueDraft
-            && ($run->requested_ai_model_id !== null || $task->ai_model_id !== null);
+        return ! $hasDueDraft;
     }
 
     private function executionIdentityAllowsDispatch(TaskRun $run): bool

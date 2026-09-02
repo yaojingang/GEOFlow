@@ -2,17 +2,23 @@
 
 namespace Tests\Feature;
 
+use App\Data\Ai\AiExecutionContext;
 use App\Exceptions\TaskTitleReadinessException;
 use App\Jobs\ProcessGeoFlowTaskJob;
+use App\Models\Admin;
+use App\Models\AiModel;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\GeoFlow\AiExecutionContextFactory;
 use App\Services\GeoFlow\JobQueueService;
 use App\Services\GeoFlow\TaskTitleReadinessService;
 use App\Services\GeoFlow\WorkerExecutionService;
+use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Mockery;
 use Tests\TestCase;
 
@@ -38,9 +44,17 @@ class TaskTitleReadinessQueueTest extends TestCase
             'status' => 'active',
             'schedule_enabled' => 1,
         ]);
+        [$admin, $model] = $this->bindAiIdentity($task, 'worker-title-readiness');
+        $run = TaskRun::query()->create([
+            'task_id' => $task->id,
+            'status' => 'running',
+            'started_at' => now(),
+        ]);
+        $this->persistRunIdentity($run, $admin, $model, (string) Str::uuid());
+        $context = app(AiExecutionContextFactory::class)->fromTaskRun($run->fresh());
 
         try {
-            app(WorkerExecutionService::class)->executeTask((int) $task->id);
+            app(WorkerExecutionService::class)->executeTask((int) $task->id, $context);
             $this->fail('The worker should raise a structured title readiness exception.');
         } catch (TaskTitleReadinessException $exception) {
             $this->assertSame('task_title_library_not_ready', $exception->getErrorCode());
@@ -69,6 +83,7 @@ class TaskTitleReadinessQueueTest extends TestCase
             'next_run_at' => now()->addMinute(),
             'max_retry_count' => 3,
         ]);
+        [$admin, $model] = $this->bindAiIdentity($task, 'queue-title-readiness');
         $run = TaskRun::query()->create([
             'task_id' => $task->id,
             'status' => 'pending',
@@ -83,6 +98,8 @@ class TaskTitleReadinessQueueTest extends TestCase
             'status' => 'pending',
             'meta' => ['attempt_count' => 0, 'max_attempts' => 3],
         ]);
+        $this->persistRunIdentity($run, $admin, $model);
+        $this->persistRunIdentity($otherPending, $admin, $model);
         $report = app(TaskTitleReadinessService::class)->inspect(
             (int) $library->id,
             3,
@@ -93,7 +110,8 @@ class TaskTitleReadinessQueueTest extends TestCase
         $worker = Mockery::mock(WorkerExecutionService::class);
         $worker->shouldReceive('executeTask')
             ->once()
-            ->with((int) $task->id)
+            ->withArgs(fn (int $taskId, AiExecutionContext $context): bool => $taskId === (int) $task->id
+                && $context->modelAccessAdminId === (int) $admin->id)
             ->andThrow(new TaskTitleReadinessException($report, 409));
 
         (new ProcessGeoFlowTaskJob((int) $run->id))->handle(
@@ -159,5 +177,53 @@ class TaskTitleReadinessQueueTest extends TestCase
         $this->assertFalse($run->fresh()->meta['retryable']);
         $this->assertSame('paused', $task->fresh()->status);
         Queue::assertNothingPushed();
+    }
+
+    /** @return array{Admin,AiModel} */
+    private function bindAiIdentity(Task $task, string $username): array
+    {
+        $admin = Admin::query()->create([
+            'username' => $username,
+            'password' => 'safe-password',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $model = AiModel::query()->create([
+            'name' => $username.' model',
+            'version' => 'test',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
+            'model_id' => $username.'-model',
+            'model_type' => 'chat',
+            'api_url' => 'https://ai.example.test',
+            'status' => 'active',
+        ]);
+        $model->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
+        $task->forceFill([
+            'ai_model_id' => $model->id,
+            'model_access_admin_id' => $admin->id,
+            'model_access_admin_role' => 'admin',
+            'model_access_policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
+        ])->save();
+
+        return [$admin, $model];
+    }
+
+    private function persistRunIdentity(
+        TaskRun $run,
+        Admin $admin,
+        AiModel $model,
+        ?string $executionLeaseToken = null,
+    ): void {
+        $run->forceFill([
+            'model_access_admin_id' => $admin->id,
+            'model_access_admin_role' => 'admin',
+            'ai_config_access_version' => (int) $admin->ai_config_access_version,
+            'requested_ai_model_id' => $model->id,
+            'resolver_policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
+            'execution_lease_token' => $executionLeaseToken,
+        ])->save();
     }
 }
