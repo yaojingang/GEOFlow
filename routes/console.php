@@ -116,6 +116,11 @@ Schedule::command('geoflow:recover-knowledge-syncs')
     ->onOneServer()
     ->withoutOverlapping(10);
 
+Schedule::command('geoflow:recover-url-imports')
+    ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping(2);
+
 Schedule::command('geoflow:recover-title-generations')
     ->everyFiveMinutes()
     ->onOneServer()
