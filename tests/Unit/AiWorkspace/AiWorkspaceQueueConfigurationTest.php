@@ -50,11 +50,12 @@ final class AiWorkspaceQueueConfigurationTest extends TestCase
         }
     }
 
-    public function test_recovery_schedule_is_disabled(): void
+    public function test_recovery_schedule_releases_expired_workspace_leases(): void
     {
         $schedule = (string) file_get_contents(dirname(__DIR__, 3).'/routes/console.php');
 
-        self::assertStringNotContainsString('recover-ai-workspace', $schedule);
+        self::assertStringContainsString("Schedule::command('geoflow:recover-ai-workspace')", $schedule);
+        self::assertStringContainsString('->everyMinute()', $schedule);
         self::assertStringContainsString('prune-ai-workspace', $schedule);
     }
 

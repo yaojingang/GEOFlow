@@ -62,8 +62,9 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         $firstTextMilliseconds = null;
 
         try {
-            foreach ($this->models($context) as $model) {
+            foreach ($this->models($context) as $candidate) {
                 $attempts++;
+                $model = $candidate;
                 $reservation = null;
                 $emitted = false;
                 $answer = '';
@@ -76,7 +77,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                 $receipt = null;
 
                 try {
-                    $receipt = $this->executionGuard->receiptFor($context, $model);
+                    [$model, $receipt] = $this->executionGuard->claimModelForCall($context, (int) $candidate->getKey());
                     $timeout = $this->remainingAttemptTimeout($deadline);
                     [$provider, $reservation, $driver] = $this->modelContext($model, $context->modelAccessAdminId);
                     $agent = new AdminHelpAssistant(
@@ -272,11 +273,12 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
             $attempt = 0;
             $deadline = microtime(true) + (int) config('ai-workspace.model_total_timeout_seconds', 90);
 
-            foreach ($this->models($context) as $model) {
+            foreach ($this->models($context) as $candidate) {
                 $attempt++;
+                $model = $candidate;
                 $reservation = null;
                 try {
-                    $receipt = $this->executionGuard->receiptFor($context, $model);
+                    [$model, $receipt] = $this->executionGuard->claimModelForCall($context, (int) $candidate->getKey());
                     $timeout = $this->remainingAttemptTimeout($deadline);
                     [$provider, $reservation] = $this->modelContext($model, $context->modelAccessAdminId);
                     $agent = new AdminHelpAssistant(

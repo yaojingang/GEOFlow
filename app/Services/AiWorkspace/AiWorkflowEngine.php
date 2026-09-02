@@ -586,6 +586,7 @@ final readonly class AiWorkflowEngine
                     return;
                 }
                 $leaseOwner = $this->claimStep($step, $workerToken);
+                $this->renewExecutionLease((string) $run->id, $workerToken);
                 $run = $this->states->touchEventLocked(
                     (string) $run->id,
                     ['status_message' => '已领取“'.($step->capability_name ?: $step->capability_key).'”执行租约。'],
@@ -726,6 +727,120 @@ final readonly class AiWorkflowEngine
             return $completed;
         });
         $this->realtime->broadcast($run);
+    }
+
+    public function recoverExpiredExecutions(int $limit = 50): int
+    {
+        $ids = AiWorkspaceRun::query()
+            ->whereIn('state', ['running', 'cancel_requested'])
+            ->where(function ($query): void {
+                $query->whereNull('execution_lease_expires_at')
+                    ->orWhere('execution_lease_expires_at', '<=', now());
+            })
+            ->orderBy('id')
+            ->limit(max(1, min(500, $limit)))
+            ->pluck('id');
+        $recoveredCount = 0;
+
+        foreach ($ids as $id) {
+            $run = AiWorkspaceRun::query()->find($id);
+            if (! $run instanceof AiWorkspaceRun) {
+                continue;
+            }
+            $externalStep = $run->steps()
+                ->where('state', 'running')
+                ->where('external_operation', true)
+                ->first();
+            if ($externalStep instanceof AiWorkspaceStep) {
+                $recovered = $this->reconcileExpiredExternalStep($externalStep)
+                    ?? $this->recoverPreparedExternalStep($externalStep);
+                if (! $recovered instanceof AiWorkspaceRun) {
+                    $recovered = DB::transaction(function () use ($id, $externalStep): ?AiWorkspaceRun {
+                        $lockedRun = AiWorkspaceRun::query()->whereKey($id)->lockForUpdate()->first();
+                        $lockedStep = AiWorkspaceStep::query()->whereKey($externalStep->id)->lockForUpdate()->first();
+                        if (! $lockedRun instanceof AiWorkspaceRun
+                            || ! $lockedStep instanceof AiWorkspaceStep
+                            || ! in_array((string) $lockedRun->state, ['running', 'cancel_requested'], true)
+                            || $lockedRun->execution_lease_expires_at?->isFuture()
+                            || (string) $lockedStep->state !== 'running') {
+                            return null;
+                        }
+                        $lockedStep->forceFill([
+                            'state' => 'outcome_unknown',
+                            'error_message' => '过期执行租约包含未确认的外部操作。',
+                            'lease_owner' => null,
+                            'lease_expires_at' => null,
+                            'finished_at' => now(),
+                        ])->save();
+
+                        return $this->states->transition($lockedRun, 'outcome_unknown', [
+                            'failure_code' => 'outcome_unknown',
+                            'failure_message' => '过期执行租约包含未确认的外部操作。',
+                            'status_message' => '外部操作结果需要人工确认。',
+                            'retryable_failure' => false,
+                        ]);
+                    }, 3);
+                }
+            } else {
+                $recovered = DB::transaction(function () use ($id): ?AiWorkspaceRun {
+                    $locked = AiWorkspaceRun::query()->whereKey($id)->lockForUpdate()->first();
+                    if (! $locked instanceof AiWorkspaceRun
+                        || ! in_array((string) $locked->state, ['running', 'cancel_requested'], true)
+                        || $locked->execution_lease_expires_at?->isFuture()) {
+                        return null;
+                    }
+                    if (! $this->executionGuard->identityComplete($locked)) {
+                        return $this->states->transition($locked, 'failed', [
+                            'failure_code' => 'authorization_revoked',
+                            'failure_message' => 'AI 工作台历史运行缺少完整执行身份。',
+                            'status_message' => 'AI 工作台历史运行缺少完整执行身份。',
+                            'retryable_failure' => false,
+                        ]);
+                    }
+                    if ((string) $locked->state === 'cancel_requested') {
+                        $locked->steps()->whereIn('state', ['pending', 'running'])->update([
+                            'state' => 'skipped',
+                            'error_message' => '运行取消后已由恢复任务收口。',
+                            'lease_owner' => null,
+                            'lease_expires_at' => null,
+                            'finished_at' => now(),
+                        ]);
+                        $terminal = $locked->steps()->where('state', 'completed')->exists()
+                            ? 'partially_completed'
+                            : 'cancelled';
+
+                        return $this->states->transition($locked, $terminal, [
+                            'status_message' => '过期运行已按取消请求收口。',
+                        ]);
+                    }
+
+                    $locked->steps()
+                        ->where('state', 'running')
+                        ->where('external_operation', false)
+                        ->update([
+                            'state' => 'pending',
+                            'error_message' => null,
+                            'lease_owner' => null,
+                            'lease_expires_at' => null,
+                            'started_at' => null,
+                            'finished_at' => null,
+                        ]);
+                    $queued = $this->states->transition($locked, 'queued', [
+                        'status_message' => '过期执行租约已轮换并重新入队。',
+                    ]);
+                    DB::afterCommit(fn () => $this->dispatch($queued));
+
+                    return $queued;
+                }, 3);
+            }
+
+            if ($recovered instanceof AiWorkspaceRun) {
+                $recoveredCount++;
+                $this->realtime->broadcast($recovered);
+            }
+        }
+
+        return $recoveredCount;
     }
 
     private function dependencyState(AiWorkspaceRun $run, AiWorkspaceStep $step): string
@@ -979,6 +1094,27 @@ final readonly class AiWorkflowEngine
         $step->refresh();
 
         return $leaseOwner;
+    }
+
+    private function renewExecutionLease(string $runId, string $workerToken): void
+    {
+        $leaseMinutes = max(
+            1,
+            (int) config('ai-workspace.execution_lease_minutes', 15),
+            (int) config('ai-workspace.step_lease_minutes', 20),
+        );
+        $updated = AiWorkspaceRun::query()
+            ->whereKey($runId)
+            ->where('state', 'running')
+            ->where('execution_lease_token', $workerToken)
+            ->where('execution_lease_expires_at', '>', now())
+            ->update([
+                'execution_lease_expires_at' => now()->addMinutes($leaseMinutes),
+                'updated_at' => now(),
+            ]);
+        if ($updated !== 1) {
+            throw new RuntimeException('AI 工作台执行租约已经失效。');
+        }
     }
 
     /** @return array<string,mixed> */

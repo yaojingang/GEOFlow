@@ -187,6 +187,50 @@ final readonly class AiWorkspaceExecutionAccessGuard
         );
     }
 
+    /** @return array{AiModel,AiWorkspaceModelExecutionReceipt} */
+    public function claimModelForCall(
+        AiWorkspaceExecutionContext $context,
+        AiModel|int $model,
+    ): array {
+        return DB::transaction(function () use ($context, $model): array {
+            $admin = $this->assertCurrent($context);
+            $currentModel = $this->accessGuard->assertModelForPersistedAdminSnapshot(
+                $context->toSafeArray(),
+                $model instanceof AiModel ? (int) $model->getKey() : $model,
+                currentAdmin: $admin,
+            );
+            $source = (int) $currentModel->owner_admin_id === (int) $admin->getKey()
+                ? 'personal'
+                : 'shared';
+
+            if ($context->runId !== null) {
+                $run = AiWorkspaceRun::query()->whereKey($context->runId)->lockForUpdate()->firstOrFail();
+                $leaseExpiresField = $context->leaseKind === 'resolution'
+                    ? 'resolution_lease_expires_at'
+                    : 'execution_lease_expires_at';
+                $minimumLeaseExpiry = now()->addSeconds($this->modelCallLeaseSeconds());
+                $run->forceFill([
+                    'resolved_ai_model_id' => (int) $currentModel->getKey(),
+                    'resolved_model_source' => $source,
+                    'model_resolved_at' => now(),
+                    $leaseExpiresField => $run->{$leaseExpiresField}?->greaterThan($minimumLeaseExpiry)
+                        ? $run->{$leaseExpiresField}
+                        : $minimumLeaseExpiry,
+                ])->save();
+            }
+
+            return [
+                $currentModel,
+                new AiWorkspaceModelExecutionReceipt(
+                    modelId: (int) $currentModel->getKey(),
+                    modelSource: $source,
+                    configurationDigest: $this->modelConfigurationDigest($currentModel),
+                    requestId: $context->requestId,
+                ),
+            ];
+        }, 3);
+    }
+
     public function assertReceiptCurrent(
         AiWorkspaceExecutionContext $context,
         AiWorkspaceModelExecutionReceipt $receipt,
@@ -277,5 +321,14 @@ final readonly class AiWorkspaceExecutionAccessGuard
             'archived_at' => $model->archived_at?->toISOString(),
             'max_tokens' => $model->max_tokens,
         ], JSON_THROW_ON_ERROR));
+    }
+
+    private function modelCallLeaseSeconds(): int
+    {
+        return max(
+            60,
+            (int) config('ai-workspace.model_total_timeout_seconds', 90) + 30,
+            (int) config('ai-workspace.model_attempt_timeout_seconds', 30) + 30,
+        );
     }
 }

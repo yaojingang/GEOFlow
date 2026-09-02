@@ -8,7 +8,6 @@ use App\Models\AiConversationMessage;
 use App\Services\AiWorkspace\AiConversationRepository;
 use App\Services\AiWorkspace\AiWorkspaceModelRuntime;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
-use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
 
 final class AiWorkspaceWorkflowTest extends TestCase
@@ -48,10 +47,11 @@ final class AiWorkspaceWorkflowTest extends TestCase
         self::assertStringNotContainsString('AiWorkflowEngine', $provider);
     }
 
-    public function test_legacy_recovery_command_is_a_safe_no_op(): void
+    public function test_recovery_command_reports_when_no_workspace_runs_are_stale(): void
     {
-        self::assertSame(0, Artisan::call('geoflow:recover-ai-workspace'));
-        self::assertStringContainsString('旧版 AI 工作流已停用', Artisan::output());
+        $this->artisan('geoflow:recover-ai-workspace')
+            ->expectsOutputToContain('Recovered AI workspace runs: 0')
+            ->assertSuccessful();
     }
 
     public function test_no_active_code_dispatches_legacy_workspace_jobs(): void

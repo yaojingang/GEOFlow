@@ -208,6 +208,120 @@ final class AdminAiWorkspaceExecutionIdentityTest extends TestCase
         );
     }
 
+    public function test_fallback_model_is_registered_before_outbound_and_blocks_update_and_delete(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('workspace-fallback-mutation-gate', 'super_admin');
+        $this->model($admin, 'workspace-fallback-gate-primary', 1);
+        $secondary = $this->model($admin, 'workspace-fallback-gate-secondary', 2);
+        [$run, $context] = $this->answeringRunContext($admin, 'fallback-mutation-gate');
+        $updated = null;
+        $deleted = null;
+        $calls = 0;
+        AdminHelpAssistant::fake(function () use (&$calls, &$updated, &$deleted, $admin, $secondary): string {
+            $calls++;
+            if ($calls === 1) {
+                throw $this->requestException(429, 'temporary primary failure');
+            }
+            $mutations = app(AdminAiModelMutationService::class);
+            $updated = $mutations->update(
+                $admin,
+                (int) $secondary->id,
+                ['name' => 'must remain locked'],
+                AiModel::ACCESS_SCOPE_USER_CONTENT,
+            );
+            $deleted = $mutations->delete($admin, (int) $secondary->id);
+
+            return 'secondary answer';
+        })->preventStrayPrompts();
+
+        self::assertSame('secondary answer', app(AiWorkspaceModelRuntime::class)->answer('问题', '上下文', [], $context));
+        self::assertFalse($updated->succeeded());
+        self::assertFalse($deleted->succeeded());
+        self::assertSame('task', $updated->error);
+        self::assertSame('task', $deleted->error);
+        self::assertSame((int) $secondary->id, (int) $run->fresh()->resolved_ai_model_id);
+    }
+
+    public function test_fallback_claim_uses_the_freshly_locked_model_configuration(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('workspace-fallback-fresh-model', 'super_admin');
+        $this->model($admin, 'workspace-fallback-fresh-primary', 1);
+        $secondary = $this->model($admin, 'workspace-fallback-fresh-secondary', 2);
+        [, $context] = $this->answeringRunContext($admin, 'fallback-fresh-model');
+        $calls = 0;
+        AdminHelpAssistant::fake(function () use (&$calls, $admin, $secondary): string {
+            $calls++;
+            if ($calls === 1) {
+                $updated = app(AdminAiModelMutationService::class)->update(
+                    $admin,
+                    (int) $secondary->id,
+                    ['model_id' => 'workspace-fallback-fresh-secondary-v2'],
+                    AiModel::ACCESS_SCOPE_USER_CONTENT,
+                );
+                self::assertTrue($updated->succeeded());
+                throw $this->requestException(429, 'temporary primary failure');
+            }
+
+            return 'fresh secondary answer';
+        })->preventStrayPrompts();
+
+        self::assertSame('fresh secondary answer', app(AiWorkspaceModelRuntime::class)->answer('问题', '上下文', [], $context));
+        AdminHelpAssistant::assertPrompted(
+            static fn ($prompt): bool => $prompt->model === 'workspace-fallback-fresh-secondary-v2',
+        );
+        AdminHelpAssistant::assertNotPrompted(
+            static fn ($prompt): bool => $prompt->model === 'workspace-fallback-fresh-secondary',
+        );
+    }
+
+    public function test_model_call_renews_a_short_resolution_lease_for_the_outbound_budget(): void
+    {
+        Queue::fake();
+        config()->set('ai-workspace.resolution_lease_minutes', 1);
+        config()->set('ai-workspace.model_total_timeout_seconds', 180);
+        $admin = $this->admin('workspace-model-call-renewal', 'super_admin');
+        $this->model($admin, 'workspace-model-call-renewal-model');
+        [, $context] = $this->answeringRunContext($admin, 'model-call-renewal');
+        AdminHelpAssistant::fake(function (): string {
+            $this->travel(2)->minutes();
+
+            return 'long model answer';
+        })->preventStrayPrompts();
+
+        self::assertSame('long model answer', app(AiWorkspaceModelRuntime::class)->answer('问题', '上下文', [], $context));
+    }
+
+    public function test_recovery_rotates_expired_execution_lease_and_rejects_the_old_worker_context(): void
+    {
+        Queue::fake();
+        $admin = $this->admin('workspace-expired-execution-recovery', 'super_admin');
+        $this->model($admin, 'workspace-expired-execution-model');
+        $run = app(AiWorkspaceCoordinator::class)->createRun(
+            $admin,
+            app(AiConversationRepository::class)->create($admin),
+            '请恢复过期运行。',
+        );
+        $oldLease = (string) Str::uuid7();
+        $run->forceFill([
+            'state' => 'running',
+            'execution_lease_token' => $oldLease,
+            'execution_lease_expires_at' => now()->subMinute(),
+        ])->save();
+        $guard = app(AiWorkspaceExecutionAccessGuard::class);
+        $oldContext = $guard->contextFromExecutionRun($run->fresh(), $oldLease);
+
+        $this->artisan('geoflow:recover-ai-workspace', ['--limit' => 10])
+            ->expectsOutputToContain('Recovered AI workspace runs: 1')
+            ->assertSuccessful();
+
+        self::assertSame('queued', $run->fresh()->state);
+        self::assertNull($run->fresh()->execution_lease_token);
+        $this->expectException(AiModelAccessException::class);
+        $guard->assertCurrent($oldContext);
+    }
+
     public function test_access_revoked_after_provider_return_discards_the_assistant_message_and_sanitizes_failure_state(): void
     {
         $admin = $this->admin('workspace-revoked-after-return', 'super_admin');
@@ -911,6 +1025,27 @@ final class AdminAiWorkspaceExecutionIdentityTest extends TestCase
         );
 
         return [$coordinator, $run->fresh(['modelAccessAdmin']), $lease, $receipt, $model];
+    }
+
+    /** @return array{AiWorkspaceRun,AiWorkspaceExecutionContext} */
+    private function answeringRunContext(Admin $admin, string $suffix): array
+    {
+        $run = app(AiWorkspaceCoordinator::class)->createRun(
+            $admin,
+            app(AiConversationRepository::class)->create($admin),
+            '请执行模型回答：'.$suffix,
+        );
+        $lease = (string) Str::uuid7();
+        $run->forceFill([
+            'state' => 'answering',
+            'resolution_lease_owner' => $lease,
+            'resolution_lease_expires_at' => now()->addMinute(),
+        ])->save();
+
+        return [
+            $run,
+            app(AiWorkspaceExecutionAccessGuard::class)->contextFromResolutionRun($run->fresh(), $lease),
+        ];
     }
 }
 

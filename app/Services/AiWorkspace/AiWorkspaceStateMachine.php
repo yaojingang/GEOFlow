@@ -119,6 +119,10 @@ final class AiWorkspaceStateMachine
                 'failure_code' => null,
                 'failure_message' => null,
                 'finished_at' => null,
+                'answer' => null,
+                'answer_chunk_sequence' => 0,
+                'answer_is_partial' => false,
+                'first_token_at' => null,
             ])->save();
             $this->traces->recordTransition($locked, [
                 'event_type' => 'run.queued',

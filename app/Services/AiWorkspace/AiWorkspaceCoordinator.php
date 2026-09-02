@@ -471,6 +471,60 @@ final readonly class AiWorkspaceCoordinator
         }
     }
 
+    public function recoverExpiredResolutions(int $limit = 50): int
+    {
+        $ids = AiWorkspaceRun::query()
+            ->whereIn('state', ['received', 'planning', 'answering'])
+            ->where(function ($query): void {
+                $query->where('state', '!=', 'received')
+                    ->orWhereNotNull('queued_at')
+                    ->orWhere('mode', '!=', 'followup')
+                    ->orWhereNull('parent_run_id');
+            })
+            ->where(function ($query): void {
+                $query->whereNull('resolution_lease_expires_at')
+                    ->orWhere('resolution_lease_expires_at', '<=', now());
+            })
+            ->orderBy('id')
+            ->limit(max(1, min(500, $limit)))
+            ->pluck('id');
+        $recoveredCount = 0;
+
+        foreach ($ids as $id) {
+            $recovered = DB::transaction(function () use ($id): ?AiWorkspaceRun {
+                $run = AiWorkspaceRun::query()->whereKey($id)->lockForUpdate()->first();
+                if (! $run instanceof AiWorkspaceRun
+                    || ! in_array((string) $run->state, ['received', 'planning', 'answering'], true)
+                    || $run->resolution_lease_expires_at?->isFuture()) {
+                    return null;
+                }
+                if (! $this->executionGuard->identityComplete($run)) {
+                    return $this->states->transition($run, 'failed', [
+                        'failure_code' => 'authorization_revoked',
+                        'failure_message' => 'AI 工作台历史运行缺少完整执行身份。',
+                        'status_message' => 'AI 工作台历史运行缺少完整执行身份。',
+                        'retryable_failure' => false,
+                    ]);
+                }
+
+                $recovered = $this->states->recoverResolution($run);
+                $leaseOwner = (string) Str::uuid7();
+                DB::afterCommit(static fn () => ResolveAiWorkspaceRunJob::dispatch((string) $recovered->id, $leaseOwner)
+                    ->onConnection((string) config('ai-workspace.interactive_connection', config('queue.default')))
+                    ->onQueue((string) config('ai-workspace.interactive_queue', 'ai-workspace-interactive')));
+
+                return $recovered;
+            }, 3);
+
+            if ($recovered instanceof AiWorkspaceRun) {
+                $recoveredCount++;
+                $this->realtime->broadcast($recovered);
+            }
+        }
+
+        return $recoveredCount;
+    }
+
     public function markJobFailure(string $runId, Throwable $exception, ?string $leaseOwner = null): void
     {
         $run = AiWorkspaceRun::query()->find($runId);

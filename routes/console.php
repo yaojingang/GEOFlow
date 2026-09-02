@@ -118,6 +118,11 @@ Schedule::command('geoflow:recover-knowledge-syncs')
     ->onOneServer()
     ->withoutOverlapping(10);
 
+Schedule::command('geoflow:recover-ai-workspace')
+    ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping(10);
+
 Schedule::command('geoflow:recover-url-imports')
     ->everyMinute()
     ->onOneServer()
