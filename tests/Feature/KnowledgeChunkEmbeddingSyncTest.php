@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Data\Ai\SystemAiIdentity;
+use App\Exceptions\PermanentAiProviderException;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\KnowledgeBase;
@@ -47,7 +48,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
 
         $this->assertSame((int) $model->id, (int) $chunk->embedding_model_id);
         $this->assertSame(3, (int) $chunk->embedding_dimensions);
-        $this->assertSame('ai.test', (string) $chunk->embedding_provider);
+        $this->assertSame('https://ai.test/v1', (string) $chunk->embedding_provider);
         $this->assertSame([0.1, 0.2, 0.3], json_decode((string) $chunk->embedding_json, true));
         $this->assertNull($chunk->embedding_vector);
 
@@ -684,7 +685,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
         $chunk = $knowledgeBase->chunks()->firstOrFail();
 
         $this->assertSame((int) $model->id, (int) $chunk->embedding_model_id);
-        $this->assertSame('ark.cn-beijing.volces.com', (string) $chunk->embedding_provider);
+        $this->assertSame('https://ark.cn-beijing.volces.com/api/v3', (string) $chunk->embedding_provider);
         $this->assertSame([0.21, 0.32, 0.43], json_decode((string) $chunk->embedding_json, true));
 
         Http::assertSent(fn ($request): bool => $request->url() === 'https://ark.cn-beijing.volces.com/api/v3/embeddings'
@@ -842,7 +843,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
         $this->assertSame(3, (int) $model->total_used);
     }
 
-    public function test_sync_retries_embedding_batches_as_single_requests_when_provider_rejects_batch_size(): void
+    public function test_sync_treats_provider_batch_parameter_rejection_as_permanent(): void
     {
         config(['geoflow.embedding_batch_size' => 4]);
 
@@ -880,21 +881,15 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             ->map(static fn (int $index): string => "## 第 {$index} 节\n\n第 {$index} 节内容。")
             ->implode("\n\n");
 
-        $this->syncKnowledge((int) $knowledgeBase->id, $content, true);
-
-        $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->get();
-
-        $this->assertCount(4, $chunks);
-        $chunks->each(function ($chunk) use ($model): void {
-            $this->assertSame((int) $model->id, (int) $chunk->embedding_model_id);
-            $this->assertSame([0.4, 0.5, 0.6], json_decode((string) $chunk->embedding_json, true));
-        });
-
-        Http::assertSentCount(5);
-
-        $model->refresh();
-        $this->assertSame(4, (int) $model->used_today);
-        $this->assertSame(4, (int) $model->total_used);
+        $this->expectException(PermanentAiProviderException::class);
+        try {
+            $this->syncKnowledge((int) $knowledgeBase->id, $content, true);
+        } finally {
+            Http::assertSentCount(1);
+            $this->assertSame('failed', (string) $knowledgeBase->fresh()->chunk_sync_status);
+            $this->assertSame(0, $knowledgeBase->chunks()->count());
+            $this->assertSame(0, (int) $model->fresh()->used_today);
+        }
     }
 
     public function test_query_embedding_uses_gemini_search_result_prefix_without_task_type(): void
@@ -989,9 +984,12 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
         ])->save();
         $knowledgeBase = new KnowledgeBase;
         $knowledgeBase->forceFill([
-            'chunk_embedding_fingerprint' => app(KnowledgeEmbeddingModelFingerprint::class)->forModel($model),
+            'chunk_embedding_fingerprint' => app(KnowledgeEmbeddingModelFingerprint::class)->forModel($model, 3),
             'chunk_embedding_dimensions' => 3,
             'chunk_embedding_provider' => app(KnowledgeEmbeddingModelFingerprint::class)->provider($model),
+            'chunk_embedding_model_id' => $model->id,
+            'chunk_embedding_profile_version' => app(KnowledgeEmbeddingModelFingerprint::class)->profileVersion(),
+            'chunk_embedding_profile_digest' => app(KnowledgeEmbeddingModelFingerprint::class)->forModel($model, 3),
         ]);
 
         return app(KnowledgeChunkSyncService::class)

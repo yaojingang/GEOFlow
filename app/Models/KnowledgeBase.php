@@ -60,6 +60,10 @@ class KnowledgeBase extends Model
             'effective_date' => 'date',
             'chunk_sync_require_real_embedding' => 'boolean',
             'chunk_embedding_dimensions' => 'integer',
+            'chunk_sync_embedding_profile_version' => 'integer',
+            'chunk_sync_embedding_model_id' => 'integer',
+            'chunk_embedding_model_id' => 'integer',
+            'chunk_embedding_profile_version' => 'integer',
             'chunk_synced_at' => 'datetime',
         ];
     }

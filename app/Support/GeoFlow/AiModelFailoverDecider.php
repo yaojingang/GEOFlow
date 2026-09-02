@@ -19,7 +19,7 @@ final class AiModelFailoverDecider
 
                 return $status >= 400
                     && $status < 500
-                    && ! in_array($status, [402, 408, 425, 429], true);
+                    && ! in_array($status, [408, 425, 429], true);
             }
 
             $current = $current->getPrevious();
@@ -37,11 +37,11 @@ final class AiModelFailoverDecider
             if ($current instanceof RequestException && $current->response !== null) {
                 $status = $current->response->status();
 
-                if ($status >= 400 && $status < 500 && ! in_array($status, [402, 408, 425, 429], true)) {
+                if ($status >= 400 && $status < 500 && ! in_array($status, [408, 425, 429], true)) {
                     return false;
                 }
 
-                if ($status >= 500 || in_array($status, [402, 408, 425, 429], true)) {
+                if ($status >= 500 || in_array($status, [408, 425, 429], true)) {
                     $transientFailure = true;
                 }
             }

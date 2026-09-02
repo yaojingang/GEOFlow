@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Data\Ai\SystemAiIdentity;
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
 use App\Models\KnowledgeBase;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use App\Services\GeoFlow\KnowledgeChunkSyncService;
@@ -44,6 +46,8 @@ class PrepareKnowledgeChunkSyncJob implements ShouldBeUniqueUntilProcessing, Sho
     ): void {
         $identity = SystemAiIdentity::fromKnowledgeIndexPurpose($this->systemPurpose);
         if (! $coordinator->isCurrent($this->knowledgeBaseId, $this->syncToken)) {
+            $coordinator->markFailed($this->knowledgeBaseId, $this->syncToken, 'knowledge_embedding_profile_incompatible');
+
             return;
         }
 
@@ -52,12 +56,18 @@ class PrepareKnowledgeChunkSyncJob implements ShouldBeUniqueUntilProcessing, Sho
             return;
         }
 
-        $syncService->prepareStagingSync(
-            $this->knowledgeBaseId,
-            (string) $knowledgeBase->content,
-            $this->syncToken,
-            $identity,
-        );
+        try {
+            $syncService->prepareStagingSync(
+                $this->knowledgeBaseId,
+                (string) $knowledgeBase->content,
+                $this->syncToken,
+                $identity,
+            );
+        } catch (AiModelAccessException|PermanentAiProviderException $exception) {
+            $coordinator->markFailed($this->knowledgeBaseId, $this->syncToken, $exception->getMessage());
+
+            return;
+        }
 
         if (! $coordinator->isCurrent($this->knowledgeBaseId, $this->syncToken)) {
             $syncService->discardStagingSync($this->knowledgeBaseId, $this->syncToken);

@@ -280,12 +280,18 @@ class KnowledgeRetrievalService
             ?? ''));
 
         $queryTerms = $this->termFrequencies($query);
+        $servingProfileCompatible = $this->servingEmbeddingProfileCompatible($knowledgeBase);
         $hasRealEmbeddingRows = $allowRemoteEmbedding
             && trim($query) !== ''
-            && $this->knowledgeBaseHasRealEmbeddingRows($knowledgeBaseId, $servingGeneration);
+            && $servingProfileCompatible
+            && $this->knowledgeBaseHasRealEmbeddingRows($knowledgeBase, $servingGeneration);
         $embeddingResult = $hasRealEmbeddingRows
             ? $this->knowledgeChunkSyncService->generateCompatibleQueryEmbedding($query, $knowledgeBase, $identity)
-            : KnowledgeQueryEmbeddingResult::incompatible('index_has_no_real_embedding');
+            : KnowledgeQueryEmbeddingResult::incompatible(
+                $allowRemoteEmbedding && trim($query) !== '' && ! $servingProfileCompatible
+                    ? 'index_embedding_profile_incompatible'
+                    : 'index_has_no_real_embedding',
+            );
         if ($hasRealEmbeddingRows && ! $embeddingResult->successful()) {
             Log::info('geoflow.knowledge_retrieval_embedding_fallback', [
                 'knowledge_base_id' => $knowledgeBaseId,
@@ -297,7 +303,7 @@ class KnowledgeRetrievalService
             ? $this->knowledgeChunkSyncService->queryVectorLiteral($embeddingResult->vector)
             : '';
         $pgvectorScores = $queryVectorLiteral !== ''
-            ? $this->fetchPgvectorScores($knowledgeBaseId, $servingGeneration, $queryVectorLiteral, max($candidateLimit, 16))
+            ? $this->fetchPgvectorScores($knowledgeBase, $servingGeneration, $queryVectorLiteral, max($candidateLimit, 16))
             : [];
 
         $rows = $this->loadCandidateRows($knowledgeBaseId, $servingGeneration, $queryTerms, $pgvectorScores, $candidateLimit);
@@ -337,7 +343,7 @@ class KnowledgeRetrievalService
             $lexicalScore = $this->lexicalScore($queryTerms, $this->termFrequencies($searchText));
             $titleScore = $this->lexicalScore($queryTerms, $this->termFrequencies($title."\n".$sectionPath));
             $metadataScore = $this->metadataScore($metadata);
-            $vectorScore = $pgvectorScores[$chunkIndex] ?? $this->localVectorScore($row, $queryVector, $useRealEmbeddingScore);
+            $vectorScore = $pgvectorScores[$chunkIndex] ?? $this->localVectorScore($row, $knowledgeBase, $queryVector, $useRealEmbeddingScore);
             $score = ($vectorScore * 0.45) + ($lexicalScore * 0.35) + ($titleScore * 0.12) + ($metadataScore * 0.08);
 
             $scored[] = [
@@ -523,6 +529,9 @@ class KnowledgeRetrievalService
             'chunk_embedding_fingerprint',
             'chunk_embedding_dimensions',
             'chunk_embedding_provider',
+            'chunk_embedding_model_id',
+            'chunk_embedding_profile_version',
+            'chunk_embedding_profile_digest',
         ] as $column) {
             if (Schema::hasColumn('knowledge_bases', $column)) {
                 $columns[] = $column;
@@ -606,6 +615,10 @@ class KnowledgeRetrievalService
             'embedding_json',
             'embedding_model_id',
             'embedding_dimensions',
+            'embedding_provider',
+            'embedding_fingerprint',
+            'embedding_profile_version',
+            'embedding_profile_digest',
         ];
 
         foreach (['content_hash', 'source_hash'] as $column) {
@@ -695,16 +708,32 @@ class KnowledgeRetrievalService
         return min(self::MAX_PREFILTER_ROWS, max(80, max(1, $candidateLimit) * 12));
     }
 
-    private function knowledgeBaseHasRealEmbeddingRows(int $knowledgeBaseId, string $generation): bool
+    private function knowledgeBaseHasRealEmbeddingRows(KnowledgeBase $knowledgeBase, string $generation): bool
     {
         return $this->applyServingGeneration(
-            KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId),
+            KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBase->id),
             $generation,
         )
-            ->whereNotNull('embedding_model_id')
-            ->where('embedding_model_id', '>', 0)
-            ->where('embedding_dimensions', '>', 0)
+            ->where('embedding_model_id', (int) $knowledgeBase->chunk_embedding_model_id)
+            ->where('embedding_dimensions', (int) $knowledgeBase->chunk_embedding_dimensions)
+            ->where('embedding_provider', (string) $knowledgeBase->chunk_embedding_provider)
+            ->where('embedding_fingerprint', (string) $knowledgeBase->chunk_embedding_fingerprint)
+            ->where('embedding_profile_version', (int) $knowledgeBase->chunk_embedding_profile_version)
+            ->where('embedding_profile_digest', (string) $knowledgeBase->chunk_embedding_profile_digest)
             ->exists();
+    }
+
+    private function servingEmbeddingProfileCompatible(KnowledgeBase $knowledgeBase): bool
+    {
+        return (int) $knowledgeBase->chunk_embedding_profile_version === KnowledgeEmbeddingModelFingerprint::PROFILE_VERSION
+            && (int) $knowledgeBase->chunk_embedding_model_id > 0
+            && (int) $knowledgeBase->chunk_embedding_dimensions > 0
+            && trim((string) $knowledgeBase->chunk_embedding_provider) !== ''
+            && trim((string) $knowledgeBase->chunk_embedding_fingerprint) !== ''
+            && hash_equals(
+                (string) $knowledgeBase->chunk_embedding_fingerprint,
+                (string) $knowledgeBase->chunk_embedding_profile_digest,
+            );
     }
 
     /** @param  Builder<KnowledgeChunk>  $query */
@@ -919,14 +948,14 @@ class KnowledgeRetrievalService
         return max(0.0, min(1.0, $score));
     }
 
-    private function localVectorScore(object $row, array $queryVector, bool $useRealEmbeddingScore): float
+    private function localVectorScore(object $row, KnowledgeBase $knowledgeBase, array $queryVector, bool $useRealEmbeddingScore): float
     {
         $vector = $this->decodeVector((string) ($row->embedding_json ?? ''));
         if ($vector === []) {
             return 0.0;
         }
 
-        $chunkUsesRealEmbedding = $this->chunkHasRealEmbedding($row);
+        $chunkUsesRealEmbedding = $this->chunkHasRealEmbedding($row, $knowledgeBase);
         if ($useRealEmbeddingScore !== $chunkUsesRealEmbedding) {
             return 0.0;
         }
@@ -934,17 +963,21 @@ class KnowledgeRetrievalService
         return $this->dotProduct($queryVector, $vector);
     }
 
-    private function chunkHasRealEmbedding(object $row): bool
+    private function chunkHasRealEmbedding(object $row, KnowledgeBase $knowledgeBase): bool
     {
-        return (int) ($row->embedding_model_id ?? 0) > 0
-            && (int) ($row->embedding_dimensions ?? 0) > 0;
+        return (int) ($row->embedding_model_id ?? 0) === (int) $knowledgeBase->chunk_embedding_model_id
+            && (int) ($row->embedding_dimensions ?? 0) === (int) $knowledgeBase->chunk_embedding_dimensions
+            && hash_equals((string) ($row->embedding_provider ?? ''), (string) $knowledgeBase->chunk_embedding_provider)
+            && hash_equals((string) ($row->embedding_fingerprint ?? ''), (string) $knowledgeBase->chunk_embedding_fingerprint)
+            && (int) ($row->embedding_profile_version ?? 0) === (int) $knowledgeBase->chunk_embedding_profile_version
+            && hash_equals((string) ($row->embedding_profile_digest ?? ''), (string) $knowledgeBase->chunk_embedding_profile_digest);
     }
 
     /**
      * @return array<int,float>
      */
     private function fetchPgvectorScores(
-        int $knowledgeBaseId,
+        KnowledgeBase $knowledgeBase,
         string $generation,
         string $vectorLiteral,
         int $candidateLimit,
@@ -955,9 +988,17 @@ class KnowledgeRetrievalService
 
         try {
             $generationSql = $generation === '' ? 'AND generation_key IS NULL' : 'AND generation_key = ?';
+            $profileBindings = [
+                (int) $knowledgeBase->chunk_embedding_model_id,
+                (int) $knowledgeBase->chunk_embedding_dimensions,
+                (string) $knowledgeBase->chunk_embedding_provider,
+                (string) $knowledgeBase->chunk_embedding_fingerprint,
+                (int) $knowledgeBase->chunk_embedding_profile_version,
+                (string) $knowledgeBase->chunk_embedding_profile_digest,
+            ];
             $bindings = $generation === ''
-                ? [$vectorLiteral, $knowledgeBaseId, $vectorLiteral, max(1, $candidateLimit)]
-                : [$vectorLiteral, $knowledgeBaseId, $generation, $vectorLiteral, max(1, $candidateLimit)];
+                ? [$vectorLiteral, (int) $knowledgeBase->id, ...$profileBindings, $vectorLiteral, max(1, $candidateLimit)]
+                : [$vectorLiteral, (int) $knowledgeBase->id, $generation, ...$profileBindings, $vectorLiteral, max(1, $candidateLimit)];
             $rows = DB::select(
                 '
                     SELECT chunk_index,
@@ -966,6 +1007,12 @@ class KnowledgeRetrievalService
                     WHERE knowledge_base_id = ?
                       '.$generationSql.'
                       AND embedding_vector IS NOT NULL
+                      AND embedding_model_id = ?
+                      AND embedding_dimensions = ?
+                      AND embedding_provider = ?
+                      AND embedding_fingerprint = ?
+                      AND embedding_profile_version = ?
+                      AND embedding_profile_digest = ?
                     ORDER BY embedding_vector <=> CAST(? AS vector), chunk_index ASC
                     LIMIT ?
                 ',

@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Data\Ai\SystemAiIdentity;
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use App\Services\GeoFlow\KnowledgeChunkSyncService;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -36,16 +38,24 @@ class EmbedKnowledgeChunkBatchJob implements ShouldQueue
     ): void {
         $identity = SystemAiIdentity::fromKnowledgeIndexPurpose($this->systemPurpose);
         if (! $coordinator->isCurrent($this->knowledgeBaseId, $this->syncToken)) {
+            $coordinator->markFailed($this->knowledgeBaseId, $this->syncToken, 'knowledge_embedding_profile_incompatible');
+
             return;
         }
 
-        $result = $syncService->embedStagingBatch(
-            $this->knowledgeBaseId,
-            $this->syncToken,
-            $this->afterRowId,
-            $identity,
-            $this->requireRealEmbedding,
-        );
+        try {
+            $result = $syncService->embedStagingBatch(
+                $this->knowledgeBaseId,
+                $this->syncToken,
+                $this->afterRowId,
+                $identity,
+                $this->requireRealEmbedding,
+            );
+        } catch (AiModelAccessException|PermanentAiProviderException $exception) {
+            $coordinator->markFailed($this->knowledgeBaseId, $this->syncToken, $exception->getMessage());
+
+            return;
+        }
 
         if ($result === null || $result['done']) {
             FinalizeKnowledgeChunkSyncJob::dispatch(

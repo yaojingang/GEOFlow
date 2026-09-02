@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Data\Ai\SystemAiIdentity;
 use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
+use App\Jobs\EmbedKnowledgeChunkBatchJob;
 use App\Jobs\PrepareKnowledgeChunkSyncJob;
 use App\Models\Admin;
 use App\Models\AiModel;
@@ -16,9 +18,11 @@ use App\Services\GeoFlow\KnowledgeEmbeddingModelFingerprint;
 use App\Services\GeoFlow\KnowledgeRetrievalService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
@@ -60,9 +64,9 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         $chunk = $knowledgeBase->chunks()->firstOrFail();
         $this->assertSame($systemModel->id, (int) $chunk->embedding_model_id);
         $this->assertSame(3, (int) $knowledgeBase->chunk_embedding_dimensions);
-        $this->assertSame('system.test', (string) $knowledgeBase->chunk_embedding_provider);
+        $this->assertSame('https://system.test/v1', (string) $knowledgeBase->chunk_embedding_provider);
         $this->assertSame(
-            app(KnowledgeEmbeddingModelFingerprint::class)->forModel($systemModel),
+            app(KnowledgeEmbeddingModelFingerprint::class)->forModel($systemModel, 3),
             (string) $knowledgeBase->chunk_embedding_fingerprint,
         );
         Http::assertSentCount(1);
@@ -161,10 +165,11 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer shared-key'));
     }
 
-    public function test_transient_personal_embedding_failure_can_fall_through_to_a_compatible_shared_model(): void
+    #[DataProvider('transientProviderStatusProvider')]
+    public function test_transient_personal_embedding_failure_can_fall_through_to_a_compatible_shared_model(int $status): void
     {
         Http::fake(fn ($request) => $request->hasHeader('Authorization', 'Bearer personal-key')
-            ? Http::response(['error' => ['message' => 'temporarily unavailable']], 503)
+            ? Http::response(['error' => ['message' => 'temporarily unavailable']], $status)
             : Http::response(['data' => [['embedding' => [0.4, 0.5, 0.6]]]]));
 
         $provider = $this->admin('provider', 'super_admin');
@@ -184,10 +189,11 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         Http::assertSentCount(2);
     }
 
-    public function test_permanent_personal_embedding_rejection_does_not_call_the_shared_model(): void
+    #[DataProvider('permanentProviderStatusProvider')]
+    public function test_permanent_personal_embedding_rejection_does_not_call_the_shared_model(int $status): void
     {
         Http::fake(fn ($request) => $request->hasHeader('Authorization', 'Bearer personal-key')
-            ? Http::response(['error' => ['message' => 'invalid credentials']], 401)
+            ? Http::response(['error' => ['message' => 'request rejected']], $status)
             : Http::response(['data' => [['embedding' => [0.4, 0.5, 0.6]]]]));
 
         $provider = $this->admin('provider', 'super_admin');
@@ -206,6 +212,30 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         $this->assertSame('compatible_embedding_unavailable', $result->reason);
         Http::assertSentCount(1);
         Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer personal-key'));
+    }
+
+    /** @return array<string,array{int}> */
+    public static function permanentProviderStatusProvider(): array
+    {
+        return [
+            '400 invalid request' => [400],
+            '401 invalid credentials' => [401],
+            '402 payment required' => [402],
+            '403 forbidden' => [403],
+            '422 capability mismatch' => [422],
+        ];
+    }
+
+    /** @return array<string,array{int}> */
+    public static function transientProviderStatusProvider(): array
+    {
+        return [
+            '408 timeout' => [408],
+            '425 too early' => [425],
+            '429 rate limited' => [429],
+            '500 provider error' => [500],
+            '503 unavailable' => [503],
+        ];
     }
 
     public function test_personal_embedding_with_missing_credentials_does_not_call_the_shared_model(): void
@@ -384,16 +414,255 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         }
     }
 
+    public function test_in_place_system_model_change_cannot_mix_a_new_batch_into_the_frozen_pipeline(): void
+    {
+        config(['geoflow.knowledge_embedding_job_size' => 1]);
+        Queue::fake();
+        $superAdmin = $this->admin('system-owner', 'super_admin');
+        $systemModel = $this->model($superAdmin, 'system-key', [
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            'api_url' => 'https://system.test',
+        ]);
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'default_embedding_model_id'],
+            ['setting_value' => (string) $systemModel->id],
+        );
+        $content = "# 第一节\n\n".str_repeat('第一批。', 300)."\n\n# 第二节\n\n".str_repeat('第二批。', 300);
+        $knowledgeBase = $this->knowledgeBase(['content' => $content]);
+        $coordinator = app(KnowledgeChunkSyncCoordinator::class);
+        $this->assertTrue($coordinator->request((int) $knowledgeBase->id, SystemAiIdentity::knowledgeIndex(), true));
+        $token = (string) $knowledgeBase->fresh()->chunk_sync_token;
+        $service = app(KnowledgeChunkSyncService::class);
+        $service->prepareStagingSync((int) $knowledgeBase->id, $content, $token, SystemAiIdentity::knowledgeIndex());
+        Http::fake(['https://system.test/v1/embeddings' => Http::response(['data' => [['embedding' => [0.1, 0.2, 0.3]]]])]);
+
+        $first = $service->embedStagingBatch((int) $knowledgeBase->id, $token, 0, SystemAiIdentity::knowledgeIndex(), true);
+        $this->assertFalse((bool) ($first['done'] ?? true));
+        $systemModel->forceFill([
+            'api_url' => 'https://changed.test',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('changed-key'),
+            'model_id' => 'changed-embedding',
+        ])->save();
+
+        $this->expectException(PermanentAiProviderException::class);
+        try {
+            $service->embedStagingBatch(
+                (int) $knowledgeBase->id,
+                $token,
+                (int) ($first['last_id'] ?? 0),
+                SystemAiIdentity::knowledgeIndex(),
+                true,
+            );
+        } finally {
+            Http::assertSentCount(1);
+            $this->assertSame(1, DB::table('knowledge_chunk_sync_rows')->whereNotNull('embedding_model_id')->count());
+        }
+    }
+
+    public function test_legacy_serving_profile_falls_back_to_keywords_without_a_remote_call(): void
+    {
+        Http::fake();
+        $admin = $this->admin('consumer', 'admin');
+        $model = $this->model($admin, 'personal-key', ['api_url' => 'https://personal.test']);
+        $knowledgeBase = $this->indexedKnowledgeBase($model, [0.3, 0.2, 0.1]);
+        $knowledgeBase->forceFill(['chunk_embedding_profile_version' => null])->save();
+
+        $bundle = app(KnowledgeRetrievalService::class)->retrieveContextBundleFromMany(
+            [(int) $knowledgeBase->id],
+            '关键词降级',
+            identity: $admin,
+        );
+
+        $this->assertSame('keyword_fallback', $bundle['retrieval_meta']['embedding_mode']);
+        $this->assertSame('index_embedding_profile_incompatible', $bundle['retrieval_meta']['reason']);
+        Http::assertNothingSent();
+    }
+
+    public function test_local_vector_scoring_ignores_rows_outside_the_serving_profile(): void
+    {
+        $admin = $this->admin('consumer', 'admin');
+        $model = $this->model($admin, 'personal-key', ['api_url' => 'https://personal.test']);
+        $knowledgeBase = $this->indexedKnowledgeBase($model, [0.0, 1.0, 0.0]);
+        KnowledgeChunk::query()->create([
+            'knowledge_base_id' => $knowledgeBase->id,
+            'generation_key' => 'serving-generation',
+            'chunk_index' => 1,
+            'content' => '混合 profile 行',
+            'content_hash' => hash('sha256', 'mixed-profile-chunk'),
+            'source_hash' => hash('sha256', 'mixed-profile-source'),
+            'embedding_json' => json_encode([1.0, 0.0, 0.0]),
+            'embedding_model_id' => $model->id,
+            'embedding_dimensions' => 3,
+            'embedding_provider' => app(KnowledgeEmbeddingModelFingerprint::class)->provider($model),
+            'embedding_fingerprint' => str_repeat('a', 64),
+            'embedding_profile_version' => app(KnowledgeEmbeddingModelFingerprint::class)->profileVersion(),
+            'embedding_profile_digest' => str_repeat('a', 64),
+        ]);
+        Http::fake(['https://personal.test/v1/embeddings' => Http::response(['data' => [['embedding' => [1.0, 0.0, 0.0]]]])]);
+
+        $evidence = app(KnowledgeRetrievalService::class)->retrieveEvidence(
+            (int) $knowledgeBase->id,
+            '混合 profile 行',
+            identity: $admin,
+        );
+        $mixed = collect($evidence)->firstWhere('chunk_index', 1);
+
+        $this->assertIsArray($mixed);
+        $this->assertSame(0.0, (float) $mixed['vector_score']);
+    }
+
+    public function test_finalize_rejects_mixed_staging_profiles(): void
+    {
+        Queue::fake();
+        $superAdmin = $this->admin('system-owner', 'super_admin');
+        $model = $this->model($superAdmin, 'system-key', [
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            'api_url' => 'https://system.test',
+        ]);
+        SiteSetting::query()->updateOrCreate(['setting_key' => 'default_embedding_model_id'], ['setting_value' => (string) $model->id]);
+        $content = "# 第一节\n\n".str_repeat('甲', 1000)."\n\n# 第二节\n\n".str_repeat('乙', 1000);
+        $knowledgeBase = $this->knowledgeBase(['content' => $content]);
+        $coordinator = app(KnowledgeChunkSyncCoordinator::class);
+        $coordinator->request((int) $knowledgeBase->id, SystemAiIdentity::knowledgeIndex(), true);
+        $knowledgeBase->refresh();
+        $token = (string) $knowledgeBase->chunk_sync_token;
+        $service = app(KnowledgeChunkSyncService::class);
+        $service->prepareStagingSync((int) $knowledgeBase->id, $content, $token, SystemAiIdentity::knowledgeIndex());
+        $digest = app(KnowledgeEmbeddingModelFingerprint::class)->forModel($model, 3);
+        DB::table('knowledge_chunk_sync_rows')->where('sync_token', $token)->update([
+            'embedding_json' => '[0.1,0.2,0.3]',
+            'embedding_model_id' => $model->id,
+            'embedding_dimensions' => 3,
+            'embedding_provider' => app(KnowledgeEmbeddingModelFingerprint::class)->provider($model),
+            'embedding_fingerprint' => $digest,
+            'embedding_profile_version' => app(KnowledgeEmbeddingModelFingerprint::class)->profileVersion(),
+            'embedding_profile_digest' => $digest,
+            'embedding_config_revision' => $knowledgeBase->chunk_sync_embedding_config_revision,
+        ]);
+        $lastId = (int) DB::table('knowledge_chunk_sync_rows')->where('sync_token', $token)->max('id');
+        DB::table('knowledge_chunk_sync_rows')->where('id', $lastId)->update([
+            'embedding_fingerprint' => str_repeat('b', 64),
+            'embedding_profile_digest' => str_repeat('b', 64),
+        ]);
+
+        $this->expectException(PermanentAiProviderException::class);
+        try {
+            $service->finalizeStagingSync((int) $knowledgeBase->id, $token, SystemAiIdentity::knowledgeIndex());
+        } finally {
+            $this->assertSame(0, $knowledgeBase->chunks()->count());
+            $this->assertSame('processing', (string) $knowledgeBase->fresh()->chunk_sync_status);
+        }
+    }
+
+    public function test_permanent_embedding_job_failure_is_terminal_on_the_first_attempt(): void
+    {
+        Queue::fake();
+        $superAdmin = $this->admin('system-owner', 'super_admin');
+        $model = $this->model($superAdmin, 'system-key', [
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            'api_url' => 'https://system.test',
+        ]);
+        SiteSetting::query()->updateOrCreate(['setting_key' => 'default_embedding_model_id'], ['setting_value' => (string) $model->id]);
+        $knowledgeBase = $this->knowledgeBase(['content' => '永久错误。']);
+        $coordinator = app(KnowledgeChunkSyncCoordinator::class);
+        $coordinator->request((int) $knowledgeBase->id, SystemAiIdentity::knowledgeIndex(), true);
+        $token = (string) $knowledgeBase->fresh()->chunk_sync_token;
+        app(KnowledgeChunkSyncService::class)->prepareStagingSync(
+            (int) $knowledgeBase->id,
+            (string) $knowledgeBase->content,
+            $token,
+            SystemAiIdentity::knowledgeIndex(),
+        );
+        Http::fake(['https://system.test/v1/embeddings' => Http::response(['error' => ['message' => 'payment required']], 402)]);
+
+        (new EmbedKnowledgeChunkBatchJob(
+            (int) $knowledgeBase->id,
+            $token,
+            0,
+            'knowledge_index',
+            true,
+        ))->handle($coordinator, app(KnowledgeChunkSyncService::class));
+
+        $this->assertSame('failed', (string) $knowledgeBase->fresh()->chunk_sync_status);
+        Http::assertSentCount(1);
+        Queue::assertNotPushed(EmbedKnowledgeChunkBatchJob::class);
+    }
+
+    public function test_transient_embedding_job_failure_remains_retryable(): void
+    {
+        Queue::fake();
+        $superAdmin = $this->admin('system-owner', 'super_admin');
+        $model = $this->model($superAdmin, 'system-key', [
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            'api_url' => 'https://system.test',
+        ]);
+        SiteSetting::query()->updateOrCreate(['setting_key' => 'default_embedding_model_id'], ['setting_value' => (string) $model->id]);
+        $knowledgeBase = $this->knowledgeBase(['content' => '临时错误。']);
+        $coordinator = app(KnowledgeChunkSyncCoordinator::class);
+        $coordinator->request((int) $knowledgeBase->id, SystemAiIdentity::knowledgeIndex(), true);
+        $token = (string) $knowledgeBase->fresh()->chunk_sync_token;
+        app(KnowledgeChunkSyncService::class)->prepareStagingSync((int) $knowledgeBase->id, '临时错误。', $token, SystemAiIdentity::knowledgeIndex());
+        Http::fake(['https://system.test/v1/embeddings' => Http::response(['error' => ['message' => 'unavailable']], 503)]);
+
+        $this->expectException(\RuntimeException::class);
+        try {
+            (new EmbedKnowledgeChunkBatchJob(
+                (int) $knowledgeBase->id,
+                $token,
+                0,
+                'knowledge_index',
+                true,
+            ))->handle($coordinator, app(KnowledgeChunkSyncService::class));
+        } finally {
+            $this->assertSame('processing', (string) $knowledgeBase->fresh()->chunk_sync_status);
+            Http::assertSentCount(1);
+        }
+    }
+
+    public function test_pgvector_serving_profile_filter_is_a_postgresql_release_gate(): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('PostgreSQL pgvector serving-profile filtering runs in the PostgreSQL release gate.');
+        }
+
+        $this->assertTrue(Schema::hasColumns('knowledge_chunks', [
+            'embedding_profile_version',
+            'embedding_profile_digest',
+        ]));
+    }
+
+    public function test_legacy_serialized_index_job_fails_closed_without_a_frozen_profile(): void
+    {
+        $knowledgeBase = $this->knowledgeBase([
+            'chunk_sync_status' => 'processing',
+            'chunk_sync_token' => 'legacy-token',
+        ]);
+
+        (new EmbedKnowledgeChunkBatchJob(
+            (int) $knowledgeBase->id,
+            'legacy-token',
+            0,
+            'knowledge_index',
+            true,
+        ))->handle(app(KnowledgeChunkSyncCoordinator::class), app(KnowledgeChunkSyncService::class));
+
+        $this->assertSame('failed', (string) $knowledgeBase->fresh()->chunk_sync_status);
+        $this->assertSame('knowledge_embedding_profile_incompatible', (string) $knowledgeBase->fresh()->chunk_sync_error);
+    }
+
     public function test_embedding_profile_migration_rolls_back_and_reapplies(): void
     {
+        $profileMigration = require database_path('migrations/2026_09_02_154000_harden_knowledge_embedding_profiles.php');
         $migration = require database_path('migrations/2026_09_02_153000_add_embedding_fingerprint_to_knowledge_index.php');
 
+        $profileMigration->down();
         $migration->down();
         $this->assertFalse(Schema::hasColumn('knowledge_bases', 'chunk_embedding_fingerprint'));
         $this->assertFalse(Schema::hasColumn('knowledge_chunks', 'embedding_fingerprint'));
         $this->assertFalse(Schema::hasColumn('knowledge_chunk_sync_rows', 'embedding_fingerprint'));
 
         $migration->up();
+        $profileMigration->up();
         $this->assertTrue(Schema::hasColumns('knowledge_bases', [
             'chunk_embedding_fingerprint',
             'chunk_embedding_dimensions',
@@ -401,6 +670,15 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         ]));
         $this->assertTrue(Schema::hasColumn('knowledge_chunks', 'embedding_fingerprint'));
         $this->assertTrue(Schema::hasColumn('knowledge_chunk_sync_rows', 'embedding_fingerprint'));
+        $this->assertTrue(Schema::hasColumns('knowledge_bases', [
+            'chunk_sync_embedding_config_revision',
+            'chunk_embedding_profile_version',
+            'chunk_embedding_profile_digest',
+        ]));
+        $this->assertTrue(Schema::hasColumns('knowledge_chunks', [
+            'embedding_profile_version',
+            'embedding_profile_digest',
+        ]));
     }
 
     private function indexedKnowledgeBase(AiModel $model, array $vector): KnowledgeBase
@@ -410,9 +688,12 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
             'chunk_serving_generation' => 'serving-generation',
         ]);
         $knowledgeBase->forceFill([
-            'chunk_embedding_fingerprint' => app(KnowledgeEmbeddingModelFingerprint::class)->forModel($model),
+            'chunk_embedding_fingerprint' => app(KnowledgeEmbeddingModelFingerprint::class)->forModel($model, count($vector)),
             'chunk_embedding_dimensions' => count($vector),
-            'chunk_embedding_provider' => (string) parse_url((string) $model->api_url, PHP_URL_HOST),
+            'chunk_embedding_provider' => app(KnowledgeEmbeddingModelFingerprint::class)->provider($model),
+            'chunk_embedding_model_id' => $model->id,
+            'chunk_embedding_profile_version' => app(KnowledgeEmbeddingModelFingerprint::class)->profileVersion(),
+            'chunk_embedding_profile_digest' => app(KnowledgeEmbeddingModelFingerprint::class)->forModel($model, count($vector)),
         ])->save();
         KnowledgeChunk::query()->create([
             'knowledge_base_id' => $knowledgeBase->id,
@@ -424,8 +705,10 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
             'embedding_json' => json_encode($vector),
             'embedding_model_id' => $model->id,
             'embedding_dimensions' => count($vector),
-            'embedding_provider' => (string) parse_url((string) $model->api_url, PHP_URL_HOST),
-            'embedding_fingerprint' => app(KnowledgeEmbeddingModelFingerprint::class)->forModel($model),
+            'embedding_provider' => app(KnowledgeEmbeddingModelFingerprint::class)->provider($model),
+            'embedding_fingerprint' => app(KnowledgeEmbeddingModelFingerprint::class)->forModel($model, count($vector)),
+            'embedding_profile_version' => app(KnowledgeEmbeddingModelFingerprint::class)->profileVersion(),
+            'embedding_profile_digest' => app(KnowledgeEmbeddingModelFingerprint::class)->forModel($model, count($vector)),
         ]);
 
         return $knowledgeBase;

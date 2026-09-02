@@ -7,6 +7,7 @@ use App\Data\Ai\AiExecutionContext;
 use App\Data\Ai\KnowledgeQueryEmbeddingResult;
 use App\Data\Ai\SystemAiIdentity;
 use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
 use App\Jobs\ReconcileKnowledgeFactEvidenceJob;
 use App\Models\Admin;
 use App\Models\AiModel;
@@ -83,11 +84,13 @@ class KnowledgeChunkSyncService
         }
 
         $syncToken = (string) Str::uuid();
+        $pipelineFields = $this->systemEmbeddingPipelineFields($identity);
         KnowledgeBase::query()->whereKey($knowledgeBaseId)->update([
             'chunk_sync_status' => 'processing',
             'chunk_sync_token' => $syncToken,
             'chunk_source_hash' => hash('sha256', $content),
             'chunk_sync_error' => null,
+            ...$pipelineFields,
             'updated_at' => now(),
         ]);
 
@@ -137,6 +140,7 @@ class KnowledgeChunkSyncService
         SystemAiIdentity $identity,
     ): int {
         $identity->assertCanBuildKnowledgeIndex();
+        $this->ensurePipelineProfile($knowledgeBaseId, $syncToken, $identity);
         if (strlen($content) > self::MAX_CONTENT_BYTES) {
             throw new \RuntimeException(__('admin.knowledge_bases.error.content_too_large'));
         }
@@ -184,6 +188,9 @@ class KnowledgeChunkSyncService
                     'embedding_dimensions' => 0,
                     'embedding_provider' => '',
                     'embedding_fingerprint' => '',
+                    'embedding_profile_version' => null,
+                    'embedding_profile_digest' => null,
+                    'embedding_config_revision' => null,
                     'embedding_vector' => null,
                     'created_at' => $now,
                     'updated_at' => $now,
@@ -240,13 +247,19 @@ class KnowledgeChunkSyncService
             $chunks[(int) $row->id] = (string) $row->content;
         }
 
-        $embeddingMetadata = $this->resolveSystemEmbeddingMetadata($identity);
+        $embeddingMetadata = $this->resolveFrozenSystemEmbeddingMetadata(
+            $knowledgeBaseId,
+            $syncToken,
+            $identity,
+        );
         $generatedEmbeddings = $this->generateEmbeddingsForChunks(
             $chunks,
             $embeddingMetadata,
             $identity,
             $requireRealEmbedding,
             $this->resolveEmbeddingDocumentTitle($knowledgeBaseId),
+            $knowledgeBaseId,
+            $syncToken,
         );
 
         if ($requireRealEmbedding && count($generatedEmbeddings) !== count($chunks)) {
@@ -269,43 +282,56 @@ class KnowledgeChunkSyncService
             ];
         }
 
-        $generatedModelId = (int) (($generatedEmbeddings[array_key_first($generatedEmbeddings)] ?? [])['model_id'] ?? 0);
-        $existingModelId = (int) (DB::table('knowledge_chunk_sync_rows')
+        $generatedProfile = $generatedEmbeddings[array_key_first($generatedEmbeddings)] ?? [];
+        $existingProfile = DB::table('knowledge_chunk_sync_rows')
             ->where('knowledge_base_id', $knowledgeBaseId)
             ->where('sync_token', $syncToken)
             ->whereNotNull('embedding_model_id')
-            ->value('embedding_model_id') ?? 0);
-        if ($existingModelId > 0 && $existingModelId !== $generatedModelId) {
-            if ($requireRealEmbedding) {
-                throw new \RuntimeException(__('admin.knowledge_bases.error.embedding_sync_failed'));
+            ->first(['embedding_model_id', 'embedding_profile_digest', 'embedding_config_revision']);
+        if ($existingProfile !== null
+            && ((int) $existingProfile->embedding_model_id !== (int) ($generatedProfile['model_id'] ?? 0)
+                || ! hash_equals((string) $existingProfile->embedding_profile_digest, (string) ($generatedProfile['profile_digest'] ?? ''))
+                || ! hash_equals((string) $existingProfile->embedding_config_revision, (string) ($generatedProfile['config_revision'] ?? '')))) {
+            throw PermanentAiProviderException::fromProviderFailure(
+                new \RuntimeException('knowledge_embedding_profile_mixed'),
+            );
+        }
+        foreach ($generatedEmbeddings as $embedding) {
+            if ((int) ($embedding['model_id'] ?? 0) !== (int) ($generatedProfile['model_id'] ?? 0)
+                || (int) ($embedding['dimensions'] ?? 0) !== (int) ($generatedProfile['dimensions'] ?? 0)
+                || ! hash_equals((string) ($embedding['provider'] ?? ''), (string) ($generatedProfile['provider'] ?? ''))
+                || ! hash_equals((string) ($embedding['profile_digest'] ?? ''), (string) ($generatedProfile['profile_digest'] ?? ''))
+                || ! hash_equals((string) ($embedding['config_revision'] ?? ''), (string) ($generatedProfile['config_revision'] ?? ''))) {
+                throw PermanentAiProviderException::fromProviderFailure(
+                    new \RuntimeException('knowledge_embedding_batch_profile_mixed'),
+                );
             }
-
-            $this->resetStagingEmbeddingsToFallback($knowledgeBaseId, $syncToken);
-
-            return [
-                'last_id' => (int) $rows->last()->id,
-                'done' => true,
-            ];
         }
 
-        foreach ($generatedEmbeddings as $rowId => $embedding) {
-            DB::table('knowledge_chunk_sync_rows')
-                ->where('id', (int) $rowId)
-                ->where('knowledge_base_id', $knowledgeBaseId)
-                ->where('sync_token', $syncToken)
-                ->update([
-                    'embedding_json' => json_encode(
-                        $embedding['vector'] ?? [],
-                        JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION
-                    ) ?: '[]',
-                    'embedding_model_id' => (int) ($embedding['model_id'] ?? 0),
-                    'embedding_dimensions' => (int) ($embedding['dimensions'] ?? 0),
-                    'embedding_provider' => (string) ($embedding['provider'] ?? ''),
-                    'embedding_fingerprint' => (string) ($embedding['fingerprint'] ?? ''),
-                    'embedding_vector' => $embedding['vector_literal'] ?? null,
-                    'updated_at' => now(),
-                ]);
-        }
+        DB::transaction(function () use ($knowledgeBaseId, $syncToken, $identity, $generatedEmbeddings): void {
+            $this->assertFrozenSystemEmbeddingPipelineCurrent($knowledgeBaseId, $syncToken, $identity, true);
+            foreach ($generatedEmbeddings as $rowId => $embedding) {
+                DB::table('knowledge_chunk_sync_rows')
+                    ->where('id', (int) $rowId)
+                    ->where('knowledge_base_id', $knowledgeBaseId)
+                    ->where('sync_token', $syncToken)
+                    ->update([
+                        'embedding_json' => json_encode(
+                            $embedding['vector'] ?? [],
+                            JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION
+                        ) ?: '[]',
+                        'embedding_model_id' => (int) ($embedding['model_id'] ?? 0),
+                        'embedding_dimensions' => (int) ($embedding['dimensions'] ?? 0),
+                        'embedding_provider' => (string) ($embedding['provider'] ?? ''),
+                        'embedding_fingerprint' => (string) ($embedding['fingerprint'] ?? ''),
+                        'embedding_profile_version' => (int) ($embedding['profile_version'] ?? 0),
+                        'embedding_profile_digest' => (string) ($embedding['profile_digest'] ?? ''),
+                        'embedding_config_revision' => (string) ($embedding['config_revision'] ?? ''),
+                        'embedding_vector' => $embedding['vector_literal'] ?? null,
+                        'updated_at' => now(),
+                    ]);
+            }
+        });
         KnowledgeBase::query()
             ->whereKey($knowledgeBaseId)
             ->where('chunk_sync_token', $syncToken)
@@ -352,14 +378,13 @@ class KnowledgeChunkSyncService
                 throw new \RuntimeException('No staged knowledge chunks are available.');
             }
 
-            $stagedEmbeddingModelId = (int) ((clone $stagedQuery)
-                ->whereNotNull('embedding_model_id')
-                ->value('embedding_model_id') ?? 0);
-            if ($stagedEmbeddingModelId > 0) {
-                $modelSnapshot = new AiModel;
-                $modelSnapshot->setAttribute($modelSnapshot->getKeyName(), $stagedEmbeddingModelId);
-                $this->systemModelAccessResolver->assertEmbeddingCurrent($identity, $modelSnapshot);
-            }
+            $currentMetadata = $this->assertFrozenSystemEmbeddingPipelineCurrent(
+                $knowledgeBaseId,
+                $syncToken,
+                $identity,
+                true,
+            );
+            $embeddingProfile = $this->assertSingleStagedEmbeddingProfile($stagedQuery, $currentMetadata);
 
             (clone $stagedQuery)
                 ->orderBy('id')
@@ -383,6 +408,9 @@ class KnowledgeChunkSyncService
                             'embedding_dimensions' => (int) $row->embedding_dimensions,
                             'embedding_provider' => (string) $row->embedding_provider,
                             'embedding_fingerprint' => (string) ($row->embedding_fingerprint ?? ''),
+                            'embedding_profile_version' => $row->embedding_profile_version,
+                            'embedding_profile_digest' => $row->embedding_profile_digest,
+                            'embedding_config_revision' => $row->embedding_config_revision,
                             'embedding_vector' => $row->embedding_vector,
                             'created_at' => $row->created_at,
                             'updated_at' => $row->updated_at,
@@ -396,12 +424,6 @@ class KnowledgeChunkSyncService
 
             $manifestHash = $this->stagedManifestHash($knowledgeBaseId, $syncToken);
             $servingSourceHash = (string) $knowledgeBase->chunk_source_hash;
-            $embeddingProfile = (clone $stagedQuery)
-                ->whereNotNull('embedding_model_id')
-                ->where('embedding_dimensions', '>', 0)
-                ->orderBy('id')
-                ->first(['embedding_fingerprint', 'embedding_dimensions', 'embedding_provider']);
-
             $knowledgeBase->forceFill([
                 'chunk_sync_status' => 'ready',
                 'chunk_sync_token' => null,
@@ -411,6 +433,12 @@ class KnowledgeChunkSyncService
                 'chunk_embedding_fingerprint' => $embeddingProfile?->embedding_fingerprint ?: null,
                 'chunk_embedding_dimensions' => $embeddingProfile?->embedding_dimensions ?: null,
                 'chunk_embedding_provider' => $embeddingProfile?->embedding_provider ?: null,
+                'chunk_embedding_model_id' => $embeddingProfile?->embedding_model_id ?: null,
+                'chunk_embedding_profile_version' => $embeddingProfile?->embedding_profile_version ?: null,
+                'chunk_embedding_profile_digest' => $embeddingProfile?->embedding_profile_digest ?: null,
+                'chunk_sync_embedding_profile_version' => null,
+                'chunk_sync_embedding_model_id' => null,
+                'chunk_sync_embedding_config_revision' => null,
                 'chunk_sync_error' => null,
                 'chunk_sync_require_real_embedding' => false,
                 'chunk_synced_at' => now(),
@@ -465,11 +493,106 @@ class KnowledgeChunkSyncService
                     'embedding_model_id' => (int) ($row->embedding_model_id ?? 0),
                     'embedding_provider' => (string) ($row->embedding_provider ?? ''),
                     'embedding_fingerprint' => (string) ($row->embedding_fingerprint ?? ''),
+                    'embedding_profile_version' => (int) ($row->embedding_profile_version ?? 0),
+                    'embedding_profile_digest' => (string) ($row->embedding_profile_digest ?? ''),
+                    'embedding_config_revision' => (string) ($row->embedding_config_revision ?? ''),
                     'embedding_hash' => hash('sha256', (string) ($row->embedding_json ?? '')),
                 ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");
             });
 
         return hash_final($hashContext);
+    }
+
+    /**
+     * @param  mixed  $stagedQuery
+     * @param  array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,api_key:string,driver:string}|null  $currentMetadata
+     */
+    private function assertSingleStagedEmbeddingProfile($stagedQuery, ?array $currentMetadata): ?object
+    {
+        $profile = null;
+        $hasFallback = false;
+        foreach ((clone $stagedQuery)->orderBy('id')->cursor([
+            'embedding_model_id',
+            'embedding_dimensions',
+            'embedding_provider',
+            'embedding_fingerprint',
+            'embedding_profile_version',
+            'embedding_profile_digest',
+            'embedding_config_revision',
+        ]) as $row) {
+            $isReal = (int) ($row->embedding_model_id ?? 0) > 0;
+            if (! $isReal) {
+                $hasFallback = true;
+                if ((int) ($row->embedding_dimensions ?? 0) !== 0
+                    || trim((string) ($row->embedding_provider ?? '')) !== ''
+                    || trim((string) ($row->embedding_fingerprint ?? '')) !== ''
+                    || (int) ($row->embedding_profile_version ?? 0) !== 0
+                    || trim((string) ($row->embedding_profile_digest ?? '')) !== ''
+                    || trim((string) ($row->embedding_config_revision ?? '')) !== '') {
+                    $this->throwMixedEmbeddingProfile();
+                }
+
+                continue;
+            }
+
+            if ($hasFallback
+                || (int) $row->embedding_dimensions <= 0
+                || (int) $row->embedding_profile_version !== $this->embeddingFingerprint->profileVersion()
+                || trim((string) $row->embedding_profile_digest) === ''
+                || ! hash_equals((string) $row->embedding_fingerprint, (string) $row->embedding_profile_digest)) {
+                $this->throwMixedEmbeddingProfile();
+            }
+            if ($profile === null) {
+                $profile = $row;
+
+                continue;
+            }
+            foreach ([
+                'embedding_model_id',
+                'embedding_dimensions',
+                'embedding_provider',
+                'embedding_fingerprint',
+                'embedding_profile_version',
+                'embedding_profile_digest',
+                'embedding_config_revision',
+            ] as $field) {
+                if ((string) $profile->{$field} !== (string) $row->{$field}) {
+                    $this->throwMixedEmbeddingProfile();
+                }
+            }
+        }
+
+        if ($profile === null) {
+            if ($currentMetadata !== null) {
+                return null;
+            }
+
+            return null;
+        }
+        if ($hasFallback || $currentMetadata === null
+            || (int) $profile->embedding_model_id !== (int) $currentMetadata['model_id']
+            || ! hash_equals((string) $profile->embedding_provider, (string) $currentMetadata['provider'])
+            || ! hash_equals((string) $profile->embedding_config_revision, (string) $currentMetadata['config_revision'])) {
+            $this->throwMixedEmbeddingProfile();
+        }
+
+        $expectedDigest = $this->embeddingFingerprint->forRuntimeProfile(
+            (string) $currentMetadata['api_url'],
+            (string) $currentMetadata['model_name'],
+            (int) $profile->embedding_dimensions,
+        );
+        if ($expectedDigest === '' || ! hash_equals($expectedDigest, (string) $profile->embedding_profile_digest)) {
+            $this->throwMixedEmbeddingProfile();
+        }
+
+        return $profile;
+    }
+
+    private function throwMixedEmbeddingProfile(): never
+    {
+        throw PermanentAiProviderException::fromProviderFailure(
+            new \RuntimeException('knowledge_embedding_profile_mixed'),
+        );
     }
 
     public function discardStagingSync(int $knowledgeBaseId, string $syncToken): void
@@ -499,6 +622,9 @@ class KnowledgeChunkSyncService
                             'embedding_dimensions' => 0,
                             'embedding_provider' => '',
                             'embedding_fingerprint' => '',
+                            'embedding_profile_version' => null,
+                            'embedding_profile_digest' => null,
+                            'embedding_config_revision' => null,
                             'embedding_vector' => null,
                             'updated_at' => now(),
                         ]);
@@ -1234,9 +1360,15 @@ class KnowledgeChunkSyncService
         }
 
         $fingerprint = trim((string) $knowledgeBase->chunk_embedding_fingerprint);
+        $profileDigest = trim((string) $knowledgeBase->chunk_embedding_profile_digest);
+        $profileVersion = (int) $knowledgeBase->chunk_embedding_profile_version;
         $provider = strtolower(trim((string) $knowledgeBase->chunk_embedding_provider));
         $dimensions = (int) $knowledgeBase->chunk_embedding_dimensions;
-        if ($fingerprint === '' || $provider === '' || $dimensions <= 0) {
+        if ($profileVersion !== $this->embeddingFingerprint->profileVersion()) {
+            return KnowledgeQueryEmbeddingResult::incompatible('index_embedding_profile_incompatible');
+        }
+        if ($fingerprint === '' || $profileDigest === '' || $provider === '' || $dimensions <= 0
+            || ! hash_equals($fingerprint, $profileDigest)) {
             return KnowledgeQueryEmbeddingResult::incompatible('index_embedding_profile_missing');
         }
 
@@ -1255,7 +1387,7 @@ class KnowledgeChunkSyncService
 
         $compatibleCandidates = array_values(array_filter(
             $candidates,
-            fn (AiModel $model): bool => hash_equals($fingerprint, $this->embeddingFingerprint->forModel($model))
+            fn (AiModel $model): bool => hash_equals($fingerprint, $this->embeddingFingerprint->forModel($model, $dimensions))
                 && hash_equals($provider, $this->embeddingFingerprint->provider($model)),
         ));
         if ($compatibleCandidates === []) {
@@ -1378,7 +1510,7 @@ class KnowledgeChunkSyncService
         $this->adminModelAccessResolver->assertUsable($current, $model);
     }
 
-    /** @return array{model_id:int,model_name:string,provider:string,fingerprint:string,api_url:string,api_key:string,driver:string}|null */
+    /** @return array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,api_key:string,driver:string}|null */
     private function resolveSystemEmbeddingMetadata(SystemAiIdentity $identity): ?array
     {
         $model = $this->systemModelAccessResolver->resolveEmbedding($identity);
@@ -1386,8 +1518,115 @@ class KnowledgeChunkSyncService
         return $model instanceof AiModel ? $this->modelToEmbeddingMetadata($model) : null;
     }
 
+    /** @return array<string,int|string|null> */
+    private function systemEmbeddingPipelineFields(SystemAiIdentity $identity): array
+    {
+        $model = $this->systemModelAccessResolver->resolveEmbedding($identity);
+
+        return [
+            'chunk_sync_embedding_profile_version' => $this->embeddingFingerprint->profileVersion(),
+            'chunk_sync_embedding_model_id' => $model?->getKey(),
+            'chunk_sync_embedding_config_revision' => $model instanceof AiModel
+                ? $this->embeddingFingerprint->configurationRevision($model)
+                : $this->embeddingFingerprint->emptyConfigurationRevision(),
+        ];
+    }
+
+    private function ensurePipelineProfile(
+        int $knowledgeBaseId,
+        string $syncToken,
+        SystemAiIdentity $identity,
+    ): void {
+        $currentVersion = KnowledgeBase::query()
+            ->whereKey($knowledgeBaseId)
+            ->where('chunk_sync_token', $syncToken)
+            ->value('chunk_sync_embedding_profile_version');
+        if ((int) $currentVersion === $this->embeddingFingerprint->profileVersion()) {
+            return;
+        }
+
+        KnowledgeBase::query()
+            ->whereKey($knowledgeBaseId)
+            ->where('chunk_sync_token', $syncToken)
+            ->whereNull('chunk_sync_embedding_profile_version')
+            ->update($this->systemEmbeddingPipelineFields($identity));
+    }
+
     /**
-     * @return array{model_id:int,model_name:string,provider:string,fingerprint:string,api_url:string,api_key:string,driver:string}|null
+     * @return array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,api_key:string,driver:string}|null
+     */
+    private function resolveFrozenSystemEmbeddingMetadata(
+        int $knowledgeBaseId,
+        string $syncToken,
+        SystemAiIdentity $identity,
+    ): ?array {
+        return $this->assertFrozenSystemEmbeddingPipelineCurrent(
+            $knowledgeBaseId,
+            $syncToken,
+            $identity,
+        );
+    }
+
+    /**
+     * @return array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,api_key:string,driver:string}|null
+     */
+    private function assertFrozenSystemEmbeddingPipelineCurrent(
+        int $knowledgeBaseId,
+        string $syncToken,
+        SystemAiIdentity $identity,
+        bool $lock = false,
+    ): ?array {
+        $query = KnowledgeBase::query()
+            ->whereKey($knowledgeBaseId)
+            ->where('chunk_sync_token', $syncToken)
+            ->whereIn('chunk_sync_status', ['pending', 'processing']);
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+        $knowledgeBase = $query->first([
+            'id',
+            'chunk_sync_embedding_profile_version',
+            'chunk_sync_embedding_model_id',
+            'chunk_sync_embedding_config_revision',
+        ]);
+        if (! $knowledgeBase
+            || (int) $knowledgeBase->chunk_sync_embedding_profile_version !== $this->embeddingFingerprint->profileVersion()
+            || trim((string) $knowledgeBase->chunk_sync_embedding_config_revision) === '') {
+            throw PermanentAiProviderException::fromProviderFailure(
+                new \RuntimeException('knowledge_embedding_pipeline_profile_missing'),
+            );
+        }
+
+        $modelId = (int) $knowledgeBase->chunk_sync_embedding_model_id;
+        if ($modelId <= 0) {
+            if ($this->systemModelAccessResolver->resolveEmbedding($identity) instanceof AiModel
+                || ! hash_equals(
+                    $this->embeddingFingerprint->emptyConfigurationRevision(),
+                    (string) $knowledgeBase->chunk_sync_embedding_config_revision,
+                )) {
+                throw PermanentAiProviderException::fromProviderFailure(
+                    new \RuntimeException('knowledge_embedding_pipeline_revision_changed'),
+                );
+            }
+
+            return null;
+        }
+
+        $snapshot = new AiModel;
+        $snapshot->setAttribute($snapshot->getKeyName(), $modelId);
+        $model = $this->systemModelAccessResolver->assertEmbeddingCurrent($identity, $snapshot);
+        $currentRevision = $this->embeddingFingerprint->configurationRevision($model);
+        if (! hash_equals((string) $knowledgeBase->chunk_sync_embedding_config_revision, $currentRevision)) {
+            throw PermanentAiProviderException::fromProviderFailure(
+                new \RuntimeException('knowledge_embedding_pipeline_revision_changed'),
+            );
+        }
+
+        return $this->modelToEmbeddingMetadata($model);
+    }
+
+    /**
+     * @return array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,api_key:string,driver:string}|null
      */
     private function modelToEmbeddingMetadata(AiModel $model): ?array
     {
@@ -1401,8 +1640,8 @@ class KnowledgeChunkSyncService
         return [
             'model_id' => (int) $model->id,
             'model_name' => $modelName,
-            'provider' => (string) (parse_url($providerUrl, PHP_URL_HOST) ?: ''),
-            'fingerprint' => $this->embeddingFingerprint->forModel($model),
+            'provider' => $this->embeddingFingerprint->provider($model),
+            'config_revision' => $this->embeddingFingerprint->configurationRevision($model),
             'api_url' => $providerUrl,
             'api_key' => $apiKey,
             'driver' => OpenAiRuntimeProvider::resolveEmbeddingDriver($providerUrl, $modelName),
@@ -1413,8 +1652,8 @@ class KnowledgeChunkSyncService
      * 批量生成真实向量；任一异常则整体回退到 fallback 向量。
      *
      * @param  list<string>  $chunks
-     * @param  array{model_id:int,model_name:string,provider:string,fingerprint:string,api_url:string,api_key:string,driver:string}|null  $embeddingMetadata
-     * @return array<int, array{model_id:int,dimensions:int,provider:string,fingerprint:string,vector:list<float>,vector_literal:?string}>
+     * @param  array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,api_key:string,driver:string}|null  $embeddingMetadata
+     * @return array<int, array{model_id:int,dimensions:int,provider:string,fingerprint:string,profile_version:int,profile_digest:string,config_revision:string,vector:list<float>,vector_literal:?string}>
      */
     private function generateEmbeddingsForChunks(
         array $chunks,
@@ -1422,6 +1661,8 @@ class KnowledgeChunkSyncService
         SystemAiIdentity $identity,
         bool $requireRealEmbedding = false,
         ?string $documentTitle = null,
+        ?int $knowledgeBaseId = null,
+        ?string $syncToken = null,
     ): array {
         if ($chunks === []) {
             return [];
@@ -1435,13 +1676,6 @@ class KnowledgeChunkSyncService
         }
 
         $canStoreEmbeddingVector = $this->canStoreEmbeddingVector();
-        $providerName = OpenAiRuntimeProvider::registerProvider(
-            'embedding',
-            (string) ($embeddingMetadata['driver'] ?? 'openai'),
-            (string) $embeddingMetadata['api_url'],
-            (string) $embeddingMetadata['api_key']
-        );
-
         try {
             $results = [];
             $pendingChunks = $chunks;
@@ -1450,13 +1684,29 @@ class KnowledgeChunkSyncService
                 $batch = array_slice($pendingChunks, 0, $batchSize, true);
 
                 try {
+                    $currentMetadata = $knowledgeBaseId !== null && $syncToken !== null
+                        ? $this->resolveFrozenSystemEmbeddingMetadata($knowledgeBaseId, $syncToken, $identity)
+                        : $embeddingMetadata;
+                    if ($currentMetadata === null) {
+                        throw PermanentAiProviderException::fromProviderFailure(
+                            new \RuntimeException('knowledge_embedding_model_unavailable'),
+                        );
+                    }
+                    $providerName = OpenAiRuntimeProvider::registerProvider(
+                        'embedding',
+                        (string) ($currentMetadata['driver'] ?? 'openai'),
+                        (string) $currentMetadata['api_url'],
+                        (string) $currentMetadata['api_key'],
+                    );
                     foreach ($this->generateEmbeddingBatch(
                         $batch,
-                        $embeddingMetadata,
+                        $currentMetadata,
                         $providerName,
                         $canStoreEmbeddingVector,
                         $identity,
                         $documentTitle,
+                        $knowledgeBaseId,
+                        $syncToken,
                     ) as $chunkIndex => $embeddingResult) {
                         $results[$chunkIndex] = $embeddingResult;
                     }
@@ -1465,17 +1715,27 @@ class KnowledgeChunkSyncService
                         unset($pendingChunks[$chunkIndex]);
                     }
                 } catch (Throwable $batchException) {
+                    if ($batchException instanceof AiModelAccessException
+                        || $batchException instanceof PermanentAiProviderException
+                        || $this->failoverDecider->isPermanentProviderFailure($batchException)) {
+                        if ($batchException instanceof AiModelAccessException
+                            || $batchException instanceof PermanentAiProviderException) {
+                            throw $batchException;
+                        }
+
+                        throw PermanentAiProviderException::fromProviderFailure($batchException);
+                    }
                     $message = $this->errorSanitizer->sanitize(
                         OpenAiRuntimeProvider::normalizeApiException(
                             $batchException,
-                            (string) ($embeddingMetadata['api_url'] ?? ''),
+                            (string) ($currentMetadata['api_url'] ?? ''),
                         ),
                         'embedding_batch_failed',
                     );
                     if ($batchSize > 1 && count($batch) > 1 && $this->isEmbeddingBatchSizeError($message)) {
                         Log::info('geoflow.knowledge_embedding_batch_fallback', [
-                            'embedding_model_id' => (int) ($embeddingMetadata['model_id'] ?? 0),
-                            'model_identifier' => (string) ($embeddingMetadata['model_name'] ?? ''),
+                            'embedding_model_id' => (int) ($currentMetadata['model_id'] ?? 0),
+                            'model_identifier' => (string) ($currentMetadata['model_name'] ?? ''),
                             'batch_size' => count($batch),
                             'message' => $message,
                         ]);
@@ -1490,7 +1750,7 @@ class KnowledgeChunkSyncService
             }
 
             return count($results) === count($chunks) ? $results : [];
-        } catch (AiModelAccessException $exception) {
+        } catch (AiModelAccessException|PermanentAiProviderException $exception) {
             throw $exception;
         } catch (Throwable $exception) {
             $message = $this->errorSanitizer->sanitize(
@@ -1517,8 +1777,8 @@ class KnowledgeChunkSyncService
 
     /**
      * @param  array<int, string>  $batch
-     * @param  array{model_id:int,model_name:string,provider:string,fingerprint:string,api_url:string,api_key:string,driver:string}  $embeddingMetadata
-     * @return array<int, array{model_id:int,dimensions:int,provider:string,fingerprint:string,vector:list<float>,vector_literal:?string}>
+     * @param  array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,api_key:string,driver:string}  $embeddingMetadata
+     * @return array<int, array{model_id:int,dimensions:int,provider:string,fingerprint:string,profile_version:int,profile_digest:string,config_revision:string,vector:list<float>,vector_literal:?string}>
      */
     private function generateEmbeddingBatch(
         array $batch,
@@ -1527,6 +1787,8 @@ class KnowledgeChunkSyncService
         bool $canStoreEmbeddingVector,
         SystemAiIdentity $identity,
         ?string $documentTitle = null,
+        ?int $knowledgeBaseId = null,
+        ?string $syncToken = null,
     ): array {
         $modelSnapshot = new AiModel;
         $modelSnapshot->setAttribute($modelSnapshot->getKeyName(), (int) $embeddingMetadata['model_id']);
@@ -1542,6 +1804,9 @@ class KnowledgeChunkSyncService
             $this->systemModelAccessResolver->assertEmbeddingCurrent($identity, $model);
             $embeddings = $this->requestEmbeddingVectors($batchInputs, $embeddingMetadata, $providerName);
             $this->systemModelAccessResolver->assertEmbeddingCurrent($identity, $model);
+            if ($knowledgeBaseId !== null && $syncToken !== null) {
+                $this->assertFrozenSystemEmbeddingPipelineCurrent($knowledgeBaseId, $syncToken, $identity);
+            }
 
             $results = [];
             foreach (array_values($batch) as $position => $_chunkContent) {
@@ -1551,11 +1816,15 @@ class KnowledgeChunkSyncService
                 }
 
                 $actualDimensions = count($rawVector);
+                $profileDigest = $this->embeddingFingerprint->forModel($model, $actualDimensions);
                 $results[$batchKeys[$position]] = [
                     'model_id' => (int) $embeddingMetadata['model_id'],
                     'dimensions' => $actualDimensions,
                     'provider' => (string) $embeddingMetadata['provider'],
-                    'fingerprint' => (string) $embeddingMetadata['fingerprint'],
+                    'fingerprint' => $profileDigest,
+                    'profile_version' => $this->embeddingFingerprint->profileVersion(),
+                    'profile_digest' => $profileDigest,
+                    'config_revision' => (string) $embeddingMetadata['config_revision'],
                     'vector' => $rawVector,
                     'vector_literal' => $canStoreEmbeddingVector
                         ? $this->vectorLiteral($this->padVector($rawVector, $this->embeddingStorageDimensions()))

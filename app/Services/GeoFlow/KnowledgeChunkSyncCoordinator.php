@@ -13,7 +13,11 @@ use Throwable;
 
 class KnowledgeChunkSyncCoordinator
 {
-    public function __construct(private readonly AiExecutionErrorSanitizer $errorSanitizer) {}
+    public function __construct(
+        private readonly AiExecutionErrorSanitizer $errorSanitizer,
+        private readonly SystemAiModelAccessResolver $systemModelAccessResolver,
+        private readonly KnowledgeEmbeddingModelFingerprint $embeddingFingerprint,
+    ) {}
 
     public function request(
         int $knowledgeBaseId,
@@ -24,6 +28,7 @@ class KnowledgeChunkSyncCoordinator
         $identity->assertCanBuildKnowledgeIndex();
         $sync = $this->reserve(
             $knowledgeBaseId,
+            $identity,
             $requireRealEmbedding,
             $force,
         );
@@ -55,6 +60,7 @@ class KnowledgeChunkSyncCoordinator
             $knowledgeBaseId = (int) $candidate->id;
             $sync = $this->reserve(
                 $knowledgeBaseId,
+                $identity,
                 (bool) $candidate->chunk_sync_require_real_embedding,
                 true,
                 $cutoff,
@@ -79,12 +85,14 @@ class KnowledgeChunkSyncCoordinator
      */
     private function reserve(
         int $knowledgeBaseId,
+        SystemAiIdentity $identity,
         bool $requireRealEmbedding,
         bool $force,
         ?Carbon $staleBefore = null,
     ): ?array {
         return DB::transaction(function () use (
             $knowledgeBaseId,
+            $identity,
             $requireRealEmbedding,
             $force,
             $staleBefore,
@@ -113,12 +121,18 @@ class KnowledgeChunkSyncCoordinator
             }
 
             $token = (string) Str::uuid();
+            $embeddingModel = $this->systemModelAccessResolver->resolveEmbedding($identity);
             $knowledgeBase->forceFill([
                 'chunk_sync_status' => 'pending',
                 'chunk_sync_token' => $token,
                 'chunk_source_hash' => $sourceHash,
                 'chunk_sync_error' => null,
                 'chunk_sync_require_real_embedding' => $requireRealEmbedding,
+                'chunk_sync_embedding_profile_version' => $this->embeddingFingerprint->profileVersion(),
+                'chunk_sync_embedding_model_id' => $embeddingModel?->getKey(),
+                'chunk_sync_embedding_config_revision' => $embeddingModel
+                    ? $this->embeddingFingerprint->configurationRevision($embeddingModel)
+                    : $this->embeddingFingerprint->emptyConfigurationRevision(),
             ])->save();
             DB::table('knowledge_fact_libraries')
                 ->where('knowledge_base_id', $knowledgeBaseId)
@@ -169,6 +183,8 @@ class KnowledgeChunkSyncCoordinator
             ->whereKey($knowledgeBaseId)
             ->where('chunk_sync_token', $syncToken)
             ->whereIn('chunk_sync_status', ['pending', 'processing'])
+            ->where('chunk_sync_embedding_profile_version', $this->embeddingFingerprint->profileVersion())
+            ->whereNotNull('chunk_sync_embedding_config_revision')
             ->exists();
     }
 

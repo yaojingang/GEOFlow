@@ -26,9 +26,10 @@ class AiModelFailoverDeciderTest extends TestCase
     public static function permanentStatusProvider(): array
     {
         return [
+            'invalid request' => [400],
             'invalid credentials' => [401],
+            'payment required' => [402],
             'forbidden model' => [403],
-            'invalid parameter' => [400],
             'incompatible capability' => [422],
         ];
     }
@@ -47,7 +48,10 @@ class AiModelFailoverDeciderTest extends TestCase
     public static function transientStatusProvider(): array
     {
         return [
+            'request timeout' => [408],
+            'too early' => [425],
             'rate limited' => [429],
+            'provider error' => [500],
             'provider unavailable' => [503],
         ];
     }
