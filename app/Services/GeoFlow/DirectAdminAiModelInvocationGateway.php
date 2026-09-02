@@ -7,6 +7,7 @@ use App\Exceptions\AiModelAccessException;
 use App\Exceptions\AiModelRuntimeEligibilityException;
 use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\AiWorkspace\AiWorkspaceModelUnavailableException;
+use Closure;
 
 final readonly class DirectAdminAiModelInvocationGateway
 {
@@ -21,6 +22,7 @@ final readonly class DirectAdminAiModelInvocationGateway
     public function acquire(
         DirectAdminAiExecutionContext $context,
         int $leaseSeconds,
+        ?Closure $candidateReadiness = null,
     ): DirectAdminAiModelInvocation {
         $explicit = $context->requestedModelId !== null;
 
@@ -33,6 +35,7 @@ final readonly class DirectAdminAiModelInvocationGateway
                 $lock = $this->invocationLocks->acquireForInvocation((int) $candidate->id, $leaseSeconds);
                 $model = $this->executionGuard->assertModelCurrent($context, $candidate);
                 $this->runtimeGate->assertExecutable($model, $context->capability);
+                $candidateReadiness?->__invoke($model);
                 $reservation = $this->usageQuota->reserveModel($model);
                 if ($reservation === null) {
                     throw AiModelRuntimeEligibilityException::quota();

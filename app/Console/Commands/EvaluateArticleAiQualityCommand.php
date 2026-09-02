@@ -10,6 +10,7 @@ use App\Data\Ai\DirectAdminAiExecutionState;
 use App\Exceptions\AiModelAccessException;
 use App\Exceptions\AiModelRuntimeEligibilityException;
 use App\Exceptions\AiQualityComparisonCheckpointException;
+use App\Exceptions\ArticleAiQualityRuntimeException;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
@@ -18,6 +19,7 @@ use App\Services\GeoFlow\AiQualityComparisonCheckpointStore;
 use App\Services\GeoFlow\AiQualityEvaluationDataset;
 use App\Services\GeoFlow\ArticleAiQualityEvidenceBuilder;
 use App\Services\GeoFlow\ArticleAiQualityPromptRenderer;
+use App\Services\GeoFlow\ArticleAiQualityProviderCircuitBreaker;
 use App\Services\GeoFlow\ArticleAiQualityResultValidator;
 use App\Services\GeoFlow\ArticleAiQualitySampleBuilder;
 use App\Services\GeoFlow\ArticleAiQualityScorerV2;
@@ -62,6 +64,7 @@ class EvaluateArticleAiQualityCommand extends Command
         private readonly ArticleAtomicFactInspector $atomicFactInspector,
         private readonly DirectAdminAiExecutionGuard $executionGuard,
         private readonly DirectAdminAiModelInvocationGateway $invocationGateway,
+        private readonly ArticleAiQualityProviderCircuitBreaker $qualityCircuitBreaker,
         private readonly AiQualityComparisonCheckpointStore $comparisonCheckpoints,
     ) {
         parent::__construct();
@@ -103,6 +106,7 @@ class EvaluateArticleAiQualityCommand extends Command
         }
 
         $evaluated = [];
+        $liveCalls = [];
         foreach ($cases as $case) {
             if (! is_array($case)) {
                 continue;
@@ -111,7 +115,18 @@ class EvaluateArticleAiQualityCommand extends Command
             if ($live) {
                 try {
                     for ($attempt = 0; $attempt < $repeat; $attempt++) {
-                        $repeatPredictions[] = $this->evaluateLiveCase($case, $execution);
+                        $livePrediction = $this->evaluateLiveCase($case, $execution);
+                        $repeatPredictions[] = $livePrediction;
+                        $liveCalls[] = [
+                            'case_id' => (string) ($case['id'] ?? 'case-'.(count($evaluated) + 1)),
+                            'attempt' => $attempt + 1,
+                            'resolved_model_id' => $livePrediction['resolved_model_id'],
+                            'resolved_model_name' => $livePrediction['resolved_model_name'],
+                            'resolved_model_source' => $livePrediction['resolved_model_source'],
+                            'latency_ms' => $livePrediction['latency_ms'],
+                            'prompt_tokens' => $livePrediction['prompt_tokens'],
+                            'completion_tokens' => $livePrediction['completion_tokens'],
+                        ];
                     }
                 } catch (AiModelAccessException $exception) {
                     return $this->failLiveAccess($exception);
@@ -150,6 +165,15 @@ class EvaluateArticleAiQualityCommand extends Command
                 'baseline_completion_tokens' => max(0, (int) ($baseline['completion_tokens'] ?? 0)),
                 'category' => (string) ($case['category'] ?? 'general_quality'),
                 'atomic_fact' => is_array($case['atomic_fact'] ?? null) ? $case['atomic_fact'] : null,
+                'resolved_model_id' => isset($prediction['resolved_model_id'])
+                    ? (int) $prediction['resolved_model_id']
+                    : null,
+                'resolved_model_name' => isset($prediction['resolved_model_name'])
+                    ? (string) $prediction['resolved_model_name']
+                    : null,
+                'resolved_model_source' => isset($prediction['resolved_model_source'])
+                    ? (string) $prediction['resolved_model_source']
+                    : null,
             ];
         }
 
@@ -183,18 +207,26 @@ class EvaluateArticleAiQualityCommand extends Command
                 && $metrics['repeat_stability']['decision_consistency'] >= 0.95,
         ];
         $productionGateReady = ! in_array(false, $gateChecks, true);
-        $model = $execution?->model;
+        $publishModel = $execution?->model;
         $context = $execution?->context;
+        $modelsUsed = $this->modelsUsed($live ? $liveCalls : []);
+        $modelUsageMode = $this->modelUsageMode($modelsUsed);
+        $singleModel = $modelUsageMode === 'single' ? $modelsUsed[0] : null;
         $report = [
             'schema_version' => 2,
             'algorithm_version' => (string) ($dataset['algorithm_version'] ?? 'legacy-quality-evaluation-1.0.0'),
             'generated_at' => now()->toIso8601String(),
             'mode' => $live ? 'live' : 'offline',
             'evaluation_scope' => $live ? 'production_components' : 'saved_predictions',
-            'model_id' => $model?->id,
+            'model_id' => $singleModel['id'] ?? null,
+            'model_usage_mode' => $modelUsageMode,
+            'models_used' => $modelsUsed,
             'execution' => $execution === null ? null : array_merge(
                 $context->toSafeArray(),
-                ['model_id' => (int) $model->id, 'model_source' => $execution->source],
+                [
+                    'model_id' => $singleModel['id'] ?? null,
+                    'model_source' => $singleModel['source'] ?? $modelUsageMode,
+                ],
             ),
             'dataset' => [
                 'path' => $this->portablePath($datasetPath),
@@ -207,6 +239,7 @@ class EvaluateArticleAiQualityCommand extends Command
             'metrics' => $metrics,
             'gate_checks' => $gateChecks,
             'production_gate_ready' => $productionGateReady,
+            'calls' => $liveCalls,
             'cases' => $evaluated,
         ];
 
@@ -215,7 +248,7 @@ class EvaluateArticleAiQualityCommand extends Command
             try {
                 $this->publishLiveReport(
                     $context,
-                    $model,
+                    $publishModel,
                     $outputBase,
                     json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n",
                     $this->markdown($report),
@@ -356,6 +389,9 @@ class EvaluateArticleAiQualityCommand extends Command
             'inspection_scope' => $scope,
             'coverage' => $coverage === null ? null : $this->publicCoverage($coverage),
             'atomic_facts' => $atomicInspection,
+            'resolved_model_id' => (int) $execution->model->id,
+            'resolved_model_name' => (string) $execution->model->name,
+            'resolved_model_source' => $execution->source,
         ];
     }
 
@@ -380,7 +416,6 @@ class EvaluateArticleAiQualityCommand extends Command
         }
         $model = $execution->model;
         $context = $execution->context;
-        $checkpointModelId = (int) $model->id;
         $repeat = max(1, min(5, (int) $this->option('repeat')));
         $articles = Article::query()->whereIn('id', $articleIds)->get()->keyBy('id');
         if ($articles->count() !== count($articleIds) || ! KnowledgeBase::query()->whereKey($knowledgeBaseId)->exists()) {
@@ -398,11 +433,12 @@ class EvaluateArticleAiQualityCommand extends Command
                 [
                     'article_ids' => $articleIds,
                     'knowledge_base_id' => $knowledgeBaseId,
-                    'model_id' => $checkpointModelId,
+                    'requested_model_id' => $context->requestedModelId,
                     'admin_id' => $context->adminId,
                     'access_version' => $context->accessVersion,
                     'policy_version' => $context->policyVersion,
                     'repeat' => $repeat,
+                    'compare' => $modes,
                 ],
             );
         } catch (AiQualityComparisonCheckpointException $exception) {
@@ -450,7 +486,7 @@ class EvaluateArticleAiQualityCommand extends Command
                             }
                         }
                         if (! is_array($prediction)) {
-                            $prediction = ['decision' => 'error', 'score' => 0, 'issues' => [], 'prompt_tokens' => 0, 'completion_tokens' => 0, 'latency_ms' => 0, 'error_code' => AiModelAccessException::AI_MODEL_UNAVAILABLE];
+                            return $this->failLive(AiModelAccessException::AI_MODEL_UNAVAILABLE);
                         }
                         $calls[] = array_replace($prediction, [
                             'article_id' => $articleId,
@@ -465,10 +501,13 @@ class EvaluateArticleAiQualityCommand extends Command
                 }
             }
 
+            $modelsUsed = $this->modelsUsed($calls);
+            $modelUsageMode = $this->modelUsageMode($modelsUsed);
+            $singleModel = $modelUsageMode === 'single' ? $modelsUsed[0] : null;
             $metrics = $this->comparisonMetrics($calls, $articleIds, $repeat);
             $knowledgeBase = KnowledgeBase::query()->with('factLibrary.activeRevision')->findOrFail($knowledgeBaseId);
             $caseSetMatches = $knowledgeBaseId === 23
-                && $model->id === 3
+                && ($singleModel['id'] ?? null) === 3
                 && $repeat === 3
                 && $articleIds === self::LOCAL_ATOMIC_CASE_IDS;
             $report = [
@@ -476,10 +515,19 @@ class EvaluateArticleAiQualityCommand extends Command
                 'generated_at' => now()->toIso8601String(),
                 'mode' => 'live',
                 'evaluation_scope' => 'local_atomic_comparison',
-                'model' => ['id' => $model->id, 'name' => $model->name, 'model_id' => $model->model_id],
+                'model_usage_mode' => $modelUsageMode,
+                'model' => $singleModel === null ? null : [
+                    'id' => $singleModel['id'],
+                    'name' => $singleModel['name'],
+                    'source' => $singleModel['source'],
+                ],
+                'models_used' => $modelsUsed,
                 'execution' => array_merge(
                     $context->toSafeArray(),
-                    ['model_id' => (int) $model->id, 'model_source' => $execution->source],
+                    [
+                        'model_id' => $singleModel['id'] ?? null,
+                        'model_source' => $singleModel['source'] ?? $modelUsageMode,
+                    ],
                 ),
                 'knowledge_base_id' => $knowledgeBaseId,
                 'case_set' => [
@@ -602,18 +650,61 @@ class EvaluateArticleAiQualityCommand extends Command
         return ['total' => array_sum($values), 'average' => $values === [] ? 0 : round(array_sum($values) / count($values), 2), 'p50' => $this->percentile($values, 50), 'p95' => $this->percentile($values, 95)];
     }
 
+    /**
+     * @param  list<array<string,mixed>>  $rows
+     * @return list<array{id:int,name:string,source:string,call_count:int}>
+     */
+    private function modelsUsed(array $rows): array
+    {
+        $models = [];
+        foreach ($rows as $row) {
+            $modelId = (int) ($row['resolved_model_id'] ?? 0);
+            $source = (string) ($row['resolved_model_source'] ?? '');
+            if ($modelId <= 0 || ! in_array($source, ['personal', 'shared'], true)) {
+                continue;
+            }
+            $key = $modelId.'|'.$source;
+            if (! isset($models[$key])) {
+                $name = trim((string) ($row['resolved_model_name'] ?? ''));
+                $models[$key] = [
+                    'id' => $modelId,
+                    'name' => mb_substr($name, 0, 200),
+                    'source' => $source,
+                    'call_count' => 0,
+                ];
+            }
+            $models[$key]['call_count']++;
+        }
+
+        return array_values($models);
+    }
+
+    /** @param list<array{id:int,name:string,source:string,call_count:int}> $modelsUsed */
+    private function modelUsageMode(array $modelsUsed): string
+    {
+        return match (count($modelsUsed)) {
+            0 => 'none',
+            1 => 'single',
+            default => 'mixed',
+        };
+    }
+
     /** @param array<string,mixed> $report */
     private function comparisonMarkdown(array $report): string
     {
         $metrics = $report['metrics'];
-        $rows = ['# KB'.$report['knowledge_base_id'].' 原子事实与完整知识库质检实测', '', '- 运行时间：'.$report['generated_at'], '- 模型：'.$report['model']['name'].'（ID '.$report['model']['id'].'）', '- 调用数：'.$metrics['call_count'], '- 本地原子通道门禁：'.($report['local_atomic_gate_ready'] ? '通过' : '未通过'), '', '## 汇总', '', '| 模式 | 准确率 | 输入 Token 总量 / P50 / P95 | 总 Token 总量 | 延迟 P50 / P95 |', '| --- | ---: | ---: | ---: | ---: |'];
+        $rows = ['# KB'.$report['knowledge_base_id'].' 原子事实与完整知识库质检实测', '', '- 运行时间：'.$report['generated_at'], '- 模型使用模式：'.$report['model_usage_mode'], '- 调用数：'.$metrics['call_count'], '- 本地原子通道门禁：'.($report['local_atomic_gate_ready'] ? '通过' : '未通过')];
+        foreach ($report['models_used'] as $model) {
+            $rows[] = '- 模型：'.$model['name'].'（ID '.$model['id'].'，'.$model['source'].'，'.$model['call_count'].' 次）';
+        }
+        $rows = array_merge($rows, ['', '## 汇总', '', '| 模式 | 准确率 | 输入 Token 总量 / P50 / P95 | 总 Token 总量 | 延迟 P50 / P95 |', '| --- | ---: | ---: | ---: | ---: |']);
         foreach (['atomic' => '原子混合', 'knowledge' => '完整知识库'] as $mode => $label) {
             $item = $metrics['by_mode'][$mode];
             $rows[] = '| '.$label.' | '.number_format($item['decision_accuracy'] * 100, 2).'% | '.$item['prompt_tokens']['total'].' / '.$item['prompt_tokens']['p50'].' / '.$item['prompt_tokens']['p95'].' | '.$item['total_tokens']['total'].' | '.$item['latency_ms']['p50'].' / '.$item['latency_ms']['p95'].' ms |';
         }
-        $rows = array_merge($rows, ['', '## 逐次结果', '', '| 文章 | 模式 | 次数 | 期望 | 决策 | 分数 | 输入 / 输出 Token | 耗时 |', '| --- | --- | ---: | --- | --- | ---: | ---: | ---: |']);
+        $rows = array_merge($rows, ['', '## 逐次结果', '', '| 文章 | 模式 | 次数 | 模型 | 期望 | 决策 | 分数 | 输入 / 输出 Token | 耗时 |', '| --- | --- | ---: | --- | --- | --- | ---: | ---: | ---: |']);
         foreach ($report['calls'] as $call) {
-            $rows[] = '| '.$call['article_id'].'《'.str_replace('|', '｜', $call['article_title']).'》 | '.$call['mode'].' | '.$call['attempt'].' | '.$call['expected_decision'].' | '.$call['decision'].' | '.$call['score'].' | '.$call['prompt_tokens'].' / '.$call['completion_tokens'].' | '.$call['latency_ms'].' ms |';
+            $rows[] = '| '.$call['article_id'].'《'.str_replace('|', '｜', $call['article_title']).'》 | '.$call['mode'].' | '.$call['attempt'].' | '.($call['resolved_model_name'] ?? '').' #'.($call['resolved_model_id'] ?? '').' ('.($call['resolved_model_source'] ?? '').') | '.$call['expected_decision'].' | '.$call['decision'].' | '.$call['score'].' | '.$call['prompt_tokens'].' / '.$call['completion_tokens'].' | '.$call['latency_ms'].' ms |';
         }
         $rows = array_merge($rows, ['', '## 门禁', '']);
         foreach ($metrics['gate_checks'] as $name => $passed) {
@@ -761,7 +852,13 @@ class EvaluateArticleAiQualityCommand extends Command
         string $instructions,
     ): array {
         $timeoutSeconds = max(1, (int) config('geoflow.ai_quality_request_timeout_seconds', 160));
-        $invocation = $this->invocationGateway->acquire($execution->context, $timeoutSeconds + 60);
+        $invocation = $this->invocationGateway->acquire(
+            $execution->context,
+            $timeoutSeconds + 60,
+            function (AiModel $candidate): void {
+                $this->assertQualityCandidateReady($candidate);
+            },
+        );
         $execution->adopt($invocation);
 
         try {
@@ -773,6 +870,7 @@ class EvaluateArticleAiQualityCommand extends Command
                     $timeoutSeconds,
                     'fast_v2',
                     $invocation->reservation,
+                    true,
                 );
             } elseif ($this->reviewer instanceof VersionAwareArticleAiQualityReviewer) {
                 $review = $this->reviewer->reviewWithinVersion(
@@ -790,6 +888,19 @@ class EvaluateArticleAiQualityCommand extends Command
             return $review;
         } finally {
             $invocation->close();
+        }
+    }
+
+    private function assertQualityCandidateReady(AiModel $model): void
+    {
+        try {
+            $this->qualityCircuitBreaker->beforeRequest($model);
+        } catch (ArticleAiQualityRuntimeException $exception) {
+            if ($exception->safeCode() === 'provider_circuit_open' && $exception->retryable()) {
+                throw AiModelRuntimeEligibilityException::health();
+            }
+
+            throw $exception;
         }
     }
 

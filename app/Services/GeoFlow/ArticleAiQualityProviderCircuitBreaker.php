@@ -15,7 +15,10 @@ final class ArticleAiQualityProviderCircuitBreaker
         $state = $this->state($key);
         $openUntil = (int) ($state['open_until'] ?? 0);
         if ($openUntil > time()) {
-            throw new ArticleAiQualityRuntimeException('provider_circuit_open', true);
+            throw new ArticleAiQualityRuntimeException(
+                'provider_circuit_open',
+                $this->allowsCandidateFailover($state),
+            );
         }
         if ($openUntil <= 0) {
             return;
@@ -23,7 +26,10 @@ final class ArticleAiQualityProviderCircuitBreaker
 
         $probeKey = $key.':half-open-probe';
         if (! Cache::add($probeKey, true, $this->openSeconds())) {
-            throw new ArticleAiQualityRuntimeException('provider_circuit_open', true);
+            throw new ArticleAiQualityRuntimeException(
+                'provider_circuit_open',
+                $this->allowsCandidateFailover($state),
+            );
         }
     }
 
@@ -134,5 +140,16 @@ final class ArticleAiQualityProviderCircuitBreaker
     private function openSeconds(): int
     {
         return max(1, (int) config('geoflow.ai_quality_circuit_open_seconds', 60));
+    }
+
+    /** @param array<string,mixed> $state */
+    private function allowsCandidateFailover(array $state): bool
+    {
+        return in_array((string) ($state['last_error_code'] ?? ''), [
+            'provider_timeout',
+            'provider_rate_limited',
+            'provider_gateway_error',
+            'provider_error',
+        ], true);
     }
 }

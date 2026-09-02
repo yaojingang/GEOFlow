@@ -62,15 +62,17 @@ final class AdminAiDirectEntryAccessArchitectureTest extends TestCase
     {
         $review = $this->methodSource(EvaluateArticleAiQualityCommand::class, 'reviewLive');
         $acquire = strpos($review, 'invocationGateway->acquire(');
-        $provider = strpos($review, 'reviewer->', $acquire === false ? 0 : $acquire);
+        $readiness = strpos($review, 'assertQualityCandidateReady(', $acquire === false ? 0 : $acquire);
+        $provider = strpos($review, 'reviewer->', $readiness === false ? 0 : $readiness);
         $secondGuard = strpos($review, 'assertModelCurrent(', $provider === false ? 0 : $provider);
         $success = strpos($review, 'invocation->recordSuccess(', $secondGuard === false ? 0 : $secondGuard);
         $release = strpos($review, 'invocation->close(', $success === false ? 0 : $success);
 
-        foreach ([$acquire, $provider, $secondGuard, $success, $release] as $position) {
+        foreach ([$acquire, $readiness, $provider, $secondGuard, $success, $release] as $position) {
             $this->assertIsInt($position);
         }
-        $this->assertLessThan($provider, $acquire);
+        $this->assertLessThan($readiness, $acquire);
+        $this->assertLessThan($provider, $readiness);
         $this->assertLessThan($secondGuard, $provider);
         $this->assertLessThan($success, $secondGuard);
         $this->assertLessThan($release, $success);
@@ -113,16 +115,18 @@ final class AdminAiDirectEntryAccessArchitectureTest extends TestCase
         $lock = strpos($source, 'acquireForInvocation(');
         $guard = strpos($source, 'assertModelCurrent(', $lock === false ? 0 : $lock);
         $runtime = strpos($source, 'runtimeGate->assertExecutable(', $guard === false ? 0 : $guard);
-        $reservation = strpos($source, 'usageQuota->reserveModel(', $runtime === false ? 0 : $runtime);
+        $readiness = strpos($source, 'candidateReadiness?->__invoke(', $runtime === false ? 0 : $runtime);
+        $reservation = strpos($source, 'usageQuota->reserveModel(', $readiness === false ? 0 : $readiness);
         $return = strpos($source, 'new DirectAdminAiModelInvocation(', $reservation === false ? 0 : $reservation);
         $release = strpos($source, 'invocationLocks->release(', $lock === false ? 0 : $lock);
 
-        foreach ([$lock, $guard, $runtime, $reservation, $return, $release] as $position) {
+        foreach ([$lock, $guard, $runtime, $readiness, $reservation, $return, $release] as $position) {
             $this->assertIsInt($position);
         }
         $this->assertLessThan($guard, $lock);
         $this->assertLessThan($runtime, $guard);
-        $this->assertLessThan($reservation, $runtime);
+        $this->assertLessThan($readiness, $runtime);
+        $this->assertLessThan($reservation, $readiness);
         $this->assertLessThan($return, $reservation);
         $this->assertStringContainsString('$explicit', $source);
         $this->assertStringContainsString('foreach (', $source);

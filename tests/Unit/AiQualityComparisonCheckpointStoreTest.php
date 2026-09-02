@@ -69,11 +69,12 @@ final class AiQualityComparisonCheckpointStoreTest extends TestCase
         return array_replace([
             'article_ids' => [10],
             'knowledge_base_id' => 20,
-            'model_id' => 30,
+            'requested_model_id' => null,
             'admin_id' => 40,
             'access_version' => 1,
             'policy_version' => 1,
             'repeat' => 1,
+            'compare' => ['atomic', 'knowledge'],
         ], $overrides);
     }
 }

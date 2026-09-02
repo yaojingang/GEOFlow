@@ -6,6 +6,7 @@ use App\Console\Commands\EvaluateArticleAiQualityCommand;
 use App\Contracts\ArticleAiQualityReviewer;
 use App\Data\Ai\DirectAdminAiExecutionContext;
 use App\Exceptions\AiModelAccessException;
+use App\Exceptions\ArticleAiQualityRuntimeException;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
@@ -13,6 +14,7 @@ use App\Models\Author;
 use App\Models\Category;
 use App\Models\KnowledgeBase;
 use App\Services\Admin\AdminAiModelMutationService;
+use App\Services\GeoFlow\ArticleAiQualityProviderCircuitBreaker;
 use App\Services\GeoFlow\DirectAdminAiExecutionGuard;
 use App\Services\GeoFlow\DirectAdminAiInvocationBoundaryHook;
 use App\Support\GeoFlow\ApiKeyCrypto;
@@ -319,6 +321,7 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $this->assertNotSame('', $checkpoint['run_id']);
         $this->assertSame(64, strlen($checkpoint['fingerprint']));
         $this->assertSame($admin->id, $checkpoint['request']['admin_id']);
+        $this->assertSame($model->id, $checkpoint['request']['requested_model_id']);
         $this->assertSame([], glob($checkpointPath.'.*.tmp') ?: []);
         $this->assertCount(2, $interruptingReviewer->modelIds);
 
@@ -331,6 +334,97 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $this->assertCount(2, $report['calls']);
         $this->assertFileDoesNotExist($checkpointPath);
         $this->assertSame([], glob($checkpointPath.'.*.tmp') ?: []);
+    }
+
+    public function test_live_comparison_resumes_an_automatic_run_with_the_current_candidate_and_preserves_per_call_model_attribution(): void
+    {
+        $provider = $this->admin('comparison-auto-provider');
+        $admin = $this->admin('comparison-auto-consumer', 'admin', [
+            'shared_ai_config_owner_id' => $provider->id,
+        ]);
+        $personal = $this->model($admin, 'comparison-auto-personal', 1);
+        $personal->forceFill(['daily_limit' => 1])->save();
+        $shared = $this->model($provider, 'comparison-auto-shared', 1);
+        $author = Author::query()->create(['name' => '自动恢复作者']);
+        $category = Category::query()->create([
+            'name' => '自动恢复分类',
+            'slug' => 'comparison-auto-resume-category',
+        ]);
+        $article = Article::query()->create([
+            'title' => '自动恢复文章',
+            'slug' => 'comparison-auto-resume-article',
+            'content' => '自动恢复正文。',
+            'author_id' => $author->id,
+            'category_id' => $category->id,
+            'status' => 'draft',
+            'review_status' => 'pending',
+        ]);
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '自动恢复知识库',
+            'content' => '自动恢复知识。',
+            'risk_level' => 'low',
+            'review_status' => 'reviewed',
+        ]);
+        $state = (object) ['interrupted' => false];
+        $this->app->instance(
+            DirectAdminAiInvocationBoundaryHook::class,
+            new class($admin, (int) $shared->id, $state) extends DirectAdminAiInvocationBoundaryHook
+            {
+                public function __construct(
+                    private readonly Admin $admin,
+                    private readonly int $sharedModelId,
+                    private readonly object $state,
+                ) {}
+
+                public function beforeCandidateLock(DirectAdminAiExecutionContext $context, AiModel $candidate): void
+                {
+                    if ($this->state->interrupted || (int) $candidate->id !== $this->sharedModelId) {
+                        return;
+                    }
+                    $this->state->interrupted = true;
+
+                    throw AiModelAccessException::modelUnavailable($this->admin, $candidate);
+                }
+            },
+        );
+        $reviewer = $this->recordingReviewer();
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        [, $basePath] = $this->liveFixture('live-comparison-auto-resume');
+        $arguments = [
+            '--output' => $basePath,
+            '--live' => true,
+            '--admin' => $admin->id,
+            '--articles' => (string) $article->id,
+            '--knowledge-base' => (string) $knowledgeBase->id,
+            '--compare' => 'atomic,knowledge',
+        ];
+
+        $this->artisan('geoflow:evaluate-ai-quality', $arguments)->assertFailed();
+
+        $checkpointPath = $basePath.'.partial.json';
+        $checkpoint = json_decode((string) File::get($checkpointPath), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertNull($checkpoint['request']['requested_model_id']);
+        $this->assertSame(['atomic', 'knowledge'], $checkpoint['request']['compare']);
+        $this->assertCount(1, $checkpoint['calls']);
+        $this->assertSame($personal->id, $checkpoint['calls'][0]['resolved_model_id']);
+        $this->assertSame('personal', $checkpoint['calls'][0]['resolved_model_source']);
+        $this->assertSame([$personal->id], $reviewer->modelIds);
+
+        $this->artisan('geoflow:evaluate-ai-quality', $arguments)->assertSuccessful();
+
+        $this->assertSame([$personal->id, $shared->id], $reviewer->modelIds);
+        $report = json_decode((string) File::get($basePath.'.json'), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('mixed', $report['model_usage_mode']);
+        $this->assertNull($report['model']);
+        $this->assertSame([$personal->id, $shared->id], array_column($report['calls'], 'resolved_model_id'));
+        $this->assertSame(['personal', 'shared'], array_column($report['calls'], 'resolved_model_source'));
+        $this->assertSame([
+            ['id' => $personal->id, 'name' => $personal->name, 'source' => 'personal', 'call_count' => 1],
+            ['id' => $shared->id, 'name' => $shared->name, 'source' => 'shared', 'call_count' => 1],
+        ], $report['models_used']);
+        $this->assertSame(1, (int) $personal->fresh()->total_used);
+        $this->assertSame(1, (int) $shared->fresh()->total_used);
+        $this->assertFileDoesNotExist($checkpointPath);
     }
 
     public function test_live_evaluation_automatically_prefers_the_admins_personal_model_over_shared_fallback(): void
@@ -366,6 +460,15 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $this->assertArrayNotHasKey('api_url', $report['execution']);
         $this->assertStringNotContainsString('test-secret-', $reportJson);
         $this->assertStringNotContainsString('secret.example.test', $reportJson);
+        $this->assertSame('single', $report['model_usage_mode']);
+        $this->assertSame([[
+            'id' => $personal->id,
+            'name' => $personal->name,
+            'source' => 'personal',
+            'call_count' => 1,
+        ]], $report['models_used']);
+        $this->assertSame($personal->id, $report['cases'][0]['resolved_model_id']);
+        $this->assertSame('personal', $report['cases'][0]['resolved_model_source']);
 
         $personal->forceFill([
             'daily_limit' => 1,
@@ -383,6 +486,42 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $this->assertSame([$personal->id, $shared->id], $reviewer->modelIds);
         $this->assertSame($shared->id, $fallbackReport['model_id']);
         $this->assertSame('shared', $fallbackReport['execution']['model_source']);
+    }
+
+    public function test_live_evaluation_reports_each_call_when_automatic_candidates_change_between_cases(): void
+    {
+        $provider = $this->admin('live-mixed-provider');
+        $admin = $this->admin('live-mixed-consumer', 'admin', [
+            'shared_ai_config_owner_id' => $provider->id,
+        ]);
+        $personal = $this->model($admin, 'live-mixed-personal', 1);
+        $personal->forceFill(['daily_limit' => 1])->save();
+        $shared = $this->model($provider, 'live-mixed-shared', 1);
+        $reviewer = $this->recordingReviewer();
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        [$datasetPath, $basePath] = $this->liveFixture('live-mixed-models');
+        $dataset = json_decode((string) File::get($datasetPath), true, flags: JSON_THROW_ON_ERROR);
+        $second = $dataset['cases'][0];
+        $second['id'] = 'safe-case-2';
+        $dataset['cases'][] = $second;
+        $dataset['requirements']['total_cases'] = 2;
+        $dataset['requirements']['calibration'] = 2;
+        File::put($datasetPath, json_encode($dataset, JSON_THROW_ON_ERROR));
+
+        $this->artisan('geoflow:evaluate-ai-quality', [
+            '--dataset' => $datasetPath,
+            '--output' => $basePath,
+            '--live' => true,
+            '--admin' => $admin->id,
+        ])->assertSuccessful();
+
+        $this->assertSame([$personal->id, $shared->id], $reviewer->modelIds);
+        $report = json_decode((string) File::get($basePath.'.json'), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('mixed', $report['model_usage_mode']);
+        $this->assertNull($report['model_id']);
+        $this->assertSame('mixed', $report['execution']['model_source']);
+        $this->assertSame([$personal->id, $shared->id], array_column($report['calls'], 'resolved_model_id'));
+        $this->assertSame(['personal', 'shared'], array_column($report['calls'], 'resolved_model_source'));
     }
 
     public function test_live_evaluation_skips_a_personal_candidate_whose_last_quota_is_consumed_before_lock(): void
@@ -437,6 +576,126 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $this->assertSame(1, (int) $personal->fresh()->total_used);
         $this->assertSame(1, (int) $shared->fresh()->used_today);
         $this->assertSame(1, (int) $shared->fresh()->total_used);
+    }
+
+    public function test_live_evaluation_skips_a_personal_model_while_its_quality_circuit_is_open(): void
+    {
+        config()->set('geoflow.ai_quality_circuit_consecutive_failures', 1);
+        $provider = $this->admin('live-circuit-shared-provider');
+        $admin = $this->admin('live-circuit-consumer', 'admin', [
+            'shared_ai_config_owner_id' => $provider->id,
+        ]);
+        $personal = $this->model($admin, 'live-circuit-personal', 1);
+        $shared = $this->model($provider, 'live-circuit-shared', 1);
+        app(ArticleAiQualityProviderCircuitBreaker::class)->recordFailure(
+            $personal,
+            new ArticleAiQualityRuntimeException('provider_timeout', true),
+        );
+        $reviewer = $this->recordingReviewer();
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        [$datasetPath, $basePath] = $this->liveFixture('live-circuit-shared-fallback');
+
+        $this->artisan('geoflow:evaluate-ai-quality', [
+            '--dataset' => $datasetPath,
+            '--output' => $basePath,
+            '--live' => true,
+            '--admin' => $admin->id,
+        ])->assertSuccessful();
+
+        $this->assertSame([$shared->id], $reviewer->modelIds);
+        $this->assertSame(0, (int) $personal->fresh()->used_today);
+        $this->assertSame(1, (int) $shared->fresh()->used_today);
+    }
+
+    public function test_live_evaluation_rejects_an_explicit_model_while_its_quality_circuit_is_open(): void
+    {
+        config()->set('geoflow.ai_quality_circuit_consecutive_failures', 1);
+        $admin = $this->admin('live-explicit-circuit-admin');
+        $model = $this->model($admin, 'live-explicit-circuit-model');
+        app(ArticleAiQualityProviderCircuitBreaker::class)->recordFailure(
+            $model,
+            new ArticleAiQualityRuntimeException('provider_timeout', true),
+        );
+        $reviewer = $this->recordingReviewer();
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        [$datasetPath, $basePath] = $this->liveFixture('live-explicit-circuit-open');
+
+        $this->artisan('geoflow:evaluate-ai-quality', [
+            '--dataset' => $datasetPath,
+            '--output' => $basePath,
+            '--live' => true,
+            '--admin' => $admin->id,
+            '--model' => $model->id,
+        ])->assertFailed();
+
+        $this->assertSame([], $reviewer->modelIds);
+        $this->assertSame(0, (int) $model->fresh()->used_today);
+        $this->assertFileDoesNotExist($basePath.'.json');
+    }
+
+    public function test_live_evaluation_fails_without_reserving_quota_when_all_quality_circuits_are_open(): void
+    {
+        config()->set('geoflow.ai_quality_circuit_consecutive_failures', 1);
+        $provider = $this->admin('live-all-circuits-provider');
+        $admin = $this->admin('live-all-circuits-consumer', 'admin', [
+            'shared_ai_config_owner_id' => $provider->id,
+        ]);
+        $personal = $this->model($admin, 'live-all-circuits-personal', 1);
+        $shared = $this->model($provider, 'live-all-circuits-shared', 1);
+        $breaker = app(ArticleAiQualityProviderCircuitBreaker::class);
+        foreach ([$personal, $shared] as $model) {
+            $breaker->recordFailure($model, new ArticleAiQualityRuntimeException('provider_timeout', true));
+        }
+        $reviewer = $this->recordingReviewer();
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        [$datasetPath, $basePath] = $this->liveFixture('live-all-circuits-open');
+
+        $this->artisan('geoflow:evaluate-ai-quality', [
+            '--dataset' => $datasetPath,
+            '--output' => $basePath,
+            '--live' => true,
+            '--admin' => $admin->id,
+        ])->assertFailed();
+
+        $this->assertSame([], $reviewer->modelIds);
+        $this->assertSame(0, (int) $personal->fresh()->used_today);
+        $this->assertSame(0, (int) $shared->fresh()->used_today);
+        $this->assertFileDoesNotExist($basePath.'.json');
+    }
+
+    public function test_live_evaluation_does_not_fail_over_an_authentication_circuit_to_a_shared_model(): void
+    {
+        config()->set('geoflow.ai_quality_circuit_consecutive_failures', 5);
+        config()->set('geoflow.ai_quality_circuit_sample_size', 2);
+        config()->set('geoflow.ai_quality_circuit_failure_percent', 50);
+        $provider = $this->admin('live-auth-circuit-provider');
+        $admin = $this->admin('live-auth-circuit-consumer', 'admin', [
+            'shared_ai_config_owner_id' => $provider->id,
+        ]);
+        $personal = $this->model($admin, 'live-auth-circuit-personal', 1);
+        $shared = $this->model($provider, 'live-auth-circuit-shared', 1);
+        $breaker = app(ArticleAiQualityProviderCircuitBreaker::class);
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $breaker->recordFailure(
+                $personal,
+                new ArticleAiQualityRuntimeException('provider_authentication_failed'),
+            );
+        }
+        $reviewer = $this->recordingReviewer();
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        [$datasetPath, $basePath] = $this->liveFixture('live-auth-circuit-no-fallback');
+
+        $this->artisan('geoflow:evaluate-ai-quality', [
+            '--dataset' => $datasetPath,
+            '--output' => $basePath,
+            '--live' => true,
+            '--admin' => $admin->id,
+        ])->assertFailed();
+
+        $this->assertSame([], $reviewer->modelIds);
+        $this->assertSame(0, (int) $personal->fresh()->used_today);
+        $this->assertSame(0, (int) $shared->fresh()->used_today);
+        $this->assertFileDoesNotExist($basePath.'.json');
     }
 
     public function test_live_evaluation_rejects_a_peer_or_system_model_before_reviewer_or_output(): void

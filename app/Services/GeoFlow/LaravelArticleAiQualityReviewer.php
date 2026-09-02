@@ -71,6 +71,7 @@ final readonly class LaravelArticleAiQualityReviewer implements PreReservedArtic
         int $timeoutSeconds,
         string $executionVersion,
         AiUsageReservation $reservation,
+        bool $readinessConfirmed = false,
     ): array {
         if (! in_array($executionVersion, ['legacy', 'fast_v2'], true)) {
             $this->usageQuota->releaseModel($reservation);
@@ -78,12 +79,14 @@ final readonly class LaravelArticleAiQualityReviewer implements PreReservedArtic
             throw new RuntimeException('ai_quality_execution_version_invalid');
         }
 
-        try {
-            $this->circuitBreaker->beforeRequest($model);
-        } catch (Throwable $exception) {
-            $this->usageQuota->releaseModel($reservation);
+        if (! $readinessConfirmed) {
+            try {
+                $this->circuitBreaker->beforeRequest($model);
+            } catch (Throwable $exception) {
+                $this->usageQuota->releaseModel($reservation);
 
-            throw $exception;
+                throw $exception;
+            }
         }
 
         return $this->reviewWithReservation(

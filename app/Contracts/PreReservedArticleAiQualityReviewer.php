@@ -14,5 +14,6 @@ interface PreReservedArticleAiQualityReviewer extends VersionAwareArticleAiQuali
         int $timeoutSeconds,
         string $executionVersion,
         AiUsageReservation $reservation,
+        bool $readinessConfirmed = false,
     ): array;
 }
