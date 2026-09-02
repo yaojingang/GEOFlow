@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Data\Ai\SystemAiIdentity;
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
@@ -365,6 +366,7 @@ class KnowledgeBaseController extends Controller
 
         $this->chunkSyncCoordinator->request(
             (int) $knowledgeBase->id,
+            SystemAiIdentity::knowledgeIndex(),
             requireRealEmbedding: ! $knowledgeBase->isSystemManaged(),
             force: true,
         );
@@ -733,7 +735,10 @@ class KnowledgeBaseController extends Controller
     private function redirectAfterChunkSync(KnowledgeBase $knowledgeBase, string $routeName, array $routeParameters): RedirectResponse
     {
         try {
-            $this->chunkSyncCoordinator->request((int) $knowledgeBase->id);
+            $this->chunkSyncCoordinator->request(
+                (int) $knowledgeBase->id,
+                SystemAiIdentity::knowledgeIndex(),
+            );
         } catch (\Throwable $exception) {
             report($exception);
 

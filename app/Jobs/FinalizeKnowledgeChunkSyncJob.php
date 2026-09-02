@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Data\Ai\SystemAiIdentity;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use App\Services\GeoFlow\KnowledgeChunkSyncService;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -19,6 +20,7 @@ class FinalizeKnowledgeChunkSyncJob implements ShouldQueue
     public function __construct(
         public readonly int $knowledgeBaseId,
         public readonly string $syncToken,
+        public readonly string $systemPurpose,
     ) {}
 
     public function tags(): array
@@ -28,7 +30,11 @@ class FinalizeKnowledgeChunkSyncJob implements ShouldQueue
 
     public function handle(KnowledgeChunkSyncService $syncService): void
     {
-        $syncService->finalizeStagingSync($this->knowledgeBaseId, $this->syncToken);
+        $syncService->finalizeStagingSync(
+            $this->knowledgeBaseId,
+            $this->syncToken,
+            SystemAiIdentity::fromKnowledgeIndexPurpose($this->systemPurpose),
+        );
     }
 
     public function failed(?Throwable $exception = null): void

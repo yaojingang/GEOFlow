@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Data\Ai\SystemAiIdentity;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use App\Services\GeoFlow\KnowledgeChunkSyncService;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -20,6 +21,7 @@ class EmbedKnowledgeChunkBatchJob implements ShouldQueue
         public readonly int $knowledgeBaseId,
         public readonly string $syncToken,
         public readonly int $afterRowId = 0,
+        public readonly string $systemPurpose = '',
         public readonly bool $requireRealEmbedding = false,
     ) {}
 
@@ -32,6 +34,7 @@ class EmbedKnowledgeChunkBatchJob implements ShouldQueue
         KnowledgeChunkSyncCoordinator $coordinator,
         KnowledgeChunkSyncService $syncService,
     ): void {
+        $identity = SystemAiIdentity::fromKnowledgeIndexPurpose($this->systemPurpose);
         if (! $coordinator->isCurrent($this->knowledgeBaseId, $this->syncToken)) {
             return;
         }
@@ -40,6 +43,7 @@ class EmbedKnowledgeChunkBatchJob implements ShouldQueue
             $this->knowledgeBaseId,
             $this->syncToken,
             $this->afterRowId,
+            $identity,
             $this->requireRealEmbedding,
         );
 
@@ -47,6 +51,7 @@ class EmbedKnowledgeChunkBatchJob implements ShouldQueue
             FinalizeKnowledgeChunkSyncJob::dispatch(
                 $this->knowledgeBaseId,
                 $this->syncToken,
+                $this->systemPurpose,
             )->onQueue('knowledge');
 
             return;
@@ -56,6 +61,7 @@ class EmbedKnowledgeChunkBatchJob implements ShouldQueue
             $this->knowledgeBaseId,
             $this->syncToken,
             $result['last_id'],
+            $this->systemPurpose,
             $this->requireRealEmbedding,
         )->onQueue('knowledge');
     }

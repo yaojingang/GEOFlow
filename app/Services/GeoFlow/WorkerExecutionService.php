@@ -40,7 +40,6 @@ class WorkerExecutionService
      * 复用正文提示词和模型调用服务，确保任务生成与单篇生成规则一致。
      */
     public function __construct(
-        private readonly KnowledgeChunkSyncService $knowledgeChunkSyncService,
         private readonly KnowledgeRetrievalService $knowledgeRetrievalService,
         private readonly DistributionOrchestrator $distributionOrchestrator,
         private readonly ArticleRiskScanner $articleRiskScanner,
@@ -109,7 +108,12 @@ class WorkerExecutionService
         $prompt = $task->prompt_id ? Prompt::query()->find((int) $task->prompt_id) : null;
 
         $keyword = (string) ($titleRow->keyword ?? '');
-        $knowledgeBundle = $this->resolveKnowledgeContext($task, (string) $titleRow->title, $keyword);
+        $knowledgeBundle = $this->resolveKnowledgeContext(
+            $task,
+            (string) $titleRow->title,
+            $keyword,
+            $executionContext,
+        );
         $knowledgeContext = $knowledgeBundle['context'];
         $generationEvidenceSnapshot = $this->generationEvidenceSnapshot($knowledgeBundle['evidence']);
         $contentPrompt = $this->buildContentPrompt((string) $titleRow->title, $keyword, $prompt?->content, $knowledgeContext);
@@ -121,7 +125,7 @@ class WorkerExecutionService
         $selectedImages = $imageResult['images'];
         $excerpt = $this->buildExcerpt($content);
 
-        return DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $selectedImages, $generationEvidenceSnapshot, $executionContext, $aiModel, $knowledgeContext, $generation, $executionStartedAt): array {
+        return DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $selectedImages, $generationEvidenceSnapshot, $executionContext, $aiModel, $knowledgeContext, $knowledgeBundle, $generation, $executionStartedAt): array {
             $freshTask = Task::query()
                 ->whereKey((int) $task->id)
                 ->lockForUpdate()
@@ -240,6 +244,7 @@ class WorkerExecutionService
                     'author_id' => $author?->id,
                     'category_id' => $category?->id,
                     'knowledge_length' => mb_strlen($knowledgeContext, 'UTF-8'),
+                    'knowledge_retrieval' => $knowledgeBundle['retrieval_meta'] ?? null,
                     'image_count' => count($selectedImages),
                     'model_selection_mode' => (string) ($task->model_selection_mode ?? 'fixed'),
                     'used_model_id' => (int) $aiModel->id,
@@ -695,8 +700,12 @@ class WorkerExecutionService
     /**
      * 按任务配置检索知识库上下文并回填到 {{Knowledge}}。
      */
-    private function resolveKnowledgeContext(Task $task, string $title, string $keyword): array
-    {
+    private function resolveKnowledgeContext(
+        Task $task,
+        string $title,
+        string $keyword,
+        ?AiExecutionContext $executionContext,
+    ): array {
         $knowledgeBaseIds = $this->resolveTaskKnowledgeBaseIds($task);
         if ($knowledgeBaseIds === []) {
             return ['context' => '', 'evidence' => []];
@@ -733,7 +742,13 @@ class WorkerExecutionService
         }
 
         $query = trim($title."\n".$keyword);
-        $bundle = $this->knowledgeRetrievalService->retrieveContextBundleFromMany($knowledgeBaseIds, $query, 5, 3200);
+        $bundle = $this->knowledgeRetrievalService->retrieveContextBundleFromMany(
+            $knowledgeBaseIds,
+            $query,
+            5,
+            3200,
+            $executionContext,
+        );
         if ($bundle['context'] !== '') {
             return $bundle;
         }
@@ -822,82 +837,6 @@ class WorkerExecutionService
         }
 
         return $parts === [] ? '' : implode("\n\n", $parts);
-    }
-
-    /**
-     * 从 knowledge_chunks 中检索相关片段。
-     */
-    private function fetchKnowledgeContextFromChunks(int $knowledgeBaseId, string $query, int $limit, int $maxChars): string
-    {
-        if (trim($query) !== '') {
-            $vectorRows = $this->fetchKnowledgeChunksByPgvector($knowledgeBaseId, $query, max($limit * 3, 8));
-            if ($vectorRows !== []) {
-                return $this->composeKnowledgeContext($vectorRows, $limit, $maxChars);
-            }
-        }
-
-        $rows = KnowledgeChunk::query()
-            ->where('knowledge_base_id', $knowledgeBaseId)
-            ->orderBy('chunk_index')
-            ->get(['chunk_index', 'content', 'embedding_json', 'embedding_model_id', 'embedding_dimensions'])
-            ->all();
-        if ($rows === []) {
-            return '';
-        }
-
-        $queryTerms = $this->termFrequencies($query);
-        $hasRealEmbeddingRows = collect($rows)->contains(
-            fn ($row): bool => $this->chunkHasRealEmbedding($row)
-        );
-        $useRealEmbeddingScore = false;
-        $queryVector = [];
-        if ($hasRealEmbeddingRows && trim($query) !== '') {
-            $queryVector = $this->knowledgeChunkSyncService->generateQueryEmbeddingVector($query);
-            $useRealEmbeddingScore = $queryVector !== [];
-        }
-        if ($queryVector === []) {
-            $queryVector = $this->decodeVector(json_encode($this->buildFallbackVector($query, 256)));
-        }
-
-        $scored = [];
-        foreach ($rows as $row) {
-            $content = trim((string) ($row->content ?? ''));
-            if ($content === '') {
-                continue;
-            }
-
-            $vector = $this->decodeVector((string) ($row->embedding_json ?? ''));
-            $chunkTerms = $this->termFrequencies($content);
-            $lexicalScore = $this->lexicalScore($queryTerms, $chunkTerms);
-            $chunkUsesRealEmbedding = $this->chunkHasRealEmbedding($row);
-            $vectorScore = ($useRealEmbeddingScore === $chunkUsesRealEmbedding)
-                ? $this->dotProduct($queryVector, $vector)
-                : 0.0;
-            $score = ($vectorScore * 0.75) + ($lexicalScore * 0.25);
-
-            $scored[] = [
-                'chunk_index' => (int) ($row->chunk_index ?? 0),
-                'content' => $content,
-                'score' => $score,
-            ];
-        }
-
-        usort($scored, static function (array $a, array $b): int {
-            $diff = ($b['score'] <=> $a['score']);
-
-            return $diff !== 0 ? $diff : ($a['chunk_index'] <=> $b['chunk_index']);
-        });
-
-        return $this->composeKnowledgeContext($scored, $limit, $maxChars);
-    }
-
-    /**
-     * 判断 chunk 是否保存了真实 embedding；fallback hash 向量不满足要求。
-     */
-    private function chunkHasRealEmbedding(object $row): bool
-    {
-        return (int) ($row->embedding_model_id ?? 0) > 0
-            && (int) ($row->embedding_dimensions ?? 0) > 0;
     }
 
     /**
@@ -1081,226 +1020,5 @@ class WorkerExecutionService
         }
 
         return mb_substr($plain, 0, 180);
-    }
-
-    /**
-     * @return array<string,int>
-     */
-    private function termFrequencies(string $text): array
-    {
-        $tokens = preg_split('/[^\p{L}\p{N}_]+/u', mb_strtolower(trim($text), 'UTF-8')) ?: [];
-        $frequencies = [];
-        foreach ($tokens as $token) {
-            $token = trim((string) $token);
-            if ($token === '' || mb_strlen($token, 'UTF-8') <= 1) {
-                continue;
-            }
-            $frequencies[$token] = (int) ($frequencies[$token] ?? 0) + 1;
-        }
-
-        return $frequencies;
-    }
-
-    /**
-     * @param  array<string,int>  $queryTerms
-     * @param  array<string,int>  $chunkTerms
-     */
-    private function lexicalScore(array $queryTerms, array $chunkTerms): float
-    {
-        if ($queryTerms === [] || $chunkTerms === []) {
-            return 0.0;
-        }
-
-        $matched = 0;
-        $total = 0;
-        foreach ($queryTerms as $term => $count) {
-            $total += $count;
-            if (isset($chunkTerms[$term])) {
-                $matched += min($count, (int) $chunkTerms[$term]);
-            }
-        }
-
-        return $total > 0 ? ($matched / $total) : 0.0;
-    }
-
-    /**
-     * @return list<float>
-     */
-    private function decodeVector(string $json): array
-    {
-        $decoded = json_decode($json, true);
-        if (! is_array($decoded) || $decoded === []) {
-            return [];
-        }
-
-        $vector = [];
-        foreach ($decoded as $value) {
-            if (is_numeric($value)) {
-                $vector[] = (float) $value;
-            }
-        }
-
-        return $vector;
-    }
-
-    /**
-     * @param  list<float>  $left
-     * @param  list<float>  $right
-     */
-    private function dotProduct(array $left, array $right): float
-    {
-        if ($left === [] || $right === []) {
-            return 0.0;
-        }
-        $sum = 0.0;
-        $limit = min(count($left), count($right));
-        for ($i = 0; $i < $limit; $i++) {
-            $sum += ((float) $left[$i]) * ((float) $right[$i]);
-        }
-
-        return $sum;
-    }
-
-    /**
-     * @return list<float>
-     */
-    private function buildFallbackVector(string $text, int $dimensions): array
-    {
-        $dimensions = max(1, $dimensions);
-        $vector = array_fill(0, $dimensions, 0.0);
-        foreach ($this->termFrequencies($text) as $token => $count) {
-            $indexSeed = abs((int) crc32('i:'.$token));
-            $signSeed = abs((int) crc32('s:'.$token));
-            $index = $indexSeed % $dimensions;
-            $sign = ($signSeed % 2 === 0) ? 1.0 : -1.0;
-            $tokenLength = max(1, mb_strlen($token, 'UTF-8'));
-            $weight = (1.0 + log(1 + $count)) * min(2.0, 0.8 + ($tokenLength / 4));
-            $vector[$index] += $sign * $weight;
-        }
-
-        $norm = 0.0;
-        foreach ($vector as $value) {
-            $norm += $value * $value;
-        }
-        if ($norm > 0.0) {
-            $norm = sqrt($norm);
-            foreach ($vector as $index => $value) {
-                $vector[$index] = $value / $norm;
-            }
-        }
-
-        return $vector;
-    }
-
-    /**
-     * 优先使用 pgvector 执行数据库向量检索，命中则返回候选块。
-     *
-     * @return list<array{chunk_index:int,content:string,score:float}>
-     */
-    private function fetchKnowledgeChunksByPgvector(int $knowledgeBaseId, string $query, int $candidateLimit): array
-    {
-        if (! $this->canUsePgvectorSearch()) {
-            return [];
-        }
-
-        $vectorLiteral = $this->knowledgeChunkSyncService->generateQueryVectorLiteral($query);
-        if ($vectorLiteral === '') {
-            return [];
-        }
-
-        $rows = DB::select(
-            '
-                SELECT chunk_index, content,
-                       (embedding_vector <=> CAST(? AS vector)) AS vector_distance
-                FROM knowledge_chunks
-                WHERE knowledge_base_id = ?
-                  AND embedding_vector IS NOT NULL
-                ORDER BY embedding_vector <=> CAST(? AS vector), chunk_index ASC
-                LIMIT ?
-            ',
-            [$vectorLiteral, $knowledgeBaseId, $vectorLiteral, max(1, $candidateLimit)]
-        );
-
-        $results = [];
-        foreach ($rows as $row) {
-            $content = trim((string) ($row->content ?? ''));
-            if ($content === '') {
-                continue;
-            }
-            $distance = (float) ($row->vector_distance ?? 1.0);
-            $results[] = [
-                'chunk_index' => (int) ($row->chunk_index ?? 0),
-                'content' => $content,
-                'score' => 1.0 - $distance,
-            ];
-        }
-
-        return $results;
-    }
-
-    /**
-     * 仅在 PostgreSQL 且 pgvector 可用时启用向量检索。
-     */
-    private function canUsePgvectorSearch(): bool
-    {
-        if (DB::getDriverName() !== 'pgsql') {
-            return false;
-        }
-
-        try {
-            $typeRow = DB::selectOne("
-                SELECT EXISTS (
-                    SELECT 1 FROM pg_type WHERE typname = 'vector'
-                ) AS ok
-            ");
-            if (! $typeRow || ! (bool) ($typeRow->ok ?? false)) {
-                return false;
-            }
-
-            $columnRow = DB::selectOne("
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name = 'knowledge_chunks'
-                      AND column_name = 'embedding_vector'
-                ) AS ok
-            ");
-
-            return $columnRow !== null && (bool) ($columnRow->ok ?? false);
-        } catch (Throwable) {
-            return false;
-        }
-    }
-
-    /**
-     * 从候选块拼装知识上下文，按片段顺序输出。
-     *
-     * @param  list<array{chunk_index:int,content:string,score:float}>  $scored
-     */
-    private function composeKnowledgeContext(array $scored, int $limit, int $maxChars): string
-    {
-        if ($scored === []) {
-            return '';
-        }
-
-        $selected = array_slice($scored, 0, max(1, $limit));
-        usort($selected, static fn (array $a, array $b): int => $a['chunk_index'] <=> $b['chunk_index']);
-
-        $parts = [];
-        $charCount = 0;
-        foreach ($selected as $index => $chunk) {
-            $content = trim((string) ($chunk['content'] ?? ''));
-            if ($content === '') {
-                continue;
-            }
-            $nextLength = $charCount + mb_strlen($content, 'UTF-8');
-            if ($parts !== [] && $nextLength > $maxChars) {
-                continue;
-            }
-            $parts[] = '【知识片段'.($index + 1)."】\n".$content;
-            $charCount = $nextLength;
-        }
-
-        return trim(implode("\n\n", $parts));
     }
 }

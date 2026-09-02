@@ -2,6 +2,7 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Data\Ai\SystemAiIdentity;
 use App\Exceptions\ApiException;
 use App\Exceptions\SystemKnowledgeBaseDeletionException;
 use App\Models\Article;
@@ -792,7 +793,11 @@ class MaterialLibraryService
     private function requestKnowledgeChunkSync(Model $knowledgeBase, bool $force = false): void
     {
         try {
-            $this->chunkSyncCoordinator->request((int) $knowledgeBase->id, force: $force);
+            $this->chunkSyncCoordinator->request(
+                (int) $knowledgeBase->id,
+                SystemAiIdentity::knowledgeIndex(),
+                force: $force,
+            );
         } catch (\Throwable $exception) {
             report($exception);
         }

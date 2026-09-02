@@ -59,6 +59,7 @@ class KnowledgeBase extends Model
             'usage_count' => 'integer',
             'effective_date' => 'date',
             'chunk_sync_require_real_embedding' => 'boolean',
+            'chunk_embedding_dimensions' => 'integer',
             'chunk_synced_at' => 'datetime',
         ];
     }

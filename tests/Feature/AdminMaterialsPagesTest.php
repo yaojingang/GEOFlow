@@ -14,6 +14,7 @@ use App\Models\Keyword;
 use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
+use App\Models\SiteSetting;
 use App\Models\Task;
 use App\Models\Title;
 use App\Models\TitleLibrary;
@@ -916,11 +917,13 @@ class AdminMaterialsPagesTest extends TestCase
             'password' => 'secret-123',
             'email' => 'knowledge-refresh-admin@example.com',
             'display_name' => 'Knowledge Refresh Admin',
-            'role' => 'admin',
+            'role' => 'super_admin',
             'status' => 'active',
         ]);
 
-        $embeddingModel = AiModel::query()->create([
+        $embeddingModel = new AiModel;
+        $embeddingModel->forceFill([
+            'owner_admin_id' => $admin->id,
             'name' => 'Test Embedding',
             'version' => '',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
@@ -932,7 +935,12 @@ class AdminMaterialsPagesTest extends TestCase
             'used_today' => 0,
             'total_used' => 0,
             'status' => 'active',
-        ]);
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+        ])->save();
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'default_embedding_model_id'],
+            ['setting_value' => (string) $embeddingModel->id],
+        );
 
         $knowledgeBase = KnowledgeBase::query()->create([
             'name' => '待向量化知识库',

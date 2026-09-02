@@ -2,10 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Data\Ai\SystemAiIdentity;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\KnowledgeBase;
 use App\Models\SiteSetting;
 use App\Services\GeoFlow\KnowledgeChunkSyncService;
+use App\Services\GeoFlow\KnowledgeEmbeddingModelFingerprint;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -35,7 +38,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'word_count' => 24,
         ]);
 
-        app(KnowledgeChunkSyncService::class)->sync(
+        $this->syncKnowledge(
             (int) $knowledgeBase->id,
             'GEOFlow 是面向 GEO 内容工程的系统，支持知识库、关键词库和标题库协同生成内容。'
         );
@@ -70,7 +73,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'word_count' => 30,
         ]);
 
-        app(KnowledgeChunkSyncService::class)->sync(
+        $this->syncKnowledge(
             (int) $knowledgeBase->id,
             '没有 embedding 模型时仍然应该写入 fallback 向量，避免知识库上传失败。'
         );
@@ -103,7 +106,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'review_status' => 'reviewed',
         ]);
 
-        app(KnowledgeChunkSyncService::class)->sync(
+        $this->syncKnowledge(
             (int) $knowledgeBase->id,
             "# 证据化知识库\n\nGEOFlow 知识库需要保留来源、业务线和审核状态。"
         );
@@ -135,7 +138,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'word_count' => 0,
         ]);
 
-        app(KnowledgeChunkSyncService::class)->sync(
+        $this->syncKnowledge(
             (int) $knowledgeBase->id,
             "# GEOFlow 总览\n\nGEOFlow 是面向 GEO 内容工程的系统。\n\n## 多站分发\n\n分发管理负责把文章同步到多个目标站点。\n\n## 素材库\n\n素材库负责沉淀知识、关键词、标题和图片。"
         );
@@ -171,7 +174,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
         ]);
         $longParagraph = str_repeat('GEOFlow 语义切片需要稳定处理超长段落。', 30);
 
-        app(KnowledgeChunkSyncService::class)->sync((int) $knowledgeBase->id, $longParagraph);
+        $this->syncKnowledge((int) $knowledgeBase->id, $longParagraph);
 
         $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->get();
 
@@ -219,7 +222,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'word_count' => 0,
         ]);
 
-        app(KnowledgeChunkSyncService::class)->sync(
+        $this->syncKnowledge(
             (int) $knowledgeBase->id,
             "# 平台定位\n\nGEOFlow 负责内容工程后台。\n\n## 分发能力\n\n分发管理同步文章到渠道站点。\n\n## 素材能力\n\n素材库沉淀业务事实。"
         );
@@ -267,7 +270,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'word_count' => 0,
         ]);
 
-        app(KnowledgeChunkSyncService::class)->sync(
+        $this->syncKnowledge(
             (int) $knowledgeBase->id,
             "# 总览\n\n总览内容。\n\n## 细节\n\n细节内容。"
         );
@@ -318,7 +321,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'word_count' => 0,
         ]);
 
-        app(KnowledgeChunkSyncService::class)->sync(
+        $this->syncKnowledge(
             (int) $knowledgeBase->id,
             "# 前文\n\n前文内容。\n\n## 后文\n\n后文内容。"
         );
@@ -366,7 +369,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'word_count' => 0,
         ]);
 
-        app(KnowledgeChunkSyncService::class)->sync((int) $knowledgeBase->id, '只有一个短段落。');
+        $this->syncKnowledge((int) $knowledgeBase->id, '只有一个短段落。');
 
         $chunk = $knowledgeBase->chunks()->firstOrFail();
 
@@ -401,7 +404,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             ->map(static fn (int $index): string => "## 第 {$index} 节\n\n第 {$index} 节内容。")
             ->implode("\n\n");
 
-        app(KnowledgeChunkSyncService::class)->sync((int) $knowledgeBase->id, $content);
+        $this->syncKnowledge((int) $knowledgeBase->id, $content);
 
         $firstChunk = $knowledgeBase->chunks()->orderBy('chunk_index')->firstOrFail();
 
@@ -409,7 +412,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_semantic_chunking_fails_over_to_next_active_chat_model(): void
+    public function test_semantic_chunking_does_not_leave_the_bound_system_model(): void
     {
         Http::fake([
             'https://bad.test/v1/chat/completions' => Http::response([
@@ -459,7 +462,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'word_count' => 0,
         ]);
 
-        app(KnowledgeChunkSyncService::class)->sync(
+        $this->syncKnowledge(
             (int) $knowledgeBase->id,
             "# 总览\n\n总览内容。\n\n## 细节\n\n细节内容。"
         );
@@ -467,18 +470,17 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
         $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->get();
 
         $this->assertCount(2, $chunks);
-        $this->assertSame('semantic_llm', (string) $chunks[0]->chunk_strategy);
+        $this->assertSame('semantic_fallback', (string) $chunks[0]->chunk_strategy);
 
         $badModel->refresh();
         $goodModel->refresh();
         $this->assertSame(0, (int) $badModel->used_today);
         $this->assertSame(0, (int) $badModel->total_used);
-        $this->assertSame(1, (int) $goodModel->used_today);
-        $this->assertSame(1, (int) $goodModel->total_used);
+        $this->assertSame(0, (int) $goodModel->used_today);
+        $this->assertSame(0, (int) $goodModel->total_used);
 
         Http::assertSent(fn ($request): bool => $request->url() === 'https://bad.test/v1/chat/completions');
-        Http::assertSent(fn ($request): bool => $request->url() === 'https://good.test/v1/chat/completions'
-            && str_contains(json_encode($request->data(), JSON_UNESCAPED_UNICODE), 'Output strict JSON only'));
+        Http::assertNotSent(fn ($request): bool => $request->url() === 'https://good.test/v1/chat/completions');
     }
 
     public function test_semantic_chunking_counts_usage_only_after_valid_plan(): void
@@ -510,7 +512,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'word_count' => 0,
         ]);
 
-        app(KnowledgeChunkSyncService::class)->sync(
+        $this->syncKnowledge(
             (int) $knowledgeBase->id,
             "# 总览\n\n总览内容。\n\n## 细节\n\n细节内容。"
         );
@@ -549,7 +551,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'word_count' => 0,
         ]);
 
-        app(KnowledgeChunkSyncService::class)->sync(
+        $this->syncKnowledge(
             (int) $knowledgeBase->id,
             "# 总览\n\n总览内容。\n\n## 细节\n\n细节内容。"
         );
@@ -560,7 +562,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_sync_skips_invalid_default_embedding_model_and_uses_next_active_model(): void
+    public function test_sync_does_not_leave_an_invalid_bound_system_embedding_model(): void
     {
         Http::fake([
             'https://fallback.test/v1/embeddings' => Http::response([
@@ -582,10 +584,10 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'failover_priority' => 10,
         ]);
 
-        SiteSetting::query()->create([
-            'setting_key' => 'default_embedding_model_id',
-            'setting_value' => (string) $invalidDefault->id,
-        ]);
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'default_embedding_model_id'],
+            ['setting_value' => (string) $invalidDefault->id],
+        );
 
         $knowledgeBase = KnowledgeBase::query()->create([
             'name' => 'Fallback Model 知识库',
@@ -596,17 +598,17 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'word_count' => 32,
         ]);
 
-        app(KnowledgeChunkSyncService::class)->sync(
+        $this->syncKnowledge(
             (int) $knowledgeBase->id,
             '默认 embedding 模型无效时应该自动选择下一个可用模型。'
         );
 
         $chunk = $knowledgeBase->chunks()->firstOrFail();
 
-        $this->assertSame((int) $fallbackModel->id, (int) $chunk->embedding_model_id);
-        $this->assertSame([0.4, 0.5, 0.6], json_decode((string) $chunk->embedding_json, true));
-        Http::assertSentCount(1);
-        Http::assertSent(fn ($request): bool => $request->url() === 'https://fallback.test/v1/embeddings');
+        $this->assertNull($chunk->embedding_model_id);
+        $this->assertCount(256, json_decode((string) $chunk->embedding_json, true));
+        $this->assertSame(0, (int) $fallbackModel->fresh()->used_today);
+        Http::assertNothingSent();
     }
 
     public function test_sync_uses_gemini_embedding_document_prefix_without_task_type(): void
@@ -633,7 +635,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'word_count' => 24,
         ]);
 
-        app(KnowledgeChunkSyncService::class)->sync(
+        $this->syncKnowledge(
             (int) $knowledgeBase->id,
             'GEOFlow 是面向 GEO 内容工程的系统，支持知识库、关键词库和标题库协同生成内容。'
         );
@@ -674,7 +676,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'word_count' => 35,
         ]);
 
-        app(KnowledgeChunkSyncService::class)->sync(
+        $this->syncKnowledge(
             (int) $knowledgeBase->id,
             'GEOFlow 支持火山方舟 Doubao Embedding，适合国内环境下的知识库向量化。'
         );
@@ -729,7 +731,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'word_count' => 0,
         ]);
 
-        app(KnowledgeChunkSyncService::class)->sync(
+        $this->syncKnowledge(
             (int) $knowledgeBase->id,
             'GEOFlow 校验 Doubao Embedding 不发送 dimensions 参数。',
             true
@@ -768,7 +770,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'word_count' => 0,
         ]);
 
-        app(KnowledgeChunkSyncService::class)->sync(
+        $this->syncKnowledge(
             (int) $knowledgeBase->id,
             "# 第一节\n\n第一节内容。\n\n## 第二节\n\n第二节内容。\n\n## 第三节\n\n第三节内容。",
             true
@@ -823,7 +825,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             ->map(static fn (int $index): string => "## 第 {$index} 节\n\n第 {$index} 节内容。")
             ->implode("\n\n");
 
-        app(KnowledgeChunkSyncService::class)->sync((int) $knowledgeBase->id, $content, true);
+        $this->syncKnowledge((int) $knowledgeBase->id, $content, true);
 
         $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->get();
 
@@ -878,7 +880,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             ->map(static fn (int $index): string => "## 第 {$index} 节\n\n第 {$index} 节内容。")
             ->implode("\n\n");
 
-        app(KnowledgeChunkSyncService::class)->sync((int) $knowledgeBase->id, $content, true);
+        $this->syncKnowledge((int) $knowledgeBase->id, $content, true);
 
         $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->get();
 
@@ -911,7 +913,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'api_url' => 'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent',
         ]);
 
-        $vector = app(KnowledgeChunkSyncService::class)->generateQueryEmbeddingVector('如何使用 GEOFlow?');
+        $vector = $this->queryEmbeddingVector('如何使用 GEOFlow?');
 
         $this->assertSame([0.7, 0.8, 0.9], $vector);
 
@@ -949,7 +951,7 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'api_url' => 'https://ark.cn-beijing.volces.com/api/v3',
         ]);
 
-        $vector = app(KnowledgeChunkSyncService::class)->generateQueryEmbeddingVector('GEOFlow 知识库如何向量化？');
+        $vector = $this->queryEmbeddingVector('GEOFlow 知识库如何向量化？');
 
         $this->assertSame([0.61, 0.62, 0.63], $vector);
 
@@ -960,9 +962,48 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             && ! array_key_exists('dimensions', (array) $request->data()));
     }
 
+    private function syncKnowledge(int $knowledgeBaseId, string $content, bool $requireRealEmbedding = false): int
+    {
+        return app(KnowledgeChunkSyncService::class)->sync(
+            $knowledgeBaseId,
+            $content,
+            SystemAiIdentity::knowledgeIndex(),
+            $requireRealEmbedding,
+        );
+    }
+
+    /** @return list<float> */
+    private function queryEmbeddingVector(string $query): array
+    {
+        $model = AiModel::query()->latest('id')->firstOrFail();
+        $admin = Admin::query()->create([
+            'username' => 'query-admin',
+            'display_name' => 'Query Admin',
+            'password' => 'secret',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $model->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
+        $knowledgeBase = new KnowledgeBase;
+        $knowledgeBase->forceFill([
+            'chunk_embedding_fingerprint' => app(KnowledgeEmbeddingModelFingerprint::class)->forModel($model),
+            'chunk_embedding_dimensions' => 3,
+            'chunk_embedding_provider' => app(KnowledgeEmbeddingModelFingerprint::class)->provider($model),
+        ]);
+
+        return app(KnowledgeChunkSyncService::class)
+            ->generateCompatibleQueryEmbedding($query, $knowledgeBase, $admin)
+            ->vector;
+    }
+
     private function createEmbeddingModel(array $overrides = []): AiModel
     {
-        return AiModel::query()->create(array_merge([
+        $model = new AiModel;
+        $model->forceFill(array_merge([
+            'owner_admin_id' => $this->systemOwner()->id,
             'name' => 'Test Embedding',
             'version' => 'test',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
@@ -974,12 +1015,22 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'used_today' => 0,
             'total_used' => 0,
             'status' => 'active',
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
         ], $overrides));
+        $model->save();
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'default_embedding_model_id'],
+            ['setting_value' => (string) $model->id],
+        );
+
+        return $model;
     }
 
     private function createChatModel(array $overrides = []): AiModel
     {
-        return AiModel::query()->create(array_merge([
+        $model = new AiModel;
+        $model->forceFill(array_merge([
+            'owner_admin_id' => $this->systemOwner()->id,
             'name' => 'Test Chat',
             'version' => 'test',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
@@ -991,6 +1042,23 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             'used_today' => 0,
             'total_used' => 0,
             'status' => 'active',
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
         ], $overrides));
+        $model->save();
+
+        return $model;
+    }
+
+    private function systemOwner(): Admin
+    {
+        return Admin::query()->firstOrCreate(
+            ['username' => 'knowledge-system-owner'],
+            [
+                'display_name' => 'Knowledge System Owner',
+                'password' => 'secret',
+                'role' => 'super_admin',
+                'status' => 'active',
+            ],
+        );
     }
 }

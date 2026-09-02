@@ -2,8 +2,10 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Data\Ai\SystemAiIdentity;
 use App\Jobs\PrepareKnowledgeChunkSyncJob;
 use App\Models\KnowledgeBase;
+use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -11,11 +13,15 @@ use Throwable;
 
 class KnowledgeChunkSyncCoordinator
 {
+    public function __construct(private readonly AiExecutionErrorSanitizer $errorSanitizer) {}
+
     public function request(
         int $knowledgeBaseId,
+        SystemAiIdentity $identity,
         bool $requireRealEmbedding = false,
         bool $force = false,
     ): bool {
+        $identity->assertCanBuildKnowledgeIndex();
         $sync = $this->reserve(
             $knowledgeBaseId,
             $requireRealEmbedding,
@@ -25,13 +31,17 @@ class KnowledgeChunkSyncCoordinator
             return false;
         }
 
-        $this->dispatchReserved($knowledgeBaseId, $sync);
+        $this->dispatchReserved($knowledgeBaseId, $sync, $identity);
 
         return true;
     }
 
-    public function recoverStale(int $staleSeconds = 600, int $limit = 50): int
-    {
+    public function recoverStale(
+        SystemAiIdentity $identity,
+        int $staleSeconds = 600,
+        int $limit = 50,
+    ): int {
+        $identity->assertCanBuildKnowledgeIndex();
         $cutoff = now()->subSeconds(max(60, $staleSeconds));
         $candidates = KnowledgeBase::query()
             ->whereIn('chunk_sync_status', ['pending', 'processing'])
@@ -54,7 +64,7 @@ class KnowledgeChunkSyncCoordinator
             }
 
             try {
-                $this->dispatchReserved($knowledgeBaseId, $sync);
+                $this->dispatchReserved($knowledgeBaseId, $sync, $identity);
                 $recovered++;
             } catch (Throwable $exception) {
                 report($exception);
@@ -132,13 +142,17 @@ class KnowledgeChunkSyncCoordinator
     /**
      * @param  array{token:string,require_real_embedding:bool}  $sync
      */
-    private function dispatchReserved(int $knowledgeBaseId, array $sync): void
-    {
+    private function dispatchReserved(
+        int $knowledgeBaseId,
+        array $sync,
+        SystemAiIdentity $identity,
+    ): void {
         $token = (string) $sync['token'];
         try {
             PrepareKnowledgeChunkSyncJob::dispatch(
                 $knowledgeBaseId,
                 $token,
+                $identity->purpose(),
                 (bool) $sync['require_real_embedding'],
             )
                 ->onQueue('knowledge')
@@ -167,7 +181,7 @@ class KnowledgeChunkSyncCoordinator
                 ->whereIn('chunk_sync_status', ['pending', 'processing'])
                 ->update([
                     'chunk_sync_status' => 'failed',
-                    'chunk_sync_error' => mb_substr(trim($message), 0, 2000, 'UTF-8'),
+                    'chunk_sync_error' => $this->errorSanitizer->sanitize($message, 'knowledge_sync_failed'),
                     'updated_at' => now(),
                 ]);
 

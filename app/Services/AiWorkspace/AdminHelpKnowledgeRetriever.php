@@ -49,6 +49,8 @@ final class AdminHelpKnowledgeRetriever
             $chunkSourceHash !== '' ? $chunkSourceHash : 'no-index',
             app()->getLocale(),
             $permissionScope,
+            (int) $admin->getKey(),
+            max(1, (int) $admin->ai_config_access_version),
             sha1(Str::lower($query)),
         ]);
 
@@ -111,7 +113,12 @@ final class AdminHelpKnowledgeRetriever
             && hash_equals($contentHash, $chunkSourceHash)
             && $knowledgeBase->chunks()->exists()) {
             $candidates = $this->filterHybridCandidates(
-                $this->retrieval->retrieveEvidence((int) $knowledgeBase->getKey(), $query, 16),
+                $this->retrieval->retrieveEvidence(
+                    (int) $knowledgeBase->getKey(),
+                    $query,
+                    16,
+                    identity: $admin,
+                ),
             );
             if ($candidates !== []) {
                 $mode = 'ready_index';

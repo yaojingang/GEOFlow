@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Data\Ai\SystemAiIdentity;
 use App\Models\KnowledgeBase;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use App\Services\GeoFlow\KnowledgeChunkSyncService;
@@ -23,6 +24,7 @@ class PrepareKnowledgeChunkSyncJob implements ShouldBeUniqueUntilProcessing, Sho
     public function __construct(
         public readonly int $knowledgeBaseId,
         public readonly string $syncToken,
+        public readonly string $systemPurpose,
         public readonly bool $requireRealEmbedding = false,
     ) {}
 
@@ -40,6 +42,7 @@ class PrepareKnowledgeChunkSyncJob implements ShouldBeUniqueUntilProcessing, Sho
         KnowledgeChunkSyncCoordinator $coordinator,
         KnowledgeChunkSyncService $syncService,
     ): void {
+        $identity = SystemAiIdentity::fromKnowledgeIndexPurpose($this->systemPurpose);
         if (! $coordinator->isCurrent($this->knowledgeBaseId, $this->syncToken)) {
             return;
         }
@@ -53,6 +56,7 @@ class PrepareKnowledgeChunkSyncJob implements ShouldBeUniqueUntilProcessing, Sho
             $this->knowledgeBaseId,
             (string) $knowledgeBase->content,
             $this->syncToken,
+            $identity,
         );
 
         if (! $coordinator->isCurrent($this->knowledgeBaseId, $this->syncToken)) {
@@ -65,6 +69,7 @@ class PrepareKnowledgeChunkSyncJob implements ShouldBeUniqueUntilProcessing, Sho
             $this->knowledgeBaseId,
             $this->syncToken,
             0,
+            $this->systemPurpose,
             $this->requireRealEmbedding,
         )->onQueue('knowledge');
     }

@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow;
 
 use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Data\Ai\SystemAiIdentity;
 use App\Exceptions\AiModelAccessException;
 use App\Exceptions\PermanentAiProviderException;
 use App\Exceptions\RecoverableEnterpriseKnowledgeModuleException;
@@ -326,7 +327,11 @@ final class EnterpriseKnowledgeDraftService
 
         $chunkError = null;
         try {
-            $this->chunkSyncCoordinator->request((int) $knowledgeBase->id, force: true);
+            $this->chunkSyncCoordinator->request(
+                (int) $knowledgeBase->id,
+                SystemAiIdentity::knowledgeIndex(),
+                force: true,
+            );
         } catch (Throwable $exception) {
             report($exception);
             $chunkError = $exception->getMessage();

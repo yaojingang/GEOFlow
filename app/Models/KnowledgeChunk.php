@@ -25,6 +25,7 @@ class KnowledgeChunk extends Model
         'embedding_model_id',
         'embedding_dimensions',
         'embedding_provider',
+        'embedding_fingerprint',
         'embedding_vector',
     ];
 

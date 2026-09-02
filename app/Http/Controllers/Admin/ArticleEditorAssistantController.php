@@ -134,6 +134,7 @@ final class ArticleEditorAssistantController extends Controller
             ])),
             5,
             3200,
+            $request->user('admin'),
         );
         if ($knowledgeContext === '') {
             return response()->json([
