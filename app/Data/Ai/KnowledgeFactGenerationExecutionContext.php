@@ -11,6 +11,7 @@ final readonly class KnowledgeFactGenerationExecutionContext
         public int $runId,
         public int $executionAttempt,
         public int $batchSequence,
+        public int $batchAttempt,
         public string $inputHash,
         public int $modelAccessAdminId,
         public string $modelAccessAdminRole,
@@ -22,6 +23,7 @@ final readonly class KnowledgeFactGenerationExecutionContext
         if ($this->runId <= 0
             || $this->executionAttempt <= 0
             || $this->batchSequence <= 0
+            || $this->batchAttempt <= 0
             || $this->inputHash === ''
             || $this->modelAccessAdminId <= 0
             || ! in_array($this->modelAccessAdminRole, ['admin', 'super_admin'], true)
@@ -39,10 +41,13 @@ final readonly class KnowledgeFactGenerationExecutionContext
         string $inputHash,
         string $leaseToken,
     ): self {
+        $claim = (array) data_get($run->batch_claims_json, (string) $batchSequence, []);
+
         return new self(
             runId: (int) $run->getKey(),
             executionAttempt: (int) $run->execution_attempt,
             batchSequence: $batchSequence,
+            batchAttempt: (int) ($claim['attempt_count'] ?? 0),
             inputHash: $inputHash,
             modelAccessAdminId: (int) $run->model_access_admin_id,
             modelAccessAdminRole: (string) $run->model_access_admin_role,

@@ -5,6 +5,7 @@ namespace App\Services\GeoFlow\KnowledgeFacts;
 use App\Data\Ai\KnowledgeFactGenerationExecutionContext;
 use App\Exceptions\AiModelAccessException;
 use App\Exceptions\KnowledgeFactAiGenerationException;
+use App\Exceptions\KnowledgeFactFinalizationException;
 use App\Exceptions\PermanentAiProviderException;
 use App\Jobs\FinalizeKnowledgeFactGenerationJob;
 use App\Jobs\GenerateKnowledgeFactBatchJob;
@@ -220,7 +221,7 @@ class KnowledgeFactGenerationCoordinator
         if ($executionAttempt === null || $claimToken === null || $claimToken === '') {
             return;
         }
-        $context = $this->executionGuard->claimBatch(
+        $context = $this->claimBatch(
             $runId,
             $sequence,
             $inputHash,
@@ -230,6 +231,35 @@ class KnowledgeFactGenerationCoordinator
         if (! $context instanceof KnowledgeFactGenerationExecutionContext) {
             return;
         }
+        $this->processClaimedBatch($context, $evidence);
+    }
+
+    public function claimBatch(
+        int $runId,
+        int $sequence,
+        string $inputHash,
+        int $executionAttempt,
+        string $claimToken,
+        ?string $newLeaseToken = null,
+    ): ?KnowledgeFactGenerationExecutionContext {
+        return $this->executionGuard->claimBatch(
+            $runId,
+            $sequence,
+            $inputHash,
+            $executionAttempt,
+            $claimToken,
+            $newLeaseToken,
+        );
+    }
+
+    /** @param list<array<string,string>> $evidence */
+    public function processClaimedBatch(
+        KnowledgeFactGenerationExecutionContext $context,
+        array $evidence,
+    ): void {
+        $runId = $context->runId;
+        $sequence = $context->batchSequence;
+        $inputHash = $context->inputHash;
         $run = KnowledgeFactGenerationRun::query()->with(['library.knowledgeBase'])->findOrFail($runId);
         if (! hash_equals((string) $run->source_hash, $run->library->knowledgeBase->servingChunkSourceHash())
             || (int) $run->base_working_version !== (int) $run->library->working_version) {
@@ -347,6 +377,11 @@ class KnowledgeFactGenerationCoordinator
         }, 3);
     }
 
+    public function releaseBatchForRetry(KnowledgeFactGenerationExecutionContext $context): void
+    {
+        $this->executionGuard->releaseBatchForRetry($context);
+    }
+
     public function recordBatchFailure(
         int $runId,
         int $sequence,
@@ -355,21 +390,33 @@ class KnowledgeFactGenerationCoordinator
         ?int $executionAttempt = null,
         ?string $claimToken = null,
         bool $retryable = true,
+        ?string $batchLeaseToken = null,
+        ?int $batchAttempt = null,
     ): void {
-        DB::transaction(function () use ($runId, $sequence, $inputHash, $exception, $executionAttempt, $claimToken, $retryable): void {
+        DB::transaction(function () use ($runId, $sequence, $inputHash, $exception, $executionAttempt, $claimToken, $retryable, $batchLeaseToken, $batchAttempt): void {
             $run = KnowledgeFactGenerationRun::query()->whereKey($runId)->lockForUpdate()->first();
             if (! $run || ! $run->isActive() || $executionAttempt === null || $claimToken === null
+                || $batchAttempt === null || $batchAttempt < 0
                 || (int) $run->execution_attempt !== $executionAttempt) {
                 return;
             }
             $claims = (array) $run->batch_claims_json;
             $claim = (array) ($claims[(string) $sequence] ?? []);
-            $registeredToken = (string) ($claim['lease_token'] ?? $claim['dispatch_token'] ?? '');
             if (($claim['input_hash'] ?? null) !== $inputHash
                 || (int) ($claim['execution_attempt'] ?? 0) !== $executionAttempt
-                || $registeredToken === ''
+                || (int) ($claim['attempt_count'] ?? 0) !== $batchAttempt
+                || (string) ($claim['dispatch_token'] ?? '') === ''
                 || $claimToken === ''
-                || ! hash_equals($registeredToken, $claimToken)) {
+                || ! hash_equals((string) $claim['dispatch_token'], $claimToken)) {
+                return;
+            }
+            if ($batchLeaseToken !== null) {
+                if (($claim['status'] ?? null) !== 'running'
+                    || (string) ($claim['lease_token'] ?? '') === ''
+                    || ! hash_equals((string) $claim['lease_token'], $batchLeaseToken)) {
+                    return;
+                }
+            } elseif (($claim['status'] ?? null) !== 'queued') {
                 return;
             }
             $result = (array) $run->result_json;
@@ -409,6 +456,18 @@ class KnowledgeFactGenerationCoordinator
         int $runId,
         ?int $executionAttempt = null,
         ?string $leaseToken = null,
+    ): void {
+        try {
+            $this->finalizeTransaction($runId, $executionAttempt, $leaseToken);
+        } catch (Throwable) {
+            throw new KnowledgeFactFinalizationException;
+        }
+    }
+
+    private function finalizeTransaction(
+        int $runId,
+        ?int $executionAttempt,
+        ?string $leaseToken,
     ): void {
         DB::transaction(function () use ($runId, $executionAttempt, $leaseToken): void {
             $run = KnowledgeFactGenerationRun::query()->whereKey($runId)->lockForUpdate()->firstOrFail();

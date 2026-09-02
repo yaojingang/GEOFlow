@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Data\Ai\KnowledgeFactGenerationExecutionContext;
 use App\Exceptions\AiModelAccessException;
 use App\Exceptions\PermanentAiProviderException;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactGenerationCoordinator;
@@ -11,6 +12,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Str;
 use Throwable;
 
 class GenerateKnowledgeFactBatchJob implements ShouldBeUnique, ShouldQueue
@@ -57,15 +59,20 @@ class GenerateKnowledgeFactBatchJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(KnowledgeFactGenerationCoordinator $coordinator): void
     {
+        $context = null;
         try {
-            $coordinator->processBatch(
+            $context = $coordinator->claimBatch(
                 $this->runId,
                 $this->sequence,
                 $this->inputHash,
-                $this->evidence,
                 $this->executionAttempt,
                 $this->claimToken,
+                (string) Str::uuid7(),
             );
+            if (! $context instanceof KnowledgeFactGenerationExecutionContext) {
+                return;
+            }
+            $coordinator->processClaimedBatch($context, $this->evidence);
         } catch (AiModelAccessException|PermanentAiProviderException $exception) {
             $coordinator->recordBatchFailure(
                 $this->runId,
@@ -75,7 +82,15 @@ class GenerateKnowledgeFactBatchJob implements ShouldBeUnique, ShouldQueue
                 $this->executionAttempt,
                 $this->claimToken,
                 false,
+                $context?->leaseToken(),
+                $context?->batchAttempt ?? 0,
             );
+        } catch (Throwable $exception) {
+            if ($context instanceof KnowledgeFactGenerationExecutionContext) {
+                $coordinator->releaseBatchForRetry($context);
+            }
+
+            throw $exception;
         }
     }
 
@@ -89,6 +104,8 @@ class GenerateKnowledgeFactBatchJob implements ShouldBeUnique, ShouldQueue
             $this->executionAttempt,
             $this->claimToken,
             true,
+            null,
+            $this->attempts(),
         );
     }
 }

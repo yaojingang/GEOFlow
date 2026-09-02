@@ -13,6 +13,7 @@ use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Support\Facades\DB;
+use Laravel\Ai\Exceptions\InsufficientCreditsException;
 use RuntimeException;
 use Throwable;
 
@@ -92,9 +93,26 @@ class KnowledgeFactAiGenerator
             }
 
             throw new KnowledgeFactAiGenerationException(
-                $this->failoverDecider->shouldFailover($exception),
+                ! $this->containsInsufficientCredits($exception)
+                    && $this->failoverDecider->shouldFailover($exception),
             );
         }
+    }
+
+    private function containsInsufficientCredits(Throwable $exception): bool
+    {
+        $current = $exception;
+        for ($depth = 0; $depth < 8; $depth++) {
+            if ($current instanceof InsufficientCreditsException) {
+                return true;
+            }
+            $current = $current->getPrevious();
+            if (! $current instanceof Throwable) {
+                return false;
+            }
+        }
+
+        return false;
     }
 
     /** @param list<string> $allowed @return array<string,mixed>|null */

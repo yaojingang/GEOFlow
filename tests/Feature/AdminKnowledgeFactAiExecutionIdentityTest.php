@@ -9,8 +9,10 @@ use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
+use App\Models\KnowledgeFact;
 use App\Models\KnowledgeFactGenerationRun;
 use App\Models\KnowledgeFactLibrary;
+use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactGenerationAiExecutionGuard;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactGenerationCoordinator;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use GuzzleHttp\Psr7\Response as PsrResponse;
@@ -20,7 +22,9 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response as ClientResponse;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Schema;
+use Laravel\Ai\Exceptions\InsufficientCreditsException;
 use Tests\TestCase;
+use Throwable;
 
 class AdminKnowledgeFactAiExecutionIdentityTest extends TestCase
 {
@@ -327,6 +331,48 @@ class AdminKnowledgeFactAiExecutionIdentityTest extends TestCase
         );
     }
 
+    public function test_insufficient_provider_credits_never_fall_back_to_a_shared_model(): void
+    {
+        config()->set('ai-workspace.require_verified_model', false);
+        Bus::fake();
+        $owner = $this->admin('knowledge-credits-owner', ['role' => 'super_admin']);
+        $admin = $this->admin('knowledge-credits-consumer');
+        $admin->forceFill(['shared_ai_config_owner_id' => $owner->id])->save();
+        $requested = $this->model($admin, 'knowledge-credits-primary');
+        $shared = $this->model($owner, 'knowledge-credits-shared');
+        [$base, $chunk] = $this->knowledgeFixtures('Knowledge credits permanent');
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]);
+        $run = app(KnowledgeFactGenerationCoordinator::class)
+            ->start($library, $requested, $admin, 'initial', 1);
+        $claim = data_get($run->fresh()->batch_claims_json, '1');
+        $calls = 0;
+        KnowledgeFactGeneratorAgent::fake(function () use (&$calls): never {
+            $calls++;
+
+            throw InsufficientCreditsException::forProvider('secret-credit-provider');
+        })->preventStrayPrompts();
+
+        (new GenerateKnowledgeFactBatchJob(
+            (int) $run->id,
+            1,
+            (string) data_get($claim, 'input_hash'),
+            $this->evidenceDescriptors($chunk),
+            (int) $run->execution_attempt,
+            (string) data_get($claim, 'dispatch_token'),
+        ))->handle(app(KnowledgeFactGenerationCoordinator::class));
+
+        $run->refresh();
+        $this->assertSame(1, $calls);
+        $this->assertSame(KnowledgeFactGenerationRun::STATUS_FAILED, $run->status);
+        $this->assertFalse((bool) $run->retryable_failure);
+        KnowledgeFactGeneratorAgent::assertPrompted(
+            static fn ($prompt): bool => $prompt->model === (string) $requested->model_id,
+        );
+        KnowledgeFactGeneratorAgent::assertNotPrompted(
+            static fn ($prompt): bool => $prompt->model === (string) $shared->model_id,
+        );
+    }
+
     public function test_authentication_and_authorization_failures_do_not_fall_back_or_retry(): void
     {
         config()->set('ai-workspace.require_verified_model', false);
@@ -629,6 +675,60 @@ class AdminKnowledgeFactAiExecutionIdentityTest extends TestCase
         KnowledgeFactGeneratorAgent::assertNeverPrompted();
     }
 
+    public function test_live_old_worker_and_its_failed_callback_are_fenced_after_batch_reclaim(): void
+    {
+        config()->set('ai-workspace.require_verified_model', false);
+        Bus::fake();
+        $admin = $this->admin('knowledge-live-stale-worker');
+        $model = $this->model($admin, 'knowledge-live-stale-worker-model');
+        [$base, $chunk] = $this->knowledgeFixtures('Knowledge live stale worker');
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]);
+        $run = app(KnowledgeFactGenerationCoordinator::class)
+            ->start($library, $model, $admin, 'initial', 1);
+        $claim = data_get($run->fresh()->batch_claims_json, '1');
+        $newLeaseToken = fake()->uuid();
+        $reclaimed = null;
+        $calls = 0;
+        KnowledgeFactGeneratorAgent::fake(function () use (&$calls, &$reclaimed, $run, $claim, $newLeaseToken, $chunk): array {
+            $calls++;
+            $claims = (array) $run->fresh()->batch_claims_json;
+            $claims['1']['lease_expires_at'] = now()->subSecond()->toIso8601String();
+            $run->forceFill(['batch_claims_json' => $claims])->save();
+            $reclaimed = app(KnowledgeFactGenerationAiExecutionGuard::class)->claimBatch(
+                (int) $run->id,
+                1,
+                (string) data_get($claim, 'input_hash'),
+                (int) $run->execution_attempt,
+                (string) data_get($claim, 'dispatch_token'),
+                $newLeaseToken,
+            );
+
+            return ['facts' => [$this->validFact($chunk)]];
+        })->preventStrayPrompts();
+        $oldJob = new GenerateKnowledgeFactBatchJob(
+            (int) $run->id,
+            1,
+            (string) data_get($claim, 'input_hash'),
+            $this->evidenceDescriptors($chunk),
+            (int) $run->execution_attempt,
+            (string) data_get($claim, 'dispatch_token'),
+        );
+
+        $oldJob->handle(app(KnowledgeFactGenerationCoordinator::class));
+        $oldJob->failed(new \RuntimeException('old worker failure'));
+
+        $run->refresh();
+        $this->assertSame(1, $calls);
+        $this->assertNotNull($reclaimed);
+        $this->assertSame(2, $reclaimed->batchAttempt);
+        $this->assertSame($newLeaseToken, $reclaimed->leaseToken());
+        $this->assertSame(KnowledgeFactGenerationRun::STATUS_RUNNING, $run->status);
+        $this->assertSame(2, data_get($run->batch_claims_json, '1.attempt_count'));
+        $this->assertSame($newLeaseToken, data_get($run->batch_claims_json, '1.lease_token'));
+        $this->assertSame([], (array) data_get($run->result_json, 'candidates'));
+        $this->assertNull($run->error_code);
+    }
+
     public function test_current_finalize_lease_materializes_facts_and_evidence(): void
     {
         config()->set('ai-workspace.require_verified_model', false);
@@ -672,6 +772,59 @@ class AdminKnowledgeFactAiExecutionIdentityTest extends TestCase
         ]);
     }
 
+    public function test_finalize_database_failure_escapes_only_as_a_stable_sanitized_exception(): void
+    {
+        config()->set('ai-workspace.require_verified_model', false);
+        Bus::fake();
+        $admin = $this->admin('knowledge-finalize-database-failure');
+        $model = $this->model($admin, 'knowledge-finalize-database-failure-model');
+        [$base, $chunk] = $this->knowledgeFixtures('Knowledge finalize database failure');
+        $library = KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]);
+        $coordinator = app(KnowledgeFactGenerationCoordinator::class);
+        $run = $coordinator->start($library, $model, $admin, 'initial', 1);
+        $claim = data_get($run->fresh()->batch_claims_json, '1');
+        KnowledgeFactGeneratorAgent::fake([
+            ['facts' => [$this->validFact($chunk)]],
+        ])->preventStrayPrompts();
+        (new GenerateKnowledgeFactBatchJob(
+            (int) $run->id,
+            1,
+            (string) data_get($claim, 'input_hash'),
+            $this->evidenceDescriptors($chunk),
+            (int) $run->execution_attempt,
+            (string) data_get($claim, 'dispatch_token'),
+        ))->handle($coordinator);
+        $sensitive = 'endpoint=https://secret-finalize.test/v1 api_key=secret-finalize-key prompt=secret-prompt excerpt='.$chunk->content;
+        KnowledgeFact::creating(static fn (): never => throw new \RuntimeException($sensitive));
+        $job = new FinalizeKnowledgeFactGenerationJob(
+            (int) $run->id,
+            (int) $run->execution_attempt,
+            (string) $run->fresh()->finalizer_lease_token,
+        );
+        $escaped = null;
+
+        try {
+            $job->handle($coordinator);
+            $this->fail('The finalizer should fail when fact persistence fails.');
+        } catch (Throwable $exception) {
+            $escaped = $exception;
+        } finally {
+            KnowledgeFact::flushEventListeners();
+        }
+
+        $this->assertNotNull($escaped);
+        $this->assertSame('knowledge_fact_generation_finalize_failed', $escaped->getMessage());
+        $this->assertNull($escaped->getPrevious());
+        $this->assertStringNotContainsString('secret-finalize', (string) $escaped);
+        $job->failed($escaped);
+        $run->refresh();
+        $this->assertSame(KnowledgeFactGenerationRun::STATUS_FAILED, $run->status);
+        $this->assertSame('knowledge_fact_generation_finalize_failed', $run->error_code);
+        $this->assertSame('knowledge_fact_generation_finalize_failed', $run->error_message);
+        $this->assertDatabaseCount('knowledge_facts', 0);
+        $this->assertDatabaseCount('knowledge_fact_evidences', 0);
+    }
+
     public function test_queue_snapshot_public_json_and_failure_error_exclude_credentials_endpoint_prompt_and_evidence(): void
     {
         config()->set('ai-workspace.require_verified_model', false);
@@ -699,6 +852,16 @@ class AdminKnowledgeFactAiExecutionIdentityTest extends TestCase
         $this->assertStringNotContainsString('knowledge-secret-endpoint.test', $serialized);
         $this->assertStringNotContainsString((string) $chunk->content, $serialized);
         $this->assertStringNotContainsString('最多提取', $serialized);
+        $context = app(KnowledgeFactGenerationAiExecutionGuard::class)->claimBatch(
+            (int) $run->id,
+            1,
+            (string) data_get($claim, 'input_hash'),
+            (int) $run->execution_attempt,
+            (string) data_get($claim, 'dispatch_token'),
+            fake()->uuid(),
+        );
+        $this->assertNotNull($context);
+        app(KnowledgeFactGenerationAiExecutionGuard::class)->releaseBatchForRetry($context);
 
         $job->failed(new \RuntimeException(
             'endpoint=https://knowledge-secret-endpoint.test/v1 api_key=knowledge-super-secret-key prompt=hidden evidence='.$chunk->content,

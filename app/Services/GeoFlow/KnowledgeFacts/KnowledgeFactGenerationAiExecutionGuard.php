@@ -14,6 +14,7 @@ use App\Services\GeoFlow\AiExecutionContextFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 final readonly class KnowledgeFactGenerationAiExecutionGuard
 {
@@ -75,8 +76,9 @@ final readonly class KnowledgeFactGenerationAiExecutionGuard
         string $inputHash,
         int $executionAttempt,
         string $claimToken,
+        ?string $newLeaseToken = null,
     ): ?KnowledgeFactGenerationExecutionContext {
-        return DB::transaction(function () use ($runId, $batchSequence, $inputHash, $executionAttempt, $claimToken): ?KnowledgeFactGenerationExecutionContext {
+        return DB::transaction(function () use ($runId, $batchSequence, $inputHash, $executionAttempt, $claimToken, $newLeaseToken): ?KnowledgeFactGenerationExecutionContext {
             $run = KnowledgeFactGenerationRun::query()->whereKey($runId)->lockForUpdate()->first();
             if (! $run instanceof KnowledgeFactGenerationRun
                 || ! $run->isActive()
@@ -94,15 +96,21 @@ final readonly class KnowledgeFactGenerationAiExecutionGuard
             $claim = (array) ($claims[(string) $batchSequence] ?? []);
             if (($claim['input_hash'] ?? null) !== $inputHash
                 || (int) ($claim['execution_attempt'] ?? 0) !== $executionAttempt
-                || ($claim['status'] ?? null) === 'completed') {
+                || in_array((string) ($claim['status'] ?? ''), ['completed', 'failed'], true)) {
                 return null;
             }
-            $registeredToken = match ((string) ($claim['status'] ?? '')) {
-                'queued' => (string) ($claim['dispatch_token'] ?? ''),
-                'running' => (string) ($claim['lease_token'] ?? ''),
-                default => '',
-            };
+            $registeredToken = (string) ($claim['dispatch_token'] ?? '');
             if ($registeredToken === '' || $claimToken === '' || ! hash_equals($registeredToken, $claimToken)) {
+                return null;
+            }
+            if (($claim['status'] ?? null) === 'running') {
+                $expiresAt = isset($claim['lease_expires_at'])
+                    ? now()->parse((string) $claim['lease_expires_at'])
+                    : null;
+                if ($expiresAt?->isFuture() === true) {
+                    return null;
+                }
+            } elseif (($claim['status'] ?? null) !== 'queued') {
                 return null;
             }
 
@@ -110,9 +118,12 @@ final readonly class KnowledgeFactGenerationAiExecutionGuard
             if ($attemptCount > (int) config('geoflow.knowledge_fact_generation_max_batch_attempts', 3)) {
                 return null;
             }
+            $leaseToken = $newLeaseToken ?? (string) Str::uuid7();
+            if ($leaseToken === '' || hash_equals((string) ($claim['lease_token'] ?? ''), $leaseToken)) {
+                return null;
+            }
             $claim['status'] = 'running';
-            $claim['dispatch_token'] = null;
-            $claim['lease_token'] = $claimToken;
+            $claim['lease_token'] = $leaseToken;
             $claim['lease_expires_at'] = now()
                 ->addSeconds((int) config('geoflow.knowledge_fact_generation_batch_lease_seconds', 210))
                 ->toIso8601String();
@@ -124,8 +135,21 @@ final readonly class KnowledgeFactGenerationAiExecutionGuard
                 $run,
                 $batchSequence,
                 $inputHash,
-                $claimToken,
+                $leaseToken,
             );
+        }, 3);
+    }
+
+    public function releaseBatchForRetry(KnowledgeFactGenerationExecutionContext $context): void
+    {
+        DB::transaction(function () use ($context): void {
+            $run = $this->assertRunLeaseCurrent($context);
+            $claims = (array) $run->batch_claims_json;
+            $claim = (array) ($claims[(string) $context->batchSequence] ?? []);
+            $claim['status'] = 'queued';
+            $claim['lease_expires_at'] = null;
+            $claims[(string) $context->batchSequence] = $claim;
+            $run->forceFill(['batch_claims_json' => $claims])->save();
         }, 3);
     }
 
@@ -245,6 +269,7 @@ final readonly class KnowledgeFactGenerationAiExecutionGuard
             || (int) $run->resolver_policy_version !== $context->resolverPolicyVersion
             || ($claim['status'] ?? null) !== 'running'
             || ($claim['input_hash'] ?? null) !== $context->inputHash
+            || (int) ($claim['attempt_count'] ?? 0) !== $context->batchAttempt
             || (string) ($claim['lease_token'] ?? '') === ''
             || ! hash_equals($context->leaseToken(), (string) $claim['lease_token'])
             || $expiresAt === null
