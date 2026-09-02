@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Http\Controllers\Api\V1\JobController;
 use App\Http\Controllers\Api\V1\TaskController;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
@@ -26,6 +27,30 @@ final class ApiTaskModelProjectionArchitectureTest extends TestCase
         $source = $this->methodSource(TaskController::class, $method);
 
         $this->assertStringContainsString('refreshTaskModelProjection(', $source, $method);
+    }
+
+    #[DataProvider('viewerBoundTaskServiceCalls')]
+    #[Test]
+    public function task_api_service_calls_carry_the_non_null_viewer(string $method, string $serviceMethod): void
+    {
+        $source = $this->methodSource(TaskController::class, $method);
+
+        $this->assertStringContainsString('$viewer = $this->executionAdmin($request);', $source, $method);
+        $this->assertMatchesRegularExpression(
+            '/\$tasks->'.preg_quote($serviceMethod, '/').'\s*\([\s\S]*\$viewer\s*,?\s*\)/',
+            $source,
+            $method,
+        );
+    }
+
+    #[Test]
+    public function job_detail_service_call_carries_the_non_null_viewer(): void
+    {
+        $source = $this->methodSource(JobController::class, 'show');
+
+        $this->assertStringContainsString('$viewer = $this->executionAdmin($request);', $source);
+        $this->assertStringContainsString('$tasks->getJob($job, $viewer)', $source);
+        $this->assertStringNotContainsString('$tasks->getJob($job)', $source);
     }
 
     #[Test]
@@ -68,6 +93,21 @@ final class ApiTaskModelProjectionArchitectureTest extends TestCase
         return collect(['store', 'update', 'start', 'stop'])
             ->mapWithKeys(static fn (string $method): array => [$method => [$method]])
             ->all();
+    }
+
+    /** @return array<string, array{string,string}> */
+    public static function viewerBoundTaskServiceCalls(): array
+    {
+        return [
+            'listTasks' => ['index', 'listTasks'],
+            'getTask' => ['show', 'getTask'],
+            'createTask' => ['store', 'createTask'],
+            'updateTask' => ['update', 'updateTask'],
+            'startTask' => ['start', 'startTask'],
+            'stopTask' => ['stop', 'stopTask'],
+            'enqueueTask' => ['enqueue', 'enqueueTask'],
+            'listTaskJobs' => ['jobs', 'listTaskJobs'],
+        ];
     }
 
     /** @param class-string $class */

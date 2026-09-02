@@ -9,6 +9,7 @@ use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\WorkerHeartbeat;
 use App\Services\Admin\AdminAiModelAccessResolver;
+use App\Support\GeoFlow\PublicExecutionErrorProjector;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -27,6 +28,7 @@ class TaskMonitoringQueryService
     public function __construct(
         private readonly HorizonMetricsAdapter $horizonMetrics,
         private readonly AdminAiModelAccessResolver $adminAiModelAccessResolver,
+        private readonly PublicExecutionErrorProjector $publicExecutionErrorProjector,
     ) {}
 
     /**
@@ -417,8 +419,19 @@ class TaskMonitoringQueryService
             // batch_status 是任务页按钮与状态徽标的关键字段：
             // running > pending > paused(idle) > failed/cancelled > waiting。
             $batchStatus = $this->resolveBatchStatus($task, $runs, $latestRun, $articles);
-            // 错误信息优先取最近 run 的 error_message，其次退回 tasks.last_error_message。
-            $batchErrorMessage = (string) ($latestRun?->error_message ?: ($task->last_error_message ?? ''));
+            // 错误信息优先取最近 run，其次退回 tasks.last_error_message。
+            $rawTaskError = (string) ($task->last_error_message ?? '');
+            $rawBatchError = (string) ($latestRun?->error_message ?: $rawTaskError);
+            if ($modelViewer instanceof Admin) {
+                $batchErrorMessage = $this->publicExecutionErrorProjector->stableCode(
+                    $latestRun?->error_code,
+                    $rawBatchError,
+                ) ?? '';
+                $taskErrorMessage = $this->publicExecutionErrorProjector->stableCode(null, $rawTaskError) ?? '';
+            } else {
+                $batchErrorMessage = $this->publicExecutionErrorProjector->sanitizedDiagnostic($rawBatchError);
+                $taskErrorMessage = $this->publicExecutionErrorProjector->sanitizedDiagnostic($rawTaskError);
+            }
 
             $projection = [
                 'id' => $taskId,
@@ -478,7 +491,7 @@ class TaskMonitoringQueryService
                 'draft_limit' => (int) ($task->draft_limit ?? 10),
                 'publish_interval' => (int) ($task->publish_interval ?? 3600),
                 'batch_status' => $batchStatus,
-                'batch_error_message' => trim($batchErrorMessage),
+                'batch_error_message' => $batchErrorMessage,
                 'batch_last_run' => $task->last_run_at?->toDateTimeString(),
                 'last_error_at' => $task->last_error_at?->toDateTimeString(),
                 'next_run_at' => $task->next_run_at?->toDateTimeString(),
@@ -520,7 +533,7 @@ class TaskMonitoringQueryService
                     'article_limit' => (int) ($task->article_limit ?? $task->draft_limit ?? 10),
                     'draft_limit' => (int) ($task->draft_limit ?? 10),
                     'last_run_at' => $task->last_run_at?->toDateTimeString(),
-                    'last_error_message' => trim((string) ($task->last_error_message ?? '')),
+                    'last_error_message' => $taskErrorMessage,
                 ],
                 // 新契约字段：任务级队列视图（来自 task_runs 聚合，不是全局 Redis 队列长度）。
                 'queue_overview' => [

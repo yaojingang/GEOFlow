@@ -12,6 +12,7 @@ use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
+use App\Models\TaskRun;
 use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Services\GeoFlow\TaskLifecycleService;
@@ -227,6 +228,45 @@ class AdminAiModelEntryAccessTest extends TestCase
         $this->assertArrayNotHasKey('ai_quality_model_accessible', $detail);
     }
 
+    public function test_api_task_error_projection_never_exposes_historical_provider_diagnostics(): void
+    {
+        $actor = $this->admin('task-error-projection-actor', 'admin');
+        $model = $this->model($actor, 'Task Error Private Model Name', 'chat');
+        $task = Task::query()->create([
+            'name' => 'Task with unsafe historical errors',
+            'status' => 'active',
+            'ai_model_id' => $model->id,
+            'last_error_message' => 'provider https://task-error.example.test?token=task-token api_key=task-key Task Error Private Model Name',
+        ]);
+        $run = TaskRun::query()->create([
+            'task_id' => $task->id,
+            'status' => 'failed',
+            'error_message' => 'endpoint=https://run-error.example.test api_key=run-key Task Error Private Model Name',
+        ]);
+        $run->forceFill(['error_code' => 'ai_config_access_revoked'])->save();
+
+        $response = $this->actingWithToken($actor, ['tasks:read'])
+            ->getJson('/api/v1/tasks/'.(int) $task->id)
+            ->assertOk()
+            ->assertJsonPath('data.batch_error_message', 'ai_config_access_revoked')
+            ->assertJsonPath('data.task_progress.last_error_message', 'task_execution_failed');
+
+        foreach (['task-error.example.test', 'task-token', 'task-key', 'run-error.example.test', 'run-key'] as $secret) {
+            $this->assertStringNotContainsString($secret, $response->getContent());
+        }
+        $publicErrors = json_encode([
+            $response->json('data.batch_error_message'),
+            $response->json('data.task_progress.last_error_message'),
+        ], JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString('Task Error Private Model Name', $publicErrors);
+
+        $governance = app(TaskMonitoringQueryService::class)->getTaskMonitoringDetail((int) $task->id);
+        $governanceJson = json_encode($governance, JSON_THROW_ON_ERROR);
+        foreach (['task-error.example.test', 'task-token', 'task-key', 'run-error.example.test', 'run-key'] as $secret) {
+            $this->assertStringNotContainsString($secret, $governanceJson);
+        }
+    }
+
     public function test_task_api_rejects_peer_and_system_models_with_a_stable_error(): void
     {
         $actor = $this->admin('actor', 'admin');
@@ -315,13 +355,22 @@ class AdminAiModelEntryAccessTest extends TestCase
         $token = $actor->createToken('task-replay', ['tasks:write', 'tasks:read'])->plainTextToken;
         $payload = $this->taskPayload((int) $shared->id);
 
-        $this->withHeader('Authorization', 'Bearer '.$token)
+        $created = $this->withHeader('Authorization', 'Bearer '.$token)
             ->withHeader('X-Idempotency-Key', 'task-model-access-replay')
             ->postJson('/api/v1/tasks', $payload)
             ->assertCreated()
             ->assertJsonPath('data.ai_model_id', (int) $shared->id)
             ->assertJsonPath('data.ai_model_name', 'Replay Shared Secret Name')
             ->assertJsonPath('data.ai_model_accessible', true);
+        $taskId = (int) $created->json('data.id');
+        Task::query()->whereKey($taskId)->update([
+            'last_error_message' => 'https://replay-error.example.test api_key=replay-error-key Replay Shared Secret Name',
+        ]);
+        TaskRun::query()->create([
+            'task_id' => $taskId,
+            'status' => 'failed',
+            'error_message' => 'https://replay-run.example.test api_key=replay-run-key Replay Shared Secret Name',
+        ]);
 
         $actor->forceFill([
             'shared_ai_config_owner_id' => null,
@@ -335,9 +384,15 @@ class AdminAiModelEntryAccessTest extends TestCase
             ->assertJsonPath('data.ai_model_id', null)
             ->assertJsonPath('data.ai_model_name', null)
             ->assertJsonPath('data.ai_model_accessible', false)
-            ->assertJsonPath('data.ai_model_access_reason', 'ai_model_not_accessible');
+            ->assertJsonPath('data.ai_model_access_reason', 'ai_model_not_accessible')
+            ->assertJsonPath('data.batch_error_message', 'task_execution_failed')
+            ->assertJsonPath('data.task_progress.last_error_message', 'task_execution_failed');
 
         $this->assertStringNotContainsString('Replay Shared Secret Name', $replay->getContent());
+        $this->assertStringNotContainsString('replay-error.example.test', $replay->getContent());
+        $this->assertStringNotContainsString('replay-run.example.test', $replay->getContent());
+        $this->assertStringNotContainsString('replay-error-key', $replay->getContent());
+        $this->assertStringNotContainsString('replay-run-key', $replay->getContent());
         $this->assertDatabaseCount('tasks', 1);
     }
 

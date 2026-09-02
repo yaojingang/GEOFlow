@@ -604,6 +604,25 @@ class ApiV1ContractTest extends TestCase
                     'ai_config_access_version' => 456789,
                     'execution_lease_token' => 'nested-lease-secret',
                 ]],
+                'ai_quality' => [
+                    'status' => 'queued',
+                    'nested' => [[
+                        'MODEL_ID' => 112233,
+                        'Model_Name' => 'Nested Historical Private Model',
+                        'Api_Url' => 'https://nested-provider.example.test/v1',
+                        'ENDPOINT' => 'https://nested-endpoint.example.test',
+                        'Prompt' => 'nested private prompt',
+                        'CONTENT' => 'nested private provider content',
+                        'Provider_Response' => 'nested provider response secret',
+                        'safe_status' => 'still-safe',
+                        'diagnostic' => 'https://camouflaged.example.test sk-camouflaged-secret Camouflaged Private Model',
+                    ]],
+                ],
+                'title_readiness' => [
+                    'status' => 'blocked',
+                    'reason' => 'provider https://readiness.example.test api_key=readiness-key Private Readiness Model',
+                    'MODEL_ATTEMPTS' => [['model_name' => 'Attempt Private Model']],
+                ],
                 'used_model_id' => 246810,
                 'used_model_name' => 'Historical Private Model Name',
                 'note' => 'historical-note-secret',
@@ -611,6 +630,7 @@ class ApiV1ContractTest extends TestCase
             ],
         ]);
         $run->forceFill([
+            'error_code' => 'ai_config_access_revoked',
             'model_access_admin_id' => $admin->id,
             'model_access_admin_role' => 'admin',
             'ai_config_access_version' => 987654,
@@ -629,6 +649,8 @@ class ApiV1ContractTest extends TestCase
         $this->assertSame((int) $run->id, (int) data_get($listItem, 'id'));
         $this->assertSame('running', data_get($listItem, 'status'));
         $this->assertSame('api_enqueue', data_get($listItem, 'payload.source'));
+        $this->assertSame('ai_config_access_revoked', data_get($listItem, 'error_code'));
+        $this->assertSame('任务执行未完成', data_get($listItem, 'error_message'));
         foreach (['execution_lease_token', 'model_access_admin_id', 'model_access_admin_role', 'ai_config_access_version', 'requested_ai_model_id', 'resolved_ai_model_id', 'resolved_model_source', 'resolver_policy_version', 'meta'] as $internalKey) {
             $this->assertArrayNotHasKey($internalKey, $listItem);
         }
@@ -644,6 +666,10 @@ class ApiV1ContractTest extends TestCase
         $this->assertSame((int) $run->id, (int) data_get($detail, 'id'));
         $this->assertSame('generate_article', data_get($detail, 'job_type'));
         $this->assertSame('api_enqueue', data_get($detail, 'payload.source'));
+        $this->assertSame('ai_config_access_revoked', data_get($detail, 'error_code'));
+        $this->assertSame('任务执行未完成', data_get($detail, 'error_message'));
+        $this->assertSame('task_execution_failed', data_get($detail, 'task_run_summary.meta.title_readiness.reason'));
+        $this->assertSame('still-safe', data_get($detail, 'task_run_summary.meta.ai_quality.nested.0.safe_status'));
         foreach (['model_attempts', 'used_model_id', 'used_model_name'] as $modelReferenceKey) {
             $this->assertArrayNotHasKey($modelReferenceKey, data_get($detail, 'task_run_summary.meta', []));
         }
@@ -667,9 +693,66 @@ class ApiV1ContractTest extends TestCase
             'nested-lease-secret',
             '246810',
             'Historical Private Model Name',
+            'Nested Historical Private Model',
+            'nested-provider.example.test',
+            'nested-endpoint.example.test',
+            'nested private prompt',
+            'nested private provider content',
+            'nested provider response secret',
+            'readiness.example.test',
+            'readiness-key',
+            'Private Readiness Model',
+            'Attempt Private Model',
+            '112233',
+            'camouflaged.example.test',
+            'sk-camouflaged-secret',
+            'Camouflaged Private Model',
         ] as $secret) {
             $this->assertStringNotContainsString($secret, $serialized);
         }
+
+        $run->forceFill([
+            'error_code' => 'historical_private_model_name',
+            'error_message' => 'historical_private_model_name',
+        ])->save();
+        $unsafeHistoricalCode = $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/jobs/'.(int) $run->id)
+            ->assertOk()
+            ->assertJsonPath('data.error_code', 'task_execution_failed')
+            ->assertJsonPath('data.error_message', '任务执行未完成');
+        $this->assertStringNotContainsString('historical_private_model_name', $unsafeHistoricalCode->getContent());
+    }
+
+    public function test_job_detail_rejects_an_active_token_owner_with_an_invalid_execution_role(): void
+    {
+        $admin = $this->createActiveAdmin('invalid_job_viewer_role', 'p');
+        $bearer = $this->createBearerToken($admin, ['jobs:read', 'tasks:read']);
+        $task = Task::query()->create(['name' => 'Invalid viewer task', 'status' => 'paused']);
+        $run = TaskRun::query()->create(['task_id' => $task->id, 'status' => 'failed']);
+        $admin->forceFill(['role' => 'auditor'])->save();
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/jobs/'.(int) $run->id)
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'ai_execution_admin_inactive');
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/tasks/'.(int) $task->id.'/jobs')
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'ai_execution_admin_inactive');
+
+        $admin->forceFill(['role' => 'admin', 'status' => 'inactive'])->save();
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/jobs/'.(int) $run->id)
+            ->assertUnauthorized()
+            ->assertJsonPath('error.code', 'unauthorized');
+
+        $admin->forceFill(['status' => 'active'])->save();
+        $admin->delete();
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/jobs/'.(int) $run->id)
+            ->assertUnauthorized()
+            ->assertJsonPath('error.code', 'unauthorized');
     }
 
     public function test_super_admin_api_can_manage_a_hosted_site_task(): void

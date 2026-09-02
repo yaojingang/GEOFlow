@@ -986,6 +986,7 @@ class TaskLifecycleService
         string $jobType = 'generate_article',
         array $payload = [],
         bool $canManageHostedTask = false,
+        ?Admin $executionViewer = null,
     ): array {
         $jobId = DB::transaction(function () use ($taskId, $jobType, $payload, $canManageHostedTask): ?int {
             $task = Task::query()
@@ -1074,8 +1075,12 @@ class TaskLifecycleService
      * @param  int  $limit  返回数量上限（1~100）
      * @return array{items:list<array<string,mixed>>}
      */
-    public function listTaskJobs(int $taskId, ?string $status = null, int $limit = 20): array
-    {
+    public function listTaskJobs(
+        int $taskId,
+        ?string $status,
+        int $limit,
+        Admin $viewer,
+    ): array {
         $this->ensureTaskExists($taskId);
         $limit = max(1, min(100, $limit));
 
@@ -1089,7 +1094,7 @@ class TaskLifecycleService
             $q->where('status', $status);
         }
 
-        return ['items' => $q->get()->map(fn (TaskRun $run) => $this->taskRunData->fromModel($run))->all()];
+        return ['items' => $q->get()->map(fn (TaskRun $run) => $this->taskRunData->fromModel($run, $viewer))->all()];
     }
 
     /**
@@ -1101,14 +1106,14 @@ class TaskLifecycleService
      *
      * @throws ApiException 当执行记录不存在时抛出 404
      */
-    public function getJob(int $jobId): array
+    public function getJob(int $jobId, Admin $viewer): array
     {
         $run = TaskRun::query()->find($jobId);
         if (! $run) {
             throw new ApiException('job_not_found', 'Job 不存在', 404);
         }
 
-        return $this->taskRunData->fromModel($run);
+        return $this->taskRunData->fromModel($run, $viewer);
     }
 
     /**

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Exceptions\AiModelAccessException;
 use App\Exceptions\ApiException;
 use App\Http\Requests\Api\StoreTaskRequest;
 use App\Http\Requests\Api\UpdateTaskRequest;
@@ -75,7 +74,9 @@ class TaskController extends BaseApiController
      */
     public function show(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
     {
-        return $this->success($request, $tasks->getTask($task, $this->executionAdmin($request)));
+        $viewer = $this->executionAdmin($request);
+
+        return $this->success($request, $tasks->getTask($task, $viewer));
     }
 
     /**
@@ -188,6 +189,7 @@ class TaskController extends BaseApiController
                 $jobType,
                 ['source' => 'api_enqueue'],
                 $this->canManageHostedTask($viewer),
+                $viewer,
             ), 201),
         );
     }
@@ -227,32 +229,16 @@ class TaskController extends BaseApiController
      */
     public function jobs(Request $request, int $task, TaskLifecycleService $tasks): JsonResponse
     {
-        $this->executionAdmin($request);
+        $viewer = $this->executionAdmin($request);
         $status = $request->query('status');
         $statusStr = is_string($status) ? trim($status) : '';
 
         return $this->success($request, $tasks->listTaskJobs(
             $task,
             $statusStr !== '' ? $statusStr : null,
-            $request->integer('limit', 20)
+            $request->integer('limit', 20),
+            $viewer,
         ));
-    }
-
-    private function executionAdmin(Request $request): Admin
-    {
-        $admin = Admin::query()
-            ->whereKey($this->auth($request)->auditAdminId)
-            ->active()
-            ->first();
-        if (! $admin instanceof Admin) {
-            throw new ApiException(
-                AiModelAccessException::AI_EXECUTION_ADMIN_INACTIVE,
-                'Token 所属管理员当前不可用',
-                403,
-            );
-        }
-
-        return $admin;
     }
 
     private function refreshTaskModelProjection(
@@ -277,9 +263,15 @@ class TaskController extends BaseApiController
             'ai_quality_model_name',
             'ai_quality_model_accessible',
             'ai_quality_model_access_reason',
+            'batch_error_message',
         ] as $key) {
             $data[$key] = $current[$key] ?? null;
         }
+        data_set(
+            $data,
+            'task_progress.last_error_message',
+            data_get($current, 'task_progress.last_error_message'),
+        );
         $payload['data'] = $data;
         $response->setData($payload);
 

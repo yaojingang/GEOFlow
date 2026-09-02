@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Exceptions\AiModelAccessException;
 use App\Exceptions\ApiException;
 use App\Http\ApiAuthContext;
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,6 +39,24 @@ abstract class BaseApiController extends Controller
         }
 
         return $context;
+    }
+
+    protected function executionAdmin(Request $request): Admin
+    {
+        $admin = Admin::query()
+            ->whereKey($this->auth($request)->auditAdminId)
+            ->active()
+            ->first();
+        $role = $admin instanceof Admin ? trim(strtolower((string) $admin->role)) : '';
+        if (! $admin instanceof Admin || ! in_array($role, ['admin', 'super_admin', 'superadmin'], true)) {
+            throw new ApiException(
+                AiModelAccessException::AI_EXECUTION_ADMIN_INACTIVE,
+                'Token 所属管理员当前不可用',
+                403,
+            );
+        }
+
+        return $admin;
     }
 
     /**
