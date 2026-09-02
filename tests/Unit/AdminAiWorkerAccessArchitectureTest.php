@@ -66,16 +66,35 @@ class AdminAiWorkerAccessArchitectureTest extends TestCase
         $guardPosition = strpos($gatewayGeneration, 'assertModelCurrent(');
         $providerPosition = strpos($gatewayGeneration, 'generationService->generate(');
         $receiptPosition = strpos($gatewayGeneration, 'assertReceiptCurrent(');
+        $persistencePosition = strpos($gatewayGeneration, '$persistResponse([');
         $releasePosition = strpos($gatewayGeneration, 'invocationLocks->release(');
 
-        foreach ([$lockPosition, $guardPosition, $providerPosition, $receiptPosition, $releasePosition] as $position) {
+        foreach ([$lockPosition, $guardPosition, $providerPosition, $receiptPosition, $persistencePosition, $releasePosition] as $position) {
             $this->assertIsInt($position);
         }
         $this->assertLessThan($guardPosition, $lockPosition);
         $this->assertLessThan($providerPosition, $guardPosition);
         $this->assertLessThan($receiptPosition, $providerPosition);
-        $this->assertLessThan($releasePosition, $receiptPosition);
+        $this->assertLessThan($persistencePosition, $receiptPosition);
+        $this->assertLessThan($releasePosition, $persistencePosition);
         $this->assertStringContainsString('finally', $gatewayGeneration);
+
+        $workerGeneration = $this->methodSource('generateContent');
+        $this->assertStringContainsString('persistGeneratedContent(', $workerGeneration);
+        $workerExecution = $this->methodSource('executeTask');
+        $persistenceCallback = strpos($workerExecution, 'function (array $generation)');
+        $businessTransaction = strpos($workerExecution, 'return DB::transaction(', $persistenceCallback === false ? 0 : $persistenceCallback);
+        $this->assertIsInt($persistenceCallback);
+        $this->assertIsInt($businessTransaction);
+        $this->assertLessThan($businessTransaction, $persistenceCallback);
+        $taskLock = strpos($workerExecution, '->lockForUpdate()', $businessTransaction);
+        $runLock = strpos($workerExecution, 'lockRunningJobForWorker(', $taskLock === false ? 0 : $taskLock);
+        $articleWrite = strpos($workerExecution, '$article = Article::query()->create(', $runLock === false ? 0 : $runLock);
+        $this->assertIsInt($taskLock);
+        $this->assertIsInt($runLock);
+        $this->assertIsInt($articleWrite);
+        $this->assertLessThan($runLock, $taskLock);
+        $this->assertLessThan($articleWrite, $runLock);
 
         $receiptGuard = $this->methodSource('assertReceiptCurrent', WorkerAiModelInvocationGateway::class);
         $this->assertStringContainsString('accessGuard->assertModelCurrent(', $receiptGuard);
@@ -139,6 +158,82 @@ class AdminAiWorkerAccessArchitectureTest extends TestCase
     }
 
     #[Test]
+    public function content_worker_uses_only_reviewed_methods_on_each_collaborator(): void
+    {
+        $workerSource = file_get_contents(app_path('Services/GeoFlow/WorkerExecutionService.php'));
+        $this->assertIsString($workerSource);
+        $this->assertDoesNotMatchRegularExpression(
+            $this->serviceLocatorPattern(),
+            $workerSource,
+        );
+
+        preg_match_all(
+            '/\$this->([A-Za-z_][A-Za-z0-9_]*)->([A-Za-z_][A-Za-z0-9_]*)\s*\(/',
+            $workerSource,
+            $matches,
+            PREG_SET_ORDER,
+        );
+        $actual = [];
+        foreach ($matches as $match) {
+            $actual[$match[1]][$match[2]] = true;
+        }
+        foreach ($actual as &$methods) {
+            $methods = array_keys($methods);
+            sort($methods);
+        }
+        unset($methods);
+        ksort($actual);
+
+        $expected = [
+            'aiExecutionAccessGuard' => ['assertCurrent', 'assertModelCurrent', 'recordResolvedModel', 'resolveModelCandidates'],
+            'aiExecutionErrorSanitizer' => ['sanitize'],
+            'aiModelFailoverDecider' => ['isPermanentProviderFailure', 'shouldFailover'],
+            'aiModelInvocationGateway' => ['assertReceiptCurrent', 'generate', 'maxTokens'],
+            'articleAiQualityGate' => ['modelIdThatWouldBeDispatched'],
+            'articleAiQualityInspectionService' => ['createOrReuse'],
+            'articleAiQualityPolicyResolver' => ['fromTask', 'snapshot'],
+            'articleCitationMarkerCleaner' => ['cleanContent'],
+            'articleContentPromptRenderer' => ['renderForWorker'],
+            'articleRiskScanner' => ['record'],
+            'articleWorkflowTransitionService' => ['transition'],
+            'distributionOrchestrator' => ['enqueueForArticle'],
+            'jobQueueService' => ['completeJob', 'lockRunningJobForWorker'],
+            'knowledgeRetrievalService' => ['retrieveContextBundleFromMany'],
+            'taskTitleReadinessService' => ['inspectTask'],
+        ];
+        foreach ($expected as &$methods) {
+            sort($methods);
+        }
+        unset($methods);
+        ksort($expected);
+
+        $this->assertSame($expected, $actual);
+        $constructor = (new ReflectionClass(WorkerExecutionService::class))->getConstructor();
+        $this->assertNotNull($constructor);
+        $dependencyClasses = [];
+        foreach ($constructor->getParameters() as $parameter) {
+            $type = $parameter->getType();
+            if ($type instanceof ReflectionNamedType) {
+                $dependencyClasses[$parameter->getName()] = $type->getName();
+            }
+        }
+        foreach ($expected as $property => $methods) {
+            $this->assertArrayHasKey($property, $dependencyClasses);
+            foreach ($methods as $method) {
+                $this->assertDoesNotMatchRegularExpression(
+                    $this->serviceLocatorPattern(),
+                    $this->methodSource($method, $dependencyClasses[$property]),
+                    $property.'->'.$method,
+                );
+            }
+        }
+        $this->assertSame(
+            ['modelIdThatWouldBeDispatched'],
+            $actual['articleAiQualityGate'],
+        );
+    }
+
+    #[Test]
     public function worker_database_writes_follow_task_then_run_then_article_lock_order(): void
     {
         $claim = $this->methodSource('claimPendingJobById', 'App\\Services\\GeoFlow\\JobQueueService');
@@ -177,10 +272,76 @@ class AdminAiWorkerAccessArchitectureTest extends TestCase
     }
 
     #[Test]
+    public function article_workflow_and_quality_gates_lock_task_before_article(): void
+    {
+        $workflow = $this->methodSource(
+            'transition',
+            'App\\Services\\GeoFlow\\ArticleWorkflowTransitionService',
+        );
+        $workflowTaskLock = strpos($workflow, 'lockTaskBeforeArticle(');
+        $workflowArticleLock = strpos($workflow, 'lockArticleAfterTask(');
+        $this->assertIsInt($workflowTaskLock);
+        $this->assertIsInt($workflowArticleLock);
+        $this->assertLessThan($workflowArticleLock, $workflowTaskLock);
+        $this->assertLockHelperQueriesExpectedModel(
+            'lockTaskBeforeArticle',
+            'App\\Services\\GeoFlow\\ArticleWorkflowTransitionService',
+            'Task::withTrashed()',
+        );
+        $this->assertLockHelperQueriesExpectedModel(
+            'lockArticleAfterTask',
+            'App\\Services\\GeoFlow\\ArticleWorkflowTransitionService',
+            'Article::query()',
+        );
+
+        foreach (['modelIdThatWouldBeDispatched', 'checkLocked'] as $qualityMethod) {
+            $quality = $this->methodSource(
+                $qualityMethod,
+                'App\\Services\\GeoFlow\\ArticleAiQualityGate',
+            );
+            $taskLock = strpos($quality, 'lockTaskBeforeArticle(');
+            $articleLock = strpos($quality, 'lockArticleAfterTask(');
+            $this->assertIsInt($taskLock, $qualityMethod);
+            $this->assertIsInt($articleLock, $qualityMethod);
+            $this->assertLessThan($articleLock, $taskLock, $qualityMethod);
+        }
+        $this->assertLockHelperQueriesExpectedModel(
+            'lockTaskBeforeArticle',
+            'App\\Services\\GeoFlow\\ArticleAiQualityGate',
+            'Task::withTrashed()',
+        );
+        $this->assertLockHelperQueriesExpectedModel(
+            'lockArticleAfterTask',
+            'App\\Services\\GeoFlow\\ArticleAiQualityGate',
+            'Article::query()',
+        );
+    }
+
+    #[Test]
     #[DataProvider('forbiddenWorkerModelAccessSnippets')]
     public function worker_model_boundary_detector_rejects_forbidden_access_variants(string $source): void
     {
         $this->assertNotSame([], $this->workerModelBoundaryViolations($source));
+    }
+
+    #[Test]
+    #[DataProvider('forbiddenWorkerServiceLocatorSnippets')]
+    public function worker_service_locator_detector_rejects_forbidden_variants(string $source): void
+    {
+        $this->assertMatchesRegularExpression($this->serviceLocatorPattern(), $source);
+    }
+
+    /** @return array<string,array{string}> */
+    public static function forbiddenWorkerServiceLocatorSnippets(): array
+    {
+        return [
+            'app helper' => ['$service = app(Provider::class);'],
+            'resolve helper' => ['$service = resolve(Provider::class);'],
+            'make helper' => ['$service = make(Provider::class);'],
+            'container helper' => ['$service = container(Provider::class);'],
+            'container singleton' => ['$service = Container::getInstance()->make(Provider::class);'],
+            'app facade make' => ['$service = App::make(Provider::class);'],
+        ];
     }
 
     /** @return array<string,array{string}> */
@@ -228,6 +389,19 @@ class AdminAiWorkerAccessArchitectureTest extends TestCase
         }
 
         return $violations;
+    }
+
+    /** @param class-string $class */
+    private function assertLockHelperQueriesExpectedModel(string $method, string $class, string $query): void
+    {
+        $source = $this->methodSource($method, $class);
+        $this->assertStringContainsString($query, $source);
+        $this->assertStringContainsString('lockForUpdate()', $source);
+    }
+
+    private function serviceLocatorPattern(): string
+    {
+        return '/(?<!->)(?<!::)(?<!function )\b(?:app|resolve|make|container)\s*\(|\b(?:App|Container)::(?:getInstance|make)\s*\(/';
     }
 
     /** @param class-string $class */

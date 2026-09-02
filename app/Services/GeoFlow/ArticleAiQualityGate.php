@@ -12,6 +12,7 @@ use App\Models\ArticleAiQualityCheck;
 use App\Models\Task;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 class ArticleAiQualityGate
 {
@@ -28,16 +29,14 @@ class ArticleAiQualityGate
     public function modelIdThatWouldBeDispatched(Article $article): ?int
     {
         return DB::transaction(function () use ($article): ?int {
-            $article = Article::query()->whereKey((int) $article->id)->lockForUpdate()->firstOrFail();
-            if ($article->task_id) {
-                $task = Task::withTrashed()
-                    ->whereKey((int) $article->task_id)
-                    ->lockForUpdate()
-                    ->first();
-                if ($task instanceof Task) {
-                    $task->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
-                    $article->setRelation('task', $task);
-                }
+            $taskId = (int) (Article::query()
+                ->whereKey((int) $article->id)
+                ->value('task_id') ?? 0);
+            $task = $this->lockTaskBeforeArticle($taskId);
+            $article = $this->lockArticleAfterTask((int) $article->id, $taskId);
+            if ($task instanceof Task) {
+                $task->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
+                $article->setRelation('task', $task);
             }
 
             $optimization = ArticleAiOptimizationRun::query()
@@ -159,16 +158,14 @@ class ArticleAiQualityGate
         ?string $overrideReason,
         bool $allowExistingOverride,
     ): ?ArticleAiQualityCheck {
-        $article = Article::query()->whereKey((int) $article->id)->lockForUpdate()->firstOrFail();
-        if ($article->task_id) {
-            $task = Task::withTrashed()
-                ->whereKey((int) $article->task_id)
-                ->lockForUpdate()
-                ->first();
-            if ($task instanceof Task) {
-                $task->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
-                $article->setRelation('task', $task);
-            }
+        $taskId = (int) (Article::query()
+            ->whereKey((int) $article->id)
+            ->value('task_id') ?? 0);
+        $task = $this->lockTaskBeforeArticle($taskId);
+        $article = $this->lockArticleAfterTask((int) $article->id, $taskId);
+        if ($task instanceof Task) {
+            $task->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
+            $article->setRelation('task', $task);
         }
         $optimization = ArticleAiOptimizationRun::query()
             ->where('article_id', (int) $article->id)
@@ -378,6 +375,31 @@ class ArticleAiQualityGate
                 : 'AI 质检未通过，文章需要人工审核。',
             $check,
         );
+    }
+
+    private function lockTaskBeforeArticle(int $taskId): ?Task
+    {
+        if ($taskId <= 0) {
+            return null;
+        }
+
+        return Task::withTrashed()
+            ->whereKey($taskId)
+            ->lockForUpdate()
+            ->first();
+    }
+
+    private function lockArticleAfterTask(int $articleId, int $expectedTaskId): Article
+    {
+        $article = Article::query()
+            ->whereKey($articleId)
+            ->lockForUpdate()
+            ->firstOrFail();
+        if ((int) ($article->task_id ?? 0) !== $expectedTaskId) {
+            throw new RuntimeException('文章所属任务已变更，请重试。');
+        }
+
+        return $article;
     }
 
     private function cancelOptimizationForOverride(ArticleAiOptimizationRun $run, ?int $adminId): void

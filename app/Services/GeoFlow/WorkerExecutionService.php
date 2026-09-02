@@ -24,6 +24,7 @@ use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\GeoFlow\ImageUrlNormalizer;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use Closure;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -119,147 +120,157 @@ class WorkerExecutionService
         $knowledgeContext = $knowledgeBundle['context'];
         $generationEvidenceSnapshot = $this->generationEvidenceSnapshot($knowledgeBundle['evidence']);
         $contentPrompt = $this->buildContentPrompt((string) $titleRow->title, $keyword, $prompt?->content, $knowledgeContext);
-        $generation = $this->generateContentWithModelSelection($task, $contentPrompt, $executionContext);
-        $aiModel = $generation['model'];
-        $generatedContent = $generation['content'];
-        $imageResult = $this->insertTaskImagesIntoContent($task, $generatedContent);
-        $content = $imageResult['content'];
-        $selectedImages = $imageResult['images'];
-        $excerpt = $this->buildExcerpt($content);
 
-        return DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $selectedImages, $generationEvidenceSnapshot, $executionContext, $aiModel, $knowledgeContext, $knowledgeBundle, $generation, $executionStartedAt): array {
-            $freshTask = Task::query()
-                ->whereKey((int) $task->id)
-                ->lockForUpdate()
-                ->first();
-            if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
-                throw new RuntimeException('任务未激活');
-            }
+        return $this->generateContentWithModelSelection(
+            $task,
+            $contentPrompt,
+            $executionContext,
+            function (array $generation) use ($task, $titleRow, $author, $category, $keyword, $generationEvidenceSnapshot, $executionContext, $knowledgeContext, $knowledgeBundle, $executionStartedAt): array {
+                $aiModel = $generation['model'];
+                $imageResult = $this->insertTaskImagesIntoContent($task, $generation['content']);
+                $content = $imageResult['content'];
+                $selectedImages = $imageResult['images'];
+                $excerpt = $this->buildExcerpt($content);
 
-            $this->aiExecutionAccessGuard->assertCurrent($executionContext);
-            $aiModel = $this->aiModelInvocationGateway->assertReceiptCurrent(
-                $executionContext,
-                $generation['receipt'],
-            );
+                return DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $selectedImages, $generationEvidenceSnapshot, $executionContext, $aiModel, $knowledgeContext, $knowledgeBundle, $generation, $executionStartedAt): array {
+                    $freshTask = Task::query()
+                        ->whereKey((int) $task->id)
+                        ->lockForUpdate()
+                        ->first();
+                    if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
+                        throw new RuntimeException('任务未激活');
+                    }
 
-            $generationBlockReason = $this->getGenerationBlockReason($freshTask, true);
-            if ($generationBlockReason !== null) {
-                throw new RuntimeException($generationBlockReason);
-            }
-            $freshTask->loadMissing(['qualityPrompt', 'knowledgeBases']);
-            $qualityPolicy = $this->articleAiQualityPolicyResolver->fromTask($freshTask);
-            $qualityPolicySnapshot = $this->articleAiQualityPolicyResolver->snapshot($qualityPolicy);
-            $workflow = [
-                'status' => 'draft',
-                'review_status' => (int) ($freshTask->need_review ?? 1) === 1 ? 'pending' : 'approved',
-                'published_at' => null,
-            ];
-
-            $pendingWorkflow = ArticleWorkflow::normalizeState('draft', 'pending');
-            $article = Article::query()->create([
-                'title' => (string) $titleRow->title,
-                'slug' => ArticleWorkflow::generateUniqueSlug((string) $titleRow->title),
-                'excerpt' => $excerpt,
-                'content' => $content,
-                'category_id' => $category?->id,
-                'author_id' => $author?->id,
-                'task_id' => (int) $task->id,
-                'source_title_id' => (int) $titleRow->id,
-                'original_keyword' => $keyword,
-                'keywords' => $keyword,
-                'meta_description' => mb_substr($excerpt, 0, 120),
-                'status' => $pendingWorkflow['status'],
-                'review_status' => $pendingWorkflow['review_status'],
-                'is_ai_generated' => 1,
-                'published_at' => $pendingWorkflow['published_at'],
-                'view_count' => 0,
-                'ai_quality_required_at_creation' => (bool) ($qualityPolicy['required'] ?? false),
-                'ai_quality_policy_snapshot' => $qualityPolicySnapshot,
-                'generation_evidence_snapshot' => $generationEvidenceSnapshot,
-            ]);
-
-            $this->articleRiskScanner->record($article, 'worker_generation');
-
-            if ($workflow['review_status'] === 'approved') {
-                try {
-                    $this->articleWorkflowTransitionService->transition(
-                        $article,
-                        $workflow,
-                        'worker_generation',
-                        null,
-                        null,
-                        false,
-                        $pendingWorkflow,
+                    $this->jobQueueService->lockRunningJobForWorker(
+                        $executionContext,
+                        (int) $freshTask->getKey(),
                     );
-                } catch (ArticleRiskGateException|ArticleAiQualityGateException) {
-                    // 风险扫描和待审状态随当前生成事务一并保留。
-                }
-            }
-            if ($selectedImages !== []) {
-                foreach ($selectedImages as $position => $image) {
-                    ArticleImage::query()->create([
+                    $this->aiExecutionAccessGuard->assertCurrent($executionContext);
+                    $aiModel = $this->aiModelInvocationGateway->assertReceiptCurrent(
+                        $executionContext,
+                        $generation['receipt'],
+                    );
+
+                    $generationBlockReason = $this->getGenerationBlockReason($freshTask, true);
+                    if ($generationBlockReason !== null) {
+                        throw new RuntimeException($generationBlockReason);
+                    }
+                    $freshTask->loadMissing(['qualityPrompt', 'knowledgeBases']);
+                    $qualityPolicy = $this->articleAiQualityPolicyResolver->fromTask($freshTask);
+                    $qualityPolicySnapshot = $this->articleAiQualityPolicyResolver->snapshot($qualityPolicy);
+                    $workflow = [
+                        'status' => 'draft',
+                        'review_status' => (int) ($freshTask->need_review ?? 1) === 1 ? 'pending' : 'approved',
+                        'published_at' => null,
+                    ];
+
+                    $pendingWorkflow = ArticleWorkflow::normalizeState('draft', 'pending');
+                    $article = Article::query()->create([
+                        'title' => (string) $titleRow->title,
+                        'slug' => ArticleWorkflow::generateUniqueSlug((string) $titleRow->title),
+                        'excerpt' => $excerpt,
+                        'content' => $content,
+                        'category_id' => $category?->id,
+                        'author_id' => $author?->id,
+                        'task_id' => (int) $task->id,
+                        'source_title_id' => (int) $titleRow->id,
+                        'original_keyword' => $keyword,
+                        'keywords' => $keyword,
+                        'meta_description' => mb_substr($excerpt, 0, 120),
+                        'status' => $pendingWorkflow['status'],
+                        'review_status' => $pendingWorkflow['review_status'],
+                        'is_ai_generated' => 1,
+                        'published_at' => $pendingWorkflow['published_at'],
+                        'view_count' => 0,
+                        'ai_quality_required_at_creation' => (bool) ($qualityPolicy['required'] ?? false),
+                        'ai_quality_policy_snapshot' => $qualityPolicySnapshot,
+                        'generation_evidence_snapshot' => $generationEvidenceSnapshot,
+                    ]);
+
+                    $this->articleRiskScanner->record($article, 'worker_generation');
+
+                    if ($workflow['review_status'] === 'approved') {
+                        try {
+                            $this->articleWorkflowTransitionService->transition(
+                                $article,
+                                $workflow,
+                                'worker_generation',
+                                null,
+                                null,
+                                false,
+                                $pendingWorkflow,
+                            );
+                        } catch (ArticleRiskGateException|ArticleAiQualityGateException) {
+                            // 风险扫描和待审状态随当前生成事务一并保留。
+                        }
+                    }
+                    if ($selectedImages !== []) {
+                        foreach ($selectedImages as $position => $image) {
+                            ArticleImage::query()->create([
+                                'article_id' => (int) $article->id,
+                                'image_id' => (int) $image->id,
+                                'position' => $position,
+                            ]);
+                            Image::query()->whereKey((int) $image->id)->update([
+                                'used_count' => DB::raw('COALESCE(used_count,0)+1'),
+                                'usage_count' => DB::raw('COALESCE(usage_count,0)+1'),
+                            ]);
+                        }
+                    }
+
+                    // 保持与旧逻辑一致：每次任务执行会消耗标题并累加任务计数。
+                    Title::query()->whereKey($titleRow->id)->increment('used_count');
+                    Title::query()->whereKey($titleRow->id)->increment('usage_count');
+
+                    $taskUpdate = [
+                        'created_count' => DB::raw('COALESCE(created_count,0)+1'),
+                        'loop_count' => DB::raw('COALESCE(loop_count,0)+1'),
+                        'updated_at' => now(),
+                    ];
+                    if ($freshTask->next_publish_at === null || ! $freshTask->next_publish_at->greaterThan(now())) {
+                        $taskUpdate['next_publish_at'] = now()->addSeconds($this->normalizePublishInterval($freshTask));
+                    }
+                    Task::query()->whereKey($task->id)->update($taskUpdate);
+
+                    $qualityCheck = null;
+                    if ($qualityPolicy['required'] ?? false) {
+                        $qualityCheck = $this->articleAiQualityInspectionService->createOrReuse(
+                            $article,
+                            trigger: 'worker_generation',
+                        );
+                    }
+
+                    $result = [
                         'article_id' => (int) $article->id,
-                        'image_id' => (int) $image->id,
-                        'position' => $position,
-                    ]);
-                    Image::query()->whereKey((int) $image->id)->update([
-                        'used_count' => DB::raw('COALESCE(used_count,0)+1'),
-                        'usage_count' => DB::raw('COALESCE(usage_count,0)+1'),
-                    ]);
-                }
-            }
+                        'title' => (string) $titleRow->title,
+                        'message' => '草稿生成成功',
+                        'meta' => [
+                            'task_id' => (int) $task->id,
+                            'action' => 'generate_draft',
+                            'title_id' => (int) $titleRow->id,
+                            'author_id' => $author?->id,
+                            'category_id' => $category?->id,
+                            'knowledge_length' => mb_strlen($knowledgeContext, 'UTF-8'),
+                            'knowledge_retrieval' => $knowledgeBundle['retrieval_meta'] ?? null,
+                            'image_count' => count($selectedImages),
+                            'model_selection_mode' => (string) ($task->model_selection_mode ?? 'fixed'),
+                            'used_model_id' => (int) $aiModel->id,
+                            'used_model_name' => (string) $aiModel->name,
+                            'model_attempts' => $generation['attempts'],
+                            'ai_quality' => [
+                                'required' => (bool) ($qualityPolicy['required'] ?? false),
+                                'check_id' => $qualityCheck?->id,
+                                'status' => $qualityCheck?->status,
+                            ],
+                        ],
+                    ];
 
-            // 保持与旧逻辑一致：每次任务执行会消耗标题并累加任务计数。
-            Title::query()->whereKey($titleRow->id)->increment('used_count');
-            Title::query()->whereKey($titleRow->id)->increment('usage_count');
+                    $this->completePersistedExecution($freshTask, $result, $executionContext, $executionStartedAt);
 
-            $taskUpdate = [
-                'created_count' => DB::raw('COALESCE(created_count,0)+1'),
-                'loop_count' => DB::raw('COALESCE(loop_count,0)+1'),
-                'updated_at' => now(),
-            ];
-            if ($freshTask->next_publish_at === null || ! $freshTask->next_publish_at->greaterThan(now())) {
-                $taskUpdate['next_publish_at'] = now()->addSeconds($this->normalizePublishInterval($freshTask));
-            }
-            Task::query()->whereKey($task->id)->update($taskUpdate);
-
-            $qualityCheck = null;
-            if ($qualityPolicy['required'] ?? false) {
-                $qualityCheck = $this->articleAiQualityInspectionService->createOrReuse(
-                    $article,
-                    trigger: 'worker_generation',
-                );
-            }
-
-            $result = [
-                'article_id' => (int) $article->id,
-                'title' => (string) $titleRow->title,
-                'message' => '草稿生成成功',
-                'meta' => [
-                    'task_id' => (int) $task->id,
-                    'action' => 'generate_draft',
-                    'title_id' => (int) $titleRow->id,
-                    'author_id' => $author?->id,
-                    'category_id' => $category?->id,
-                    'knowledge_length' => mb_strlen($knowledgeContext, 'UTF-8'),
-                    'knowledge_retrieval' => $knowledgeBundle['retrieval_meta'] ?? null,
-                    'image_count' => count($selectedImages),
-                    'model_selection_mode' => (string) ($task->model_selection_mode ?? 'fixed'),
-                    'used_model_id' => (int) $aiModel->id,
-                    'used_model_name' => (string) $aiModel->name,
-                    'model_attempts' => $generation['attempts'],
-                    'ai_quality' => [
-                        'required' => (bool) ($qualityPolicy['required'] ?? false),
-                        'check_id' => $qualityCheck?->id,
-                        'status' => $qualityCheck?->status,
-                    ],
-                ],
-            ];
-
-            $this->completePersistedExecution($freshTask, $result, $executionContext, $executionStartedAt);
-
-            return $result;
-        });
+                    return $result;
+                });
+            },
+        );
     }
 
     /**
@@ -475,13 +486,17 @@ class WorkerExecutionService
     /**
      * 固定模型只尝试主模型；智能切换按 failover_priority 依次尝试其它 active chat 模型。
      *
-     * @return array{content:string,model:AiModel,receipt:array{model_id:int,request_id:string,configuration_digest:string},attempts:list<array{model_id:int,model_name:string,status:string,reason:?string}>}
+     * @template TResult
+     *
+     * @param  Closure(array{content:string,model:AiModel,receipt:array{model_id:int,request_id:string,configuration_digest:string},attempts:list<array{model_id:int,model_name:string,status:string,reason:?string}>}): TResult  $persistGeneratedContent
+     * @return TResult
      */
     private function generateContentWithModelSelection(
         Task $task,
         string $contentPrompt,
         AiExecutionContext $executionContext,
-    ): array {
+        Closure $persistGeneratedContent,
+    ): mixed {
         $mode = (string) ($task->model_selection_mode ?? 'fixed');
         $attempts = [];
         $lastMessage = '';
@@ -500,21 +515,33 @@ class WorkerExecutionService
                 continue;
             }
 
+            $persistenceStarted = false;
             try {
-                $generated = $this->generateContent($executionContext, $candidate, $contentPrompt);
-                $candidate = $generated['model'];
-                $this->aiExecutionAccessGuard->recordResolvedModel($executionContext, $candidate);
-                $attempts[] = $this->buildModelAttempt($candidate, 'success', null);
+                return $this->generateContent(
+                    $executionContext,
+                    $candidate,
+                    $contentPrompt,
+                    function (array $generated) use ($executionContext, &$attempts, &$persistenceStarted, $persistGeneratedContent) {
+                        $candidate = $generated['model'];
+                        $this->aiExecutionAccessGuard->recordResolvedModel($executionContext, $candidate);
+                        $attempts[] = $this->buildModelAttempt($candidate, 'success', null);
+                        $persistenceStarted = true;
 
-                return [
-                    'content' => $generated['content'],
-                    'model' => $candidate,
-                    'receipt' => $generated['receipt'],
-                    'attempts' => $attempts,
-                ];
+                        return $persistGeneratedContent([
+                            'content' => $generated['content'],
+                            'model' => $candidate,
+                            'receipt' => $generated['receipt'],
+                            'attempts' => $attempts,
+                        ]);
+                    },
+                );
             } catch (AiModelAccessException $exception) {
                 throw $exception;
             } catch (Throwable $exception) {
+                if ($persistenceStarted) {
+                    throw $exception;
+                }
+
                 $lastMessage = $this->aiExecutionErrorSanitizer->sanitize($exception);
                 $attempts[] = $this->buildModelAttempt($candidate, 'failed', $lastMessage);
 
@@ -920,40 +947,46 @@ class WorkerExecutionService
     /**
      * 调用任务配置模型生成正文。
      *
-     * @return array{content:string,model:AiModel,receipt:array{model_id:int,request_id:string,configuration_digest:string}}
+     * @template TResult
+     *
+     * @param  Closure(array{content:string,model:AiModel,receipt:array{model_id:int,request_id:string,configuration_digest:string}}): TResult  $persistGeneratedContent
+     * @return TResult
      */
     private function generateContent(
         AiExecutionContext $executionContext,
         AiModel $aiModel,
         string $contentPrompt,
-    ): array {
-        $invocation = $this->aiModelInvocationGateway->generate(
+        Closure $persistGeneratedContent,
+    ): mixed {
+        return $this->aiModelInvocationGateway->generate(
             $executionContext,
             $aiModel,
             $contentPrompt,
-        );
-        $aiModel = $invocation['model'];
-        $response = $invocation['response'];
+            function (array $invocation) use ($persistGeneratedContent) {
+                $aiModel = $invocation['model'];
+                $response = $invocation['response'];
 
-        $rawContent = (string) ($response->text ?? '');
-        $content = $this->articleCitationMarkerCleaner->cleanContent(
-            OpenAiRuntimeProvider::normalizeGeneratedText($rawContent),
-        );
-        if ($content === '') {
-            if (OpenAiRuntimeProvider::looksLikeSseCompletionPayload($rawContent)) {
-                throw new RuntimeException('AI 返回空流式响应，未生成正文内容，请重试或检查模型流式输出兼容性');
+                $rawContent = (string) ($response->text ?? '');
+                $content = $this->articleCitationMarkerCleaner->cleanContent(
+                    OpenAiRuntimeProvider::normalizeGeneratedText($rawContent),
+                );
+                if ($content === '') {
+                    if (OpenAiRuntimeProvider::looksLikeSseCompletionPayload($rawContent)) {
+                        throw new RuntimeException('AI 返回空流式响应，未生成正文内容，请重试或检查模型流式输出兼容性');
+                    }
+
+                    throw new RuntimeException('AI返回空正文');
+                }
+
+                $this->warnIfContentLooksTruncated($content, $aiModel, $response);
+
+                return $persistGeneratedContent([
+                    'content' => $content,
+                    'model' => $aiModel,
+                    'receipt' => $invocation['receipt'],
+                ]);
             }
-
-            throw new RuntimeException('AI返回空正文');
-        }
-
-        $this->warnIfContentLooksTruncated($content, $aiModel, $response);
-
-        return [
-            'content' => $content,
-            'model' => $aiModel,
-            'receipt' => $invocation['receipt'],
-        ];
+        );
     }
 
     /**

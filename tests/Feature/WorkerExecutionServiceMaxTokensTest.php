@@ -8,6 +8,7 @@ use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Task;
 use App\Models\TaskRun;
+use App\Services\Admin\AdminAiModelMutationService;
 use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\GeoFlow\AiExecutionContextFactory;
 use App\Services\GeoFlow\ArticleContentGenerationService;
@@ -70,6 +71,74 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
 
         $locks->release($replacement);
         $locks->release($invocationLock);
+    }
+
+    public function test_worker_invocation_lock_remains_held_during_post_provider_persistence(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response($this->completion('持久化前正文。')),
+        ]);
+        $model = $this->createChatModel();
+        $context = $this->executionContextForModel($model, 'worker-lock-persistence');
+        $locks = app(AiModelInvocationLock::class);
+        $callbackEntered = false;
+
+        $result = app(WorkerAiModelInvocationGateway::class)->generate(
+            $context,
+            $model,
+            '写一篇文章。',
+            function (array $invocation) use (&$callbackEntered, $locks, $model): string {
+                $callbackEntered = true;
+                $this->assertSame('持久化前正文。', (string) $invocation['response']->text);
+                $this->assertNull($locks->acquireForMutation((int) $model->id));
+                $owner = Admin::query()->findOrFail((int) $model->owner_admin_id);
+                $mutation = app(AdminAiModelMutationService::class)->update(
+                    $owner,
+                    (int) $model->id,
+                    ['api_url' => 'https://changed-while-persisting.test'],
+                    AiModel::ACCESS_SCOPE_USER_CONTENT,
+                );
+                $this->assertFalse($mutation->succeeded());
+                $this->assertSame('task', $mutation->error);
+                $this->assertSame('https://ai.test', (string) $model->fresh()->api_url);
+
+                return 'persisted';
+            },
+        );
+
+        $this->assertTrue($callbackEntered);
+        $this->assertSame('persisted', $result);
+        $mutationLock = $locks->acquireForMutation((int) $model->id);
+        $this->assertNotNull($mutationLock);
+        $locks->release($mutationLock);
+    }
+
+    public function test_worker_invocation_lock_releases_when_post_provider_persistence_throws(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response($this->completion('异常路径正文。')),
+        ]);
+        $model = $this->createChatModel();
+        $context = $this->executionContextForModel($model, 'worker-lock-exception');
+        $locks = app(AiModelInvocationLock::class);
+
+        try {
+            app(WorkerAiModelInvocationGateway::class)->generate(
+                $context,
+                $model,
+                '写一篇文章。',
+                static function (): never {
+                    throw new \RuntimeException('persistence failed');
+                },
+            );
+            $this->fail('Expected persistence failure.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('persistence failed', $exception->getMessage());
+        }
+
+        $mutationLock = $locks->acquireForMutation((int) $model->id);
+        $this->assertNotNull($mutationLock);
+        $locks->release($mutationLock);
     }
 
     public function test_generate_content_sends_configured_model_max_tokens(): void
@@ -284,7 +353,13 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
         $service = app(WorkerExecutionService::class);
         $method = new ReflectionMethod($service, 'generateContentWithModelSelection');
         $method->setAccessible(true);
-        $result = $method->invoke($service, $task, '写一篇文章。', $context);
+        $result = $method->invoke(
+            $service,
+            $task,
+            '写一篇文章。',
+            $context,
+            static fn (array $generation): array => $generation,
+        );
 
         $this->assertSame((int) $fallback->id, (int) $result['model']->id);
         $this->assertSame(['failed', 'success'], array_column($result['attempts'], 'status'));
@@ -313,8 +388,25 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
 
     private function generateContent(AiModel $model, string $prompt): string
     {
+        $context = $this->executionContextForModel($model, 'worker-content-admin-'.$model->id);
+        $service = app(WorkerExecutionService::class);
+        $method = new ReflectionMethod($service, 'generateContent');
+        $method->setAccessible(true);
+        $result = $method->invoke(
+            $service,
+            $context,
+            $model,
+            $prompt,
+            static fn (array $generation): array => $generation,
+        );
+
+        return (string) $result['content'];
+    }
+
+    private function executionContextForModel(AiModel $model, string $username): AiExecutionContext
+    {
         $admin = Admin::query()->create([
-            'username' => 'worker-content-admin-'.$model->id,
+            'username' => $username,
             'password' => 'safe-password',
             'role' => 'admin',
             'status' => 'active',
@@ -347,13 +439,8 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
             'resolver_policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
             'execution_lease_token' => (string) Str::uuid(),
         ])->save();
-        $context = app(AiExecutionContextFactory::class)->fromTaskRun($run);
-        $service = app(WorkerExecutionService::class);
-        $method = new ReflectionMethod($service, 'generateContent');
-        $method->setAccessible(true);
-        $result = $method->invoke($service, $context, $model, $prompt);
 
-        return (string) $result['content'];
+        return app(AiExecutionContextFactory::class)->fromTaskRun($run);
     }
 
     private function createChatModel(array $overrides = []): AiModel

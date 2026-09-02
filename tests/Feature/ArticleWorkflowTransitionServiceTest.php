@@ -7,6 +7,7 @@ use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\SensitiveWord;
+use App\Models\Task;
 use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Support\GeoFlow\ArticleWorkflow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -75,6 +76,35 @@ class ArticleWorkflowTransitionServiceTest extends TestCase
             $this->assertSame('warning', $article->latestRiskScan->status);
             $this->assertSame('service_publish', $article->latestRiskScan->trigger);
         }
+    }
+
+    public function test_task_backed_article_transition_preserves_the_locked_task_relation(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Task backed workflow transition',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'ai_quality_enabled' => false,
+        ]);
+        $article = $this->createArticle([
+            'task_id' => $task->id,
+            'review_status' => 'approved',
+        ]);
+        $guardObservedTask = false;
+
+        $transitioned = app(ArticleWorkflowTransitionService::class)->transition(
+            $article,
+            ArticleWorkflow::normalizeState('published', 'approved'),
+            'service_task_publish',
+            lockedGuard: function (Article $lockedArticle) use ($task, &$guardObservedTask): void {
+                $guardObservedTask = $lockedArticle->relationLoaded('task')
+                    && (int) $lockedArticle->task?->id === (int) $task->id;
+            },
+        );
+
+        $this->assertTrue($guardObservedTask);
+        $this->assertSame('published', $transitioned->status);
+        $this->assertSame((int) $task->id, (int) $transitioned->task_id);
     }
 
     /** @param array<string, mixed> $attributes */

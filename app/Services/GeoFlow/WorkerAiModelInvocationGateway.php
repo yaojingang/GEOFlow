@@ -6,6 +6,7 @@ use App\Data\Ai\AiExecutionContext;
 use App\Exceptions\AiModelAccessException;
 use App\Models\AiModel;
 use App\Services\AiWorkspace\AiModelInvocationLock;
+use Closure;
 use Laravel\Ai\Responses\AgentResponse;
 
 final readonly class WorkerAiModelInvocationGateway
@@ -19,13 +20,17 @@ final readonly class WorkerAiModelInvocationGateway
     ) {}
 
     /**
-     * @return array{model:AiModel,response:AgentResponse,receipt:array{model_id:int,request_id:string,configuration_digest:string}}
+     * @template TResult
+     *
+     * @param  Closure(array{model:AiModel,response:AgentResponse,receipt:array{model_id:int,request_id:string,configuration_digest:string}}): TResult  $persistResponse
+     * @return TResult
      */
     public function generate(
         AiExecutionContext $executionContext,
         AiModel|int $model,
         string $prompt,
-    ): array {
+        Closure $persistResponse,
+    ): mixed {
         $modelId = $model instanceof AiModel ? (int) $model->getKey() : $model;
         if ($modelId <= 0) {
             throw AiModelAccessException::configAccessRevokedForAdminId($executionContext->modelAccessAdminId);
@@ -42,11 +47,11 @@ final readonly class WorkerAiModelInvocationGateway
             $response = $this->generationService->generate($currentModel, $prompt);
             $currentModel = $this->assertReceiptCurrent($executionContext, $receipt);
 
-            return [
+            return $persistResponse([
                 'model' => $currentModel,
                 'response' => $response,
                 'receipt' => $receipt,
-            ];
+            ]);
         } finally {
             $this->invocationLocks->release($invocationLock);
         }
