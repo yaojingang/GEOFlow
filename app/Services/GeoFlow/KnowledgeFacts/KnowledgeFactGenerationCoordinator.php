@@ -7,7 +7,6 @@ use App\Exceptions\AiModelAccessException;
 use App\Exceptions\KnowledgeFactAiGenerationException;
 use App\Exceptions\KnowledgeFactFinalizationException;
 use App\Exceptions\PermanentAiProviderException;
-use App\Jobs\FinalizeKnowledgeFactGenerationJob;
 use App\Jobs\GenerateKnowledgeFactBatchJob;
 use App\Models\Admin;
 use App\Models\AiModel;
@@ -201,9 +200,11 @@ class KnowledgeFactGenerationCoordinator
         $runId = $run->id;
         $executionAttempt = (int) $run->execution_attempt;
         $batch = Bus::batch($jobs)->name("knowledge-facts:{$runId}")->allowFailures()->finally(static function (Batch $batch) use ($runId, $executionAttempt, $finalizerToken): void {
-            FinalizeKnowledgeFactGenerationJob::dispatch($runId, $executionAttempt, $finalizerToken)
-                ->onQueue('knowledge')
-                ->afterCommit();
+            app(KnowledgeFactGenerationFinalizerDispatcher::class)->dispatch(
+                $runId,
+                $executionAttempt,
+                $finalizerToken,
+            );
         })->onQueue('knowledge')->dispatch();
         KnowledgeFactGenerationRun::query()
             ->whereKey($runId)
@@ -382,9 +383,11 @@ class KnowledgeFactGenerationCoordinator
         }, 3);
     }
 
-    public function releaseBatchForRetry(KnowledgeFactGenerationExecutionContext $context): void
-    {
-        $this->executionGuard->releaseBatchForRetry($context);
+    public function releaseBatchForRetry(
+        KnowledgeFactGenerationExecutionContext $context,
+        bool $refundAttempt = false,
+    ): void {
+        $this->executionGuard->releaseBatchForRetry($context, $refundAttempt);
     }
 
     public function recordBatchFailure(

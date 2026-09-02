@@ -7,6 +7,7 @@ use App\Data\Ai\KnowledgeFactGenerationExecutionContext;
 use App\Exceptions\AiModelAccessException;
 use App\Exceptions\KnowledgeFactAiGenerationException;
 use App\Models\AiModel;
+use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\AiWorkspace\AiWorkspaceModelReadiness;
 use App\Services\GeoFlow\AiUsageQuotaService;
 use App\Support\GeoFlow\AiModelFailoverDecider;
@@ -25,6 +26,7 @@ class KnowledgeFactAiGenerator
         private readonly AiWorkspaceModelReadiness $readiness,
         private readonly KnowledgeFactStableKeyPolicy $stableKeyPolicy,
         private readonly KnowledgeFactGenerationAiExecutionGuard $executionGuard,
+        private readonly AiModelInvocationLock $invocationLocks,
         private readonly AiModelFailoverDecider $failoverDecider,
     ) {}
 
@@ -35,42 +37,48 @@ class KnowledgeFactAiGenerator
         int $count,
         ?KnowledgeFactGenerationExecutionContext $executionContext = null,
     ): array {
-        if (data_get($model->ai_workspace_readiness_profile, 'knowledge_fact_structured_output.status') === 'unsupported') {
-            throw new RuntimeException('knowledge_fact_structured_output_unsupported');
-        }
-        $reservation = $this->quota->reserveModel($model);
-        if ($reservation === null) {
-            throw new RuntimeException('ai_quota_exhausted');
-        }
+        $invocationLock = null;
+        $reservation = null;
         $requested = false;
         $finalized = false;
         try {
-            $baseUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url);
-            $key = $this->crypto->decrypt((string) $model->getRawOriginal('api_key'));
+            $invocationLock = $this->invocationLocks->acquireForInvocation((int) $model->getKey());
+            $invocationModel = $this->currentModelForInvocation($model, $executionContext);
+            if (data_get($invocationModel->ai_workspace_readiness_profile, 'knowledge_fact_structured_output.status') === 'unsupported') {
+                throw new RuntimeException('knowledge_fact_structured_output_unsupported');
+            }
+            $reservation = $this->quota->reserveModel($invocationModel);
+            if ($reservation === null) {
+                throw new RuntimeException('ai_quota_exhausted');
+            }
+            $baseUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) $invocationModel->api_url);
+            $key = $this->crypto->decrypt((string) $invocationModel->getRawOriginal('api_key'));
             if ($baseUrl === '' || $key === '') {
-                $this->quota->releaseModel($reservation);
                 throw new RuntimeException('ai_model_configuration_invalid');
             }
-            $provider = OpenAiRuntimeProvider::registerProvider('knowledge_facts', OpenAiRuntimeProvider::resolveChatDriver($baseUrl, (string) $model->model_id), $baseUrl, $key);
+            $provider = OpenAiRuntimeProvider::registerProvider('knowledge_facts', OpenAiRuntimeProvider::resolveChatDriver($baseUrl, (string) $invocationModel->model_id), $baseUrl, $key);
+            $configurationFingerprint = $this->readiness->configurationFingerprint($invocationModel);
+            $prePromptModel = $this->currentModelForInvocation($invocationModel, $executionContext);
+            $this->assertConfigurationUnchanged(
+                $configurationFingerprint,
+                $prePromptModel,
+                $executionContext,
+            );
             $prompt = "最多提取 {$count} 条事实。只使用以下 JSON 证据：\n".json_encode($evidence, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             $requested = true;
-            $response = (new KnowledgeFactGeneratorAgent)->prompt($prompt, [], $provider, (string) $model->model_id, 150);
+            $response = (new KnowledgeFactGeneratorAgent)->prompt($prompt, [], $provider, (string) $invocationModel->model_id, 150);
             $facts = is_array($response->structured['facts'] ?? null) ? array_slice($response->structured['facts'], 0, $count) : [];
             $allowed = array_column($evidence, 'evidence_key');
             $facts = array_values(array_filter(array_map(fn (mixed $fact): ?array => $this->normalizeCandidate($fact, $allowed), $facts)));
-            DB::transaction(function () use ($model, $executionContext, $reservation): void {
-                if ($executionContext instanceof KnowledgeFactGenerationExecutionContext) {
-                    $this->executionGuard->assertCurrent($executionContext, $model);
-                }
+            DB::transaction(function () use ($invocationModel, $executionContext, $reservation, $configurationFingerprint): void {
+                $current = $this->currentModelForInvocation($invocationModel, $executionContext);
+                $this->assertConfigurationUnchanged(
+                    $configurationFingerprint,
+                    $current,
+                    $executionContext,
+                );
                 $this->quota->recordModelSuccess($reservation);
                 try {
-                    if ($executionContext instanceof KnowledgeFactGenerationExecutionContext) {
-                        $this->executionGuard->assertCurrent($executionContext, $model);
-                    }
-                    $current = AiModel::query()->whereKey($model->id)->lockForUpdate()->first();
-                    if (! $current || ! hash_equals($this->readiness->configurationFingerprint($model), $this->readiness->configurationFingerprint($current))) {
-                        return;
-                    }
                     $profile = (array) $current->ai_workspace_readiness_profile;
                     $profile['knowledge_fact_structured_output'] = ['status' => 'ready', 'observed' => true, 'last_success_at' => now()->toIso8601String(), 'configuration_fingerprint' => $this->readiness->configurationFingerprint($current)];
                     $current->forceFill(['ai_workspace_readiness_profile' => $profile])->save();
@@ -84,8 +92,10 @@ class KnowledgeFactAiGenerator
 
             return $facts;
         } catch (Throwable $exception) {
-            if ($requested && ! $finalized) {
-                $this->quota->recordModelAttempt($reservation);
+            if ($reservation !== null && ! $finalized) {
+                $requested
+                    ? $this->quota->recordModelAttempt($reservation)
+                    : $this->quota->releaseModel($reservation);
             }
             if ($exception instanceof AiModelAccessException
                 || $exception instanceof KnowledgeFactAiGenerationException) {
@@ -96,7 +106,52 @@ class KnowledgeFactAiGenerator
                 ! $this->containsInsufficientCredits($exception)
                     && $this->failoverDecider->shouldFailover($exception),
             );
+        } finally {
+            $this->invocationLocks->release($invocationLock);
         }
+    }
+
+    private function currentModelForInvocation(
+        AiModel $model,
+        ?KnowledgeFactGenerationExecutionContext $executionContext,
+    ): AiModel {
+        if ($executionContext instanceof KnowledgeFactGenerationExecutionContext) {
+            $this->executionGuard->assertCurrent($executionContext, (int) $model->getKey());
+        }
+
+        $current = AiModel::query()->whereKey($model->getKey())->first();
+        if (! $current instanceof AiModel || (string) $current->status !== 'active') {
+            if ($executionContext instanceof KnowledgeFactGenerationExecutionContext) {
+                throw AiModelAccessException::configAccessRevokedForAdminId(
+                    $executionContext->modelAccessAdminId,
+                );
+            }
+
+            throw new RuntimeException('ai_model_unavailable');
+        }
+
+        return $current;
+    }
+
+    private function assertConfigurationUnchanged(
+        string $expectedFingerprint,
+        AiModel $current,
+        ?KnowledgeFactGenerationExecutionContext $executionContext,
+    ): void {
+        if (hash_equals(
+            $expectedFingerprint,
+            $this->readiness->configurationFingerprint($current),
+        )) {
+            return;
+        }
+
+        if ($executionContext instanceof KnowledgeFactGenerationExecutionContext) {
+            throw AiModelAccessException::configAccessRevokedForAdminId(
+                $executionContext->modelAccessAdminId,
+            );
+        }
+
+        throw new RuntimeException('ai_model_configuration_changed');
     }
 
     private function containsInsufficientCredits(Throwable $exception): bool

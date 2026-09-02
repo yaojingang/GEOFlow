@@ -180,6 +180,7 @@ final readonly class KnowledgeFactGenerationRecoveryService
                     })
                     ->all();
                 $this->freezeAttempt($run, $library, $nextAttempt, $claims, $finalizerToken);
+                $this->markFinalizerPending($run);
 
                 return new KnowledgeFactGenerationRecoveryDispatch(
                     (int) $run->id,
@@ -243,6 +244,7 @@ final readonly class KnowledgeFactGenerationRecoveryService
             }
             if ($batches === []) {
                 $this->freezeAttempt($run, $library, $nextAttempt, $claims, $finalizerToken);
+                $this->markFinalizerPending($run);
 
                 return new KnowledgeFactGenerationRecoveryDispatch(
                     (int) $run->id,
@@ -305,10 +307,24 @@ final readonly class KnowledgeFactGenerationRecoveryService
 
         try {
             $batch = Bus::findBatch($jobBatchId);
+            if ($batch === null || $batch->finished() || $batch->cancelled()) {
+                return false;
+            }
+            if ($batch->createdAt->lte(now()->subSeconds($this->pendingBatchMaxAgeSeconds()))) {
+                try {
+                    $batch->cancel();
+                } catch (Throwable) {
+                    // The new execution attempt and claim token fence any stale queued payload.
+                }
 
-            return $batch !== null && ! $batch->finished() && ! $batch->cancelled();
-        } catch (Throwable) {
+                return false;
+            }
+
             return true;
+        } catch (Throwable) {
+            return $run->updated_at?->gt(
+                now()->subSeconds($this->pendingBatchMaxAgeSeconds()),
+            ) === true;
         }
     }
 
@@ -410,6 +426,15 @@ final readonly class KnowledgeFactGenerationRecoveryService
         $library->forceFill(['workflow_status' => 'generating'])->save();
     }
 
+    private function markFinalizerPending(KnowledgeFactGenerationRun $run): void
+    {
+        $run->forceFill([
+            'finalizer_lease_expires_at' => now()->addSeconds(
+                $this->finalizerPendingSeconds(),
+            ),
+        ])->save();
+    }
+
     private function failPermanently(
         KnowledgeFactGenerationRun $run,
         KnowledgeFactLibrary $library,
@@ -458,6 +483,7 @@ final readonly class KnowledgeFactGenerationRecoveryService
             ->whereIn('status', KnowledgeFactGenerationRun::ACTIVE_STATUSES)
             ->update([
                 'job_batch_id' => null,
+                'finalizer_lease_expires_at' => null,
                 'error_code' => self::DISPATCH_FAILED,
                 'error_message' => self::DISPATCH_FAILED,
                 'retryable_failure' => true,
@@ -470,6 +496,22 @@ final readonly class KnowledgeFactGenerationRecoveryService
         return max(1, min(3600, (int) config(
             'geoflow.knowledge_fact_generation_recovery_stale_seconds',
             300,
+        )));
+    }
+
+    private function finalizerPendingSeconds(): int
+    {
+        return max(60, min(3600, (int) config(
+            'geoflow.knowledge_fact_generation_finalizer_pending_seconds',
+            900,
+        )));
+    }
+
+    private function pendingBatchMaxAgeSeconds(): int
+    {
+        return max(60, min(86400, (int) config(
+            'geoflow.knowledge_fact_generation_pending_batch_max_age_seconds',
+            900,
         )));
     }
 }

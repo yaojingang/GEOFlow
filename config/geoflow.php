@@ -85,6 +85,8 @@ return [
     'knowledge_fact_generation_batch_lease_seconds' => max(180, min(600, (int) env('GEOFLOW_KNOWLEDGE_FACT_GENERATION_BATCH_LEASE_SECONDS', 210))),
     'knowledge_fact_generation_max_recovery_attempts' => max(1, min(10, (int) env('GEOFLOW_KNOWLEDGE_FACT_GENERATION_MAX_RECOVERY_ATTEMPTS', 3))),
     'knowledge_fact_generation_recovery_stale_seconds' => max(60, min(3600, (int) env('GEOFLOW_KNOWLEDGE_FACT_GENERATION_RECOVERY_STALE_SECONDS', 300))),
+    'knowledge_fact_generation_finalizer_pending_seconds' => max(60, min(3600, (int) env('GEOFLOW_KNOWLEDGE_FACT_GENERATION_FINALIZER_PENDING_SECONDS', 900))),
+    'knowledge_fact_generation_pending_batch_max_age_seconds' => max(60, min(86400, (int) env('GEOFLOW_KNOWLEDGE_FACT_GENERATION_PENDING_BATCH_MAX_AGE_SECONDS', 900))),
     'knowledge_fact_generation_retention_days' => 90,
 
     // SEO 描述

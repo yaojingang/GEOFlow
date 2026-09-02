@@ -3,7 +3,6 @@
 namespace App\Services\GeoFlow\KnowledgeFacts;
 
 use App\Data\Ai\KnowledgeFactGenerationRecoveryDispatch;
-use App\Jobs\FinalizeKnowledgeFactGenerationJob;
 use App\Jobs\GenerateKnowledgeFactBatchJob;
 use Illuminate\Bus\Batch;
 use Illuminate\Support\Facades\Bus;
@@ -13,11 +12,11 @@ class KnowledgeFactGenerationRecoveryDispatcher
     public function dispatch(KnowledgeFactGenerationRecoveryDispatch $dispatch): ?string
     {
         if ($dispatch->finalizerOnly()) {
-            FinalizeKnowledgeFactGenerationJob::dispatch(
+            app(KnowledgeFactGenerationFinalizerDispatcher::class)->dispatch(
                 $dispatch->runId,
                 $dispatch->executionAttempt,
                 $dispatch->finalizerToken,
-            )->onQueue('knowledge')->afterCommit();
+            );
 
             return null;
         }
@@ -42,11 +41,11 @@ class KnowledgeFactGenerationRecoveryDispatcher
             ->name("knowledge-facts:{$runId}:recovery:{$executionAttempt}")
             ->allowFailures()
             ->finally(static function (Batch $batch) use ($runId, $executionAttempt, $finalizerToken): void {
-                FinalizeKnowledgeFactGenerationJob::dispatch(
+                app(KnowledgeFactGenerationFinalizerDispatcher::class)->dispatch(
                     $runId,
                     $executionAttempt,
                     $finalizerToken,
-                )->onQueue('knowledge')->afterCommit();
+                );
             })
             ->onQueue('knowledge')
             ->dispatch();

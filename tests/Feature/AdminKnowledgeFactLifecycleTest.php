@@ -578,12 +578,37 @@ class AdminKnowledgeFactLifecycleTest extends TestCase
         $this->assertSame(KnowledgeFactGenerationRun::STATUS_RUNNING, $run->status);
         $this->assertSame(2, $run->execution_attempt);
         $this->assertSame('knowledge-fact-library:'.$library->id, $run->active_key);
+        $firstFinalizerToken = $run->finalizer_lease_token;
+        $this->assertTrue($run->finalizer_lease_expires_at?->isFuture() === true);
         Bus::assertBatchCount(0);
         Bus::assertDispatched(FinalizeKnowledgeFactGenerationJob::class, function (FinalizeKnowledgeFactGenerationJob $job) use ($run): bool {
             return $job->runId === (int) $run->id
                 && $job->executionAttempt === 2
                 && $job->leaseToken === $run->finalizer_lease_token;
         });
+
+        DB::table('knowledge_fact_generation_runs')
+            ->where('id', $run->id)
+            ->update(['updated_at' => now()->subMinutes(10)]);
+        $this->artisan('geoflow:recover-knowledge-fact-generations')
+            ->expectsOutput('Recovered knowledge fact generation runs: 0; dispatch failures: 0')
+            ->assertSuccessful();
+        $run->refresh();
+        $this->assertSame(2, $run->execution_attempt);
+        $this->assertSame($firstFinalizerToken, $run->finalizer_lease_token);
+        Bus::assertDispatchedTimes(FinalizeKnowledgeFactGenerationJob::class, 1);
+
+        DB::table('knowledge_fact_generation_runs')->where('id', $run->id)->update([
+            'finalizer_lease_expires_at' => now()->subSecond(),
+            'updated_at' => now()->subMinutes(10),
+        ]);
+        $this->artisan('geoflow:recover-knowledge-fact-generations')
+            ->expectsOutput('Recovered knowledge fact generation runs: 1; dispatch failures: 0')
+            ->assertSuccessful();
+        $run->refresh();
+        $this->assertSame(3, $run->execution_attempt);
+        $this->assertNotSame($firstFinalizerToken, $run->finalizer_lease_token);
+        Bus::assertDispatchedTimes(FinalizeKnowledgeFactGenerationJob::class, 2);
     }
 
     public function test_recovery_closes_retryable_partial_history_without_dispatching_duplicate_work(): void
@@ -947,6 +972,83 @@ class AdminKnowledgeFactLifecycleTest extends TestCase
         $this->assertSame(1, $run->execution_attempt);
         $this->assertNotNull($run->job_batch_id);
         Bus::assertBatchCount(1);
+    }
+
+    public function test_recovery_replaces_a_stale_database_batch_with_pending_jobs(): void
+    {
+        config()->set('geoflow.knowledge_fact_generation_recovery_stale_seconds', 1);
+        config()->set('geoflow.knowledge_fact_generation_pending_batch_max_age_seconds', 60);
+        $admin = $this->admin('knowledge-fact-stale-batch-admin');
+        $model = $this->model($admin, 'knowledge-fact-stale-batch-model');
+        $library = $this->library();
+        $chunk = $library->knowledgeBase->chunks()->firstOrFail();
+        $evidence = $this->evidenceDescriptors($chunk);
+        $inputHash = hash('sha256', json_encode($evidence, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
+        $oldBatchId = (string) Str::uuid();
+        DB::table('job_batches')->insert([
+            'id' => $oldBatchId,
+            'name' => 'knowledge-facts:stale-database-batch',
+            'total_jobs' => 1,
+            'pending_jobs' => 1,
+            'failed_jobs' => 0,
+            'failed_job_ids' => '[]',
+            'options' => serialize([]),
+            'cancelled_at' => null,
+            'created_at' => now()->subHour()->timestamp,
+            'finished_at' => null,
+        ]);
+        $run = $this->generationRun(
+            $library,
+            $admin,
+            KnowledgeFactGenerationRun::STATUS_RUNNING,
+            [
+                'active_key' => 'knowledge-fact-library:'.$library->id,
+                'source_hash' => $library->knowledgeBase->servingChunkSourceHash(),
+                'base_working_version' => (int) $library->working_version,
+                'ai_model_id' => $model->id,
+                'model_access_admin_id' => $admin->id,
+                'model_access_admin_role' => 'admin',
+                'ai_config_access_version' => 1,
+                'requested_ai_model_id' => $model->id,
+                'resolver_policy_version' => 1,
+                'execution_attempt' => 1,
+                'job_batch_id' => $oldBatchId,
+                'batch_claims_json' => ['1' => [
+                    'input_hash' => $inputHash,
+                    'status' => 'queued',
+                    'dispatch_token' => 'stale-batch-token',
+                    'execution_attempt' => 1,
+                    'attempt_count' => 0,
+                ]],
+                'finalizer_lease_token' => (string) Str::uuid7(),
+            ],
+        );
+        DB::table('knowledge_fact_generation_runs')
+            ->where('id', $run->id)
+            ->update(['updated_at' => now()->subMinutes(10)]);
+        $dispatcher = new class extends KnowledgeFactGenerationRecoveryDispatcher
+        {
+            public int $dispatchCount = 0;
+
+            public function dispatch(KnowledgeFactGenerationRecoveryDispatch $dispatch): ?string
+            {
+                $this->dispatchCount++;
+
+                return 'replacement-batch-id';
+            }
+        };
+        $this->app->instance(KnowledgeFactGenerationRecoveryDispatcher::class, $dispatcher);
+
+        $this->artisan('geoflow:recover-knowledge-fact-generations')
+            ->expectsOutput('Recovered knowledge fact generation runs: 1; dispatch failures: 0')
+            ->assertSuccessful();
+
+        $run->refresh();
+        $this->assertSame(1, $dispatcher->dispatchCount);
+        $this->assertSame(2, $run->execution_attempt);
+        $this->assertSame('replacement-batch-id', $run->job_batch_id);
+        $this->assertNotSame('stale-batch-token', data_get($run->batch_claims_json, '1.dispatch_token'));
+        $this->assertNotNull(DB::table('job_batches')->where('id', $oldBatchId)->value('cancelled_at'));
     }
 
     public function test_recovery_closes_a_missing_job_batch_dispatch_window(): void

@@ -76,7 +76,7 @@ class GenerateKnowledgeFactBatchJob implements ShouldBeUnique, ShouldQueue
             $coordinator->processClaimedBatch($context, $this->evidence);
         } catch (KnowledgeFactModelRateLimitExceeded $exception) {
             if ($context instanceof KnowledgeFactGenerationExecutionContext) {
-                $coordinator->releaseBatchForRetry($context);
+                $coordinator->releaseBatchForRetry($context, refundAttempt: true);
             }
 
             $this->release($exception->retryAfterSeconds());

@@ -140,13 +140,18 @@ final readonly class KnowledgeFactGenerationAiExecutionGuard
         }, 3);
     }
 
-    public function releaseBatchForRetry(KnowledgeFactGenerationExecutionContext $context): void
-    {
-        DB::transaction(function () use ($context): void {
+    public function releaseBatchForRetry(
+        KnowledgeFactGenerationExecutionContext $context,
+        bool $refundAttempt = false,
+    ): void {
+        DB::transaction(function () use ($context, $refundAttempt): void {
             $run = $this->assertRunLeaseCurrent($context);
             $claims = (array) $run->batch_claims_json;
             $claim = (array) ($claims[(string) $context->batchSequence] ?? []);
             $claim['status'] = 'queued';
+            if ($refundAttempt) {
+                $claim['attempt_count'] = max(0, (int) $claim['attempt_count'] - 1);
+            }
             $claim['lease_token'] = null;
             $claim['lease_expires_at'] = null;
             unset(

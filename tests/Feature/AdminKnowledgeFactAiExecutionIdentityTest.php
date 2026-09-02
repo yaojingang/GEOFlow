@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Ai\Agents\KnowledgeFactGeneratorAgent;
+use App\Exceptions\AiModelAccessException;
 use App\Jobs\FinalizeKnowledgeFactGenerationJob;
 use App\Jobs\GenerateKnowledgeFactBatchJob;
 use App\Models\Admin;
@@ -21,6 +22,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response as ClientResponse;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Ai\Exceptions\InsufficientCreditsException;
@@ -446,6 +448,197 @@ class AdminKnowledgeFactAiExecutionIdentityTest extends TestCase
         KnowledgeFactGeneratorAgent::assertNotPrompted(
             static fn ($prompt): bool => $prompt->model === (string) $shared->model_id,
         );
+    }
+
+    public function test_repeated_local_model_rate_limits_do_not_consume_batch_attempts(): void
+    {
+        config()->set('ai-workspace.require_verified_model', false);
+        config()->set('geoflow.knowledge_fact_generation_rate_per_minute', 1);
+        config()->set('geoflow.knowledge_fact_generation_max_batch_attempts', 3);
+        Bus::fake();
+        $admin = $this->admin('knowledge-runtime-rate-refund');
+        $model = $this->model($admin, 'knowledge-runtime-rate-refund-model');
+        [$base, $chunk] = $this->knowledgeFixtures('Knowledge runtime rate refund');
+        $run = app(KnowledgeFactGenerationCoordinator::class)->start(
+            KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]),
+            $model,
+            $admin,
+            'initial',
+            1,
+        );
+        RateLimiter::hit('knowledge-fact-generation:model:'.$model->id, 60);
+        KnowledgeFactGeneratorAgent::fake()->preventStrayPrompts();
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $claim = data_get($run->fresh()->batch_claims_json, '1');
+            $job = (new GenerateKnowledgeFactBatchJob(
+                (int) $run->id,
+                1,
+                (string) data_get($claim, 'input_hash'),
+                $this->evidenceDescriptors($chunk),
+                (int) $run->execution_attempt,
+                (string) data_get($claim, 'dispatch_token'),
+            ))->withFakeQueueInteractions();
+
+            $job->handle(app(KnowledgeFactGenerationCoordinator::class));
+
+            $job->assertReleased();
+            $run->refresh();
+            $this->assertSame('queued', data_get($run->batch_claims_json, '1.status'));
+            $this->assertSame(0, data_get($run->batch_claims_json, '1.attempt_count'));
+        }
+
+        KnowledgeFactGeneratorAgent::assertNotPrompted(static fn (): bool => true);
+    }
+
+    public function test_refunded_attempt_keeps_the_previous_worker_fenced_by_its_lease(): void
+    {
+        config()->set('ai-workspace.require_verified_model', false);
+        Bus::fake();
+        $admin = $this->admin('knowledge-refund-lease-fence');
+        $model = $this->model($admin, 'knowledge-refund-lease-fence-model');
+        [$base] = $this->knowledgeFixtures('Knowledge refund lease fence');
+        $run = app(KnowledgeFactGenerationCoordinator::class)->start(
+            KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]),
+            $model,
+            $admin,
+            'initial',
+            1,
+        );
+        $claim = data_get($run->fresh()->batch_claims_json, '1');
+        $coordinator = app(KnowledgeFactGenerationCoordinator::class);
+        $oldContext = $coordinator->claimBatch(
+            (int) $run->id,
+            1,
+            (string) data_get($claim, 'input_hash'),
+            (int) $run->execution_attempt,
+            (string) data_get($claim, 'dispatch_token'),
+            'old-refunded-lease',
+        );
+        $this->assertNotNull($oldContext);
+        $coordinator->releaseBatchForRetry($oldContext, refundAttempt: true);
+        $currentContext = $coordinator->claimBatch(
+            (int) $run->id,
+            1,
+            (string) data_get($claim, 'input_hash'),
+            (int) $run->execution_attempt,
+            (string) data_get($claim, 'dispatch_token'),
+            'current-refunded-lease',
+        );
+        $this->assertNotNull($currentContext);
+
+        try {
+            $coordinator->releaseBatchForRetry($oldContext, refundAttempt: true);
+            $this->fail('The old refunded worker lease must remain fenced.');
+        } catch (AiModelAccessException $exception) {
+            $this->assertSame('ai_config_access_revoked', $exception->getErrorCode());
+        }
+
+        $claim = data_get($run->fresh()->batch_claims_json, '1');
+        $this->assertSame('running', data_get($claim, 'status'));
+        $this->assertSame(1, data_get($claim, 'attempt_count'));
+        $this->assertSame('current-refunded-lease', data_get($claim, 'lease_token'));
+    }
+
+    public function test_provider_is_not_called_when_shared_access_changes_after_key_decryption(): void
+    {
+        config()->set('ai-workspace.require_verified_model', false);
+        Bus::fake();
+        $owner = $this->admin('knowledge-pre-prompt-owner', ['role' => 'super_admin']);
+        $admin = $this->admin('knowledge-pre-prompt-admin');
+        $admin->forceFill(['shared_ai_config_owner_id' => $owner->id])->save();
+        $model = $this->model($owner, 'knowledge-pre-prompt-shared-model');
+        [$base, $chunk] = $this->knowledgeFixtures('Knowledge pre prompt revoke');
+        $run = app(KnowledgeFactGenerationCoordinator::class)->start(
+            KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]),
+            $model,
+            $admin,
+            'initial',
+            1,
+        );
+        $claim = data_get($run->fresh()->batch_claims_json, '1');
+        $this->app->instance(ApiKeyCrypto::class, new class($admin) extends ApiKeyCrypto
+        {
+            private bool $revoked = false;
+
+            public function __construct(private readonly Admin $admin) {}
+
+            public function decrypt(string $storedApiKey): string
+            {
+                $key = parent::decrypt($storedApiKey);
+                if (! $this->revoked) {
+                    $this->revoked = true;
+                    $this->admin->forceFill([
+                        'shared_ai_config_owner_id' => null,
+                        'ai_config_access_version' => (int) $this->admin->ai_config_access_version + 1,
+                    ])->save();
+                }
+
+                return $key;
+            }
+        });
+        KnowledgeFactGeneratorAgent::fake()->preventStrayPrompts();
+
+        (new GenerateKnowledgeFactBatchJob(
+            (int) $run->id,
+            1,
+            (string) data_get($claim, 'input_hash'),
+            $this->evidenceDescriptors($chunk),
+            (int) $run->execution_attempt,
+            (string) data_get($claim, 'dispatch_token'),
+        ))->handle(app(KnowledgeFactGenerationCoordinator::class));
+
+        KnowledgeFactGeneratorAgent::assertNotPrompted(static fn (): bool => true);
+        $run->refresh();
+        $this->assertSame(KnowledgeFactGenerationRun::STATUS_FAILED, $run->status);
+        $this->assertSame('ai_config_access_revoked', $run->error_code);
+        $this->assertFalse($run->retryable_failure);
+    }
+
+    public function test_provider_response_is_discarded_after_key_rotation_and_invocation_lock_is_held(): void
+    {
+        config()->set('ai-workspace.require_verified_model', false);
+        Bus::fake();
+        $admin = $this->admin('knowledge-key-rotation-admin');
+        $model = $this->model($admin, 'knowledge-key-rotation-model');
+        [$base, $chunk] = $this->knowledgeFixtures('Knowledge key rotation');
+        $run = app(KnowledgeFactGenerationCoordinator::class)->start(
+            KnowledgeFactLibrary::query()->create(['knowledge_base_id' => $base->id]),
+            $model,
+            $admin,
+            'initial',
+            1,
+        );
+        $claim = data_get($run->fresh()->batch_claims_json, '1');
+        $contenderAcquired = null;
+        $rotatedKey = app(ApiKeyCrypto::class)->encrypt('rotated-secret');
+        KnowledgeFactGeneratorAgent::fake(function () use (&$contenderAcquired, $model, $chunk, $rotatedKey): array {
+            $contender = Cache::store((string) config('cache.default'))
+                ->lock('geoflow:ai-model-invocation:'.$model->id, 120);
+            $contenderAcquired = $contender->get();
+            if ($contenderAcquired) {
+                $contender->release();
+            }
+            AiModel::query()->whereKey($model->id)->update(['api_key' => $rotatedKey]);
+
+            return ['facts' => [$this->validFact($chunk)]];
+        })->preventStrayPrompts();
+
+        (new GenerateKnowledgeFactBatchJob(
+            (int) $run->id,
+            1,
+            (string) data_get($claim, 'input_hash'),
+            $this->evidenceDescriptors($chunk),
+            (int) $run->execution_attempt,
+            (string) data_get($claim, 'dispatch_token'),
+        ))->handle(app(KnowledgeFactGenerationCoordinator::class));
+
+        $this->assertFalse($contenderAcquired);
+        $run->refresh();
+        $this->assertSame(KnowledgeFactGenerationRun::STATUS_FAILED, $run->status);
+        $this->assertSame('ai_config_access_revoked', $run->error_code);
+        $this->assertSame([], data_get($run->result_json, 'candidates'));
+        $this->assertDatabaseCount('knowledge_facts', 0);
     }
 
     public function test_insufficient_provider_credits_never_fall_back_to_a_shared_model(): void
