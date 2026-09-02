@@ -350,7 +350,7 @@ class TaskLifecycleService
                 'required_field' => 'config_version',
             ]);
         }
-        $normalized = $this->normalizeTaskInput($data, true, $accessAdmin);
+        $normalized = $this->normalizeTaskInput($data, true);
         if (empty($normalized)) {
             throw new ApiException('validation_failed', '没有可更新的字段', 422);
         }
@@ -402,10 +402,17 @@ class TaskLifecycleService
                     'model_access_admin_id',
                 ]);
             $this->assertCanManageHostedTask($current, $canManageHostedTask);
-            $this->assertSelectedModelsUsable($accessAdmin, $normalized);
+            $changedModels = [];
+            foreach (['ai_model_id', 'ai_quality_model_id'] as $modelField) {
+                if (array_key_exists($modelField, $normalized)
+                    && (int) ($normalized[$modelField] ?? 0) !== (int) ($current->{$modelField} ?? 0)) {
+                    $changedModels[$modelField] = $normalized[$modelField];
+                }
+            }
+            $this->assertSelectedModelsUsable($accessAdmin, $changedModels);
             $executionAdminId = (int) ($current->model_access_admin_id ?? 0);
             if ($executionAdminId > 0 && $executionAdminId !== (int) ($accessAdmin?->getKey() ?? 0)) {
-                $this->assertSelectedModelsUsable($this->accessAdmin($executionAdminId), $normalized);
+                $this->assertSelectedModelsUsable($this->accessAdmin($executionAdminId), $changedModels);
             }
             if ($qualityConfigurationRequested
                 && $expectedQualityVersion !== null
@@ -1151,16 +1158,13 @@ class TaskLifecycleService
             } elseif (! empty($config['prompt_quality'])) {
                 $exists = Prompt::query()->whereKey($id)->where('type', 'quality_check')->exists();
             } elseif (! empty($config['ai_active_chat'])) {
-                $model = AiModel::query()
-                    ->whereKey($id)
-                    ->where('status', 'active')
-                    ->where(function ($q) {
-                        $q->whereNull('model_type')
-                            ->orWhere('model_type', '')
-                            ->orWhere('model_type', 'chat');
-                    })
-                    ->first();
+                $model = AiModel::query()->whereKey($id)->first();
                 $exists = $model instanceof AiModel;
+                if ($exists && ! $isUpdate) {
+                    $exists = (string) $model->status === 'active'
+                        && $model->archived_at === null
+                        && in_array((string) ($model->model_type ?? ''), ['', 'chat'], true);
+                }
                 if ($exists && $accessAdmin instanceof Admin) {
                     $this->assertModelUsable($accessAdmin, $model, $field);
                 }
@@ -1378,10 +1382,6 @@ class TaskLifecycleService
     /** @param array<string, mixed> $normalized */
     private function assertSelectedModelsUsable(?Admin $accessAdmin, array $normalized): void
     {
-        if (! $accessAdmin instanceof Admin) {
-            return;
-        }
-
         foreach (['ai_model_id', 'ai_quality_model_id'] as $field) {
             $modelId = (int) ($normalized[$field] ?? 0);
             if ($modelId <= 0) {
@@ -1396,7 +1396,19 @@ class TaskLifecycleService
                     ['field_errors' => [$field => '选择的 AI 模型当前不可用']],
                 );
             }
-            $this->assertModelUsable($accessAdmin, $model, $field);
+            if ((string) $model->status !== 'active'
+                || $model->archived_at !== null
+                || ! in_array((string) ($model->model_type ?? ''), ['', 'chat'], true)) {
+                throw new ApiException(
+                    'ai_model_unavailable',
+                    '选择的 AI 模型当前不可用',
+                    409,
+                    ['field_errors' => [$field => '选择的 AI 模型当前不可用']],
+                );
+            }
+            if ($accessAdmin instanceof Admin) {
+                $this->assertModelUsable($accessAdmin, $model, $field);
+            }
         }
     }
 

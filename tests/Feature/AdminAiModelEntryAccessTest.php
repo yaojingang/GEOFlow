@@ -14,6 +14,7 @@ use App\Models\Task;
 use App\Models\TitleLibrary;
 use App\Services\GeoFlow\TaskLifecycleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -117,7 +118,7 @@ class AdminAiModelEntryAccessTest extends TestCase
         $this->assertDatabaseHas('tasks', ['id' => $taskId, 'ai_model_id' => $personal->id]);
     }
 
-    public function test_task_update_rejects_a_formerly_shared_model_after_sharing_is_closed(): void
+    public function test_task_update_preserves_an_unchanged_formerly_shared_model_after_sharing_is_closed(): void
     {
         $provider = $this->admin('provider', 'super_admin');
         $actor = $this->admin('actor', 'admin', $provider);
@@ -135,10 +136,16 @@ class AdminAiModelEntryAccessTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->patchJson('/api/v1/tasks/'.$taskId, [
                 'ai_model_id' => $shared->id,
+                'name' => 'Updated without changing model',
                 'config_version' => 1,
             ])
-            ->assertNotFound()
-            ->assertJsonPath('error.code', 'ai_model_not_accessible');
+            ->assertOk();
+
+        $this->assertDatabaseHas('tasks', [
+            'id' => $taskId,
+            'name' => 'Updated without changing model',
+            'ai_model_id' => $shared->id,
+        ]);
     }
 
     public function test_task_update_validates_a_new_model_against_the_persisted_execution_admin(): void
@@ -163,6 +170,97 @@ class AdminAiModelEntryAccessTest extends TestCase
         $this->assertDatabaseHas('tasks', [
             'id' => $taskId,
             'model_access_admin_id' => $executor->id,
+            'ai_model_id' => $executorModel->id,
+        ]);
+    }
+
+    public function test_super_admin_can_edit_unrelated_fields_without_gaining_access_to_the_task_model(): void
+    {
+        $executor = $this->admin('executor', 'admin');
+        $editor = $this->admin('editor', 'super_admin');
+        $executorModel = $this->model($executor, 'Executor Private Chat', 'chat');
+        $editorModel = $this->model($editor, 'Editor Chat', 'chat');
+        $created = $this->actingWithToken($executor, ['tasks:write'])
+            ->postJson('/api/v1/tasks', $this->taskPayload((int) $executorModel->id))
+            ->assertCreated();
+        $taskId = (int) $created->json('data.id');
+
+        $this->actingWithToken($editor, ['tasks:write'])
+            ->patchJson('/api/v1/tasks/'.$taskId, [
+                'name' => 'Governed task rename',
+                'ai_model_id' => $executorModel->id,
+                'config_version' => 1,
+            ])
+            ->assertOk();
+
+        $this->actingWithToken($editor, ['tasks:write'])
+            ->patchJson('/api/v1/tasks/'.$taskId, [
+                'ai_model_id' => $editorModel->id,
+                'config_version' => 1,
+            ])
+            ->assertNotFound()
+            ->assertJsonPath('error.code', 'ai_model_not_accessible');
+
+        $this->assertDatabaseHas('tasks', [
+            'id' => $taskId,
+            'name' => 'Governed task rename',
+            'ai_model_id' => $executorModel->id,
+            'model_access_admin_id' => $executor->id,
+        ]);
+    }
+
+    public function test_super_admin_task_edit_shows_the_inaccessible_current_model_as_a_sanitized_disabled_option(): void
+    {
+        $executor = $this->admin('form-executor', 'admin');
+        $editor = $this->admin('form-editor', 'super_admin');
+        $executorModel = $this->model($executor, 'Executor Private Form Model', 'chat');
+        $this->model($editor, 'Editor Form Model', 'chat');
+        Category::query()->create(['name' => 'Task form category', 'slug' => 'task-form-category']);
+        $created = $this->actingWithToken($executor, ['tasks:write'])
+            ->postJson('/api/v1/tasks', $this->taskPayload((int) $executorModel->id))
+            ->assertCreated();
+        $taskId = (int) $created->json('data.id');
+
+        $response = $this->actingAs($editor, 'admin')
+            ->get(route('admin.tasks.edit', ['taskId' => $taskId]))
+            ->assertOk();
+
+        $response->assertViewHas('formOptions', function (array $options) use ($executorModel): bool {
+            $current = collect($options['aiModels'])->firstWhere('id', $executorModel->id);
+
+            return is_array($current)
+                && ($current['disabled'] ?? false) === true
+                && ($current['current_inaccessible'] ?? false) === true
+                && array_keys($current) === ['id', 'name', 'disabled', 'current_inaccessible'];
+        });
+        $response
+            ->assertSee('Executor Private Form Model')
+            ->assertSee('type="hidden" name="ai_model_id" value="'.$executorModel->id.'"', false)
+            ->assertDontSee('catalog-secret')
+            ->assertDontSee('provider.example');
+
+        $task = Task::query()->findOrFail($taskId);
+        $taskForm = $response->viewData('taskForm');
+        $this->actingAs($editor, 'admin')
+            ->put(route('admin.tasks.update', ['taskId' => $taskId]), [
+                'task_name' => 'Web governed rename',
+                'title_library_id' => $task->title_library_id,
+                'prompt_id' => $task->prompt_id,
+                'ai_model_id' => $executorModel->id,
+                'status' => 'paused',
+                'article_limit' => 1,
+                'draft_limit' => 1,
+                'publish_interval' => 60,
+                'category_mode' => 'smart',
+                'model_selection_mode' => 'fixed',
+                'task_revision' => $taskForm['task_revision'],
+                'config_version' => 1,
+            ])
+            ->assertRedirect(route('admin.tasks.index'));
+
+        $this->assertDatabaseHas('tasks', [
+            'id' => $taskId,
+            'name' => 'Web governed rename',
             'ai_model_id' => $executorModel->id,
         ]);
     }
@@ -296,6 +394,60 @@ class AdminAiModelEntryAccessTest extends TestCase
             ])
             ->assertNotFound()
             ->assertJsonPath('error.code', 'ai_model_not_accessible');
+
+        $this->assertDatabaseCount('article_ai_optimization_runs', 0);
+    }
+
+    public function test_attached_task_optimization_rejects_forged_peer_and_system_models_on_web_and_api(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        Queue::fake();
+        $executor = $this->admin('optimization-executor', 'admin');
+        $operator = $this->admin('optimization-operator', 'super_admin');
+        $peer = $this->admin('optimization-peer', 'admin');
+        $taskModel = $this->model($executor, 'Task Private Model', 'chat');
+        $peerModel = $this->model($peer, 'Forged Peer Model', 'chat');
+        $systemModel = $this->model(
+            $operator,
+            'Forged System Model',
+            'chat',
+            AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+        );
+        $created = $this->actingWithToken($executor, ['tasks:write'])
+            ->postJson('/api/v1/tasks', $this->taskPayload((int) $taskModel->id))
+            ->assertCreated();
+        $category = Category::query()->create(['name' => 'Optimization category', 'slug' => 'optimization-category']);
+        $author = Author::query()->create(['name' => 'Optimization author']);
+        $article = Article::query()->create([
+            'title' => 'Attached optimization article',
+            'slug' => 'attached-optimization-article',
+            'content' => 'Draft content.',
+            'status' => 'draft',
+            'review_status' => 'approved',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'task_id' => (int) $created->json('data.id'),
+        ]);
+
+        foreach ([$peerModel, $systemModel] as $forgedModel) {
+            $this->actingAs($operator, 'admin')
+                ->postJson(route('admin.articles.ai-quality.optimization.store', ['articleId' => $article->id]), [
+                    'request_key' => (string) Str::uuid(),
+                    'strategy' => 'excellent_80',
+                    'optimization_model_id' => $forgedModel->id,
+                ])
+                ->assertNotFound()
+                ->assertJsonPath('error.code', 'ai_model_not_accessible');
+
+            $this->actingWithToken($operator, ['articles:publish'])
+                ->withHeader('X-Idempotency-Key', 'forged-optimization-'.$forgedModel->id)
+                ->postJson("/api/v1/articles/{$article->id}/ai-quality/optimization", [
+                    'strategy' => 'excellent_80',
+                    'optimization_model_id' => $forgedModel->id,
+                ])
+                ->assertNotFound()
+                ->assertJsonPath('error.code', 'ai_model_not_accessible');
+        }
 
         $this->assertDatabaseCount('article_ai_optimization_runs', 0);
     }

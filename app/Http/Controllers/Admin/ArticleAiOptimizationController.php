@@ -26,10 +26,9 @@ class ArticleAiOptimizationController extends Controller
     public function store(StartArticleAiOptimizationRequest $request, int $articleId): JsonResponse
     {
         $article = Article::query()->with('task.aiModel')->whereKey($articleId)->firstOrFail();
-        $model = $article->task?->aiModel;
-        if (! $model && $request->integer('optimization_model_id') > 0) {
-            $model = AiModel::query()->find($request->integer('optimization_model_id'));
-        }
+        $model = $request->integer('optimization_model_id') > 0
+            ? AiModel::query()->find($request->integer('optimization_model_id'))
+            : $article->task?->aiModel;
         if (! $model instanceof AiModel) {
             return $this->failure(new ArticleAiOptimizationException(
                 'article_ai_optimization_model_required',

@@ -30,7 +30,11 @@ use App\Services\GeoFlow\ArticleAiQualityVersionPolicy;
 use App\Services\GeoFlow\ArticleGeoFlowService;
 use App\Services\GeoFlow\ArticleRiskScanner;
 use App\Services\GeoFlow\TaskLifecycleService;
+use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -1100,6 +1104,10 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
             'status' => 'active',
             'failover_priority' => 1,
         ]);
+        $fallback->forceFill([
+            'owner_admin_id' => $primary->owner_admin_id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
         $this->refreshQualityCheck($article, $source);
         $fake = new class('保证100%有效', (int) $primary->id) implements ArticleAiOptimizationRefiner
         {
@@ -1122,7 +1130,7 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
                     'quota_reserve' => $quotaReserve,
                 ];
                 if ((int) $model->id === $this->primaryId) {
-                    throw new ArticleAiOptimizationException('article_ai_optimization_provider_error');
+                    throw new ConnectionException('temporary connection failure');
                 }
                 preg_match('/"base_article_hash":"([a-f0-9]{64})"/', $instructions, $matches);
 
@@ -1165,6 +1173,163 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
         $this->assertSame([$primary->id, $fallback->id], array_column($fake->calls, 'model_id'));
         $this->assertSame([2, 2], array_column($fake->calls, 'quota_reserve'));
         $this->assertSame(['failed', 'success'], array_column((array) data_get($step->execution_meta, 'model_attempts'), 'status'));
+    }
+
+    public function test_smart_failover_snapshots_only_personal_then_shared_models_for_the_task_executor(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        config()->set('geoflow.ai_quality_optimization_max_model_attempts', 3);
+        config()->set('geoflow.ai_quality_request_timeout_seconds', 30);
+        Queue::fake();
+        [$article, $primary, $source] = $this->qualityArticle();
+        $executor = Admin::query()->findOrFail((int) $primary->owner_admin_id);
+        $provider = Admin::query()->create([
+            'username' => 'optimization-provider',
+            'password' => 'password',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        $executor->forceFill(['shared_ai_config_owner_id' => $provider->id])->save();
+        $article->task()->update([
+            'model_selection_mode' => 'smart_failover',
+            'ai_quality_auto_optimize_enabled' => true,
+            'ai_quality_optimization_level' => 'excellent_80',
+        ]);
+        $personal = $this->optimizationModel($executor, 'personal-fallback', 1);
+        $shared = $this->optimizationModel($provider, 'shared-fallback', 1);
+        $peer = Admin::query()->create([
+            'username' => 'optimization-peer',
+            'password' => 'password',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $this->optimizationModel($peer, 'peer-model', 0);
+        $this->optimizationModel($provider, 'system-model', 0, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+        $archived = $this->optimizationModel($executor, 'archived-model', 0);
+        $archived->forceFill(['archived_at' => now()])->save();
+        $this->refreshQualityCheck($article, $source);
+
+        $run = app(ArticleAiOptimizationCoordinator::class)->start(
+            $article->fresh(),
+            'excellent_80',
+            $primary,
+            ArticleAiOptimizationRun::TRIGGER_TASK_AUTO,
+            dispatch: false,
+        );
+
+        $this->assertSame(
+            [$primary->id, $personal->id, $shared->id],
+            data_get($run->execution_meta, 'optimization_model_ids'),
+        );
+        $this->assertSame($executor->id, data_get($run->execution_meta, 'model_access_admin_id'));
+        $this->assertSame(1, data_get($run->execution_meta, 'ai_config_access_version'));
+    }
+
+    #[DataProvider('permanentOptimizationProviderStatusProvider')]
+    public function test_permanent_provider_rejection_does_not_switch_to_another_model(int $status): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        Queue::fake();
+        [$article, $primary, $source] = $this->qualityArticle();
+        $article->task()->update([
+            'model_selection_mode' => 'smart_failover',
+            'ai_quality_auto_optimize_enabled' => true,
+            'ai_quality_optimization_level' => 'excellent_80',
+        ]);
+        $executor = Admin::query()->findOrFail((int) $primary->owner_admin_id);
+        $fallback = $this->optimizationModel($executor, 'unused-fallback', 200);
+        $this->refreshQualityCheck($article, $source);
+        $fake = new class($status) implements ArticleAiOptimizationRefiner
+        {
+            /** @var list<int> */
+            public array $calls = [];
+
+            public function __construct(private readonly int $status) {}
+
+            public function refine(AiModel $model, string $instructions, int $timeoutSeconds, int $quotaReserve = 0): array
+            {
+                $this->calls[] = (int) $model->id;
+
+                throw new ArticleAiOptimizationException(
+                    'article_ai_optimization_provider_error',
+                    previous: new RequestException(new Response(new PsrResponse($this->status, [], '{}'))),
+                );
+            }
+        };
+        $this->app->instance(ArticleAiOptimizationRefiner::class, $fake);
+        $run = app(ArticleAiOptimizationCoordinator::class)->start(
+            $article->fresh(),
+            'excellent_80',
+            $primary,
+            ArticleAiOptimizationRun::TRIGGER_TASK_AUTO,
+            dispatch: false,
+        );
+
+        app(ArticleAiOptimizationCoordinator::class)->process((int) $run->id);
+
+        $this->assertSame([$primary->id], $fake->calls);
+        $this->assertNotContains($fallback->id, $fake->calls);
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_FAILED, $run->fresh()->status);
+        $this->assertSame('article_ai_optimization_provider_error', $run->fresh()->error_code);
+    }
+
+    /** @return array<string, array{int}> */
+    public static function permanentOptimizationProviderStatusProvider(): array
+    {
+        return [
+            'invalid credentials' => [401],
+            'forbidden model' => [403],
+            'invalid parameter' => [400],
+            'incompatible capability' => [422],
+        ];
+    }
+
+    public function test_closing_sharing_after_start_blocks_outbound_optimization_immediately(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        Queue::fake();
+        [$article, $personal, $source] = $this->qualityArticle();
+        $executor = Admin::query()->findOrFail((int) $personal->owner_admin_id);
+        $provider = Admin::query()->create([
+            'username' => 'revoked-optimization-provider',
+            'password' => 'password',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        $shared = $this->optimizationModel($provider, 'revoked-shared-model', 1);
+        $executor->forceFill(['shared_ai_config_owner_id' => $provider->id])->save();
+        $article->task()->update(['ai_model_id' => $shared->id]);
+        $this->refreshQualityCheck($article, $source);
+        $fake = new class implements ArticleAiOptimizationRefiner
+        {
+            public int $calls = 0;
+
+            public function refine(AiModel $model, string $instructions, int $timeoutSeconds, int $quotaReserve = 0): array
+            {
+                $this->calls++;
+
+                throw new \RuntimeException('must not call provider');
+            }
+        };
+        $this->app->instance(ArticleAiOptimizationRefiner::class, $fake);
+        $run = app(ArticleAiOptimizationCoordinator::class)->start(
+            $article->fresh(),
+            'excellent_80',
+            $shared,
+            ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            requestedByAdminId: $executor->id,
+            dispatch: false,
+        );
+
+        $executor->forceFill([
+            'shared_ai_config_owner_id' => null,
+            'ai_config_access_version' => (int) $executor->ai_config_access_version + 1,
+        ])->save();
+        app(ArticleAiOptimizationCoordinator::class)->process((int) $run->id);
+
+        $this->assertSame(0, $fake->calls);
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_FAILED, $run->fresh()->status);
+        $this->assertSame('ai_config_access_revoked', $run->fresh()->error_code);
     }
 
     public function test_a_late_duplicate_candidate_completion_cannot_replace_the_current_round(): void
@@ -1565,14 +1730,7 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
         config()->set('geoflow.ai_quality_optimization_enabled', true);
         Queue::fake();
         [$article, $model] = $this->qualityArticle();
-        $admin = Admin::query()->create([
-            'username' => 'optimization-api-admin',
-            'password' => 'secret-password',
-            'email' => 'optimization-api@example.test',
-            'role' => 'admin',
-            'status' => 'active',
-        ]);
-        $model->forceFill(['owner_admin_id' => $admin->id])->save();
+        $admin = Admin::query()->findOrFail((int) $model->owner_admin_id);
         $readToken = $admin->createToken('optimization-read', ['articles:read'])->plainTextToken;
         $publishToken = $admin->createToken('optimization-publish', ['articles:publish'])->plainTextToken;
         $endpoint = "/api/v1/articles/{$article->id}/ai-quality/optimization";
@@ -2003,6 +2161,12 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
     /** @return array{Article,AiModel,ArticleAiQualityCheck} */
     private function qualityArticle(): array
     {
+        $executionAdmin = Admin::query()->create([
+            'username' => 'optimization-executor-'.Str::lower(Str::random(8)),
+            'password' => 'password',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
         $contentPrompt = Prompt::query()->create([
             'name' => '正文提示词',
             'type' => 'content',
@@ -2019,6 +2183,10 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
             'api_url' => 'https://example.test',
             'status' => 'active',
         ]);
+        $model->forceFill([
+            'owner_admin_id' => $executionAdmin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
         $knowledgeBase = KnowledgeBase::query()->create([
             'name' => '知识库',
             'content' => '本产品可以帮助改善使用体验。',
@@ -2036,6 +2204,11 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
             'ai_quality_model_id' => $model->id,
             'ai_quality_pass_score' => 85,
         ]);
+        $task->forceFill([
+            'model_access_admin_id' => $executionAdmin->id,
+            'model_access_admin_role' => 'admin',
+            'model_access_policy_version' => 1,
+        ])->save();
         $task->knowledgeBases()->sync([$knowledgeBase->id => ['sort_order' => 0]]);
         $category = Category::query()->create(['name' => '优化', 'slug' => 'optimization']);
         $author = Author::query()->create(['name' => '优化员']);
@@ -2131,6 +2304,30 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
         );
 
         return [$article, $model, $check];
+    }
+
+    private function optimizationModel(
+        Admin $owner,
+        string $modelId,
+        int $priority,
+        string $scope = AiModel::ACCESS_SCOPE_USER_CONTENT,
+    ): AiModel {
+        $model = AiModel::query()->create([
+            'name' => $modelId,
+            'version' => '1',
+            'api_key' => 'test',
+            'model_id' => $modelId,
+            'model_type' => 'chat',
+            'api_url' => 'https://example.test',
+            'status' => 'active',
+            'failover_priority' => $priority,
+        ]);
+        $model->forceFill([
+            'owner_admin_id' => $owner->id,
+            'access_scope' => $scope,
+        ])->save();
+
+        return $model;
     }
 
     private function refreshQualityCheck(Article $article, ArticleAiQualityCheck $check): void

@@ -3,7 +3,11 @@
 namespace App\Services\GeoFlow;
 
 use App\Contracts\ArticleAiOptimizationRefiner;
+use App\Data\Ai\AiExecutionContext;
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
 use App\Jobs\ProcessArticleAiOptimizationJob;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleAiOptimizationRun;
@@ -12,10 +16,15 @@ use App\Models\ArticleAiQualityCheck;
 use App\Models\ArticleAiQualityRollout;
 use App\Models\ArticleDistribution;
 use App\Models\Task;
+use App\Services\Admin\AdminAiModelAccessResolver;
+use App\Support\GeoFlow\AiModelFailoverDecider;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
+use Laravel\Ai\Exceptions\AiException;
+use Laravel\Ai\Exceptions\FailoverableException;
 use Throwable;
 
 final class ArticleAiOptimizationCoordinator
@@ -42,6 +51,9 @@ final class ArticleAiOptimizationCoordinator
         private readonly ArticleAiQualityInspectionService $inspectionService,
         private readonly ArticleAiOptimizationRefiner $refiner,
         private readonly ArticleAiOptimizationPatchValidator $patchValidator,
+        private readonly AdminAiModelAccessResolver $adminAiModelAccessResolver,
+        private readonly AiModelFailoverDecider $failoverDecider,
+        private readonly AiExecutionContextFactory $aiExecutionContextFactory,
     ) {}
 
     public function start(
@@ -60,6 +72,8 @@ final class ArticleAiOptimizationCoordinator
                 ->where('article_id', (int) $article->id)
                 ->first();
             if ($existingRequest) {
+                $this->assertOptimizationExecutionCurrent($existingRequest);
+
                 return $this->ensureScheduled(
                     $existingRequest,
                     $article,
@@ -122,7 +136,17 @@ final class ArticleAiOptimizationCoordinator
                         httpStatus: 409,
                     );
                 }
-                $optimizationModels = $this->optimizationModelCandidates($optimizationModel, $lockedTask);
+                $executionAdmin = $this->optimizationExecutionAdmin($lockedTask, $requestedByAdminId);
+                $this->assertRequestedModelForBothActors(
+                    $executionAdmin,
+                    $requestedByAdminId,
+                    $optimizationModel,
+                );
+                $optimizationModels = $this->optimizationModelCandidates(
+                    $optimizationModel,
+                    $lockedTask,
+                    $executionAdmin,
+                );
 
                 $qualityPolicy = $this->qualityPolicyResolver->resolveForManualInspection($lockedArticle);
                 $this->qualityPolicyResolver->assertExecutable($qualityPolicy);
@@ -205,6 +229,10 @@ final class ArticleAiOptimizationCoordinator
                             $optimizationModels,
                         )),
                         'optimization_model_selection_mode' => (string) ($lockedTask?->model_selection_mode ?? 'fixed'),
+                        'model_access_admin_id' => (int) $executionAdmin->id,
+                        'model_access_admin_role' => $this->aiExecutionContextFactory->normalizedRole($executionAdmin),
+                        'ai_config_access_version' => max(1, (int) $executionAdmin->ai_config_access_version),
+                        'resolver_policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
                         'quality_policy_snapshot' => $this->qualityPolicyResolver->snapshot($qualityPolicy),
                     ],
                 ]);
@@ -456,7 +484,15 @@ final class ArticleAiOptimizationCoordinator
                 $policy,
             );
             $afterHash = $this->riskScanner->contentHash($validated['candidate']);
-            DB::transaction(function () use ($article, $run, $step, $inputCheck, $validated, $response, $beforeHash, $afterHash, $claimed): void {
+            $resolvedModelId = (int) data_get($response, 'model.id', 0);
+            $resolvedModel = collect($models)->first(
+                static fn (AiModel $candidate): bool => (int) $candidate->id === $resolvedModelId,
+            );
+            if (! $resolvedModel instanceof AiModel) {
+                throw new ArticleAiOptimizationException('article_ai_optimization_model_unavailable');
+            }
+            DB::transaction(function () use ($article, $run, $step, $inputCheck, $validated, $response, $beforeHash, $afterHash, $claimed, $resolvedModel): void {
+                $this->assertOptimizationExecutionCurrent($run, $resolvedModel);
                 $candidate = $this->inspectionService->createOptimizationCandidate(
                     $article,
                     $validated['candidate'],
@@ -483,6 +519,11 @@ final class ArticleAiOptimizationCoordinator
             if ($run instanceof ArticleAiOptimizationRun && $step instanceof ArticleAiOptimizationStep) {
                 $this->recordStepModelAttempts($run, $step, $claimed, $modelAttempts);
             }
+            if ($this->isPermanentOptimizationFailure($exception)) {
+                $this->markFailed($runId, $exception, $claimed);
+
+                return;
+            }
             if ($exception->httpStatus() === 422 && $step instanceof ArticleAiOptimizationStep) {
                 $this->rejectStep($runId, (int) $step->id, $claimed, $exception);
 
@@ -494,6 +535,17 @@ final class ArticleAiOptimizationCoordinator
         } catch (Throwable $exception) {
             if ($run instanceof ArticleAiOptimizationRun && $step instanceof ArticleAiOptimizationStep) {
                 $this->recordStepModelAttempts($run, $step, $claimed, $modelAttempts);
+            }
+            if ($this->isPermanentOptimizationFailure($exception)) {
+                $permanent = $exception instanceof ArticleAiOptimizationException
+                    ? $exception
+                    : new ArticleAiOptimizationException(
+                        'article_ai_optimization_provider_error',
+                        previous: $exception,
+                    );
+                $this->markFailed($runId, $permanent, $claimed);
+
+                return;
             }
             $this->releaseLease($runId, $claimed);
             throw $exception;
@@ -1344,6 +1396,17 @@ final class ArticleAiOptimizationCoordinator
 
                 return null;
             }
+            try {
+                $this->assertOptimizationExecutionCurrent($run);
+            } catch (ArticleAiOptimizationException $exception) {
+                if ($this->isPermanentOptimizationFailure($exception)) {
+                    $this->markFailed($runId, $exception);
+
+                    return null;
+                }
+
+                throw $exception;
+            }
             if (! $this->policyHashMatches($article, $run)) {
                 $this->markRunStale($run, 'optimization_policy_changed');
 
@@ -2042,45 +2105,158 @@ final class ArticleAiOptimizationCoordinator
             ));
     }
 
-    /** @return list<AiModel> */
-    private function optimizationModelCandidates(AiModel $requestedModel, ?Task $task): array
+    private function optimizationExecutionAdmin(?Task $task, ?int $requestedByAdminId): Admin
     {
+        $adminId = $task instanceof Task && ! $task->trashed()
+            ? (int) ($task->model_access_admin_id ?? 0)
+            : (int) ($requestedByAdminId ?? 0);
+        $admin = $adminId > 0 ? Admin::query()->find($adminId) : null;
+        if (! $admin instanceof Admin || (string) $admin->status !== 'active') {
+            throw new ArticleAiOptimizationException('ai_execution_admin_inactive', httpStatus: 409);
+        }
+
+        return $admin;
+    }
+
+    private function assertRequestedModelForBothActors(
+        Admin $executionAdmin,
+        ?int $requestedByAdminId,
+        AiModel $requestedModel,
+    ): void {
+        $this->assertOptimizationModelUsable($executionAdmin, $requestedModel);
+        $requestAdminId = (int) ($requestedByAdminId ?? 0);
+        if ($requestAdminId <= 0 || $requestAdminId === (int) $executionAdmin->id) {
+            return;
+        }
+        $requestAdmin = Admin::query()->find($requestAdminId);
+        if (! $requestAdmin instanceof Admin) {
+            throw new ArticleAiOptimizationException('ai_execution_admin_inactive', httpStatus: 409);
+        }
+        $this->assertOptimizationModelUsable($requestAdmin, $requestedModel);
+    }
+
+    private function assertOptimizationModelUsable(Admin $admin, AiModel $model): void
+    {
+        try {
+            $this->adminAiModelAccessResolver->assertUsable($admin, $model);
+        } catch (AiModelAccessException $exception) {
+            throw $this->optimizationAccessException($exception);
+        }
+    }
+
+    private function assertOptimizationExecutionCurrent(
+        ArticleAiOptimizationRun $run,
+        ?AiModel $model = null,
+    ): Admin {
+        $executionMeta = is_array($run->execution_meta) ? $run->execution_meta : [];
+        $adminId = (int) ($executionMeta['model_access_admin_id'] ?? 0);
+        $admin = $adminId > 0 ? Admin::query()->find($adminId) : null;
+        if (! $admin instanceof Admin || (string) $admin->status !== 'active') {
+            throw new ArticleAiOptimizationException('ai_execution_admin_inactive', httpStatus: 409);
+        }
+        if ((string) ($executionMeta['model_access_admin_role'] ?? '') !== $this->aiExecutionContextFactory->normalizedRole($admin)
+            || (int) ($executionMeta['ai_config_access_version'] ?? 0) !== max(1, (int) $admin->ai_config_access_version)
+            || (int) ($executionMeta['resolver_policy_version'] ?? 0) !== AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION) {
+            throw new ArticleAiOptimizationException('ai_config_access_revoked', httpStatus: 409);
+        }
+        if ($run->task_id) {
+            $task = Task::withTrashed()->find((int) $run->task_id);
+            if (! $task instanceof Task
+                || $task->trashed()
+                || (int) ($task->model_access_admin_id ?? 0) !== $adminId
+                || (int) ($task->model_access_policy_version ?? 0) !== AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION) {
+                throw new ArticleAiOptimizationException('ai_config_access_revoked', httpStatus: 409);
+            }
+        }
+        if ($model instanceof AiModel) {
+            $this->assertOptimizationModelUsable($admin, $model);
+        }
+
+        return $admin;
+    }
+
+    private function optimizationAccessException(AiModelAccessException $exception): ArticleAiOptimizationException
+    {
+        return new ArticleAiOptimizationException(
+            $exception->getErrorCode(),
+            httpStatus: $exception->getErrorCode() === AiModelAccessException::AI_MODEL_NOT_ACCESSIBLE ? 404 : 409,
+            previous: $exception,
+        );
+    }
+
+    private function isPermanentOptimizationFailure(Throwable $exception): bool
+    {
+        if ($exception instanceof ArticleAiOptimizationException
+            && in_array($exception->errorCode(), [
+                AiModelAccessException::AI_MODEL_NOT_ACCESSIBLE,
+                AiModelAccessException::AI_EXECUTION_ADMIN_INACTIVE,
+                AiModelAccessException::AI_CONFIG_ACCESS_REVOKED,
+                AiModelAccessException::AI_CONFIG_OWNER_INACTIVE,
+                AiModelAccessException::AI_MODEL_UNAVAILABLE,
+                AiModelAccessException::AI_EMBEDDING_INCOMPATIBLE,
+            ], true)) {
+            return true;
+        }
+        $current = $exception;
+        for ($depth = 0; $depth < 8 && $current instanceof Throwable; $depth++) {
+            if ($current instanceof AiModelAccessException
+                || $current instanceof PermanentAiProviderException
+                || $current instanceof InvalidArgumentException
+                || ($current instanceof AiException && ! $current instanceof FailoverableException)
+                || $current->getMessage() === 'article_ai_optimization_model_configuration_incomplete') {
+                return true;
+            }
+            $current = $current->getPrevious();
+        }
+
+        return $this->failoverDecider->isPermanentProviderFailure($exception);
+    }
+
+    /** @return list<AiModel> */
+    private function optimizationModelCandidates(
+        AiModel $requestedModel,
+        ?Task $task,
+        Admin $executionAdmin,
+    ): array {
         if ($task instanceof Task
             && ! $task->trashed()
             && (int) $task->ai_model_id !== (int) $requestedModel->id) {
             throw new ArticleAiOptimizationException('article_ai_optimization_model_unavailable', httpStatus: 409);
         }
-        $primary = AiModel::query()
-            ->whereKey((int) $requestedModel->id)
-            ->where('status', 'active')
-            ->where(function ($query): void {
-                $query->whereNull('model_type')->orWhere('model_type', '')->orWhere('model_type', 'chat');
-            })
-            ->first();
-        if (! $primary instanceof AiModel) {
-            throw new ArticleAiOptimizationException('article_ai_optimization_model_unavailable', httpStatus: 422);
-        }
+        $this->assertOptimizationModelUsable($executionAdmin, $requestedModel);
         if (! $task instanceof Task || (string) $task->model_selection_mode !== 'smart_failover') {
-            return [$primary];
+            return [$requestedModel];
         }
-        $fallbacks = AiModel::query()
-            ->whereKeyNot((int) $primary->id)
-            ->where('status', 'active')
-            ->where(function ($query): void {
-                $query->whereNull('model_type')->orWhere('model_type', '')->orWhere('model_type', 'chat');
-            })
-            ->orderBy('failover_priority')
-            ->orderBy('id')
-            ->limit($this->modelAttemptLimit() - 1)
-            ->get()
-            ->all();
 
-        return array_values(array_merge([$primary], $fallbacks));
+        $candidates = $this->adminAiModelAccessResolver
+            ->resolveCandidates($executionAdmin, 'chat')
+            ->values();
+        $requested = $candidates->firstWhere('id', (int) $requestedModel->id);
+        if (! $requested instanceof AiModel) {
+            throw new ArticleAiOptimizationException('ai_model_not_accessible', httpStatus: 404);
+        }
+        $personal = $candidates
+            ->filter(static fn (AiModel $model): bool => (int) $model->owner_admin_id === (int) $executionAdmin->id);
+        $shared = $candidates
+            ->reject(static fn (AiModel $model): bool => (int) $model->owner_admin_id === (int) $executionAdmin->id);
+        $ordered = (int) $requested->owner_admin_id === (int) $executionAdmin->id
+            ? collect([$requested])
+                ->concat($personal->reject(static fn (AiModel $model): bool => (int) $model->id === (int) $requested->id))
+                ->concat($shared)
+            : $personal
+                ->concat([$requested])
+                ->concat($shared->reject(static fn (AiModel $model): bool => (int) $model->id === (int) $requested->id));
+
+        return $ordered
+            ->take($this->modelAttemptLimit())
+            ->values()
+            ->all();
     }
 
     /** @return list<AiModel> */
     private function modelsForRun(ArticleAiOptimizationRun $run, Article $article): array
     {
+        $executionAdmin = $this->assertOptimizationExecutionCurrent($run);
         $executionMeta = is_array($run->execution_meta) ? $run->execution_meta : [];
         $ids = collect(is_array($executionMeta['optimization_model_ids'] ?? null)
             ? $executionMeta['optimization_model_ids']
@@ -2094,18 +2270,32 @@ final class ArticleAiOptimizationCoordinator
         }
         $models = AiModel::query()
             ->whereIn('id', $ids->all())
-            ->where('status', 'active')
-            ->where(function ($query): void {
-                $query->whereNull('model_type')->orWhere('model_type', '')->orWhere('model_type', 'chat');
-            })
             ->get()
             ->keyBy('id');
+        $primaryId = (int) ($executionMeta['optimization_model_id'] ?? 0);
+        $safe = [];
+        foreach ($ids as $id) {
+            $model = $models->get($id);
+            if (! $model instanceof AiModel) {
+                if ($id === $primaryId) {
+                    throw new ArticleAiOptimizationException('article_ai_optimization_model_unavailable');
+                }
 
-        return $ids
-            ->map(static fn (int $id): mixed => $models->get($id))
-            ->filter(static fn (mixed $model): bool => $model instanceof AiModel)
-            ->values()
-            ->all();
+                continue;
+            }
+            try {
+                $this->adminAiModelAccessResolver->assertUsable($executionAdmin, $model);
+            } catch (AiModelAccessException $exception) {
+                if ($id === $primaryId) {
+                    throw $this->optimizationAccessException($exception);
+                }
+
+                continue;
+            }
+            $safe[] = $model;
+        }
+
+        return $safe;
     }
 
     /** @param list<AiModel> $models @param list<array<string,mixed>> $attempts @return array<string,mixed> */
@@ -2121,12 +2311,14 @@ final class ArticleAiOptimizationCoordinator
             : 0;
         foreach ($models as $model) {
             try {
+                $this->assertOptimizationExecutionCurrent($run, $model);
                 $response = $this->refiner->refine(
                     $model,
                     $prompt,
                     max(30, min(300, (int) config('geoflow.ai_quality_request_timeout_seconds', 160))),
                     $quotaReserve,
                 );
+                $this->assertOptimizationExecutionCurrent($run, $model);
                 $attempts[] = [
                     'model_id' => (int) $model->id,
                     'status' => 'success',
@@ -2144,6 +2336,9 @@ final class ArticleAiOptimizationCoordinator
                         : 'article_ai_optimization_provider_error',
                 ];
                 $lastException = $exception;
+                if (! $this->failoverDecider->shouldFailover($exception)) {
+                    throw $exception;
+                }
             }
         }
 
@@ -2236,7 +2431,8 @@ final class ArticleAiOptimizationCoordinator
                 (string) $run->strategy,
                 (int) ($qualityPolicy['pass_score'] ?? 85),
             );
-            $models = $this->optimizationModelCandidates($primary, $article->task);
+            $executionAdmin = $this->assertOptimizationExecutionCurrent($run);
+            $models = $this->optimizationModelCandidates($primary, $article->task, $executionAdmin);
 
             return hash_equals(
                 (string) $run->policy_hash,

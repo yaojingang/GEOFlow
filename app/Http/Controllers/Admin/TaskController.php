@@ -7,6 +7,7 @@ use App\Exceptions\TaskTitleReadinessException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\TaskTitleReadinessRequest;
 use App\Models\Admin;
+use App\Models\AiModel;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
@@ -393,8 +394,8 @@ class TaskController extends Controller
             return redirect()->route('admin.tasks.index')->withErrors($e->getMessage());
         }
 
-        $formOptions = $this->loadTaskFormOptions($this->authenticatedAdmin());
         $taskModel = Task::query()->whereKey($taskId)->firstOrFail();
+        $formOptions = $this->loadTaskFormOptions($this->authenticatedAdmin(), $taskModel);
 
         return view('admin.tasks.form', [
             'pageTitle' => __('admin.task_edit.page_title'),
@@ -670,7 +671,7 @@ class TaskController extends Controller
      * @return array{
      *     titleLibraries: list<array{id:int,name:string}>,
      *     prompts: list<array{id:int,name:string}>,
-     *     aiModels: list<array{id:int,name:string}>,
+     *     aiModels: list<array{id:int,name:string,disabled?:bool,current_inaccessible?:bool}>,
      *     imageLibraries: list<array{id:int,name:string,count:int}>,
      *     knowledgeBases: list<array{id:int,name:string}>,
      *     authors: list<array{id:int,name:string}>,
@@ -678,7 +679,7 @@ class TaskController extends Controller
      *     distributionChannels: list<array{id:int,name:string,domain:string}>
      * }
      */
-    private function loadTaskFormOptions(Admin $actor): array
+    private function loadTaskFormOptions(Admin $actor, ?Task $task = null): array
     {
         // 直接附带标题总数与可用数，避免 Blade 层再次查询。
         $titleLibraries = TitleLibrary::query()
@@ -732,6 +733,21 @@ class TaskController extends Controller
             ->get()
             ->map(static fn ($row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])
             ->all();
+        $currentModelId = (int) ($task?->ai_model_id ?? 0);
+        if ($currentModelId > 0 && ! collect($aiModels)->contains('id', $currentModelId)) {
+            $currentModel = AiModel::query()
+                ->select(['id', 'name'])
+                ->whereKey($currentModelId)
+                ->first();
+            if ($currentModel instanceof AiModel) {
+                $aiModels[] = [
+                    'id' => (int) $currentModel->id,
+                    'name' => (string) $currentModel->name,
+                    'disabled' => true,
+                    'current_inaccessible' => true,
+                ];
+            }
+        }
 
         // 兼容上游展示：图库名称 + 图片数量。
         $imageLibraries = ImageLibrary::query()

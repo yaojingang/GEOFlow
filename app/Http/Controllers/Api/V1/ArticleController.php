@@ -372,10 +372,9 @@ class ArticleController extends BaseApiController
             if (! $modelArticle) {
                 throw new ApiException('article_not_found', '文章不存在', 404);
             }
-            $model = $modelArticle->task?->aiModel;
-            if (! $model && $request->integer('optimization_model_id') > 0) {
-                $model = AiModel::query()->find($request->integer('optimization_model_id'));
-            }
+            $model = $request->integer('optimization_model_id') > 0
+                ? AiModel::query()->find($request->integer('optimization_model_id'))
+                : $modelArticle->task?->aiModel;
             if (! $model instanceof AiModel) {
                 throw new ApiException('article_ai_optimization_model_required', '请选择有效的内容模型', 422);
             }
