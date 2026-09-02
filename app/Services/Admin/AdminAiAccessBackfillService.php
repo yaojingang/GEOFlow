@@ -5,12 +5,15 @@ namespace App\Services\Admin;
 use App\Exceptions\AdminAiAccessBackfillException;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\SystemState;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
 final class AdminAiAccessBackfillService
 {
+    private const MIGRATION_STATE_KEY = 'admin_ai_access_backfill_v1';
+
     public function __construct(
         private readonly SystemAiModelReferenceInspector $referenceInspector,
         private readonly HistoricalTaskExecutionIdentityBackfillService $taskIdentityBackfill,
@@ -61,7 +64,24 @@ final class AdminAiAccessBackfillService
             $taskRunMaxId,
         ): array {
             $this->assertMaintenanceGate($maintenanceConfirmed);
+            $migrationState = $this->lockMigrationState();
             $owner = $this->resolveLegacyOwner($legacyOwnerId, true);
+            $parameterState = $this->migrationParameterState(
+                (int) $owner->getKey(),
+                $createdBefore,
+                $adminMaxId,
+                $modelMaxId,
+                $taskMaxId,
+                $taskRunMaxId,
+            );
+            $this->assertMigrationParametersCompatible($migrationState, $parameterState);
+            $migrationState->forceFill([
+                'value' => [
+                    ...$parameterState,
+                    'status' => 'in_progress',
+                    'started_at' => now()->toIso8601String(),
+                ],
+            ])->save();
             $this->assertSnapshotsCoverNullTimestamps($adminMaxId, $modelMaxId, $taskMaxId, $taskRunMaxId);
             $this->lockHistoricalCandidates(
                 $createdBefore,
@@ -155,6 +175,14 @@ final class AdminAiAccessBackfillService
                     }
                 });
             $taskIdentityResult = $this->taskIdentityBackfill->applyPlan($plan);
+            $remainingIdentityCounts = $this->taskIdentityBackfill->remainingIdentityCounts();
+            $migrationState->forceFill([
+                'value' => [
+                    ...$parameterState,
+                    'status' => 'completed',
+                    'completed_at' => now()->toIso8601String(),
+                ],
+            ])->save();
 
             return [
                 ...$plan,
@@ -164,6 +192,7 @@ final class AdminAiAccessBackfillService
                 'access_versions_normalized' => $versionsNormalized,
                 'system_models_marked' => $systemModelsMarked,
                 ...$taskIdentityResult,
+                ...$remainingIdentityCounts,
             ];
         }, 3);
     }
@@ -343,6 +372,60 @@ final class AdminAiAccessBackfillService
         }
         if (! app()->isDownForMaintenance()) {
             throw new AdminAiAccessBackfillException('application_maintenance_mode_required');
+        }
+    }
+
+    private function lockMigrationState(): SystemState
+    {
+        SystemState::query()->firstOrCreate(
+            ['key' => self::MIGRATION_STATE_KEY],
+            ['value' => []],
+        );
+
+        $state = SystemState::query()
+            ->where('key', self::MIGRATION_STATE_KEY)
+            ->lockForUpdate()
+            ->firstOrFail();
+        SystemState::query()->whereKey($state->getKey())->update(['updated_at' => now()]);
+
+        return $state->refresh();
+    }
+
+    /** @return array{parameter_hash: string, legacy_owner_id: int, created_before: string, admin_max_id: ?int, model_max_id: ?int, task_max_id: ?int, task_run_max_id: ?int} */
+    private function migrationParameterState(
+        int $legacyOwnerId,
+        CarbonImmutable $createdBefore,
+        ?int $adminMaxId,
+        ?int $modelMaxId,
+        ?int $taskMaxId,
+        ?int $taskRunMaxId,
+    ): array {
+        $parameters = [
+            'legacy_owner_id' => $legacyOwnerId,
+            'created_before' => $createdBefore->toIso8601String(),
+            'admin_max_id' => $adminMaxId,
+            'model_max_id' => $modelMaxId,
+            'task_max_id' => $taskMaxId,
+            'task_run_max_id' => $taskRunMaxId,
+        ];
+
+        return [
+            'parameter_hash' => hash('sha256', json_encode($parameters, JSON_THROW_ON_ERROR)),
+            ...$parameters,
+        ];
+    }
+
+    /** @param array<string, mixed> $parameterState */
+    private function assertMigrationParametersCompatible(
+        SystemState $migrationState,
+        array $parameterState,
+    ): void {
+        $existing = is_array($migrationState->value) ? $migrationState->value : [];
+        $existingHash = $existing['parameter_hash'] ?? null;
+        if (is_string($existingHash)
+            && $existingHash !== ''
+            && ! hash_equals($existingHash, (string) $parameterState['parameter_hash'])) {
+            throw new AdminAiAccessBackfillException('admin_ai_access_backfill_parameters_conflict');
         }
     }
 

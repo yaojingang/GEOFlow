@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiQualityAuditEvent;
+use App\Models\SystemState;
 use App\Models\Task;
 use App\Models\TaskRun;
 use Illuminate\Contracts\Foundation\MaintenanceMode as MaintenanceModeContract;
@@ -38,7 +39,7 @@ class HistoricalTaskExecutionIdentityBackfillTest extends TestCase
         $arguments = $this->applyArguments($owner, $task, $run);
         $this->artisan('geoflow:backfill-admin-ai-access', $arguments)
             ->expectsOutput('Tasks recovered from creation audit: 1')
-            ->expectsOutput('Task runs inherited from task: 1')
+            ->expectsOutput('Run identities to inherit: 1')
             ->expectsOutput('Execution identity blocking conflicts: 0')
             ->assertSuccessful();
 
@@ -98,7 +99,7 @@ class HistoricalTaskExecutionIdentityBackfillTest extends TestCase
 
         $this->artisan('geoflow:backfill-admin-ai-access', $this->applyArguments($owner, $task, $run))
             ->expectsOutput('Tasks recovered: 0')
-            ->expectsOutput('Task runs inherited: 1')
+            ->expectsOutput('Task run identities inherited: 1')
             ->assertSuccessful();
 
         $this->assertSame($executionAdmin->id, $task->fresh()->model_access_admin_id);
@@ -336,11 +337,150 @@ class HistoricalTaskExecutionIdentityBackfillTest extends TestCase
         $apply = [...$base, '--apply' => true, '--maintenance-confirmed' => true];
         $this->artisan('geoflow:backfill-admin-ai-access', $apply)
             ->expectsOutput('Tasks recovered: 1')
-            ->expectsOutput('Task runs inherited: 1')
+            ->expectsOutput('Task run identities inherited: 1')
             ->assertSuccessful();
         $this->artisan('geoflow:backfill-admin-ai-access', $apply)
             ->expectsOutput('Tasks recovered: 0')
-            ->expectsOutput('Task runs inherited: 0')
+            ->expectsOutput('Task run identities inherited: 0')
+            ->assertSuccessful();
+    }
+
+    public function test_active_run_outside_the_run_snapshot_blocks_every_recovery_source(): void
+    {
+        $owner = $this->admin('owner', 'super_admin', 1);
+        $creator = $this->admin('creator', 'admin', 3);
+        $task = $this->task(['status' => 'paused', 'schedule_enabled' => 0]);
+        $historicalRun = $this->taskRun($task, ['status' => 'completed']);
+        $outsideSnapshot = $this->taskRun($task, ['status' => 'pending']);
+        $this->creationAudit($task, $creator);
+
+        $arguments = $this->baseArguments($owner, $task, $historicalRun);
+        $this->artisan('geoflow:backfill-admin-ai-access', $arguments)
+            ->expectsOutputToContain('Task execution identity finding: task_run#'.$outsideSnapshot->id.' blocking (active_run_outside_snapshot)')
+            ->assertSuccessful();
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            ...$arguments,
+            '--apply' => true,
+            '--maintenance-confirmed' => true,
+        ])
+            ->expectsOutput('Preflight failed: historical_task_execution_identity_conflict')
+            ->assertFailed();
+
+        $this->assertNull($task->fresh()->model_access_admin_id);
+        $this->assertSame('pending', $outsideSnapshot->fresh()->status);
+    }
+
+    public function test_active_run_and_task_both_outside_the_snapshots_block_apply(): void
+    {
+        $owner = $this->admin('owner', 'super_admin', 1);
+        $historicalTask = $this->task(['status' => 'paused', 'schedule_enabled' => 0]);
+        $historicalRun = $this->taskRun($historicalTask, ['status' => 'completed']);
+        $arguments = $this->baseArguments($owner, $historicalTask, $historicalRun);
+        $outsideTask = $this->task(['status' => 'active', 'schedule_enabled' => 1]);
+        $outsideRun = $this->taskRun($outsideTask, ['status' => 'running']);
+
+        $this->artisan('geoflow:backfill-admin-ai-access', $arguments)
+            ->expectsOutputToContain('Task execution identity finding: task_run#'.$outsideRun->id.' blocking (active_run_outside_snapshot)')
+            ->assertSuccessful();
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            ...$arguments,
+            '--apply' => true,
+            '--maintenance-confirmed' => true,
+        ])
+            ->expectsOutput('Preflight failed: historical_task_execution_identity_conflict')
+            ->assertFailed();
+
+        $this->assertNull($outsideTask->fresh()->model_access_admin_id);
+        $this->assertSame('running', $outsideRun->fresh()->status);
+    }
+
+    public function test_creation_audit_is_authoritative_and_conflicting_run_or_policy_evidence_blocks_apply(): void
+    {
+        $owner = $this->admin('owner', 'super_admin', 1);
+        $creator = $this->admin('creator', 'admin', 3);
+        $runAdmin = $this->admin('run-admin', 'admin', 4);
+        $task = $this->task(['status' => 'paused', 'schedule_enabled' => 0]);
+        $run = $this->taskRun($task, [
+            'status' => 'completed',
+            'model_access_admin_id' => $runAdmin->id,
+            'model_access_admin_role' => 'admin',
+            'ai_config_access_version' => 4,
+            'resolver_policy_version' => 1,
+        ]);
+        $this->creationAudit($task, $creator);
+
+        $arguments = $this->baseArguments($owner, $task, $run);
+        $this->artisan('geoflow:backfill-admin-ai-access', $arguments)
+            ->expectsOutputToContain('Task execution identity finding: task#'.$task->id.' blocking (creation_audit_run_identity_conflict)')
+            ->assertSuccessful();
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            ...$arguments,
+            '--apply' => true,
+            '--maintenance-confirmed' => true,
+        ])
+            ->expectsOutput('Preflight failed: historical_task_execution_identity_conflict')
+            ->assertFailed();
+
+        $matchingTask = $this->task(['status' => 'paused', 'schedule_enabled' => 0]);
+        $matchingRun = $this->taskRun($matchingTask, ['status' => 'completed']);
+        $this->creationAudit($matchingTask, $creator, 1);
+        $this->creationAudit($matchingTask, $creator, 2);
+
+        $matchingArguments = $this->baseArguments($owner, $matchingTask, $matchingRun);
+        $this->artisan('geoflow:backfill-admin-ai-access', $matchingArguments)
+            ->expectsOutputToContain('Task execution identity finding: task#'.$matchingTask->id.' blocking (conflicting_creation_audit)')
+            ->assertSuccessful();
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            ...$matchingArguments,
+            '--apply' => true,
+            '--maintenance-confirmed' => true,
+        ])
+            ->expectsOutput('Preflight failed: historical_task_execution_identity_conflict')
+            ->assertFailed();
+    }
+
+    public function test_completed_migration_state_rejects_a_different_parameter_set(): void
+    {
+        $ownerA = $this->admin('owner-a', 'super_admin', 1);
+        $ownerB = $this->admin('owner-b', 'super_admin', 1);
+        $task = $this->task(['status' => 'paused', 'schedule_enabled' => 0]);
+        $run = $this->taskRun($task, ['status' => 'completed']);
+        $arguments = $this->applyArguments($ownerA, $task, $run);
+
+        $this->artisan('geoflow:backfill-admin-ai-access', $arguments)->assertSuccessful();
+        $state = SystemState::query()->where('key', 'admin_ai_access_backfill_v1')->firstOrFail();
+        $this->assertSame('completed', $state->value['status']);
+        $this->assertSame($ownerA->id, $state->value['legacy_owner_id']);
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $state->value['parameter_hash']);
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            ...$arguments,
+            '--legacy-owner' => $ownerB->id,
+        ])
+            ->expectsOutput('Preflight failed: admin_ai_access_backfill_parameters_conflict')
+            ->assertFailed();
+
+        $this->assertSame($ownerA->id, $task->fresh()->model_access_admin_id);
+    }
+
+    public function test_apply_reports_identity_and_requested_model_backfill_separately_with_remaining_gaps(): void
+    {
+        $owner = $this->admin('owner', 'super_admin', 1);
+        $creator = $this->admin('creator', 'admin', 6);
+        $model = $this->model($creator);
+        $task = $this->task(['ai_model_id' => $model->id]);
+        $run = $this->taskRun($task, ['status' => 'completed']);
+        $this->creationAudit($task, $creator);
+
+        $this->artisan('geoflow:backfill-admin-ai-access', $this->applyArguments($owner, $task, $run))
+            ->expectsOutput('Run identities to inherit: 1')
+            ->expectsOutput('Requested models to backfill: 1')
+            ->expectsOutput('Task run identities inherited: 1')
+            ->expectsOutput('Requested models backfilled: 1')
+            ->expectsOutput('Remaining tasks with empty identity: 0')
+            ->expectsOutput('Remaining tasks with partial identity: 0')
+            ->expectsOutput('Remaining task runs with empty identity: 0')
+            ->expectsOutput('Remaining task runs with partial identity: 0')
+            ->expectsOutput('Remaining active task runs without identity: 0')
             ->assertSuccessful();
     }
 
@@ -420,7 +560,7 @@ class HistoricalTaskExecutionIdentityBackfillTest extends TestCase
         return $run->refresh();
     }
 
-    private function creationAudit(Task $task, Admin $admin): void
+    private function creationAudit(Task $task, Admin $admin, int $policyVersion = 1): void
     {
         AiQualityAuditEvent::query()->create([
             'event_uuid' => (string) Str::uuid(),
@@ -429,7 +569,7 @@ class HistoricalTaskExecutionIdentityBackfillTest extends TestCase
             'task_id' => $task->id,
             'admin_id' => $admin->id,
             'authorization_result' => 'allowed',
-            'policy_version' => 1,
+            'policy_version' => $policyVersion,
             'metadata' => [],
         ]);
     }

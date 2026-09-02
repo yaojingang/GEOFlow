@@ -46,13 +46,13 @@ final class HistoricalTaskExecutionIdentityBackfillService
             ]);
         $tasksById = $tasks->keyBy(static fn (Task $task): int => (int) $task->getKey());
         $runsByTask = $runs->groupBy(static fn (TaskRun $run): int => (int) $run->task_id);
-        $creationAudits = $this->creationAuditAdminsByTask(
+        $creationAudits = $this->creationAuditEvidenceByTask(
             $tasks->pluck('id')->map(static fn (mixed $id): int => (int) $id)->all(),
             $createdBefore,
         );
         $adminIds = $tasks->pluck('model_access_admin_id')
             ->merge($runs->pluck('model_access_admin_id'))
-            ->merge($creationAudits->flatten())
+            ->merge($creationAudits->flatten(1)->pluck('admin_id'))
             ->push((int) $legacyOwner->getKey())
             ->filter(static fn (mixed $id): bool => is_numeric($id) && (int) $id > 0)
             ->map(static fn (mixed $id): int => (int) $id)
@@ -76,22 +76,31 @@ final class HistoricalTaskExecutionIdentityBackfillService
             $taskRuns = $runsByTask->get($taskId, collect());
             $snapshot = $this->existingTaskSnapshot($task, $admins, $findings);
             if ($snapshot === null && $this->taskIdentityIsEmpty($task)) {
-                $snapshot = $this->snapshotFromConsistentRuns($taskId, $taskRuns, $admins, $findings);
-                if ($snapshot !== null) {
-                    $snapshot['source'] = 'historical_runs';
-                    $tasksFromRuns++;
-                }
-            }
-            if ($snapshot === null && $this->taskIdentityIsEmpty($task)) {
-                $snapshot = $this->snapshotFromCreationAudit(
+                $auditSnapshot = $this->snapshotFromCreationAudit(
                     $taskId,
                     $creationAudits->get($taskId, collect()),
                     $admins,
                     $findings,
                 );
-                if ($snapshot !== null) {
+                $runSnapshot = $this->snapshotFromConsistentRuns($taskId, $taskRuns, $admins, $findings);
+                if ($auditSnapshot !== null && $runSnapshot !== null
+                    && ! $this->snapshotsMatch($auditSnapshot, $runSnapshot)) {
+                    $findings[] = $this->finding(
+                        'task',
+                        $taskId,
+                        'blocking',
+                        'creation_audit_run_identity_conflict',
+                    );
+                } elseif (! $this->hasBlockingFindingFor('task', $taskId, $findings)
+                    && $auditSnapshot !== null) {
+                    $snapshot = $auditSnapshot;
                     $snapshot['source'] = 'creation_audit';
                     $tasksFromAudit++;
+                } elseif (! $this->hasBlockingFindingFor('task', $taskId, $findings)
+                    && $runSnapshot !== null) {
+                    $snapshot = $runSnapshot;
+                    $snapshot['source'] = 'historical_runs';
+                    $tasksFromRuns++;
                 }
             }
             if ($snapshot === null && $this->taskIdentityIsEmpty($task)
@@ -160,6 +169,8 @@ final class HistoricalTaskExecutionIdentityBackfillService
                 if ($snapshot !== null && $run->requested_ai_model_id === null && $task->ai_model_id !== null) {
                     $runUpdates[$runId] = [
                         'expected_state' => 'complete',
+                        'inherit_identity' => false,
+                        'backfill_requested_model' => true,
                         'attributes' => ['requested_ai_model_id' => (int) $task->ai_model_id],
                     ];
                 }
@@ -176,6 +187,8 @@ final class HistoricalTaskExecutionIdentityBackfillService
                 }
                 $runUpdates[$runId] = [
                     'expected_state' => 'empty',
+                    'inherit_identity' => true,
+                    'backfill_requested_model' => array_key_exists('requested_ai_model_id', $attributes),
                     'attributes' => $attributes,
                 ];
             }
@@ -186,28 +199,15 @@ final class HistoricalTaskExecutionIdentityBackfillService
             }
         }
 
-        $legacyTaskIds = collect($taskSnapshots)
-            ->filter(static fn (array $snapshot): bool => $snapshot['source'] === 'legacy_owner')
-            ->keys()
-            ->map(static fn (mixed $id): int => (int) $id)
-            ->values();
-        if ($legacyTaskIds->isNotEmpty()) {
-            $historicalRunIds = $runs->pluck('id')->map(static fn (mixed $id): int => (int) $id);
-            TaskRun::query()
-                ->whereIn('task_id', $legacyTaskIds)
-                ->whereIn('status', ['pending', 'running'])
-                ->whereNotIn('id', $historicalRunIds)
-                ->orderBy('id')
-                ->pluck('id')
-                ->each(function (mixed $runId) use (&$findings): void {
-                    $findings[] = $this->finding(
-                        'task_run',
-                        (int) $runId,
-                        'blocking',
-                        'active_run_outside_snapshot',
-                    );
-                });
-        }
+        $this->activeRunsOutsideBoundary($createdBefore, $taskRunMaxId)
+            ->each(function (mixed $runId) use (&$findings): void {
+                $findings[] = $this->finding(
+                    'task_run',
+                    (int) $runId,
+                    'blocking',
+                    'active_run_outside_snapshot',
+                );
+            });
 
         usort($findings, static fn (array $left, array $right): int => [
             $left['subject_type'],
@@ -225,7 +225,14 @@ final class HistoricalTaskExecutionIdentityBackfillService
             'tasks_recovered_from_historical_runs' => $tasksFromRuns,
             'tasks_recovered_from_creation_audit' => $tasksFromAudit,
             'tasks_mapped_to_legacy_owner' => $tasksFromLegacy,
-            'task_runs_inherited_from_task' => count($runUpdates),
+            'run_identities_to_inherit' => count(array_filter(
+                $runUpdates,
+                static fn (array $change): bool => $change['inherit_identity'],
+            )),
+            'requested_models_to_backfill' => count(array_filter(
+                $runUpdates,
+                static fn (array $change): bool => $change['backfill_requested_model'],
+            )),
             'legacy_inferred_tasks_to_pause' => count(array_unique($pauseTaskIds)),
             'legacy_inferred_active_runs_to_freeze' => count(array_unique($freezeRunIds)),
             'manual_execution_identity_finding_count' => count(array_filter(
@@ -261,7 +268,8 @@ final class HistoricalTaskExecutionIdentityBackfillService
             $tasksRecovered += $affected;
         }
 
-        $runsInherited = 0;
+        $runIdentitiesInherited = 0;
+        $requestedModelsBackfilled = 0;
         foreach ($plan['_run_updates'] as $runId => $change) {
             $query = TaskRun::query()->whereKey((int) $runId);
             $attributes = $change['attributes'];
@@ -277,11 +285,19 @@ final class HistoricalTaskExecutionIdentityBackfillService
             } else {
                 $query->whereNull('requested_ai_model_id');
             }
+            if ($change['backfill_requested_model']) {
+                $query->whereNull('requested_ai_model_id');
+            }
             $affected = $query->update($attributes);
             if ($affected !== 1) {
                 throw new AdminAiAccessBackfillException('historical_task_run_execution_identity_changed');
             }
-            $runsInherited += $affected;
+            if ($change['inherit_identity']) {
+                $runIdentitiesInherited += $affected;
+            }
+            if ($change['backfill_requested_model']) {
+                $requestedModelsBackfilled += $affected;
+            }
         }
 
         $tasksPaused = 0;
@@ -315,9 +331,55 @@ final class HistoricalTaskExecutionIdentityBackfillService
 
         return [
             'tasks_recovered' => $tasksRecovered,
-            'task_runs_inherited' => $runsInherited,
+            'task_run_identities_inherited' => $runIdentitiesInherited,
+            'requested_models_backfilled' => $requestedModelsBackfilled,
             'legacy_inferred_tasks_paused' => $tasksPaused,
             'legacy_inferred_active_runs_frozen' => $runsFrozen,
+        ];
+    }
+
+    /** @return array<string, int> */
+    public function remainingIdentityCounts(): array
+    {
+        $emptyTaskIdentity = fn (Builder $query): Builder => $query
+            ->whereNull('model_access_admin_id')
+            ->whereNull('model_access_admin_role')
+            ->whereNull('model_access_policy_version');
+        $invalidTaskIdentity = fn (Builder $query): Builder => $query
+            ->whereNull('model_access_admin_id')
+            ->orWhereNull('model_access_admin_role')
+            ->orWhereRaw('LOWER(TRIM(model_access_admin_role)) NOT IN (?, ?)', ['admin', 'super_admin'])
+            ->orWhereNull('model_access_policy_version')
+            ->orWhere('model_access_policy_version', '<', 1);
+        $emptyRunIdentity = fn (Builder $query): Builder => $query
+            ->whereNull('model_access_admin_id')
+            ->whereNull('model_access_admin_role')
+            ->whereNull('ai_config_access_version')
+            ->whereNull('resolver_policy_version');
+        $invalidRunIdentity = fn (Builder $query): Builder => $query
+            ->whereNull('model_access_admin_id')
+            ->orWhereNull('model_access_admin_role')
+            ->orWhereRaw('LOWER(TRIM(model_access_admin_role)) NOT IN (?, ?)', ['admin', 'super_admin'])
+            ->orWhereNull('ai_config_access_version')
+            ->orWhere('ai_config_access_version', '<', 1)
+            ->orWhereNull('resolver_policy_version')
+            ->orWhere('resolver_policy_version', '<', 1);
+
+        return [
+            'remaining_tasks_with_empty_identity' => Task::withTrashed()->where($emptyTaskIdentity)->count(),
+            'remaining_tasks_with_partial_identity' => Task::withTrashed()
+                ->whereNot($emptyTaskIdentity)
+                ->where($invalidTaskIdentity)
+                ->count(),
+            'remaining_task_runs_with_empty_identity' => TaskRun::query()->where($emptyRunIdentity)->count(),
+            'remaining_task_runs_with_partial_identity' => TaskRun::query()
+                ->whereNot($emptyRunIdentity)
+                ->where($invalidRunIdentity)
+                ->count(),
+            'remaining_active_task_runs_without_identity' => TaskRun::query()
+                ->whereIn('status', ['pending', 'running'])
+                ->where($invalidRunIdentity)
+                ->count(),
         ];
     }
 
@@ -396,8 +458,11 @@ final class HistoricalTaskExecutionIdentityBackfillService
             });
     }
 
-    /** @param list<int> $taskIds @return Collection<int, Collection<int, int>> */
-    private function creationAuditAdminsByTask(array $taskIds, CarbonImmutable $createdBefore): Collection
+    /**
+     * @param  list<int>  $taskIds
+     * @return Collection<int, Collection<int, array{admin_id: int, policy_version: int}>>
+     */
+    private function creationAuditEvidenceByTask(array $taskIds, CarbonImmutable $createdBefore): Collection
     {
         $rows = collect();
         foreach (array_chunk($taskIds, 900) as $taskIdChunk) {
@@ -408,15 +473,17 @@ final class HistoricalTaskExecutionIdentityBackfillService
                 ->whereIn('task_id', $taskIdChunk)
                 ->where('occurred_at', '<=', $createdBefore->format('Y-m-d H:i:s'))
                 ->orderBy('id')
-                ->get(['task_id', 'admin_id']));
+                ->get(['task_id', 'admin_id', 'policy_version']));
         }
 
         return $rows
             ->groupBy(static fn (AiQualityAuditEvent $event): int => (int) $event->task_id)
             ->map(static fn (Collection $events): Collection => $events
-                ->pluck('admin_id')
-                ->map(static fn (mixed $id): int => (int) $id)
-                ->unique()
+                ->map(static fn (AiQualityAuditEvent $event): array => [
+                    'admin_id' => (int) $event->admin_id,
+                    'policy_version' => (int) $event->policy_version,
+                ])
+                ->unique(static fn (array $evidence): string => implode(':', $evidence))
                 ->values());
     }
 
@@ -487,23 +554,33 @@ final class HistoricalTaskExecutionIdentityBackfillService
     }
 
     /**
-     * @param  Collection<int, int>  $auditAdminIds
+     * @param  Collection<int, array{admin_id: int, policy_version: int}>  $auditEvidence
      * @param  Collection<int, Admin>  $admins
      * @param  list<array<string, int|string>>  $findings
      */
     private function snapshotFromCreationAudit(
         int $taskId,
-        Collection $auditAdminIds,
+        Collection $auditEvidence,
         Collection $admins,
         array &$findings,
     ): ?array {
-        if ($auditAdminIds->count() > 1) {
+        if ($auditEvidence->contains(static fn (array $evidence): bool => $evidence['admin_id'] <= 0
+            || $evidence['policy_version'] < 1)) {
+            $findings[] = $this->finding('task', $taskId, 'blocking', 'invalid_creation_audit');
+
+            return null;
+        }
+        if ($auditEvidence->count() > 1) {
             $findings[] = $this->finding('task', $taskId, 'blocking', 'conflicting_creation_audit');
 
             return null;
         }
-        $adminId = $auditAdminIds->first();
-        if (! is_int($adminId) || ! $admins->has($adminId)) {
+        $evidence = $auditEvidence->first();
+        if (! is_array($evidence)) {
+            return null;
+        }
+        $adminId = $evidence['admin_id'];
+        if (! $admins->has($adminId)) {
             return null;
         }
         /** @var Admin $admin */
@@ -516,8 +593,49 @@ final class HistoricalTaskExecutionIdentityBackfillService
         return [
             'admin_id' => $adminId,
             'role' => $role,
-            'policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
+            'policy_version' => $evidence['policy_version'],
         ];
+    }
+
+    /**
+     * @param  array{admin_id: int, role: string, policy_version: int}  $left
+     * @param  array{admin_id: int, role: string, policy_version: int}  $right
+     */
+    private function snapshotsMatch(array $left, array $right): bool
+    {
+        return $left['admin_id'] === $right['admin_id']
+            && $left['role'] === $right['role']
+            && $left['policy_version'] === $right['policy_version'];
+    }
+
+    /** @return Collection<int, int> */
+    private function activeRunsOutsideBoundary(
+        CarbonImmutable $createdBefore,
+        ?int $taskRunMaxId,
+    ): Collection {
+        $storageCutoff = $createdBefore->format('Y-m-d H:i:s');
+
+        return TaskRun::query()
+            ->whereIn('status', ['pending', 'running'])
+            ->where(function (Builder $outside) use ($storageCutoff, $taskRunMaxId): void {
+                if ($taskRunMaxId === null) {
+                    $outside
+                        ->whereNull('created_at')
+                        ->orWhere('created_at', '>', $storageCutoff);
+
+                    return;
+                }
+
+                $outside
+                    ->where('id', '>', $taskRunMaxId)
+                    ->orWhere(function (Builder $afterCutoff) use ($storageCutoff): void {
+                        $afterCutoff
+                            ->whereNotNull('created_at')
+                            ->where('created_at', '>', $storageCutoff);
+                    });
+            })
+            ->orderBy('id')
+            ->pluck('id');
     }
 
     /** @param Collection<int, Admin> $admins */

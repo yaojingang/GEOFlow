@@ -117,7 +117,8 @@ final class BackfillAdminAiAccessCommand extends Command
         $this->line('Tasks recovered from historical runs: '.$result['tasks_recovered_from_historical_runs']);
         $this->line('Tasks recovered from creation audit: '.$result['tasks_recovered_from_creation_audit']);
         $this->line('Tasks mapped to legacy owner: '.$result['tasks_mapped_to_legacy_owner']);
-        $this->line('Task runs inherited from task: '.$result['task_runs_inherited_from_task']);
+        $this->line('Run identities to inherit: '.$result['run_identities_to_inherit']);
+        $this->line('Requested models to backfill: '.$result['requested_models_to_backfill']);
         $this->line('Legacy-inferred tasks paused: '.$result['legacy_inferred_tasks_to_pause']);
         $this->line('Legacy-inferred active runs frozen: '.$result['legacy_inferred_active_runs_to_freeze']);
         $this->line('Manual execution identity findings: '.$result['manual_execution_identity_finding_count']);
@@ -160,9 +161,15 @@ final class BackfillAdminAiAccessCommand extends Command
             $this->line('Access versions normalized: '.$result['access_versions_normalized']);
             $this->line('System-only models marked: '.$result['system_models_marked']);
             $this->line('Tasks recovered: '.$result['tasks_recovered']);
-            $this->line('Task runs inherited: '.$result['task_runs_inherited']);
+            $this->line('Task run identities inherited: '.$result['task_run_identities_inherited']);
+            $this->line('Requested models backfilled: '.$result['requested_models_backfilled']);
             $this->line('Tasks paused: '.$result['legacy_inferred_tasks_paused']);
             $this->line('Active runs frozen: '.$result['legacy_inferred_active_runs_frozen']);
+            $this->line('Remaining tasks with empty identity: '.$result['remaining_tasks_with_empty_identity']);
+            $this->line('Remaining tasks with partial identity: '.$result['remaining_tasks_with_partial_identity']);
+            $this->line('Remaining task runs with empty identity: '.$result['remaining_task_runs_with_empty_identity']);
+            $this->line('Remaining task runs with partial identity: '.$result['remaining_task_runs_with_partial_identity']);
+            $this->line('Remaining active task runs without identity: '.$result['remaining_active_task_runs_without_identity']);
         }
 
         return self::SUCCESS;
