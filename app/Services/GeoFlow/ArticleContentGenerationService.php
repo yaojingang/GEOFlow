@@ -58,6 +58,33 @@ final class ArticleContentGenerationService
         string $prompt,
         ?Closure $beforeSuccess = null,
     ): StreamableAgentResponse {
+        $session = $this->deferredStream($aiModel, $prompt);
+        $upstream = $session->stream;
+
+        return new StreamableAgentResponse(
+            $upstream->invocationId,
+            function () use ($upstream, $session, $beforeSuccess): iterable {
+                try {
+                    foreach ($upstream as $event) {
+                        yield $event;
+                    }
+
+                    if (OpenAiRuntimeProvider::normalizeGeneratedText((string) ($upstream->text ?? '')) === '') {
+                        return;
+                    }
+
+                    $beforeSuccess?->__invoke();
+                    $session->complete();
+                } finally {
+                    $session->abort();
+                }
+            },
+            $session->meta,
+        );
+    }
+
+    public function deferredStream(AiModel $aiModel, string $prompt): ArticleContentStreamSession
+    {
         [$agent, $providerName, $modelId, $providerUrl] = $this->resolveRuntime($aiModel, 'article_editor');
 
         $reservation = $this->reserveDailyUsage($aiModel);
@@ -77,26 +104,16 @@ final class ArticleContentGenerationService
             );
         }
 
-        return new StreamableAgentResponse(
+        $stream = new StreamableAgentResponse(
             $upstream->invocationId,
-            function () use ($upstream, $reservation, $providerUrl, $beforeSuccess): iterable {
-                $completed = false;
+            function () use ($upstream, $reservation, $providerUrl): iterable {
+                $streamEnded = false;
 
                 try {
                     foreach ($upstream as $event) {
                         yield $event;
                     }
-
-                    if (OpenAiRuntimeProvider::normalizeGeneratedText((string) ($upstream->text ?? '')) === '') {
-                        $this->releaseDailyUsage($reservation);
-                        $completed = true;
-
-                        return;
-                    }
-
-                    $beforeSuccess?->__invoke();
-                    $this->recordSuccessfulUsage($reservation);
-                    $completed = true;
+                    $streamEnded = true;
                 } catch (Throwable $exception) {
                     if ($exception instanceof AiModelAccessException) {
                         throw $exception;
@@ -108,12 +125,19 @@ final class ArticleContentGenerationService
                         $exception,
                     );
                 } finally {
-                    if (! $completed) {
+                    if (! $streamEnded) {
                         $this->releaseDailyUsage($reservation);
                     }
                 }
             },
             new Meta($providerName, $modelId),
+        );
+
+        return new ArticleContentStreamSession(
+            $stream,
+            new Meta($providerName, $modelId),
+            fn () => $this->recordSuccessfulUsage($reservation),
+            fn () => $this->releaseDailyUsage($reservation),
         );
     }
 

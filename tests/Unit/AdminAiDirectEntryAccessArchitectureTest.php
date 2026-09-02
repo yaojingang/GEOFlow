@@ -36,23 +36,25 @@ final class AdminAiDirectEntryAccessArchitectureTest extends TestCase
         $source = $this->methodSource(ArticleEditorAssistantController::class, 'generate');
         $lock = strpos($source, 'acquireForInvocation(');
         $guard = strpos($source, 'assertModelCurrent(', $lock === false ? 0 : $lock);
-        $stream = strpos($source, 'generationService->stream(', $guard === false ? 0 : $guard);
+        $stream = strpos($source, 'generationService->deferredStream(', $guard === false ? 0 : $guard);
         $iteration = strpos($source, 'foreach ($stream as $event)', $stream === false ? 0 : $stream);
         $replacement = strpos($source, "'article_content_replacement'", $iteration === false ? 0 : $iteration);
-        $done = strpos($source, 'data: [DONE]', $replacement === false ? 0 : $replacement);
+        $success = strpos($source, 'streamSession->complete(', $replacement === false ? 0 : $replacement);
+        $done = strpos($source, 'data: [DONE]', $success === false ? 0 : $success);
         $release = strpos($source, 'invocationLocks->release(', $done === false ? 0 : $done);
 
-        foreach ([$lock, $guard, $stream, $iteration, $replacement, $done, $release] as $position) {
+        foreach ([$lock, $guard, $stream, $iteration, $replacement, $success, $done, $release] as $position) {
             $this->assertIsInt($position);
         }
         $this->assertLessThan($guard, $lock);
         $this->assertLessThan($stream, $guard);
         $this->assertLessThan($iteration, $stream);
         $this->assertLessThan($replacement, $iteration);
-        $this->assertLessThan($done, $replacement);
+        $this->assertLessThan($success, $replacement);
+        $this->assertLessThan($done, $success);
         $this->assertLessThan($release, $done);
         $this->assertStringContainsString('finally', $source);
-        $this->assertGreaterThanOrEqual(5, substr_count($source, 'assertModelCurrent('));
+        $this->assertGreaterThanOrEqual(7, substr_count($source, 'assertModelCurrent('));
     }
 
     #[Test]
@@ -76,12 +78,34 @@ final class AdminAiDirectEntryAccessArchitectureTest extends TestCase
 
         foreach (['handle', 'handleArticleComparison'] as $method) {
             $entry = $this->methodSource(EvaluateArticleAiQualityCommand::class, $method);
-            $finalGuard = strrpos($entry, 'assertModelCurrent(');
-            $firstReportWrite = strrpos($entry, 'File::put(');
-            $this->assertIsInt($finalGuard, $method);
-            $this->assertIsInt($firstReportWrite, $method);
-            $this->assertLessThan($firstReportWrite, $finalGuard, $method);
+            $this->assertStringContainsString('publishLiveReport(', $entry, $method);
         }
+
+        $publisher = $this->methodSource(EvaluateArticleAiQualityCommand::class, 'publishLiveReport');
+        $firstGuard = strpos($publisher, 'assertModelCurrent(');
+        $temporaryJson = strpos($publisher, 'File::put($temporaryJson', $firstGuard === false ? 0 : $firstGuard);
+        $temporaryMarkdown = strpos($publisher, 'File::put($temporaryMarkdown', $temporaryJson === false ? 0 : $temporaryJson);
+        $jsonPublish = strpos($publisher, 'File::replace($finalJson', $temporaryMarkdown === false ? 0 : $temporaryMarkdown);
+        $markdownPublish = strpos($publisher, 'File::replace($finalMarkdown', $jsonPublish === false ? 0 : $jsonPublish);
+        $finalGuard = strpos($publisher, 'assertModelCurrent(', $markdownPublish === false ? 0 : $markdownPublish);
+        $cleanup = strpos($publisher, 'File::deleteDirectory($temporaryDirectory)', $finalGuard === false ? 0 : $finalGuard);
+
+        foreach ([$firstGuard, $temporaryJson, $temporaryMarkdown, $jsonPublish, $markdownPublish, $finalGuard, $cleanup] as $position) {
+            $this->assertIsInt($position);
+        }
+        $this->assertLessThan($temporaryJson, $firstGuard);
+        $this->assertLessThan($temporaryMarkdown, $temporaryJson);
+        $this->assertLessThan($jsonPublish, $temporaryMarkdown);
+        $this->assertLessThan($markdownPublish, $jsonPublish);
+        $this->assertLessThan($finalGuard, $markdownPublish);
+        $this->assertLessThan($cleanup, $finalGuard);
+        $this->assertStringContainsString('$context->requestId', $publisher);
+        $this->assertStringContainsString('finally', $publisher);
+
+        $failure = $this->methodSource(EvaluateArticleAiQualityCommand::class, 'failLive');
+        $this->assertStringContainsString('$ownedCheckpointPath', $failure);
+        $this->assertStringNotContainsString(".'.json'", $failure);
+        $this->assertStringNotContainsString(".'.md'", $failure);
     }
 
     private function classSource(string $class): string

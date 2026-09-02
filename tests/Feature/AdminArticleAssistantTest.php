@@ -289,6 +289,19 @@ class AdminArticleAssistantTest extends TestCase
         $provider = $this->namedAdmin('assistant_shared_provider', 'super_admin');
         $admin = $this->createAdmin('assistant_personal_first');
         $admin->forceFill(['shared_ai_config_owner_id' => $provider->id])->save();
+        $invalidPersonal = $this->createModel([
+            'name' => '无密钥个人模型',
+            'model_id' => 'invalid-personal-chat',
+            'api_key' => '',
+            'failover_priority' => 1,
+        ]);
+        $blockedPersonal = $this->createModel([
+            'name' => '健康门禁个人模型',
+            'model_id' => 'health-blocked-personal-chat',
+            'failover_priority' => 2,
+            'ai_workspace_readiness_status' => 'failed',
+            'ai_workspace_readiness_expires_at' => now()->addMinute(),
+        ]);
         $personal = $this->createModel(['name' => '个人模型', 'failover_priority' => 100]);
         $this->modelOwner = $provider;
         $shared = $this->createModel(['name' => '共享模型', 'model_id' => 'shared-chat', 'failover_priority' => 1]);
@@ -304,10 +317,12 @@ class AdminArticleAssistantTest extends TestCase
             ->postJson(route('admin.articles.editor.generate'), $payload);
         $personalResponse->assertOk();
         $this->assertStringContainsString('个人模型生成', $personalResponse->streamedContent());
+        $this->assertSame(0, (int) $invalidPersonal->fresh()->total_used);
+        $this->assertSame(0, (int) $blockedPersonal->fresh()->total_used);
         $this->assertSame(1, (int) $personal->fresh()->total_used);
         $this->assertSame(0, (int) $shared->fresh()->total_used);
 
-        $personal->forceFill(['status' => 'inactive'])->save();
+        $personal->forceFill(['daily_limit' => 1])->save();
         $sharedResponse = $this->actingAs($admin, 'admin')
             ->postJson(route('admin.articles.editor.generate'), $payload);
         $sharedResponse->assertOk();
@@ -479,14 +494,18 @@ class AdminArticleAssistantTest extends TestCase
                 'prompt_id' => $prompt->id,
                 'ai_model_id' => $model->id,
             ]);
+        $adminReads = 0;
         $revoked = false;
-        DB::listen(function (QueryExecuted $query) use ($admin, &$revoked): void {
+        DB::listen(function (QueryExecuted $query) use ($admin, &$adminReads, &$revoked): void {
             $sql = strtolower($query->sql);
-            if ($revoked || ! str_starts_with($sql, 'update "ai_models"') || ! str_contains($sql, 'total_used')) {
+            if ($revoked || (! str_contains($sql, 'from "admins"') && ! str_contains($sql, 'from `admins`'))) {
                 return;
             }
-            $revoked = true;
-            DB::table('admins')->where('id', $admin->id)->increment('ai_config_access_version');
+            $adminReads++;
+            if ($adminReads === 7) {
+                $revoked = true;
+                DB::table('admins')->where('id', $admin->id)->increment('ai_config_access_version');
+            }
         });
 
         $response->assertOk();
@@ -496,7 +515,8 @@ class AdminArticleAssistantTest extends TestCase
         $this->assertStringNotContainsString('article_content_replacement', $streamed);
         $this->assertStringNotContainsString('[DONE]', $streamed);
         $this->assertSame(0, (int) $knowledgeBase->fresh()->usage_count);
-        $this->assertSame(1, (int) $model->fresh()->total_used, 'A completed provider call remains attributable for quota and cost accounting.');
+        $this->assertSame(0, (int) $model->fresh()->used_today);
+        $this->assertSame(0, (int) $model->fresh()->total_used, 'A revoked result cannot be counted as a delivered success.');
     }
 
     public function test_ai_generation_releases_the_invocation_lock_after_a_stream_exception(): void
@@ -566,9 +586,13 @@ class AdminArticleAssistantTest extends TestCase
         MarkdownContentWriterAgent::fake(['## 第一次生成'])->preventStrayPrompts();
 
         $admin = $this->createAdmin('assistant_quota');
+        $provider = $this->namedAdmin('assistant_quota_shared_provider', 'super_admin');
+        $admin->forceFill(['shared_ai_config_owner_id' => $provider->id])->save();
         $prompt = $this->createPrompt();
         $knowledgeBase = $this->createKnowledgeBase();
         $model = $this->createModel(['daily_limit' => 1]);
+        $this->modelOwner = $provider;
+        $shared = $this->createModel(['name' => '额度后备共享模型', 'model_id' => 'quota-shared-chat']);
         $payload = [
             'title' => '额度测试文章',
             'knowledge_base_id' => $knowledgeBase->id,
@@ -589,6 +613,7 @@ class AdminArticleAssistantTest extends TestCase
 
         $this->assertSame(1, (int) $model->fresh()->used_today);
         $this->assertSame(1, (int) $model->fresh()->total_used);
+        $this->assertSame(0, (int) $shared->fresh()->total_used, 'An explicitly selected exhausted model cannot be silently replaced.');
     }
 
     public function test_ai_generation_does_not_reserve_quota_when_model_setup_fails(): void

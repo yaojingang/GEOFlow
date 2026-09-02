@@ -6,6 +6,7 @@ use App\Contracts\ArticleAiQualityReviewer;
 use App\Contracts\VersionAwareArticleAiQualityReviewer;
 use App\Data\Ai\DirectAdminAiExecutionContext;
 use App\Exceptions\AiModelAccessException;
+use App\Exceptions\AiModelRuntimeEligibilityException;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
@@ -85,8 +86,6 @@ class EvaluateArticleAiQualityCommand extends Command
         $live = (bool) $this->option('live');
         $execution = $live ? $this->liveExecution('ai_quality_evaluation') : null;
         if ($live && $execution === null) {
-            $this->deleteLiveOutputs($this->outputBasePath());
-
             return self::FAILURE;
         }
         $model = $execution['model'] ?? null;
@@ -110,12 +109,9 @@ class EvaluateArticleAiQualityCommand extends Command
                         $repeatPredictions[] = $this->evaluateLiveCase($case, $model, $context);
                     }
                 } catch (AiModelAccessException $exception) {
-                    return $this->failLiveAccess($exception, $this->outputBasePath());
+                    return $this->failLiveAccess($exception);
                 } catch (\Throwable) {
-                    return $this->failLive(
-                        AiModelAccessException::AI_MODEL_UNAVAILABLE,
-                        $this->outputBasePath(),
-                    );
+                    return $this->failLive(AiModelAccessException::AI_MODEL_UNAVAILABLE);
                 }
                 $prediction = $repeatPredictions[0] ?? [];
             } else {
@@ -210,21 +206,23 @@ class EvaluateArticleAiQualityCommand extends Command
         $outputBase = $this->outputBasePath();
         if ($live) {
             try {
-                $this->executionGuard->assertModelCurrent($context, $model);
+                $this->publishLiveReport(
+                    $context,
+                    $model,
+                    $outputBase,
+                    json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n",
+                    $this->markdown($report),
+                );
             } catch (AiModelAccessException $exception) {
-                return $this->failLiveAccess($exception, $outputBase);
+                return $this->failLiveAccess($exception);
+            } catch (\Throwable) {
+                return $this->failLive(AiModelAccessException::AI_MODEL_UNAVAILABLE);
             }
+        } else {
+            File::ensureDirectoryExists(dirname($outputBase));
+            File::put($outputBase.'.json', json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");
+            File::put($outputBase.'.md', $this->markdown($report));
         }
-        File::ensureDirectoryExists(dirname($outputBase));
-        File::put($outputBase.'.json', json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");
-        if ($live) {
-            try {
-                $this->executionGuard->assertModelCurrent($context, $model);
-            } catch (AiModelAccessException $exception) {
-                return $this->failLiveAccess($exception, $outputBase);
-            }
-        }
-        File::put($outputBase.'.md', $this->markdown($report));
 
         $this->components->info('AI quality evaluation completed.');
         $this->line('JSON: '.$outputBase.'.json');
@@ -372,8 +370,6 @@ class EvaluateArticleAiQualityCommand extends Command
         }
         $execution = $this->liveExecution('ai_quality_article_comparison');
         if ($execution === null) {
-            $this->deleteLiveOutputs($this->outputBasePath(), $this->outputBasePath().'.partial.json');
-
             return self::FAILURE;
         }
         $model = $execution['model'];
@@ -389,17 +385,20 @@ class EvaluateArticleAiQualityCommand extends Command
         $gold = [449 => 'blocked', 486 => 'blocked', 467 => 'passed', 471 => 'passed', 473 => 'passed'];
         $outputBase = $this->outputBasePath();
         File::ensureDirectoryExists(dirname($outputBase));
-        $checkpointPath = $outputBase.'.partial.json';
-        $checkpoint = File::isFile($checkpointPath) ? json_decode((string) File::get($checkpointPath), true) : [];
-        $calls = is_array($checkpoint['calls'] ?? null)
+        $historicalCheckpointPath = $outputBase.'.partial.json';
+        $ownedCheckpointPath = $outputBase.'.'.$context->requestId.'.partial.json';
+        $checkpoint = File::isFile($historicalCheckpointPath)
+            ? json_decode((string) File::get($historicalCheckpointPath), true)
+            : [];
+        $usesHistoricalCheckpoint = is_array($checkpoint['calls'] ?? null)
             && data_get($checkpoint, 'request.article_ids') === $articleIds
             && (int) data_get($checkpoint, 'request.knowledge_base_id') === $knowledgeBaseId
             && (int) data_get($checkpoint, 'request.model_id') === (int) $model->id
             && (int) data_get($checkpoint, 'request.admin_id') === $context->adminId
             && (int) data_get($checkpoint, 'request.access_version') === $context->accessVersion
             && (int) data_get($checkpoint, 'request.policy_version') === $context->policyVersion
-            && (int) data_get($checkpoint, 'request.repeat') === $repeat
-                ? array_values($checkpoint['calls']) : [];
+            && (int) data_get($checkpoint, 'request.repeat') === $repeat;
+        $calls = $usesHistoricalCheckpoint ? array_values($checkpoint['calls']) : [];
         $completedKeys = collect($calls)->mapWithKeys(fn (array $call): array => [$call['attempt'].'|'.$call['article_id'].'|'.$call['mode'] => true]);
         $totalCalls = count($articleIds) * 2 * $repeat;
         $this->components->warn("Live comparison will perform {$totalCalls} provider calls.");
@@ -429,7 +428,7 @@ class EvaluateArticleAiQualityCommand extends Command
                             );
                             break;
                         } catch (AiModelAccessException $exception) {
-                            return $this->failLiveAccess($exception, $outputBase, $checkpointPath);
+                            return $this->failLiveAccess($exception, $ownedCheckpointPath);
                         } catch (\Throwable) {
                             if ($providerAttempt === 1) {
                                 $this->components->warn("Transient model failure for article {$articleId} ({$mode}); retrying once.");
@@ -446,8 +445,9 @@ class EvaluateArticleAiQualityCommand extends Command
                         'attempt' => $attempt,
                         'expected_decision' => $gold[$articleId] ?? 'needs_review',
                     ]);
-                    File::put($checkpointPath, json_encode([
+                    File::replace($ownedCheckpointPath, json_encode([
                         'request' => [
+                            'request_id' => $context->requestId,
                             'article_ids' => $articleIds,
                             'knowledge_base_id' => $knowledgeBaseId,
                             'model_id' => $model->id,
@@ -496,18 +496,22 @@ class EvaluateArticleAiQualityCommand extends Command
             'calls' => $calls,
         ];
         try {
-            $this->executionGuard->assertModelCurrent($context, $model);
+            $this->publishLiveReport(
+                $context,
+                $model,
+                $outputBase,
+                json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n",
+                $this->comparisonMarkdown($report),
+            );
         } catch (AiModelAccessException $exception) {
-            return $this->failLiveAccess($exception, $outputBase, $checkpointPath);
+            return $this->failLiveAccess($exception, $ownedCheckpointPath);
+        } catch (\Throwable) {
+            return $this->failLive(AiModelAccessException::AI_MODEL_UNAVAILABLE, $ownedCheckpointPath);
         }
-        File::put($outputBase.'.json', json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n");
-        try {
-            $this->executionGuard->assertModelCurrent($context, $model);
-        } catch (AiModelAccessException $exception) {
-            return $this->failLiveAccess($exception, $outputBase, $checkpointPath);
-        }
-        File::put($outputBase.'.md', $this->comparisonMarkdown($report));
-        File::delete($checkpointPath);
+        File::delete(array_values(array_filter([
+            $ownedCheckpointPath,
+            $usesHistoricalCheckpoint ? $historicalCheckpointPath : null,
+        ])));
         $this->components->info('Article comparison completed.');
         $this->line('JSON: '.$outputBase.'.json');
         $this->line('Markdown: '.$outputBase.'.md');
@@ -743,6 +747,10 @@ class EvaluateArticleAiQualityCommand extends Command
             $this->components->error($exception->getErrorCode());
 
             return null;
+        } catch (AiModelRuntimeEligibilityException) {
+            $this->components->error(AiModelAccessException::AI_MODEL_UNAVAILABLE);
+
+            return null;
         }
     }
 
@@ -773,32 +781,64 @@ class EvaluateArticleAiQualityCommand extends Command
         }
     }
 
-    private function failLiveAccess(
-        AiModelAccessException $exception,
+    private function publishLiveReport(
+        DirectAdminAiExecutionContext $context,
+        AiModel $model,
         string $outputBase,
-        ?string $checkpointPath = null,
-    ): int {
-        return $this->failLive($exception->getErrorCode(), $outputBase, $checkpointPath);
+        string $json,
+        string $markdown,
+    ): void {
+        $this->executionGuard->assertModelCurrent($context, $model);
+
+        $parentDirectory = dirname($outputBase);
+        $temporaryDirectory = $parentDirectory.'/.'.basename($outputBase).'.'.$context->requestId.'.tmp';
+        $temporaryJson = $temporaryDirectory.'/report.json';
+        $temporaryMarkdown = $temporaryDirectory.'/report.md';
+        $finalJson = $outputBase.'.json';
+        $finalMarkdown = $outputBase.'.md';
+        File::ensureDirectoryExists($temporaryDirectory);
+
+        try {
+            File::put($temporaryJson, $json);
+            $this->executionGuard->assertModelCurrent($context, $model);
+            File::put($temporaryMarkdown, $markdown);
+            $this->executionGuard->assertModelCurrent($context, $model);
+
+            $hadJson = File::isFile($finalJson);
+            $hadMarkdown = File::isFile($finalMarkdown);
+            $previousJson = $hadJson ? (string) File::get($finalJson) : '';
+            $previousMarkdown = $hadMarkdown ? (string) File::get($finalMarkdown) : '';
+            $published = false;
+
+            try {
+                File::replace($finalJson, (string) File::get($temporaryJson));
+                File::replace($finalMarkdown, (string) File::get($temporaryMarkdown));
+                $this->executionGuard->assertModelCurrent($context, $model);
+                $published = true;
+            } finally {
+                if (! $published) {
+                    $hadJson ? File::replace($finalJson, $previousJson) : File::delete($finalJson);
+                    $hadMarkdown ? File::replace($finalMarkdown, $previousMarkdown) : File::delete($finalMarkdown);
+                }
+            }
+        } finally {
+            File::deleteDirectory($temporaryDirectory);
+        }
     }
 
-    private function failLive(
-        string $errorCode,
-        string $outputBase,
-        ?string $checkpointPath = null,
-    ): int {
-        $this->deleteLiveOutputs($outputBase, $checkpointPath);
+    private function failLiveAccess(AiModelAccessException $exception, ?string $ownedCheckpointPath = null): int
+    {
+        return $this->failLive($exception->getErrorCode(), $ownedCheckpointPath);
+    }
+
+    private function failLive(string $errorCode, ?string $ownedCheckpointPath = null): int
+    {
+        if ($ownedCheckpointPath !== null) {
+            File::delete($ownedCheckpointPath);
+        }
         $this->components->error($errorCode);
 
         return self::FAILURE;
-    }
-
-    private function deleteLiveOutputs(string $outputBase, ?string $checkpointPath = null): void
-    {
-        File::delete(array_values(array_filter([
-            $outputBase.'.json',
-            $outputBase.'.md',
-            $checkpointPath,
-        ])));
     }
 
     /** @param array<string,mixed> $outcome @return array{decision:string,issue_codes:list<string>} */

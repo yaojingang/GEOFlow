@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Exceptions\AiModelAccessException;
+use App\Exceptions\AiModelRuntimeEligibilityException;
 use App\Http\Controllers\Controller;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
@@ -114,12 +115,16 @@ final class ArticleEditorAssistantController extends Controller
             );
             $selection = $this->executionGuard->resolveModel($executionContext);
             $aiModel = $selection['model'];
-            $this->generationService->assertStreamReady($aiModel);
         } catch (AiModelAccessException $exception) {
             return response()->json([
                 'message' => $exception->getErrorCode(),
                 'error_code' => $exception->getErrorCode(),
             ], 404);
+        } catch (AiModelRuntimeEligibilityException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'error_code' => AiModelAccessException::AI_MODEL_UNAVAILABLE,
+            ], 422);
         } catch (RuntimeException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         } catch (Throwable) {
@@ -151,17 +156,15 @@ final class ArticleEditorAssistantController extends Controller
 
         $response = response()->stream(function () use ($aiModel, $contentPrompt, $executionContext, $knowledgeBase): iterable {
             $invocationLock = null;
+            $streamSession = null;
             try {
                 $invocationLock = $this->invocationLocks->acquireForInvocation(
                     (int) $aiModel->id,
                     $this->generationService->providerTimeoutSeconds() + 60,
                 );
                 $aiModel = $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
-                $stream = $this->generationService->stream(
-                    $aiModel,
-                    $contentPrompt,
-                    fn () => $this->executionGuard->assertModelCurrent($executionContext, $aiModel),
-                );
+                $streamSession = $this->generationService->deferredStream($aiModel, $contentPrompt);
+                $stream = $streamSession->stream;
                 foreach ($stream as $event) {
                     $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
                     yield 'data: '.($event)."\n\n";
@@ -169,13 +172,6 @@ final class ArticleEditorAssistantController extends Controller
 
                 $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
                 $content = $this->citationMarkerCleaner->cleanContent((string) $stream->text);
-                if ($content !== '') {
-                    DB::transaction(function () use ($executionContext, $aiModel, $knowledgeBase): void {
-                        $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
-                        KnowledgeBase::query()->whereKey((int) $knowledgeBase->id)->increment('usage_count');
-                        $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
-                    });
-                }
                 $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
                 $payload = json_encode([
                     'type' => 'article_content_replacement',
@@ -185,6 +181,15 @@ final class ArticleEditorAssistantController extends Controller
                     yield 'data: '.$payload."\n\n";
                 }
 
+                if ($content !== '') {
+                    DB::transaction(function () use ($executionContext, $aiModel, $knowledgeBase, $streamSession): void {
+                        $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
+                        KnowledgeBase::query()->whereKey((int) $knowledgeBase->id)->increment('usage_count');
+                        $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
+                        $streamSession->complete();
+                        $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
+                    });
+                }
                 $this->executionGuard->assertModelCurrent($executionContext, $aiModel);
                 yield "data: [DONE]\n\n";
             } catch (AiModelAccessException $exception) {
@@ -196,6 +201,7 @@ final class ArticleEditorAssistantController extends Controller
                 ]);
                 yield $this->safeSseError('ai_model_unavailable');
             } finally {
+                $streamSession?->abort();
                 $this->invocationLocks->release($invocationLock);
             }
         }, headers: ['Content-Type' => 'text/event-stream']);

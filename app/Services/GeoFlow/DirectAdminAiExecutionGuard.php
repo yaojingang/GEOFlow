@@ -5,6 +5,7 @@ namespace App\Services\GeoFlow;
 use App\Data\Ai\AiExecutionContext;
 use App\Data\Ai\DirectAdminAiExecutionContext;
 use App\Exceptions\AiModelAccessException;
+use App\Exceptions\AiModelRuntimeEligibilityException;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Services\Admin\AdminAiModelAccessResolver;
@@ -16,6 +17,7 @@ final readonly class DirectAdminAiExecutionGuard
         private AiExecutionAccessGuard $accessGuard,
         private AdminAiModelAccessResolver $modelResolver,
         private AiExecutionContextFactory $contextFactory,
+        private DirectAdminAiModelRuntimeGate $runtimeGate,
     ) {}
 
     public function freeze(
@@ -72,14 +74,36 @@ final readonly class DirectAdminAiExecutionGuard
     public function resolveModel(DirectAdminAiExecutionContext $context): array
     {
         $admin = $this->assertCurrent($context);
-        $model = $context->requestedModelId === null
-            ? $this->modelResolver->resolveCandidates($admin, $context->capability)->first()
-            : $this->assertModelCurrent($context, $context->requestedModelId, $admin);
-        if (! $model instanceof AiModel) {
-            throw AiModelAccessException::modelUnavailable($admin);
-        }
-        $model = $this->assertModelCurrent($context, $model, $admin);
+        if ($context->requestedModelId !== null) {
+            $model = $this->assertModelCurrent($context, $context->requestedModelId, $admin);
+            $this->runtimeGate->assertExecutable($model, $context->capability);
 
+            return $this->selection($admin, $model);
+        }
+
+        foreach ($this->modelResolver->resolveCandidates($admin, $context->capability) as $candidate) {
+            try {
+                $model = $this->assertModelCurrent($context, $candidate, $admin);
+                $this->runtimeGate->assertExecutable($model, $context->capability);
+            } catch (AiModelRuntimeEligibilityException) {
+                continue;
+            } catch (AiModelAccessException $exception) {
+                if ($exception->getErrorCode() === AiModelAccessException::AI_MODEL_UNAVAILABLE) {
+                    continue;
+                }
+
+                throw $exception;
+            }
+
+            return $this->selection($admin, $model);
+        }
+
+        throw AiModelAccessException::modelUnavailable($admin);
+    }
+
+    /** @return array{model:AiModel,source:string} */
+    private function selection(Admin $admin, AiModel $model): array
+    {
         return [
             'model' => $model,
             'source' => (int) $model->owner_admin_id === (int) $admin->getKey() ? 'personal' : 'shared',

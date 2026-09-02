@@ -2,12 +2,19 @@
 
 namespace Tests\Feature;
 
+use App\Console\Commands\EvaluateArticleAiQualityCommand;
 use App\Contracts\ArticleAiQualityReviewer;
+use App\Exceptions\AiModelAccessException;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Services\Admin\AdminAiModelMutationService;
+use App\Services\GeoFlow\DirectAdminAiExecutionGuard;
+use App\Support\GeoFlow\ApiKeyCrypto;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use ReflectionMethod;
 use Tests\TestCase;
 
 class EvaluateArticleAiQualityCommandTest extends TestCase
@@ -142,6 +149,8 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $admin = $this->admin('live-evaluation-owner');
         $model = AiModel::query()->create([
             'name' => 'Live evaluation fake model',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('live-evaluation-secret'),
+            'api_url' => 'https://secret.example.test/v1',
             'model_id' => 'live-evaluation-fake-model',
             'model_type' => 'chat',
             'status' => 'active',
@@ -205,6 +214,8 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $reviewer = $this->recordingReviewer();
         $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
         [$datasetPath, $basePath] = $this->liveFixture('live-admin-required');
+        File::put($basePath.'.json', 'historical-json');
+        File::put($basePath.'.md', 'historical-markdown');
 
         $this->artisan('geoflow:evaluate-ai-quality', [
             '--dataset' => $datasetPath,
@@ -213,8 +224,8 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         ])->assertFailed();
 
         $this->assertSame([], $reviewer->modelIds);
-        $this->assertFileDoesNotExist($basePath.'.json');
-        $this->assertFileDoesNotExist($basePath.'.md');
+        $this->assertSame('historical-json', File::get($basePath.'.json'));
+        $this->assertSame('historical-markdown', File::get($basePath.'.md'));
 
         $inactive = $this->admin('live-inactive-admin');
         $model = $this->model($inactive, 'inactive-admin-model');
@@ -232,6 +243,24 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $this->assertFileDoesNotExist($inactiveBase.'.md');
     }
 
+    public function test_live_comparison_keeps_a_historical_checkpoint_when_execution_identity_is_invalid(): void
+    {
+        [, $basePath] = $this->liveFixture('live-comparison-invalid-admin');
+        $historicalCheckpoint = $basePath.'.partial.json';
+        File::put($historicalCheckpoint, 'historical-checkpoint');
+
+        $this->artisan('geoflow:evaluate-ai-quality', [
+            '--output' => $basePath,
+            '--live' => true,
+            '--articles' => '1',
+            '--knowledge-base' => '1',
+            '--compare' => 'atomic,knowledge',
+        ])->assertFailed();
+
+        $this->assertSame('historical-checkpoint', File::get($historicalCheckpoint));
+        $this->assertSame([], glob($basePath.'.*.partial.json') ?: []);
+    }
+
     public function test_live_evaluation_automatically_prefers_the_admins_personal_model_over_shared_fallback(): void
     {
         $provider = $this->admin('live-shared-provider');
@@ -239,6 +268,8 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
             'shared_ai_config_owner_id' => $provider->id,
         ]);
         $shared = $this->model($provider, 'shared-model', 1);
+        $invalidPersonal = $this->model($admin, 'invalid-personal-model', 1);
+        $invalidPersonal->forceFill(['api_key' => ''])->save();
         $personal = $this->model($admin, 'personal-model', 100);
         $reviewer = $this->recordingReviewer();
         $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
@@ -252,6 +283,7 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         ])->assertSuccessful();
 
         $this->assertSame([$personal->id], $reviewer->modelIds);
+        $this->assertNotSame($invalidPersonal->id, $reviewer->modelIds[0]);
         $this->assertNotSame($shared->id, $reviewer->modelIds[0]);
         $reportJson = (string) File::get($basePath.'.json');
         $report = json_decode($reportJson, true, flags: JSON_THROW_ON_ERROR);
@@ -263,7 +295,11 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         $this->assertStringNotContainsString('test-secret-', $reportJson);
         $this->assertStringNotContainsString('secret.example.test', $reportJson);
 
-        $personal->forceFill(['status' => 'inactive'])->save();
+        $personal->forceFill([
+            'daily_limit' => 1,
+            'used_today' => 1,
+            'usage_date' => now()->toDateString(),
+        ])->save();
         [$fallbackDataset, $fallbackBase] = $this->liveFixture('live-shared-fallback');
         $this->artisan('geoflow:evaluate-ai-quality', [
             '--dataset' => $fallbackDataset,
@@ -279,7 +315,11 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
 
     public function test_live_evaluation_rejects_a_peer_or_system_model_before_reviewer_or_output(): void
     {
-        $admin = $this->admin('live-isolated-admin', 'admin');
+        $provider = $this->admin('live-isolated-provider');
+        $admin = $this->admin('live-isolated-admin', 'admin', [
+            'shared_ai_config_owner_id' => $provider->id,
+        ]);
+        $this->model($provider, 'live-isolated-shared-fallback');
         $peer = $this->admin('live-peer-admin', 'admin');
         $reviewer = $this->recordingReviewer();
         $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
@@ -289,6 +329,13 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
             'system' => $this->model($admin, 'system-model', scope: AiModel::ACCESS_SCOPE_SYSTEM_ONLY),
             'embedding' => tap($this->model($admin, 'embedding-model'), static function (AiModel $model): void {
                 $model->forceFill(['model_type' => 'embedding'])->save();
+            }),
+            'exhausted' => tap($this->model($admin, 'exhausted-model'), static function (AiModel $model): void {
+                $model->forceFill([
+                    'daily_limit' => 1,
+                    'used_today' => 1,
+                    'usage_date' => now()->toDateString(),
+                ])->save();
             }),
         ] as $suffix => $model) {
             [$datasetPath, $basePath] = $this->liveFixture('live-reject-'.$suffix);
@@ -317,6 +364,8 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         });
         $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
         [$datasetPath, $basePath] = $this->liveFixture('live-revoked-during-review');
+        File::put($basePath.'.json', 'historical-json');
+        File::put($basePath.'.md', 'historical-markdown');
 
         $this->artisan('geoflow:evaluate-ai-quality', [
             '--dataset' => $datasetPath,
@@ -327,8 +376,55 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
         ])->assertFailed();
 
         $this->assertSame([$model->id], $reviewer->modelIds);
-        $this->assertFileDoesNotExist($basePath.'.json');
-        $this->assertFileDoesNotExist($basePath.'.md');
+        $this->assertSame('historical-json', File::get($basePath.'.json'));
+        $this->assertSame('historical-markdown', File::get($basePath.'.md'));
+    }
+
+    public function test_live_report_publish_restores_the_historical_pair_when_access_changes_during_commit(): void
+    {
+        $admin = $this->admin('live-publish-revoked-admin', 'admin');
+        $model = $this->model($admin, 'live-publish-revoked-model');
+        $context = app(DirectAdminAiExecutionGuard::class)->freeze(
+            $admin,
+            'ai_quality_evaluation',
+            (int) $admin->id,
+            requestedModelId: (int) $model->id,
+        );
+        [, $basePath] = $this->liveFixture('live-revoked-during-publish');
+        File::put($basePath.'.json', 'historical-json');
+        File::put($basePath.'.md', 'historical-markdown');
+
+        $adminReads = 0;
+        DB::listen(function (QueryExecuted $query) use ($admin, &$adminReads): void {
+            $sql = strtolower($query->sql);
+            if (! str_contains($sql, 'from "admins"') && ! str_contains($sql, 'from `admins`')) {
+                return;
+            }
+            $adminReads++;
+            if ($adminReads === 3) {
+                DB::table('admins')->where('id', $admin->id)->increment('ai_config_access_version');
+            }
+        });
+
+        $publish = new ReflectionMethod(EvaluateArticleAiQualityCommand::class, 'publishLiveReport');
+        try {
+            $publish->invoke(
+                app(EvaluateArticleAiQualityCommand::class),
+                $context,
+                $model,
+                $basePath,
+                'new-json',
+                'new-markdown',
+            );
+            $this->fail('Expected the final publication access check to reject this report.');
+        } catch (AiModelAccessException $exception) {
+            $this->assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $exception->getErrorCode());
+        }
+
+        $this->assertSame(4, $adminReads);
+        $this->assertSame('historical-json', File::get($basePath.'.json'));
+        $this->assertSame('historical-markdown', File::get($basePath.'.md'));
+        $this->assertSame([], glob(dirname($basePath).'/.'.basename($basePath).'.*.tmp') ?: []);
     }
 
     public function test_live_evaluation_holds_the_model_mutation_lock_for_each_review_and_releases_it(): void
@@ -470,7 +566,7 @@ class EvaluateArticleAiQualityCommandTest extends TestCase
     ): AiModel {
         $model = AiModel::query()->create([
             'name' => $name,
-            'api_key' => 'test-secret-'.$name,
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-secret-'.$name),
             'api_url' => 'https://secret.example.test/v1',
             'model_id' => $name,
             'model_type' => 'chat',
