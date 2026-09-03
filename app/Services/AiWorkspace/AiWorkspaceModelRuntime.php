@@ -13,6 +13,7 @@ use App\Models\AiModel;
 use App\Models\AiModelUsageEvent;
 use App\Services\Admin\AiModelUsageAttempt;
 use App\Services\Admin\AiModelUsageAttemptFactory;
+use App\Services\Admin\GovernanceAiModelUsageSession;
 use App\Services\GeoFlow\AiUsageQuotaService;
 use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use App\Support\GeoFlow\AiModelFailoverDecider;
@@ -561,8 +562,12 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
     }
 
     /** @return array{provider:string,endpoint:string,http_status:int,latency_ms:int,raw_preview:string} */
-    public function probePlainText(AiModel $model, string $prompt, ?int $timeout = null): array
-    {
+    public function probePlainText(
+        AiModel $model,
+        string $prompt,
+        ?int $timeout = null,
+        ?GovernanceAiModelUsageSession $usageSession = null,
+    ): array {
         try {
             $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url);
             $apiKey = $this->apiKeyCrypto->decrypt((string) $model->getRawOriginal('api_key'));
@@ -587,14 +592,25 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         );
         $startedAt = hrtime(true);
         $timeout = $this->probeTimeout($timeout);
-        $response = $this->withConcurrencySlot(
-            fn (): object => (new AdminHelpAssistant([], '模型连接检测。', $modelId))->prompt($prompt, [], $provider, $modelId, $timeout),
-        );
+        $callKey = 'plain.p2';
+        $agent = new AdminHelpAssistant([], '模型连接检测。', $modelId);
+        $usageSession?->begin($model, $callKey, $this->probePayload('plain', $driver, $modelId, $prompt, $agent));
+        try {
+            $response = $this->withConcurrencySlot(
+                fn (): object => $agent->prompt($prompt, [], $provider, $modelId, $timeout),
+            );
+        } catch (Throwable $exception) {
+            $usageSession?->markFailed($callKey);
+
+            throw $exception;
+        }
         $latencyMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
         $text = trim((string) $response->text);
         if ($text === '') {
+            $usageSession?->markDiscarded($callKey);
             throw new RuntimeException('AI 工作台普通文本检测没有返回内容。');
         }
+        $usageSession?->retainUsage($callKey, $response->usage ?? null);
 
         return [
             'provider' => $driver,
@@ -606,8 +622,12 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
     }
 
     /** @return array{provider:string,endpoint:string,http_status:int,latency_ms:int,raw_preview:string,delta_count:int} */
-    public function probeStreaming(AiModel $model, string $prompt, ?int $timeout = null): array
-    {
+    public function probeStreaming(
+        AiModel $model,
+        string $prompt,
+        ?int $timeout = null,
+        ?GovernanceAiModelUsageSession $usageSession = null,
+    ): array {
         try {
             $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url);
             $apiKey = $this->apiKeyCrypto->decrypt((string) $model->getRawOriginal('api_key'));
@@ -632,38 +652,56 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         );
         $startedAt = hrtime(true);
         $timeout = $this->probeTimeout($timeout);
-        $result = $this->withConcurrencySlot(function () use ($modelId, $prompt, $provider, $timeout): array {
-            $stream = (new AdminHelpAssistant([], '模型流式连接检测。', $modelId))->stream($prompt, [], $provider, $modelId, $timeout);
-            $text = '';
-            $deltaCount = 0;
-            $streamEnded = false;
-            $finishReason = null;
+        $callKey = 'stream.p1';
+        $agent = new AdminHelpAssistant([], '模型流式连接检测。', $modelId);
+        $usageSession?->begin($model, $callKey, $this->probePayload('stream', $driver, $modelId, $prompt, $agent));
+        try {
+            $result = $this->withConcurrencySlot(function () use ($agent, $modelId, $prompt, $provider, $timeout): array {
+                $stream = $agent->stream($prompt, [], $provider, $modelId, $timeout);
+                $text = '';
+                $deltaCount = 0;
+                $streamEnded = false;
+                $finishReason = null;
 
-            foreach ($stream as $event) {
-                if ($event instanceof TextDelta && $event->delta !== '') {
-                    $text .= $event->delta;
-                    $deltaCount++;
+                foreach ($stream as $event) {
+                    if ($event instanceof TextDelta && $event->delta !== '') {
+                        $text .= $event->delta;
+                        $deltaCount++;
 
-                    continue;
+                        continue;
+                    }
+                    if ($event instanceof StreamEnd) {
+                        $streamEnded = true;
+                        $finishReason = $event->reason;
+
+                        continue;
+                    }
+                    if ($event instanceof Error) {
+                        throw new RuntimeException('ai_provider_stream_error');
+                    }
                 }
-                if ($event instanceof StreamEnd) {
-                    $streamEnded = true;
-                    $finishReason = $event->reason;
 
-                    continue;
-                }
-                if ($event instanceof Error) {
-                    throw new RuntimeException('AI 工作台流式检测收到错误事件。');
-                }
-            }
+                return [
+                    'text' => trim((string) $stream->text) ?: trim($text),
+                    'delta_count' => $deltaCount,
+                    'stream_ended' => $streamEnded,
+                    'finish_reason' => $finishReason,
+                ];
+            });
+        } catch (Throwable $exception) {
+            $usageSession?->markFailed($callKey);
 
-            $text = trim((string) $stream->text) ?: trim($text);
-            if ($text === '' || $deltaCount === 0 || ! $this->streamCompletedSuccessfully($streamEnded, $finishReason)) {
-                throw new RuntimeException('AI 工作台流式检测没有返回正文分片。');
-            }
-
-            return ['text' => $text, 'delta_count' => $deltaCount];
-        });
+            throw $exception;
+        }
+        if ((string) $result['text'] === ''
+            || (int) $result['delta_count'] === 0
+            || ! $this->streamCompletedSuccessfully(
+                (bool) $result['stream_ended'],
+                is_string($result['finish_reason']) ? $result['finish_reason'] : null,
+            )) {
+            $usageSession?->markDiscarded($callKey);
+            throw new RuntimeException('AI 工作台流式检测没有返回正文分片。');
+        }
         $latencyMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
 
         return [
@@ -674,6 +712,23 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
             'raw_preview' => Str::limit((string) $result['text'], 500, ''),
             'delta_count' => (int) $result['delta_count'],
         ];
+    }
+
+    private function probePayload(
+        string $mode,
+        string $driver,
+        string $modelId,
+        string $prompt,
+        AdminHelpAssistant $agent,
+    ): string {
+        return json_encode([
+            'mode' => $mode,
+            'provider' => $driver,
+            'model' => $modelId,
+            'instructions' => $agent->instructions(),
+            'provider_options' => $agent->providerOptions($driver),
+            'prompt' => $prompt,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
     /** @return iterable<int, AiModel> */

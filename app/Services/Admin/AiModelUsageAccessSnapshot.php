@@ -2,6 +2,7 @@
 
 namespace App\Services\Admin;
 
+use App\Data\Admin\AdminAiModelTestSnapshot;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiModelUsageEvent;
@@ -125,6 +126,66 @@ final readonly class AiModelUsageAccessSnapshot
                 $requestPayloadDigest,
             ),
         };
+    }
+
+    public static function captureForGovernanceTest(
+        AiModel $model,
+        AdminAiModelTestSnapshot $testSnapshot,
+        string $requestId,
+        string $requestPayloadDigest,
+    ): self {
+        self::validateCommonInput(
+            requestId: $requestId,
+            requestPayloadDigest: $requestPayloadDigest,
+            accessVersion: $testSnapshot->adminAccessVersion,
+            executionScope: AiModelUsageEvent::EXECUTION_SCOPE_INTERACTIVE_ADMIN,
+            modelSource: $testSnapshot->accessScope === AiModel::ACCESS_SCOPE_SYSTEM_ONLY
+                ? AiModelUsageEvent::MODEL_SOURCE_SYSTEM
+                : AiModelUsageEvent::MODEL_SOURCE_PERSONAL,
+        );
+
+        $actor = Admin::query()->find($testSnapshot->adminId, [
+            'id',
+            'role',
+            'status',
+            'ai_config_access_version',
+        ]);
+        $currentModel = AiModel::query()->find($model->getKey());
+        if (! $actor instanceof Admin
+            || (string) $actor->status !== 'active'
+            || (int) $actor->ai_config_access_version !== $testSnapshot->adminAccessVersion
+            || ! $currentModel instanceof AiModel
+            || (int) $currentModel->getKey() !== $testSnapshot->modelId
+            || (int) $currentModel->owner_admin_id !== (int) $actor->getKey()
+            || (int) $currentModel->owner_admin_id !== $testSnapshot->ownerAdminId
+            || $currentModel->archived_at !== null
+            || (string) $currentModel->access_scope !== $testSnapshot->accessScope
+            || (string) $currentModel->status !== $testSnapshot->status
+            || ! hash_equals(
+                $testSnapshot->configurationDigest,
+                AiModelTestConfigurationDigest::forModel($currentModel),
+            )) {
+            self::fail('model_source', 'ai_usage_governance_attribution_invalid');
+        }
+
+        $modelSource = match ((string) $currentModel->access_scope) {
+            AiModel::ACCESS_SCOPE_USER_CONTENT => AiModelUsageEvent::MODEL_SOURCE_PERSONAL,
+            AiModel::ACCESS_SCOPE_SYSTEM_ONLY => $actor->isSuperAdmin()
+                ? AiModelUsageEvent::MODEL_SOURCE_SYSTEM
+                : self::fail('model_source', 'ai_usage_governance_attribution_invalid'),
+            default => self::fail('model_source', 'ai_usage_governance_attribution_invalid'),
+        };
+
+        return self::make(
+            model: $currentModel,
+            owner: $actor,
+            executor: $actor,
+            accessVersion: $testSnapshot->adminAccessVersion,
+            executionScope: AiModelUsageEvent::EXECUTION_SCOPE_INTERACTIVE_ADMIN,
+            modelSource: $modelSource,
+            requestId: $requestId,
+            requestPayloadDigest: $requestPayloadDigest,
+        );
     }
 
     /** @return array<string, int|string|null> */
@@ -270,5 +331,41 @@ final readonly class AiModelUsageAccessSnapshot
     private static function fail(string $field, string $code): never
     {
         throw ValidationException::withMessages([$field => [$code]]);
+    }
+
+    private static function validateCommonInput(
+        string $requestId,
+        string $requestPayloadDigest,
+        int $accessVersion,
+        string $executionScope,
+        string $modelSource,
+    ): void {
+        Validator::make([
+            'request_id' => $requestId,
+            'request_payload_digest' => $requestPayloadDigest,
+            'ai_config_access_version' => $accessVersion,
+            'execution_scope' => $executionScope,
+            'model_source' => $modelSource,
+        ], [
+            'request_id' => [
+                'required',
+                'string',
+                'max:36',
+                static function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (! is_string($value) || (! Str::isUuid($value) && ! Str::isUlid($value))) {
+                        $fail('ai_usage_request_id_invalid');
+                    }
+                },
+            ],
+            'request_payload_digest' => ['required', 'string', 'regex:/\A[a-f0-9]{64}\z/'],
+            'ai_config_access_version' => ['required', 'integer', 'min:1'],
+            'execution_scope' => ['required', Rule::in([
+                AiModelUsageEvent::EXECUTION_SCOPE_INTERACTIVE_ADMIN,
+            ])],
+            'model_source' => ['required', Rule::in([
+                AiModelUsageEvent::MODEL_SOURCE_PERSONAL,
+                AiModelUsageEvent::MODEL_SOURCE_SYSTEM,
+            ])],
+        ])->validate();
     }
 }

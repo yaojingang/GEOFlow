@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Ai\Agents\AdminHelpAssistant;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\AiSourceProvider;
 use App\Models\SiteSetting;
 use App\Support\GeoFlow\ApiKeyCrypto;
@@ -637,6 +638,12 @@ class AdminAiSourceProvidersPageTest extends TestCase
         $this->assertSame(1, (int) $model->used_today);
         $this->assertSame(1, (int) $model->total_used);
         $this->assertSame(now()->toDateString(), $model->usage_date?->toDateString());
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame('stream.p1', $event->call_key);
+        $this->assertSame(AiModelUsageEvent::EXECUTION_SCOPE_INTERACTIVE_ADMIN, $event->execution_scope);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_SYSTEM, $event->model_source);
+        $this->assertSame($model->owner_admin_id, $event->execution_admin_id);
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $event->status);
     }
 
     public function test_super_admin_probe_result_without_structured_output_key_does_not_crash(): void
@@ -707,6 +714,10 @@ class AdminAiSourceProvidersPageTest extends TestCase
         $this->assertSame(1, (int) $current->used_today);
         $this->assertSame(0, (int) $current->total_used);
         $this->assertSame(1, $providerCalls);
+        $this->assertSame(
+            AiModelUsageEvent::STATUS_REVOKED,
+            AiModelUsageEvent::query()->sole()->status,
+        );
         $response->assertDontSee('provider result must be discarded', false);
     }
 
@@ -745,6 +756,12 @@ class AdminAiSourceProvidersPageTest extends TestCase
         $this->assertSame(1, (int) $model->used_today);
         $this->assertSame(0, (int) $model->total_used);
         $this->assertSame(2, $providerCalls);
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame(['stream.p1', 'plain.p2'], $events->pluck('call_key')->all());
+        $this->assertSame(
+            [AiModelUsageEvent::STATUS_FAILED, AiModelUsageEvent::STATUS_FAILED],
+            $events->pluck('status')->all(),
+        );
     }
 
     public function test_regular_admin_probe_failure_cannot_clear_workspace_model_readiness(): void
@@ -775,6 +792,7 @@ class AdminAiSourceProvidersPageTest extends TestCase
 
         self::assertSame('ready', $model->fresh()->ai_workspace_structured_output_status);
         self::assertNotNull($model->fresh()->ai_workspace_structured_output_verified_at);
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
     }
 
     public function test_admin_can_test_doubao_ark_structured_output(): void

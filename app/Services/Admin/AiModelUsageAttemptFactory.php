@@ -2,6 +2,7 @@
 
 namespace App\Services\Admin;
 
+use App\Data\Admin\AdminAiModelTestSnapshot;
 use App\Data\Ai\SystemAiIdentity;
 use App\Models\Admin;
 use App\Models\AiModel;
@@ -87,6 +88,36 @@ final readonly class AiModelUsageAttemptFactory
             'business_source' => $businessSource,
             'source_type' => $sourceType,
             'source_id' => $sourceId,
+        ]);
+    }
+
+    public function beginForGovernanceTest(
+        AiModel $model,
+        AdminAiModelTestSnapshot $testSnapshot,
+        string $requestId,
+        string $requestPayload,
+        string $callKey,
+        string $operation = 'governance.model_connection_test',
+        string $businessSource = 'governance_model_test',
+    ): AiModelUsageAttempt {
+        $snapshot = null;
+        try {
+            $snapshot = AiModelUsageAccessSnapshot::captureForGovernanceTest(
+                model: $model,
+                testSnapshot: $testSnapshot,
+                requestId: $requestId,
+                requestPayloadDigest: hash('sha256', $requestPayload),
+            );
+        } catch (Throwable $exception) {
+            $this->warnSafely($exception);
+        }
+
+        return new AiModelUsageAttempt($snapshot, $this->recorder, [
+            'call_key' => $callKey,
+            'operation' => $operation,
+            'business_source' => $businessSource,
+            'source_type' => AiModel::class,
+            'source_id' => (int) $model->getKey(),
         ]);
     }
 

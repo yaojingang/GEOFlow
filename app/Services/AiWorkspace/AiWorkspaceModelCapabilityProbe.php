@@ -5,6 +5,7 @@ namespace App\Services\AiWorkspace;
 use App\Data\AiWorkspace\AiWorkspaceModelProbeAttempt;
 use App\Data\AiWorkspace\AiWorkspaceModelProbeResult;
 use App\Models\AiModel;
+use App\Services\Admin\GovernanceAiModelUsageSession;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Carbon\CarbonImmutable;
 use RuntimeException;
@@ -19,7 +20,7 @@ final readonly class AiWorkspaceModelCapabilityProbe
         private AiWorkspaceModelReadiness $readiness,
     ) {}
 
-    public function start(AiModel $model): AiWorkspaceModelProbeAttempt
+    public function start(AiModel $model, ?GovernanceAiModelUsageSession $usageSession = null): AiWorkspaceModelProbeAttempt
     {
         $checkedAt = CarbonImmutable::now();
         $deadline = microtime(true) + (int) config('ai-workspace.model_total_timeout_seconds', 90);
@@ -28,6 +29,7 @@ final readonly class AiWorkspaceModelCapabilityProbe
                 $model,
                 '请用一句话确认 GEOFlow 后台帮助助手流式回答可用。',
                 $this->remainingTimeout($deadline),
+                $usageSession,
             );
             $streaming = [
                 'status' => 'ready',
@@ -58,14 +60,18 @@ final readonly class AiWorkspaceModelCapabilityProbe
         );
     }
 
-    public function finish(AiModel $model, AiWorkspaceModelProbeAttempt $attempt): AiWorkspaceModelProbeResult
-    {
+    public function finish(
+        AiModel $model,
+        AiWorkspaceModelProbeAttempt $attempt,
+        ?GovernanceAiModelUsageSession $usageSession = null,
+    ): AiWorkspaceModelProbeResult {
         $result = $attempt->providerResult;
         if ($attempt->requiresPlainTextFallback()) {
             $result = $this->runtime->probePlainText(
                 $model,
                 '请用一句话确认 GEOFlow 后台帮助助手普通文本回答可用。',
                 $this->remainingTimeout($attempt->deadline),
+                $usageSession,
             );
         }
         if (! is_array($result)) {

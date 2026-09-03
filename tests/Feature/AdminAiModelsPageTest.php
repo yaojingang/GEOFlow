@@ -7,7 +7,9 @@ use App\Contracts\Outbound\HostResolver;
 use App\Contracts\Outbound\OutboundTransport;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\SiteSetting;
+use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\AiWorkspace\AiWorkspaceModelCapabilityProbe;
 use App\Services\Outbound\OutboundRequestBlockedException;
 use App\Services\Outbound\ResolvedOutboundTarget;
@@ -21,6 +23,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Laravel\Ai\Exceptions\InsufficientCreditsException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\InterruptedStreamingFakeTextGateway;
@@ -54,6 +57,9 @@ class AdminAiModelsPageTest extends TestCase
         $this->assertSame(now()->toDateString(), $model->fresh()->usage_date?->toDateString());
         $this->assertSame(1, (int) $model->fresh()->used_today);
         $this->assertSame(1, (int) $model->fresh()->total_used);
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame('direct.p1', $event->call_key);
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $event->status);
 
         Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/chat/completions'
             && $request['model'] === 'test-chat-model'
@@ -85,6 +91,10 @@ class AdminAiModelsPageTest extends TestCase
         self::assertSame('not_required', data_get($model->ai_workspace_readiness_profile, 'structured_output.status'));
         self::assertTrue($model->ai_workspace_readiness_expires_at->isFuture());
         self::assertNull($model->ai_workspace_structured_output_verified_at);
+        $event = AiModelUsageEvent::query()->sole();
+        self::assertSame('stream.p1', $event->call_key);
+        self::assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $event->status);
+        self::assertSame($superAdmin->id, $event->execution_admin_id);
         Http::assertNothingSent();
     }
 
@@ -125,6 +135,13 @@ class AdminAiModelsPageTest extends TestCase
 
         self::assertSame('degraded', data_get($model->fresh()->ai_workspace_readiness_profile, 'streaming.status'));
         self::assertTrue(data_get($model->fresh()->ai_workspace_readiness_profile, 'streaming.observed'));
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        self::assertSame(['stream.p1', 'plain.p2'], $events->pluck('call_key')->all());
+        self::assertSame(
+            [AiModelUsageEvent::STATUS_DISCARDED, AiModelUsageEvent::STATUS_SUCCEEDED],
+            $events->pluck('status')->all(),
+        );
+        self::assertSame(1, (int) $model->fresh()->used_today);
         Http::assertNothingSent();
     }
 
@@ -467,6 +484,10 @@ class AdminAiModelsPageTest extends TestCase
                 'data' => [
                     ['embedding' => [0.1, 0.2, 0.3]],
                 ],
+                'usage' => [
+                    'prompt_tokens' => 4,
+                    'total_tokens' => 4,
+                ],
             ]),
         ]);
 
@@ -484,6 +505,71 @@ class AdminAiModelsPageTest extends TestCase
         Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/embeddings'
             && $request['model'] === 'test-embedding-model'
             && $request['input'] === 'GEOFlow embedding connection test');
+
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertTrue(Str::isUuid((string) $event->request_id));
+        $this->assertSame('direct.p1', $event->call_key);
+        $this->assertSame('governance.model_connection_test', $event->operation);
+        $this->assertSame('governance_model_test', $event->business_source);
+        $this->assertSame(AiModelUsageEvent::EXECUTION_SCOPE_INTERACTIVE_ADMIN, $event->execution_scope);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_PERSONAL, $event->model_source);
+        $this->assertSame($model->owner_admin_id, $event->execution_admin_id);
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $event->status);
+        $this->assertSame(4, $event->input_tokens);
+        $this->assertSame(4, $event->total_tokens);
+        $this->assertSame(hash('sha256', json_encode([
+            'model' => 'test-embedding-model',
+            'input' => 'GEOFlow embedding connection test',
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)), $event->request_payload_digest);
+        $stored = json_encode($event->toArray(), JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString('test-api-key', $stored);
+        $this->assertStringNotContainsString('https://ai.test', $stored);
+        $this->assertStringNotContainsString('GEOFlow embedding connection test', $stored);
+    }
+
+    public function test_model_connection_holds_the_invocation_lock_until_the_result_is_accepted(): void
+    {
+        $model = $this->createAiModel('embedding');
+        $locks = app(AiModelInvocationLock::class);
+        Http::fake([
+            'https://ai.test/v1/embeddings' => function () use ($locks, $model) {
+                $this->assertNull($locks->acquireForMutation((int) $model->id));
+
+                return Http::response(['data' => [['embedding' => [0.1, 0.2, 0.3]]]]);
+            },
+        ]);
+
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertOk();
+
+        $mutationLock = $locks->acquireForMutation((int) $model->id);
+        $this->assertNotNull($mutationLock);
+        $locks->release($mutationLock);
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, AiModelUsageEvent::query()->sole()->status);
+    }
+
+    public function test_usage_telemetry_failure_does_not_change_connection_test_success(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/embeddings' => Http::response([
+                'data' => [['embedding' => [0.1, 0.2, 0.3]]],
+            ]),
+        ]);
+        $model = $this->createAiModel('embedding');
+        Schema::drop('ai_model_usage_events');
+
+        try {
+            $this->actingAs($this->createAdmin(), 'admin')
+                ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+                ->assertOk()
+                ->assertJsonPath('success', true);
+
+            $this->assertSame(1, (int) $model->fresh()->total_used);
+        } finally {
+            $migration = require database_path('migrations/2026_09_01_223149_create_ai_model_usage_events_table.php');
+            $migration->up();
+        }
     }
 
     public function test_admin_can_test_volcengine_embedding_model_connection(): void
@@ -983,6 +1069,10 @@ class AdminAiModelsPageTest extends TestCase
 
         $this->assertSame(1, (int) $model->fresh()->used_today);
         $this->assertSame(1, (int) $model->fresh()->total_used);
+        $this->assertSame(
+            AiModelUsageEvent::STATUS_FAILED,
+            AiModelUsageEvent::query()->sole()->status,
+        );
     }
 
     #[DataProvider('providerFailureDiagnoses')]
@@ -1025,6 +1115,7 @@ class AdminAiModelsPageTest extends TestCase
 
         $this->assertSame(0, (int) $missingUrl->fresh()->used_today);
         $this->assertSame(0, (int) $missingUrl->fresh()->total_used);
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
 
         Http::fake([
             'https://ai.test/v1/chat/completions' => Http::response(['unexpected' => true]),
@@ -1035,6 +1126,26 @@ class AdminAiModelsPageTest extends TestCase
             ->postJson(route('admin.ai-models.test', ['modelId' => (int) $invalidResponse->id]))
             ->assertUnprocessable()
             ->assertJsonPath('meta.diagnosis.code', 'invalid_response');
+        $this->assertSame(
+            AiModelUsageEvent::STATUS_DISCARDED,
+            AiModelUsageEvent::query()->sole()->status,
+        );
+    }
+
+    public function test_model_connection_ssrf_preflight_failure_creates_no_usage_event(): void
+    {
+        Http::fake();
+        $model = $this->createAiModel('embedding', [
+            'api_url' => 'http://127.0.0.1:8080/v1',
+        ]);
+
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertUnprocessable()
+            ->assertJsonPath('meta.diagnosis.code', 'outbound_blocked');
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
     }
 
     public function test_deepseek_and_ark_configuration_mix_returns_targeted_safe_guidance(): void
@@ -1213,6 +1324,10 @@ class AdminAiModelsPageTest extends TestCase
 
         $this->assertSame(1, (int) $model->fresh()->used_today);
         $this->assertSame(1, (int) $model->fresh()->total_used);
+        $this->assertSame(
+            AiModelUsageEvent::STATUS_SUCCEEDED,
+            AiModelUsageEvent::query()->sole()->status,
+        );
     }
 
     /** @return array<string, mixed> */

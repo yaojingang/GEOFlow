@@ -24,6 +24,8 @@ use App\Services\Admin\AdminAiModelTestBoundaryHook;
 use App\Services\Admin\AdminAiModelTestPreparationService;
 use App\Services\Admin\AdminAiSettingsService;
 use App\Services\Admin\AdminAiSystemSettingsService;
+use App\Services\Admin\GovernanceAiModelUsageSession;
+use App\Services\Admin\GovernanceAiModelUsageSessionFactory;
 use App\Services\AiWorkspace\AiWorkspaceModelCapabilityProbe;
 use App\Services\GeoFlow\AiModelTestDiagnosisService;
 use App\Services\GeoFlow\AiUsageQuotaService;
@@ -79,6 +81,7 @@ class AiModelController extends Controller
         private readonly AdminAiModelTestBoundaryHook $testBoundaryHook,
         private readonly AdminAiSettingsService $aiSettingsService,
         private readonly AdminAiSystemSettingsService $systemSettingsService,
+        private readonly GovernanceAiModelUsageSessionFactory $usageSessions,
     ) {}
 
     /**
@@ -376,6 +379,8 @@ class AiModelController extends Controller
         $reservation = null;
         $outboundAttempted = false;
         $apiKey = '';
+        $providerReturned = false;
+        $usageSession = null;
         $model = new AiModel;
         $model->setAttribute($model->getKeyName(), $modelId);
         $model->exists = true;
@@ -385,6 +390,7 @@ class AiModelController extends Controller
             $snapshot = $this->testPreparation->prepare($actor, $modelId);
             $model = $snapshot->modelForWorkspaceProbe();
             $reservation = $snapshot->reservation;
+            $usageSession = $this->usageSessions->create($snapshot);
             $modelType = $snapshot->modelType;
             $endpoint = $snapshot->endpoint;
             $apiKey = $snapshot->apiKey();
@@ -437,20 +443,29 @@ class AiModelController extends Controller
             $actorIsSuperAdmin = $this->testPreparation->revalidateImmediatelyBeforeOutbound($snapshot);
 
             if ($modelType === 'chat' && $actorIsSuperAdmin) {
+                $this->safeHttp->resolveTarget($endpoint);
                 $outboundAttempted = true;
-                $probeAttempt = $this->aiWorkspaceModelProbe->start($model);
+                $probeAttempt = $this->aiWorkspaceModelProbe->start($model, $usageSession);
                 $this->testBoundaryHook->afterOutboundBeforePersist($snapshot);
                 $this->testPreparation->revalidateWorkspaceAfterOutbound($snapshot);
+                $usageSession->finalizePendingOutcomes();
                 try {
-                    $probeResult = $this->aiWorkspaceModelProbe->finish($model, $probeAttempt);
+                    if ($probeAttempt->requiresPlainTextFallback()) {
+                        $this->testBoundaryHook->beforeRevalidation($snapshot);
+                        $this->testPreparation->revalidateImmediatelyBeforeOutbound($snapshot);
+                        $this->safeHttp->resolveTarget($snapshot->endpoint);
+                    }
+                    $probeResult = $this->aiWorkspaceModelProbe->finish($model, $probeAttempt, $usageSession);
                 } catch (Throwable $exception) {
                     if ($probeAttempt->requiresPlainTextFallback()) {
                         $this->testBoundaryHook->afterOutboundBeforePersist($snapshot);
+                        $this->testPreparation->revalidateWorkspaceAfterOutbound($snapshot);
                     }
                     $this->testPreparation->persistWorkspaceFailure(
                         $snapshot,
                         $this->aiWorkspaceModelProbe->failureCode($exception),
                     );
+                    $usageSession->finalizePendingOutcomes();
 
                     throw $exception;
                 }
@@ -458,6 +473,7 @@ class AiModelController extends Controller
                     $this->testBoundaryHook->afterOutboundBeforePersist($snapshot);
                 }
                 $this->testPreparation->persistWorkspaceReadiness($snapshot, $probeResult);
+                $usageSession->succeededPending();
                 $result = $probeResult->responseData();
                 try {
                     $this->usageQuota->recordModelSuccess($reservation);
@@ -491,18 +507,28 @@ class AiModelController extends Controller
                 ? $request->withHeaders(['x-goog-api-key' => $apiKey])
                 : $request->withToken($apiKey);
 
-            $outboundAttempted = true;
+            $testPayload = $this->buildTestPayload($modelName, $modelType, $isGemini, $usesOpenAiResponses);
             $response = $this->safeHttp->post(
                 $request,
                 $endpoint,
-                $this->buildTestPayload($modelName, $modelType, $isGemini, $usesOpenAiResponses),
+                $testPayload,
                 (int) config('geoflow.outbound_ai_max_bytes', 8 * 1024 * 1024),
+                function () use (&$outboundAttempted, $usageSession, $model, $testPayload): void {
+                    $outboundAttempted = true;
+                    $usageSession->begin(
+                        model: $model,
+                        callKey: 'direct.p1',
+                        requestPayload: json_encode($testPayload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+                    );
+                },
             );
+            $providerReturned = true;
 
             $this->testBoundaryHook->afterOutboundBeforePersist($snapshot);
             $this->testPreparation->revalidateAfterOutbound($snapshot);
             $json = $response->json();
             if (! $response->successful()) {
+                $usageSession->failed('direct.p1', 'ai_provider_http_failure', $json['usage'] ?? null);
                 if ($reservation instanceof AiUsageReservation) {
                     $this->recordModelTestAttempt($reservation);
                 }
@@ -522,6 +548,7 @@ class AiModelController extends Controller
             }
 
             if (! $this->isValidTestResponse($json, $modelType, $isGemini, $usesOpenAiResponses)) {
+                $usageSession->discarded('direct.p1', 'ai_provider_response_invalid', $json['usage'] ?? null);
                 if ($reservation instanceof AiUsageReservation) {
                     $this->recordModelTestAttempt($reservation);
                 }
@@ -546,6 +573,8 @@ class AiModelController extends Controller
                     report($exception);
                 }
             }
+            $usageSession->retainUsage('direct.p1', $json['usage'] ?? null);
+            $usageSession->succeededPending();
 
             return $this->modelTestResponse(
                 true,
@@ -558,6 +587,16 @@ class AiModelController extends Controller
         } catch (HttpExceptionInterface $exception) {
             throw $exception;
         } catch (Throwable $exception) {
+            if ($usageSession instanceof GovernanceAiModelUsageSession) {
+                if ($exception instanceof AiModelAccessException) {
+                    $usageSession->revokedPending();
+                } elseif ($providerReturned) {
+                    $usageSession->discardedPending();
+                } else {
+                    $usageSession->failed('direct.p1');
+                    $usageSession->discardedPending();
+                }
+            }
             if ($reservation instanceof AiUsageReservation) {
                 if ($outboundAttempted) {
                     $this->recordModelTestAttempt($reservation);

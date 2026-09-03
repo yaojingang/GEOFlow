@@ -7,6 +7,7 @@ use App\Data\Admin\AdminAiModelTestSnapshot;
 use App\Models\Admin;
 use App\Models\AdminAiSetting;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\SiteSetting;
 use App\Services\Admin\AdminAiModelTestBoundaryHook;
 use App\Services\Admin\AdminAiModelTestPreparationService;
@@ -313,6 +314,7 @@ final class AdminAiModelIsolationTest extends TestCase
             ->assertJsonPath('success', false);
 
         Http::assertNothingSent();
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
         $this->assertSame(0, (int) $model->fresh()->used_today);
         $this->assertSame(0, (int) $model->fresh()->total_used);
         $response
@@ -378,6 +380,9 @@ final class AdminAiModelIsolationTest extends TestCase
             ->assertJsonPath('meta.diagnosis.code', 'ai_config_access_revoked');
 
         Http::assertSentCount(1);
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_REVOKED, $event->status);
+        $this->assertSame('direct.p1', $event->call_key);
         $this->assertSame(1, (int) $model->fresh()->used_today);
         $this->assertSame(1, (int) $model->fresh()->total_used);
         $response
@@ -433,6 +438,9 @@ final class AdminAiModelIsolationTest extends TestCase
             ->assertJsonPath('meta.diagnosis.code', 'ai_config_access_revoked');
 
         $current = $model->fresh();
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_REVOKED, $event->status);
+        $this->assertSame('stream.p1', $event->call_key);
         $this->assertSame('failed', $current->ai_workspace_readiness_status);
         $this->assertSame('keep-existing-readiness', data_get($current->ai_workspace_readiness_profile, 'sentinel'));
         $this->assertSame('existing_failure', $current->ai_workspace_readiness_failure_code);
@@ -852,6 +860,7 @@ final class AdminAiModelIsolationTest extends TestCase
         $this->actingAs($actor, 'admin')
             ->postJson(route('admin.ai-models.test', ['modelId' => $shared->id]))
             ->assertNotFound();
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
     }
 
     public function test_empty_shared_and_governance_sections_remain_visible_for_their_roles(): void
@@ -1174,6 +1183,7 @@ final class AdminAiModelIsolationTest extends TestCase
             ->assertNotFound();
 
         Http::assertNothingSent();
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
         $this->assertModelExists($governed);
         $this->assertModelExists($peerModel);
     }

@@ -20,11 +20,14 @@ use App\Services\Admin\AdminAiModelTestBoundaryHook;
 use App\Services\Admin\AdminAiModelTestPreparationService;
 use App\Services\Admin\AdminAiSourceProviderService;
 use App\Services\Admin\AdminAiSystemConfigurationBoundaryHook;
+use App\Services\Admin\GovernanceAiModelUsageSession;
+use App\Services\Admin\GovernanceAiModelUsageSessionFactory;
 use App\Services\AiWorkspace\AiWorkspaceModelCapabilityProbe;
 use App\Services\GeoFlow\AiUsageQuotaService;
 use App\Services\GeoFlow\AiUsageReservation;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityConfigurationResolver;
 use App\Services\GeoFlow\AiVisibility\DoubaoSearchCustomClient;
+use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -53,6 +56,8 @@ class AiSourceProviderController extends Controller
         private readonly AdminAiModelTestPreparationService $modelTestPreparation,
         private readonly AdminAiSourceProviderService $sourceProviderService,
         private readonly AdminAiSystemConfigurationBoundaryHook $boundaryHook,
+        private readonly GovernanceAiModelUsageSessionFactory $usageSessions,
+        private readonly SafeOutboundHttpClient $safeHttp,
     ) {}
 
     public function index(Request $request): View
@@ -214,6 +219,8 @@ class AiSourceProviderController extends Controller
         $bindingType = (string) $payload['binding_type'];
         $reservation = null;
         $outboundAttempted = false;
+        $workspaceFailurePersisted = false;
+        $usageSession = null;
         try {
             $snapshot = $this->modelTestPreparation->prepareSystemBinding(
                 $this->actor($request),
@@ -221,18 +228,45 @@ class AiSourceProviderController extends Controller
                 $bindingType,
             );
             $reservation = $snapshot->reservation;
+            $usageSession = $this->usageSessions->create($snapshot);
             if ($reservation === null) {
                 return $this->safeTestFailure('ai_model_unavailable');
             }
             $model = $snapshot->modelForWorkspaceProbe();
             $this->modelTestBoundaryHook->beforeRevalidation($snapshot);
             $this->modelTestPreparation->revalidateImmediatelyBeforeOutbound($snapshot);
+            $this->safeHttp->resolveTarget($snapshot->endpoint);
             $outboundAttempted = true;
-            $probeAttempt = $this->aiWorkspaceModelProbe->start($model);
+            $probeAttempt = $this->aiWorkspaceModelProbe->start($model, $usageSession);
             $this->modelTestBoundaryHook->afterOutboundBeforePersist($snapshot);
             $this->modelTestPreparation->revalidateWorkspaceAfterOutbound($snapshot);
-            $probeResult = $this->aiWorkspaceModelProbe->finish($model, $probeAttempt);
+            $usageSession->finalizePendingOutcomes();
+            if ($probeAttempt->requiresPlainTextFallback()) {
+                $this->modelTestBoundaryHook->beforeRevalidation($snapshot);
+                $this->modelTestPreparation->revalidateImmediatelyBeforeOutbound($snapshot);
+                $this->safeHttp->resolveTarget($snapshot->endpoint);
+            }
+            try {
+                $probeResult = $this->aiWorkspaceModelProbe->finish($model, $probeAttempt, $usageSession);
+            } catch (Throwable $exception) {
+                if ($probeAttempt->requiresPlainTextFallback()) {
+                    $this->modelTestBoundaryHook->afterOutboundBeforePersist($snapshot);
+                    $this->modelTestPreparation->revalidateWorkspaceAfterOutbound($snapshot);
+                }
+                $this->modelTestPreparation->persistWorkspaceFailure(
+                    $snapshot,
+                    $this->aiWorkspaceModelProbe->failureCode($exception),
+                );
+                $workspaceFailurePersisted = true;
+                $usageSession->finalizePendingOutcomes();
+
+                throw $exception;
+            }
+            if ($probeAttempt->requiresPlainTextFallback()) {
+                $this->modelTestBoundaryHook->afterOutboundBeforePersist($snapshot);
+            }
             $this->modelTestPreparation->persistWorkspaceReadiness($snapshot, $probeResult);
+            $usageSession->succeededPending();
             $this->usageQuota->recordModelSuccess($reservation);
             $reservation = null;
 
@@ -249,7 +283,18 @@ class AiSourceProviderController extends Controller
         } catch (ModelNotFoundException $exception) {
             throw $exception;
         } catch (Throwable $exception) {
-            if ($outboundAttempted && ! $exception instanceof AiModelAccessException && isset($snapshot)) {
+            if ($usageSession instanceof GovernanceAiModelUsageSession) {
+                if ($exception instanceof AiModelAccessException) {
+                    $usageSession->revokedPending();
+                } else {
+                    $usageSession->discardedPending();
+                }
+            }
+            if ($outboundAttempted
+                && ! $workspaceFailurePersisted
+                && ! $exception instanceof AiModelAccessException
+                && isset($snapshot)
+            ) {
                 try {
                     $this->modelTestPreparation->persistWorkspaceFailure(
                         $snapshot,

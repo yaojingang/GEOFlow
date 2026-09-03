@@ -113,6 +113,31 @@ class AiModelUsageEventTest extends TestCase
         $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_SYSTEM, AiModelUsageEvent::query()->sole()->model_source);
     }
 
+    public function test_generic_admin_factory_cannot_create_governance_system_attribution(): void
+    {
+        $owner = $this->admin('governance-factory-owner', 'super_admin', [
+            'ai_config_access_version' => 3,
+        ]);
+        $model = $this->model($owner, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+        $factory = app(AiModelUsageAttemptFactory::class);
+
+        $attempt = $factory->beginForAdmin(
+            model: $model,
+            executionAdminId: (int) $owner->id,
+            accessVersion: 3,
+            executionScope: AiModelUsageEvent::EXECUTION_SCOPE_INTERACTIVE_ADMIN,
+            modelSource: AiModelUsageEvent::MODEL_SOURCE_SYSTEM,
+            requestId: $factory->requestId(),
+            requestPayload: 'governance probe',
+            callKey: 'stream.p1',
+            operation: 'governance.model_connection_test',
+            businessSource: 'governance_model_test',
+        );
+        $attempt->succeeded();
+
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
+    }
+
     public function test_production_attempt_records_one_terminal_event_with_normalized_tokens_and_frozen_shared_attribution(): void
     {
         $owner = $this->admin('owner', 'super_admin');
@@ -579,10 +604,14 @@ class AiModelUsageEventTest extends TestCase
         $this->assertStringContainsString('CHECK', $statements);
         $this->assertStringContainsString('request_payload_digest', $statements);
         $this->assertStringContainsString('execution_admin_id IS NULL', $statements);
+        $this->assertStringContainsString("model_source IN ('personal', 'shared', 'system')", $statements);
         $this->assertStringContainsString('BEFORE UPDATE OR DELETE', $statements);
         $this->assertStringContainsString('RAISE EXCEPTION', $statements);
         $this->assertStringContainsString('CREATE FUNCTION', $statements);
         $this->assertStringEndsWith('on conflict do nothing', $postgresInsert);
+
+        $legacyStatements = implode("\n", AiModelUsageLedgerSchema::governanceAttributionDowngradeStatements());
+        $this->assertStringNotContainsString("model_source IN ('personal', 'shared', 'system')", $legacyStatements);
     }
 
     public function test_usage_attribution_ids_survive_later_model_and_admin_deletion(): void
