@@ -18,8 +18,12 @@ final class DoubaoArkResponsesClient
     /**
      * @param  array<string,mixed>  $options
      */
-    public function answerWithWebSearch(AiModel $model, string $prompt, array $options = []): AiVisibilityResult
-    {
+    public function answerWithWebSearch(
+        AiModel $model,
+        string $prompt,
+        array $options = [],
+        ?AiVisibilityPreparedModelRequest $preparedRequest = null,
+    ): AiVisibilityResult {
         $prompt = trim($prompt);
         if ($prompt === '') {
             throw new RuntimeException('豆包 Ark Responses 查询提示词为空');
@@ -33,10 +37,14 @@ final class DoubaoArkResponsesClient
         $endpoint = $this->responsesEndpoint($model);
         $apiKey = $this->apiKey($model);
 
-        $payload = $this->buildPayload($modelId, $prompt, $options);
+        $preparedRequest ??= $this->prepareRequest($model, $prompt, $options);
+        $payload = $preparedRequest->providerPayload;
+        if (! is_array($payload)) {
+            throw new RuntimeException('豆包 Ark Responses 请求结构无效');
+        }
         $startedAt = hrtime(true);
         $response = $this->httpClientFactory
-            ->jsonRequest($apiKey)
+            ->singleAttemptJsonRequest($apiKey)
             ->post($endpoint, $payload);
         $latencyMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
 
@@ -57,6 +65,38 @@ final class DoubaoArkResponsesClient
             'endpoint' => $endpoint,
             'payload' => $payload,
         ], $modelId, $latencyMs);
+    }
+
+    /**
+     * @param  array<string,mixed>  $options
+     * @return array<string,mixed>
+     */
+    public function requestPayload(AiModel $model, string $prompt, array $options = []): array
+    {
+        $prompt = trim($prompt);
+        $modelId = trim((string) ($model->model_id ?? ''));
+        if ($prompt === '') {
+            throw new RuntimeException('豆包 Ark Responses 查询提示词为空');
+        }
+        if ($modelId === '') {
+            throw new RuntimeException('豆包 Ark 模型 ID 为空');
+        }
+
+        return $this->buildPayload($modelId, $prompt, $options);
+    }
+
+    /** @param array<string,mixed> $options */
+    public function prepareRequest(AiModel $model, string $prompt, array $options = []): AiVisibilityPreparedModelRequest
+    {
+        $payload = $this->requestPayload($model, $prompt, $options);
+
+        return new AiVisibilityPreparedModelRequest(
+            providerPayload: $payload,
+            digestPayload: json_encode(
+                $this->canonicalizeArray($payload),
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+            ),
+        );
     }
 
     /**
@@ -96,6 +136,21 @@ final class DoubaoArkResponsesClient
         }
 
         return $payload;
+    }
+
+    /** @param array<string|int,mixed> $value */
+    private function canonicalizeArray(array $value): array
+    {
+        foreach ($value as $key => $item) {
+            if (is_array($item)) {
+                $value[$key] = $this->canonicalizeArray($item);
+            }
+        }
+        if (! array_is_list($value)) {
+            ksort($value, SORT_STRING);
+        }
+
+        return $value;
     }
 
     private function responsesEndpoint(AiModel $model): string

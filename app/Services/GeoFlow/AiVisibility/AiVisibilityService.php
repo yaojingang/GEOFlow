@@ -54,11 +54,13 @@ final class AiVisibilityService
             run: $run,
             model: $model,
             bindingType: 'ark',
-            callKey: 'ark.p1',
+            callKeyPrefix: 'ark',
             operation: 'ai_visibility.collect.ark',
-            requestPayload: $prompt,
-            provider: fn (AiModel $current): AiVisibilityResult => $this->doubaoArkResponsesClient
-                ->answerWithWebSearch($current, $prompt, $options),
+            maxProviderAttempts: max(1, (int) config('geoflow.ai_visibility.http_retry_attempts', 2)),
+            requestPayload: fn (AiModel $current): AiVisibilityPreparedModelRequest => $this->doubaoArkResponsesClient
+                ->prepareRequest($current, $prompt, $options),
+            provider: fn (AiModel $current, AiVisibilityPreparedModelRequest $prepared): AiVisibilityResult => $this->doubaoArkResponsesClient
+                ->answerWithWebSearch($current, $prompt, $options, $prepared),
         );
     }
 
@@ -128,11 +130,13 @@ final class AiVisibilityService
             run: $run,
             model: $model,
             bindingType: 'deepseek',
-            callKey: 'deepseek.p1',
+            callKeyPrefix: 'deepseek',
             operation: 'ai_visibility.collect.deepseek',
-            requestPayload: $prompt,
-            provider: fn (AiModel $current): AiVisibilityResult => $this->deepSeekAnalysisClient
-                ->analyze($current, $prompt, $sources, $options),
+            maxProviderAttempts: 1,
+            requestPayload: fn (): AiVisibilityPreparedModelRequest => $this->deepSeekAnalysisClient
+                ->prepareRequest($prompt, $sources),
+            provider: fn (AiModel $current, AiVisibilityPreparedModelRequest $prepared): AiVisibilityResult => $this->deepSeekAnalysisClient
+                ->analyze($current, $prompt, $sources, $options, $prepared),
         );
     }
 
@@ -230,83 +234,105 @@ final class AiVisibilityService
         });
     }
 
-    /** @param Closure(AiModel):AiVisibilityResult $provider */
+    /**
+     * @param  Closure(AiModel):AiVisibilityPreparedModelRequest  $requestPayload
+     * @param  Closure(AiModel,AiVisibilityPreparedModelRequest):AiVisibilityResult  $provider
+     */
     private function runModelCall(
         SystemAiIdentity $identity,
         AiVisibilityRun $run,
         AiModel $model,
         string $bindingType,
-        string $callKey,
+        string $callKeyPrefix,
         string $operation,
-        string $requestPayload,
+        int $maxProviderAttempts,
+        Closure $requestPayload,
         Closure $provider,
     ): AiVisibilityRun {
-        $lock = null;
-        $reservation = null;
-        $attempt = null;
-        $providerCalled = false;
-        try {
-            $lock = $this->invocationLocks->acquireForInvocation((int) $model->id, 300);
-            $snapshot = $this->executionGuard->snapshotForRun($identity, $run, $model, $bindingType);
-            $current = $this->executionGuard->assertCurrent($identity, $snapshot);
-            $reservation = $this->usageQuota->reserveModel($current);
-            if (! $reservation instanceof AiUsageReservation) {
-                throw new RuntimeException('ai_model_quota_exhausted');
-            }
-            $current = $this->executionGuard->assertCurrent($identity, $snapshot);
-            $attempt = $this->usageAttempts->beginForVisibilityCollection(
-                model: $current,
-                identity: $identity,
-                requestId: (string) $run->uuid,
-                requestPayload: $requestPayload,
-                callKey: $callKey,
-                operation: $operation,
-                businessSource: 'ai_visibility_collection',
-                sourceType: AiVisibilityRun::class,
-                sourceId: (int) $run->id,
-            );
-            $current = $this->executionGuard->assertCurrent($identity, $snapshot);
-            $providerCalled = true;
+        $snapshot = null;
+        $maxProviderAttempts = max(1, $maxProviderAttempts);
+        for ($providerOrdinal = 1; $providerOrdinal <= $maxProviderAttempts; $providerOrdinal++) {
+            $lock = null;
+            $reservation = null;
+            $providerCalled = false;
             try {
-                $result = $provider($current);
-            } catch (Throwable $exception) {
-                $this->recordModelAttempt($reservation);
-                $attempt->failed($this->providerErrorCode($exception));
-                throw new RuntimeException($this->providerErrorCode($exception));
-            }
-
-            try {
-                $completed = $this->completeRun(
-                    $run,
-                    $result,
+                $lock = $this->invocationLocks->acquireForInvocation((int) $model->id, 300);
+                $snapshot ??= $this->executionGuard->snapshotForRun($identity, $run, $model, $bindingType);
+                $current = $this->executionGuard->assertCurrent($identity, $snapshot);
+                $reservation = $this->usageQuota->reserveModel($current);
+                if (! $reservation instanceof AiUsageReservation) {
+                    throw new RuntimeException('ai_model_quota_exhausted');
+                }
+                $current = $this->executionGuard->assertCurrent($identity, $snapshot);
+                $preparedRequest = $requestPayload($current);
+                $attempt = $this->usageAttempts->beginForVisibilityCollection(
+                    model: $current,
                     identity: $identity,
-                    snapshot: $snapshot,
-                    modelReservation: $reservation,
+                    requestId: (string) $run->uuid,
+                    requestPayload: $preparedRequest->digestPayload,
+                    callKey: sprintf('%s.p%d', $callKeyPrefix, $providerOrdinal),
+                    operation: $operation,
+                    businessSource: 'ai_visibility_collection',
+                    sourceType: AiVisibilityRun::class,
+                    sourceId: (int) $run->id,
                 );
-            } catch (AiVisibilityModelAccessRevokedException $exception) {
-                $this->recordModelAttempt($reservation);
-                $attempt->revoked('ai_config_access_revoked', $result->usage);
-                throw $exception;
+                $current = $this->executionGuard->assertCurrent($identity, $snapshot);
+                $providerCalled = true;
+                try {
+                    $result = $provider($current, $preparedRequest);
+                } catch (Throwable $exception) {
+                    $this->recordModelAttempt($reservation);
+                    $attempt->failed($this->providerErrorCode($exception));
+                    if ($providerOrdinal < $maxProviderAttempts && $this->isTransientProviderFailure($exception)) {
+                        continue;
+                    }
+
+                    throw new RuntimeException($this->providerErrorCode($exception));
+                }
+
+                try {
+                    $completed = $this->completeRun(
+                        $run,
+                        $result,
+                        identity: $identity,
+                        snapshot: $snapshot,
+                        modelReservation: $reservation,
+                    );
+                } catch (AiVisibilityModelAccessRevokedException $exception) {
+                    $this->recordModelAttempt($reservation);
+                    $attempt->revoked('ai_config_access_revoked', $result->usage);
+                    throw $exception;
+                } catch (Throwable $exception) {
+                    $this->recordModelAttempt($reservation);
+                    $attempt->discarded('ai_result_discarded', $result->usage);
+                    throw new AiVisibilityRunDiscardedException('ai_result_discarded');
+                }
+
+                $attempt->succeeded($result->usage);
+
+                return $completed;
             } catch (Throwable $exception) {
-                $this->recordModelAttempt($reservation);
-                $attempt->discarded('ai_result_discarded', $result->usage);
-                throw new AiVisibilityRunDiscardedException('ai_result_discarded');
+                if ($reservation instanceof AiUsageReservation && ! $providerCalled) {
+                    $this->usageQuota->releaseModel($reservation);
+                }
+                $errorCode = $this->safeErrorCode($exception);
+                $this->failRun($run, $errorCode);
+
+                throw new RuntimeException($errorCode);
+            } finally {
+                $this->invocationLocks->release($lock);
             }
-
-            $attempt->succeeded($result->usage);
-
-            return $completed;
-        } catch (Throwable $exception) {
-            if ($reservation instanceof AiUsageReservation && ! $providerCalled) {
-                $this->usageQuota->releaseModel($reservation);
-            }
-            $errorCode = $this->safeErrorCode($exception);
-            $this->failRun($run, $errorCode);
-
-            throw new RuntimeException($errorCode);
-        } finally {
-            $this->invocationLocks->release($lock);
         }
+
+        throw new RuntimeException('ai_provider_request_failed');
+    }
+
+    private function isTransientProviderFailure(Throwable $exception): bool
+    {
+        $message = $exception->getMessage();
+
+        return preg_match('/HTTP\s*(?:429|5\d\d)\b/i', $message) === 1
+            || preg_match('/(?:connection|connect|timed?\s*out|cURL\s+error)/i', $message) === 1;
     }
 
     private function failRun(AiVisibilityRun $run, Throwable|string $failure): void

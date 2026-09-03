@@ -13,6 +13,10 @@ use App\Models\SiteSetting;
 use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityCollectionService;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityConfigurationResolver;
+use App\Services\GeoFlow\AiVisibility\AiVisibilityService;
+use App\Services\GeoFlow\AiVisibility\AiVisibilitySourceData;
+use App\Services\GeoFlow\AiVisibility\DeepSeekAnalysisClient;
+use App\Services\GeoFlow\AiVisibility\DoubaoArkResponsesClient;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -177,12 +181,13 @@ final class AiVisibilitySystemModelUsageTelemetryTest extends TestCase
         $this->assertStringNotContainsString('visibility-secret-key', $serialized);
         $this->assertStringNotContainsString('private.example.test', $serialized);
         $this->assertStringNotContainsString('sensitive-keyword', $serialized);
+        Http::assertSentCount(1);
         $mutationLock = app(AiModelInvocationLock::class)->acquireForMutation((int) $model->id);
         $this->assertNotNull($mutationLock);
         app(AiModelInvocationLock::class)->release($mutationLock);
     }
 
-    public function test_provider_server_failure_records_one_failed_attempt(): void
+    public function test_provider_server_failures_record_one_failed_event_and_quota_per_real_request(): void
     {
         Http::preventStrayRequests();
         Http::fake([
@@ -206,10 +211,81 @@ final class AiVisibilitySystemModelUsageTelemetryTest extends TestCase
             $this->assertSame('ai_provider_request_failed', $exception->getMessage());
         }
 
-        $event = AiModelUsageEvent::query()->sole();
-        $this->assertSame(AiModelUsageEvent::STATUS_FAILED, $event->status);
-        $this->assertSame('ai_provider_request_failed', $event->error_code);
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame(['ark.p1', 'ark.p2'], $events->pluck('call_key')->all());
+        $this->assertSame([
+            AiModelUsageEvent::STATUS_FAILED,
+            AiModelUsageEvent::STATUS_FAILED,
+        ], $events->pluck('status')->all());
+        $this->assertSame(2, (int) $model->fresh()->used_today);
         $this->assertSame(0, (int) $model->fresh()->total_used);
+        Http::assertSentCount(2);
+    }
+
+    public function test_transient_ark_failure_then_success_records_two_attempts_and_commits_only_the_winner(): void
+    {
+        Http::preventStrayRequests();
+        Http::fakeSequence('https://ark.cn-beijing.volces.com/api/v3/responses')
+            ->push(['error' => ['message' => 'temporary']], 500)
+            ->push($this->arkResponse(), 200);
+        $owner = $this->superAdmin('visibility-provider-retry-owner');
+        $model = $this->systemModel($owner, [
+            'api_url' => 'https://ark.cn-beijing.volces.com/api/v3',
+        ]);
+        $this->bindModel(AiVisibilityConfigurationResolver::ARK_MODEL_SETTING_KEY, $model);
+
+        $runs = app(AiVisibilityCollectionService::class)->collect(
+            SystemAiIdentity::visibilityCollection(),
+            'retry-keyword',
+        );
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame(AiVisibilityRun::STATUS_COMPLETED, $runs['ark_run']->status);
+        $this->assertSame(['ark.p1', 'ark.p2'], $events->pluck('call_key')->all());
+        $this->assertSame([
+            AiModelUsageEvent::STATUS_FAILED,
+            AiModelUsageEvent::STATUS_SUCCEEDED,
+        ], $events->pluck('status')->all());
+        $this->assertSame(2, (int) $model->fresh()->used_today);
+        $this->assertSame(1, (int) $model->fresh()->total_used);
+        Http::assertSentCount(2);
+    }
+
+    public function test_transient_retry_revalidates_binding_before_a_second_real_request(): void
+    {
+        Http::preventStrayRequests();
+        $owner = $this->superAdmin('visibility-retry-revoke-owner');
+        $model = $this->systemModel($owner, [
+            'name' => 'Ark Retry Original',
+            'api_url' => 'https://ark.cn-beijing.volces.com/api/v3',
+        ]);
+        $replacement = $this->systemModel($owner, [
+            'name' => 'Ark Retry Replacement',
+            'api_url' => 'https://ark.cn-beijing.volces.com/api/v3',
+        ]);
+        $this->bindModel(AiVisibilityConfigurationResolver::ARK_MODEL_SETTING_KEY, $model);
+        Http::fake([
+            'https://ark.cn-beijing.volces.com/api/v3/responses' => function () use ($replacement) {
+                $this->bindModel(AiVisibilityConfigurationResolver::ARK_MODEL_SETTING_KEY, $replacement);
+
+                return Http::response(['error' => ['message' => 'temporary']], 500);
+            },
+        ]);
+
+        try {
+            app(AiVisibilityCollectionService::class)->collect(
+                SystemAiIdentity::visibilityCollection(),
+                'retry-revoked-keyword',
+            );
+            $this->fail('The second attempt must stop after binding revocation.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('ai_config_access_revoked', $exception->getMessage());
+        }
+
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame('ark.p1', $event->call_key);
+        $this->assertSame(AiModelUsageEvent::STATUS_FAILED, $event->status);
+        Http::assertSentCount(1);
     }
 
     public function test_binding_change_after_provider_return_marks_attempt_revoked_and_does_not_commit_result(): void
@@ -497,6 +573,64 @@ final class AiVisibilitySystemModelUsageTelemetryTest extends TestCase
         $this->assertStringNotContainsString('api.deepseek.com', $serialized);
     }
 
+    public function test_deepseek_digest_uses_the_exact_full_prompt_including_sources(): void
+    {
+        MarkdownContentWriterAgent::fake(['First analysis', 'Second analysis'])->preventStrayPrompts();
+        $owner = $this->superAdmin('visibility-deepseek-digest-owner');
+        $model = $this->systemModel($owner, [
+            'model_id' => 'deepseek-chat',
+            'api_url' => 'https://api.deepseek.com',
+        ]);
+        $this->bindModel(AiVisibilityConfigurationResolver::DEEPSEEK_MODEL_SETTING_KEY, $model);
+        $basePrompt = 'Same base prompt';
+        $firstSources = [new AiVisibilitySourceData(
+            sourceType: 'web',
+            citationKey: 'S1',
+            title: 'First source',
+            url: 'https://first.example.test',
+            summary: 'first private context',
+        )];
+        $secondSources = [new AiVisibilitySourceData(
+            sourceType: 'web',
+            citationKey: 'S2',
+            title: 'Second source',
+            url: 'https://second.example.test',
+            summary: 'second private context',
+        )];
+        $service = app(AiVisibilityService::class);
+        $service->runDeepSeekAnalysis(
+            SystemAiIdentity::visibilityCollection(),
+            $model,
+            'GEOFlow',
+            $basePrompt,
+            $firstSources,
+        );
+        $service->runDeepSeekAnalysis(
+            SystemAiIdentity::visibilityCollection(),
+            $model,
+            'GEOFlow',
+            $basePrompt,
+            $secondSources,
+        );
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $client = app(DeepSeekAnalysisClient::class);
+        $this->assertSame(
+            hash('sha256', $client->fullPrompt($basePrompt, $firstSources)),
+            $events[0]->request_payload_digest,
+        );
+        $this->assertSame(
+            hash('sha256', $client->fullPrompt($basePrompt, $secondSources)),
+            $events[1]->request_payload_digest,
+        );
+        $this->assertNotSame($events[0]->request_payload_digest, $events[1]->request_payload_digest);
+        $serialized = json_encode($events->map->getAttributes()->all(), JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString('first private context', $serialized);
+        $this->assertStringNotContainsString('second private context', $serialized);
+        $this->assertStringNotContainsString('first.example.test', $serialized);
+        $this->assertStringNotContainsString('second.example.test', $serialized);
+    }
+
     public function test_ark_collection_records_one_system_model_attempt_after_the_run_commits(): void
     {
         Http::preventStrayRequests();
@@ -538,6 +672,14 @@ final class AiVisibilitySystemModelUsageTelemetryTest extends TestCase
         $this->assertStringNotContainsString('visibility-secret-key', $serialized);
         $this->assertStringNotContainsString('GEOFlow', $serialized);
         $this->assertStringNotContainsString('ark.cn-beijing', $serialized);
+        $prepared = app(DoubaoArkResponsesClient::class)->prepareRequest(
+            $model,
+            '请基于公开网络信息回答目标关键词「GEOFlow」相关问题，并在可用时保留引用来源。请重点说明主流 AI 可能会如何理解这个关键词。',
+        );
+        $this->assertSame(
+            hash('sha256', $prepared->digestPayload),
+            $event->request_payload_digest,
+        );
     }
 
     private function superAdmin(string $username): Admin
