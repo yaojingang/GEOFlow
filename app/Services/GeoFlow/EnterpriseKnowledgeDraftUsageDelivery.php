@@ -23,6 +23,7 @@ final class EnterpriseKnowledgeDraftUsageDelivery
 
     public function __construct(
         private readonly EnterpriseKnowledgeProject $project,
+        private readonly EnterpriseKnowledgeExecutionFence $executionFence,
         private readonly AiModel $model,
         private readonly int $candidateOrdinal,
         private readonly AiUsageQuotaService $usageQuota,
@@ -45,11 +46,11 @@ final class EnterpriseKnowledgeDraftUsageDelivery
                 $this->model,
                 (int) $this->project->model_access_admin_id,
             ),
-            requestId: (string) $this->project->execution_lease_token,
+            requestId: $this->executionFence->leaseToken,
             requestPayload: $requestPayload,
             callKey: sprintf(
                 'a%d.c%d.%s.p%d',
-                (int) $this->project->execution_attempt,
+                $this->executionFence->executionAttempt,
                 $this->candidateOrdinal,
                 $stage,
                 $providerOrdinal,

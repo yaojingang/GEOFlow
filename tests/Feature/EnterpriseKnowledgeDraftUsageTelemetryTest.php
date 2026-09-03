@@ -8,12 +8,16 @@ use App\Models\AiModel;
 use App\Models\AiModelUsageEvent;
 use App\Models\EnterpriseKnowledgeProject;
 use App\Models\EnterpriseKnowledgeSource;
+use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\GeoFlow\EnterpriseKnowledgeAiExecutionGuard;
 use App\Services\GeoFlow\EnterpriseKnowledgeDraftService;
+use App\Services\GeoFlow\EnterpriseKnowledgeDraftUsageDelivery;
+use App\Services\GeoFlow\EnterpriseKnowledgeExecutionFence;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
 use Tests\TestCase;
 
 final class EnterpriseKnowledgeDraftUsageTelemetryTest extends TestCase
@@ -201,6 +205,85 @@ final class EnterpriseKnowledgeDraftUsageTelemetryTest extends TestCase
         $this->assertSame('processing', $project->fresh()->status);
         $this->assertSame(0, $project->revisions()->count());
         $this->assertSame(2, (int) $project->fresh()->execution_attempt);
+    }
+
+    public function test_same_lease_token_reclaim_fences_the_old_attempt_and_its_failed_callback(): void
+    {
+        $admin = $this->admin('enterprise-ledger-same-token');
+        $model = $this->model($admin, 'enterprise-ledger-same-token-model');
+        $project = $this->project($admin, $model, '企业知识账本同令牌围栏');
+        $guard = app(EnterpriseKnowledgeAiExecutionGuard::class);
+        $job = new GenerateEnterpriseKnowledgeDraftJob((int) $project->id);
+        $sameLeaseToken = (string) $job->claimLeaseToken;
+        $attemptTwoFence = null;
+        $providerCalls = 0;
+        Http::fake(function () use ($guard, $project, $sameLeaseToken, &$attemptTwoFence, &$providerCalls) {
+            $providerCalls++;
+            if ($providerCalls === 1) {
+                EnterpriseKnowledgeProject::query()->whereKey($project->id)->update([
+                    'lease_expires_at' => now()->subMinute(),
+                ]);
+                $reclaimed = $guard->claim($project->fresh(), $sameLeaseToken);
+                $this->assertTrue($reclaimed['claimed']);
+                $this->assertSame(2, (int) $reclaimed['project']->execution_attempt);
+                $attemptTwoFence = $reclaimed['fence'];
+
+                return Http::response($this->chatCompletion($this->completeDraft('旧执行结果')));
+            }
+
+            return Http::response($this->chatCompletion($this->completeDraft('新执行结果')));
+        });
+
+        $job->handle(app(EnterpriseKnowledgeDraftService::class));
+
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame('a1.c1.single.p1', $event->call_key);
+        $this->assertSame(AiModelUsageEvent::STATUS_DISCARDED, $event->status);
+        $project->refresh();
+        $this->assertSame('processing', $project->status);
+        $this->assertSame($sameLeaseToken, (string) $project->execution_lease_token);
+        $this->assertSame(2, (int) $project->execution_attempt);
+        $this->assertSame(0, $project->revisions()->count());
+
+        $job->failed(new RuntimeException('old attempt failed callback'));
+
+        $project->refresh();
+        $this->assertSame('processing', $project->status);
+        $this->assertSame(2, (int) $project->execution_attempt);
+        $this->assertNull($project->error_code);
+        $this->assertInstanceOf(EnterpriseKnowledgeExecutionFence::class, $attemptTwoFence);
+        $mutationLock = app(AiModelInvocationLock::class)->acquireForMutation((int) $model->id);
+        $this->assertNotNull($mutationLock);
+        app(AiModelInvocationLock::class)->release($mutationLock);
+
+        $attemptTwoProject = $project->fresh(['sources']);
+        $draftService = app(EnterpriseKnowledgeDraftService::class);
+        $draft = $draftService->generateDraft($attemptTwoProject, $attemptTwoFence);
+        $this->assertSame('ai', $draft['source'], (string) $draft['error']);
+        $delivery = $draft['usage_delivery'] ?? null;
+        $this->assertInstanceOf(EnterpriseKnowledgeDraftUsageDelivery::class, $delivery);
+        $content = trim((string) $draft['content']);
+        $persistDraft = new \ReflectionMethod(GenerateEnterpriseKnowledgeDraftJob::class, 'persistDraft');
+        $persistDraft->invoke(
+            new GenerateEnterpriseKnowledgeDraftJob((int) $project->id, $sameLeaseToken),
+            $attemptTwoProject,
+            $attemptTwoFence,
+            $content,
+            $draftService->validateDraft($content),
+            $draft,
+            $guard,
+        );
+        $delivery->succeeded();
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame(['a1.c1.single.p1', 'a2.c1.single.p1'], $events->pluck('call_key')->all());
+        $this->assertSame([
+            AiModelUsageEvent::STATUS_DISCARDED,
+            AiModelUsageEvent::STATUS_SUCCEEDED,
+        ], $events->pluck('status')->all());
+        $this->assertSame([$sameLeaseToken], $events->pluck('request_id')->unique()->values()->all());
+        $this->assertSame('reviewing', $project->fresh()->status);
+        $this->assertStringContainsString('新执行结果', (string) $project->fresh()->draft_content);
     }
 
     public function test_missing_execution_identity_fails_before_provider_and_records_no_usage(): void

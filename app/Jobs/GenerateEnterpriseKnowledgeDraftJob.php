@@ -9,6 +9,7 @@ use App\Models\EnterpriseKnowledgeRevision;
 use App\Services\GeoFlow\EnterpriseKnowledgeAiExecutionGuard;
 use App\Services\GeoFlow\EnterpriseKnowledgeDraftService;
 use App\Services\GeoFlow\EnterpriseKnowledgeDraftUsageDelivery;
+use App\Services\GeoFlow\EnterpriseKnowledgeExecutionFence;
 use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -31,6 +32,8 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
     public ?string $claimLeaseToken = null;
 
     private ?string $claimedExecutionLeaseToken = null;
+
+    private ?int $claimedExecutionAttempt = null;
 
     public function __construct(public readonly int $projectId, ?string $claimLeaseToken = null)
     {
@@ -66,32 +69,37 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
         if (! $claim['claimed']) {
             return;
         }
-        $this->claimedExecutionLeaseToken = trim((string) $project->execution_lease_token);
+        $executionFence = $claim['fence'];
+        if (! $executionFence instanceof EnterpriseKnowledgeExecutionFence) {
+            return;
+        }
+        $this->claimedExecutionLeaseToken = $executionFence->leaseToken;
+        $this->claimedExecutionAttempt = $executionFence->executionAttempt;
         $usageDelivery = null;
 
         try {
-            $executionGuard->assertCurrent($project, $project->requested_ai_model_id);
-            $this->updateProgress($project, 'collecting', 20, __('admin.enterprise_knowledge.progress_message.collecting'));
-            $this->updateProgress($project, 'cleaning', 35, __('admin.enterprise_knowledge.progress_message.cleaning'));
-            $this->updateProgress($project, 'structuring', 58, __('admin.enterprise_knowledge.progress_message.structuring'));
+            $executionGuard->assertCurrent($project, $project->requested_ai_model_id, $executionFence);
+            $this->updateProgress($project, $executionFence, 'collecting', 20, __('admin.enterprise_knowledge.progress_message.collecting'));
+            $this->updateProgress($project, $executionFence, 'cleaning', 35, __('admin.enterprise_knowledge.progress_message.cleaning'));
+            $this->updateProgress($project, $executionFence, 'structuring', 58, __('admin.enterprise_knowledge.progress_message.structuring'));
 
             $freshProject = $project->fresh(['sources']) ?? $project;
-            $draft = $draftService->generateDraft($freshProject);
+            $draft = $draftService->generateDraft($freshProject, $executionFence);
             $usageDelivery = ($draft['usage_delivery'] ?? null) instanceof EnterpriseKnowledgeDraftUsageDelivery
                 ? $draft['usage_delivery']
                 : null;
             $project->refresh();
             $content = trim((string) $draft['content']);
 
-            $this->updateProgress($project, 'validating', 78, __('admin.enterprise_knowledge.progress_message.validating'));
+            $this->updateProgress($project, $executionFence, 'validating', 78, __('admin.enterprise_knowledge.progress_message.validating'));
             $validationItems = $draftService->validateDraft($content);
-            $this->updateProgress($project, 'writing', 92, __('admin.enterprise_knowledge.progress_message.writing'));
-            $this->persistDraft($project, $content, $validationItems, $draft, $executionGuard);
+            $this->updateProgress($project, $executionFence, 'writing', 92, __('admin.enterprise_knowledge.progress_message.writing'));
+            $this->persistDraft($project, $executionFence, $content, $validationItems, $draft, $executionGuard);
             $usageDelivery?->succeeded();
         } catch (AiModelAccessException|PermanentAiProviderException $exception) {
             if ($usageDelivery instanceof EnterpriseKnowledgeDraftUsageDelivery) {
                 if ($exception instanceof AiModelAccessException
-                    && $executionGuard->claimedExecutionIsCurrent($project)) {
+                    && $executionGuard->claimedExecutionIsCurrent($project, $executionFence)) {
                     $usageDelivery->revoked($exception->getErrorCode());
                 } else {
                     $usageDelivery->discarded($this->safeUsageFailureCode($exception));
@@ -102,7 +110,7 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
                 $exception,
                 false,
                 $errorSanitizer,
-                $this->claimedExecutionLeaseToken,
+                $executionFence,
             );
         } catch (Throwable $exception) {
             $usageDelivery?->discarded($this->safeUsageFailureCode($exception));
@@ -111,15 +119,15 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
                 $exception,
                 true,
                 $errorSanitizer,
-                $this->claimedExecutionLeaseToken,
+                $executionFence,
             );
         }
     }
 
     public function failed(?Throwable $exception = null): void
     {
-        $claimLeaseToken = $this->originalClaimLeaseToken();
-        if ($claimLeaseToken === null) {
+        $executionFence = $this->claimedExecutionFence();
+        if (! $executionFence instanceof EnterpriseKnowledgeExecutionFence) {
             return;
         }
 
@@ -130,19 +138,19 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
                 $exception,
                 true,
                 app(AiExecutionErrorSanitizer::class),
-                $claimLeaseToken,
+                $executionFence,
             );
         }
     }
 
     private function updateProgress(
         EnterpriseKnowledgeProject $project,
+        EnterpriseKnowledgeExecutionFence $executionFence,
         string $step,
         int $progress,
         string $message,
     ): void {
-        $lease = trim((string) ($project->execution_lease_token ?? ''));
-        if ($lease === '') {
+        if ($executionFence->leaseToken === '' || $executionFence->executionAttempt <= 0) {
             throw AiModelAccessException::configAccessRevokedForAdminId(
                 (int) ($project->model_access_admin_id ?? 0),
             );
@@ -156,7 +164,8 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
         $affected = EnterpriseKnowledgeProject::query()
             ->whereKey($project->getKey())
             ->where('status', 'processing')
-            ->where('execution_lease_token', $lease)
+            ->where('execution_lease_token', $executionFence->leaseToken)
+            ->where('execution_attempt', $executionFence->executionAttempt)
             ->where('lease_expires_at', '>', now())
             ->update($attributes);
         if ($affected !== 1) {
@@ -174,12 +183,13 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
      */
     private function persistDraft(
         EnterpriseKnowledgeProject $project,
+        EnterpriseKnowledgeExecutionFence $executionFence,
         string $content,
         array $validationItems,
         array $draft,
         EnterpriseKnowledgeAiExecutionGuard $executionGuard,
     ): void {
-        DB::transaction(function () use ($project, $content, $validationItems, $draft, $executionGuard): void {
+        DB::transaction(function () use ($project, $executionFence, $content, $validationItems, $draft, $executionGuard): void {
             $lockedProject = EnterpriseKnowledgeProject::query()
                 ->whereKey($project->getKey())
                 ->lockForUpdate()
@@ -188,6 +198,7 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
             $executionGuard->assertCurrent(
                 $project,
                 $resolvedModelId > 0 ? $resolvedModelId : $lockedProject->requested_ai_model_id,
+                $executionFence,
             );
 
             $lockedProject->forceFill([
@@ -232,7 +243,7 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
         Throwable $exception,
         bool $retryable,
         AiExecutionErrorSanitizer $errorSanitizer,
-        ?string $claimLeaseToken,
+        EnterpriseKnowledgeExecutionFence $executionFence,
     ): void {
         $fallback = $exception instanceof AiModelAccessException
             ? $exception->getErrorCode()
@@ -243,15 +254,15 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
             $exception instanceof PermanentAiProviderException => $exception->getErrorCode(),
             default => $retryable ? null : $fallback,
         };
-        $claimLeaseToken = trim((string) $claimLeaseToken);
-        if (! Str::isUuid($claimLeaseToken)) {
+        if (! Str::isUuid($executionFence->leaseToken) || $executionFence->executionAttempt <= 0) {
             return;
         }
 
         EnterpriseKnowledgeProject::query()
             ->whereKey($project->getKey())
             ->where('status', 'processing')
-            ->where('execution_lease_token', $claimLeaseToken)
+            ->where('execution_lease_token', $executionFence->leaseToken)
+            ->where('execution_attempt', $executionFence->executionAttempt)
             ->where('lease_expires_at', '>', now())
             ->update([
                 'status' => 'failed',
@@ -270,6 +281,17 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
         $claimLeaseToken = trim((string) ($this->claimLeaseToken ?? ''));
 
         return Str::isUuid($claimLeaseToken) ? $claimLeaseToken : null;
+    }
+
+    private function claimedExecutionFence(): ?EnterpriseKnowledgeExecutionFence
+    {
+        $leaseToken = trim((string) $this->claimedExecutionLeaseToken);
+        $attempt = (int) $this->claimedExecutionAttempt;
+        if (! Str::isUuid($leaseToken) || $attempt <= 0) {
+            return null;
+        }
+
+        return new EnterpriseKnowledgeExecutionFence($leaseToken, $attempt);
     }
 
     private function progressJson(

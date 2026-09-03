@@ -47,7 +47,7 @@ final class EnterpriseKnowledgeAiExecutionGuard
         ];
     }
 
-    /** @return array{project:EnterpriseKnowledgeProject,claimed:bool} */
+    /** @return array{project:EnterpriseKnowledgeProject,claimed:bool,fence:?EnterpriseKnowledgeExecutionFence} */
     public function claim(
         EnterpriseKnowledgeProject $project,
         ?string $claimLeaseToken = null,
@@ -72,7 +72,7 @@ final class EnterpriseKnowledgeAiExecutionGuard
                 default => false,
             };
             if (! $claimable) {
-                return ['project' => $lockedProject, 'claimed' => false];
+                return ['project' => $lockedProject, 'claimed' => false, 'fence' => null];
             }
 
             $lockedProject->forceFill([
@@ -85,23 +85,30 @@ final class EnterpriseKnowledgeAiExecutionGuard
                 'retryable_failure' => true,
             ])->save();
 
-            return ['project' => $lockedProject, 'claimed' => true];
+            return [
+                'project' => $lockedProject,
+                'claimed' => true,
+                'fence' => EnterpriseKnowledgeExecutionFence::fromProject($lockedProject),
+            ];
         }, 3);
     }
 
     public function assertCurrent(
         EnterpriseKnowledgeProject $project,
         AiModel|int|null $model = null,
+        ?EnterpriseKnowledgeExecutionFence $fence = null,
     ): Admin {
+        $fence ??= EnterpriseKnowledgeExecutionFence::fromProject($project);
         $currentProject = $this->lockWhenTransactional(
             EnterpriseKnowledgeProject::query()->whereKey($project->getKey()),
         )->first();
-        $expectedLease = trim((string) ($project->execution_lease_token ?? ''));
+        $expectedLease = $fence->leaseToken;
         $currentLease = trim((string) ($currentProject?->execution_lease_token ?? ''));
         if ($expectedLease === ''
             || (string) ($currentProject?->status ?? '') !== 'processing'
             || $currentLease === ''
             || ! hash_equals($expectedLease, $currentLease)
+            || (int) ($currentProject?->execution_attempt ?? 0) !== $fence->executionAttempt
             || $currentProject?->lease_expires_at === null
             || $currentProject->lease_expires_at->isPast()) {
             throw AiModelAccessException::configAccessRevokedForAdminId(
@@ -112,10 +119,13 @@ final class EnterpriseKnowledgeAiExecutionGuard
         return $this->assertIdentityCurrent($currentProject, $model);
     }
 
-    public function claimedExecutionIsCurrent(EnterpriseKnowledgeProject $project): bool
-    {
+    public function claimedExecutionIsCurrent(
+        EnterpriseKnowledgeProject $project,
+        ?EnterpriseKnowledgeExecutionFence $fence = null,
+    ): bool {
+        $fence ??= EnterpriseKnowledgeExecutionFence::fromProject($project);
         $currentProject = EnterpriseKnowledgeProject::query()->whereKey($project->getKey())->first();
-        $expectedLease = trim((string) ($project->execution_lease_token ?? ''));
+        $expectedLease = $fence->leaseToken;
 
         return $expectedLease !== ''
             && $currentProject instanceof EnterpriseKnowledgeProject
@@ -123,7 +133,7 @@ final class EnterpriseKnowledgeAiExecutionGuard
             && hash_equals($expectedLease, trim((string) $currentProject->execution_lease_token))
             && $currentProject->lease_expires_at !== null
             && ! $currentProject->lease_expires_at->isPast()
-            && (int) $currentProject->execution_attempt === (int) $project->execution_attempt
+            && (int) $currentProject->execution_attempt === $fence->executionAttempt
             && (int) $currentProject->model_access_admin_id === (int) $project->model_access_admin_id
             && (string) $currentProject->model_access_admin_role === (string) $project->model_access_admin_role
             && (int) $currentProject->ai_config_access_version === (int) $project->ai_config_access_version
@@ -132,10 +142,16 @@ final class EnterpriseKnowledgeAiExecutionGuard
     }
 
     /** @return Collection<int, AiModel> */
-    public function resolveCandidates(EnterpriseKnowledgeProject $project): Collection
-    {
+    public function resolveCandidates(
+        EnterpriseKnowledgeProject $project,
+        ?EnterpriseKnowledgeExecutionFence $fence = null,
+    ): Collection {
         $requestedModelId = (int) ($project->requested_ai_model_id ?? 0);
-        $admin = $this->assertCurrent($project, $requestedModelId > 0 ? $requestedModelId : null);
+        $admin = $this->assertCurrent(
+            $project,
+            $requestedModelId > 0 ? $requestedModelId : null,
+            $fence,
+        );
         $candidates = $this->modelAccessResolver->resolveCandidates($admin, 'chat');
         if ($requestedModelId <= 0) {
             return $candidates;
@@ -159,35 +175,46 @@ final class EnterpriseKnowledgeAiExecutionGuard
             ->values();
     }
 
-    public function recordResolvedModel(EnterpriseKnowledgeProject $project, AiModel $model): void
-    {
-        DB::transaction(function () use ($project, $model): void {
+    public function recordResolvedModel(
+        EnterpriseKnowledgeProject $project,
+        AiModel $model,
+        ?EnterpriseKnowledgeExecutionFence $fence = null,
+    ): void {
+        $fence ??= EnterpriseKnowledgeExecutionFence::fromProject($project);
+        $resolvedAttributes = DB::transaction(function () use ($project, $model, $fence): array {
             $lockedProject = EnterpriseKnowledgeProject::query()
                 ->whereKey($project->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
-            $admin = $this->assertCurrent($project, $model);
-            $lockedProject->forceFill([
+            $admin = $this->assertCurrent($project, $model, $fence);
+            $attributes = [
                 'resolved_ai_model_id' => $model->getKey(),
                 'resolved_ai_model_snapshot' => $this->safeModelSnapshot($model),
                 'resolved_model_source' => (int) $model->owner_admin_id === (int) $admin->getKey()
                     ? 'personal'
                     : 'shared',
                 'model_resolved_at' => now(),
-            ])->save();
+            ];
+            $lockedProject->forceFill($attributes)->save();
+
+            return $attributes;
         }, 3);
 
-        $project->refresh();
+        $project->forceFill($resolvedAttributes);
     }
 
-    public function heartbeat(EnterpriseKnowledgeProject $project, AiModel|int $model): void
-    {
-        DB::transaction(function () use ($project, $model): void {
+    public function heartbeat(
+        EnterpriseKnowledgeProject $project,
+        AiModel|int $model,
+        ?EnterpriseKnowledgeExecutionFence $fence = null,
+    ): void {
+        $fence ??= EnterpriseKnowledgeExecutionFence::fromProject($project);
+        DB::transaction(function () use ($project, $model, $fence): void {
             $lockedProject = EnterpriseKnowledgeProject::query()
                 ->whereKey($project->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
-            $this->assertCurrent($project, $model);
+            $this->assertCurrent($project, $model, $fence);
             $lockedProject->forceFill([
                 'lease_expires_at' => now()->addSeconds(self::EXECUTION_LEASE_SECONDS),
             ])->save();
