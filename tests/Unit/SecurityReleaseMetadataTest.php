@@ -96,6 +96,8 @@ class SecurityReleaseMetadataTest extends TestCase
             'GEOFLOW_RELEASE_SIGNER_FINGERPRINT',
             'git verify-tag --raw v3.0.0',
             'GEOFLOW_REMOTE_TAG_COMMIT',
+            'GEOFLOW_FINAL_VERIFY_DIR',
+            'curl -fsSL https://github.com/yaojingang/GEOFlow/releases/latest/download/version.json | cmp',
             'gh release verify-asset v3.0.0',
         ] as $requiredText) {
             $this->assertStringContainsString($requiredText, $runbook);

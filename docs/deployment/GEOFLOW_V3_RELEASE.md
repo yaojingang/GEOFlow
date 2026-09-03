@@ -131,9 +131,16 @@ gh release create v3.0.0 --repo yaojingang/GEOFlow --verify-tag --draft --title 
 set -euo pipefail
 
 export GEOFLOW_VERIFY_DIR="$(mktemp -d /tmp/geoflow-v3-verify.XXXXXX)"
-gh release view v3.0.0 --repo yaojingang/GEOFlow --json tagName,isDraft,isPrerelease,assets,targetCommitish
+gh release view v3.0.0 --repo yaojingang/GEOFlow --json tagName,isDraft,isPrerelease,assets --jq '
+  .tagName == "v3.0.0"
+  and .isDraft == true
+  and .isPrerelease == false
+  and ([.assets[].name] | sort) == (["GEOFlow-v3.0.0.zip", "GEOFlow-v3.0.0.zip.sha256", "version.json"] | sort)
+' | grep -qx true
 gh release download v3.0.0 --repo yaojingang/GEOFlow --dir "$GEOFLOW_VERIFY_DIR"
 (cd "$GEOFLOW_VERIFY_DIR" && shasum -a 256 -c GEOFlow-v3.0.0.zip.sha256)
+cmp "$GEOFLOW_VERIFY_DIR/GEOFlow-v3.0.0.zip" "$GEOFLOW_RELEASE_DIR/GEOFlow-v3.0.0.zip"
+cmp "$GEOFLOW_VERIFY_DIR/GEOFlow-v3.0.0.zip.sha256" "$GEOFLOW_RELEASE_DIR/GEOFlow-v3.0.0.zip.sha256"
 cmp "$GEOFLOW_VERIFY_DIR/version.json" "$GEOFLOW_RELEASE_DIR/version.json"
 ```
 
@@ -158,6 +165,12 @@ gh api "repos/yaojingang/GEOFlow/rulesets/$GEOFLOW_TAG_RULESET_ID" | jq -e '
 '
 test "$(git ls-remote origin 'refs/tags/v3.0.0^{}' | awk '{print $1}')" = "$GEOFLOW_RELEASE_SHA"
 
+export GEOFLOW_FINAL_VERIFY_DIR="$(mktemp -d /tmp/geoflow-v3-final-verify.XXXXXX)"
+gh release download v3.0.0 --repo yaojingang/GEOFlow --dir "$GEOFLOW_FINAL_VERIFY_DIR"
+cmp "$GEOFLOW_FINAL_VERIFY_DIR/GEOFlow-v3.0.0.zip" "$GEOFLOW_RELEASE_DIR/GEOFlow-v3.0.0.zip"
+cmp "$GEOFLOW_FINAL_VERIFY_DIR/GEOFlow-v3.0.0.zip.sha256" "$GEOFLOW_RELEASE_DIR/GEOFlow-v3.0.0.zip.sha256"
+cmp "$GEOFLOW_FINAL_VERIFY_DIR/version.json" "$GEOFLOW_RELEASE_DIR/version.json"
+
 gh release edit v3.0.0 --repo yaojingang/GEOFlow --draft=false --latest
 ```
 
@@ -166,12 +179,18 @@ gh release edit v3.0.0 --repo yaojingang/GEOFlow --draft=false --latest
 ```bash
 set -euo pipefail
 
-gh release view v3.0.0 --repo yaojingang/GEOFlow --json tagName,isDraft,isPrerelease,publishedAt,assets,url
-curl -fsSL https://github.com/yaojingang/GEOFlow/releases/latest/download/version.json | jq -e '.version == "3.0.0" and .tag == "v3.0.0"'
+gh release view v3.0.0 --repo yaojingang/GEOFlow --json tagName,isDraft,isPrerelease,publishedAt,assets,url --jq '
+  .tagName == "v3.0.0"
+  and .isDraft == false
+  and .isPrerelease == false
+  and .publishedAt != null
+  and ([.assets[].name] | sort) == (["GEOFlow-v3.0.0.zip", "GEOFlow-v3.0.0.zip.sha256", "version.json"] | sort)
+' | grep -qx true
+curl -fsSL https://github.com/yaojingang/GEOFlow/releases/latest/download/version.json | cmp - "$GEOFLOW_RELEASE_DIR/version.json"
 gh release verify v3.0.0 --repo yaojingang/GEOFlow
-gh release verify-asset v3.0.0 "$GEOFLOW_VERIFY_DIR/GEOFlow-v3.0.0.zip" --repo yaojingang/GEOFlow
-gh release verify-asset v3.0.0 "$GEOFLOW_VERIFY_DIR/GEOFlow-v3.0.0.zip.sha256" --repo yaojingang/GEOFlow
-gh release verify-asset v3.0.0 "$GEOFLOW_VERIFY_DIR/version.json" --repo yaojingang/GEOFlow
+gh release verify-asset v3.0.0 "$GEOFLOW_FINAL_VERIFY_DIR/GEOFlow-v3.0.0.zip" --repo yaojingang/GEOFlow
+gh release verify-asset v3.0.0 "$GEOFLOW_FINAL_VERIFY_DIR/GEOFlow-v3.0.0.zip.sha256" --repo yaojingang/GEOFlow
+gh release verify-asset v3.0.0 "$GEOFLOW_FINAL_VERIFY_DIR/version.json" --repo yaojingang/GEOFlow
 ```
 
 Core Release 和三个资产确认公开可读后，使用此前通过真实宿主演练的候选 run ID 与证据摘要触发 Updater 发布工作流：
