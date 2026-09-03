@@ -9,6 +9,7 @@ use App\Models\EnterpriseKnowledgeProject;
 use App\Models\EnterpriseKnowledgeRevision;
 use App\Models\EnterpriseKnowledgeSource;
 use App\Models\KnowledgeBase;
+use App\Services\GeoFlow\EnterpriseKnowledgeAiExecutionGuard;
 use App\Services\GeoFlow\EnterpriseKnowledgeDraftService;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use App\Services\GeoFlow\KnowledgeSourceParser;
@@ -16,6 +17,7 @@ use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -35,6 +37,7 @@ class AdminEnterpriseKnowledgeTest extends TestCase
     public function test_admin_can_open_enterprise_knowledge_pages(): void
     {
         $admin = $this->admin();
+        $this->executionModel($admin);
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.enterprise-knowledge.index'))
@@ -54,6 +57,7 @@ class AdminEnterpriseKnowledgeTest extends TestCase
         Queue::fake();
 
         $admin = $this->admin();
+        $this->executionModel($admin);
 
         $response = $this->actingAs($admin, 'admin')
             ->post(route('admin.enterprise-knowledge.store'), [
@@ -76,7 +80,9 @@ class AdminEnterpriseKnowledgeTest extends TestCase
         $this->assertDatabaseMissing('enterprise_knowledge_revisions', [
             'enterprise_knowledge_project_id' => (int) $project->id,
         ]);
-        Queue::assertPushed(GenerateEnterpriseKnowledgeDraftJob::class, fn (GenerateEnterpriseKnowledgeDraftJob $job): bool => $job->projectId === (int) $project->id && $job->adminId === (int) $admin->id
+        Queue::assertPushed(
+            GenerateEnterpriseKnowledgeDraftJob::class,
+            fn (GenerateEnterpriseKnowledgeDraftJob $job): bool => $job->projectId === (int) $project->id,
         );
     }
 
@@ -95,7 +101,10 @@ class AdminEnterpriseKnowledgeTest extends TestCase
     public function test_enterprise_knowledge_generation_job_creates_reviewable_draft(): void
     {
         $admin = $this->admin();
-        $project = EnterpriseKnowledgeProject::query()->create([
+        $model = $this->executionModel($admin);
+        Http::fake(fn () => Http::response([], 500));
+        $identity = DB::transaction(fn (): array => app(EnterpriseKnowledgeAiExecutionGuard::class)->snapshotForCreation($admin, $model));
+        $project = EnterpriseKnowledgeProject::query()->create(array_merge([
             'name' => '异步企业资料',
             'description' => '队列生成测试',
             'status' => 'queued',
@@ -109,7 +118,7 @@ class AdminEnterpriseKnowledgeTest extends TestCase
                 ],
             ], JSON_UNESCAPED_UNICODE),
             'created_by_admin_id' => (int) $admin->id,
-        ]);
+        ], $identity));
         EnterpriseKnowledgeSource::query()->create([
             'enterprise_knowledge_project_id' => (int) $project->id,
             'original_name' => 'source.md',
@@ -119,7 +128,7 @@ class AdminEnterpriseKnowledgeTest extends TestCase
             'sort_order' => 0,
         ]);
 
-        (new GenerateEnterpriseKnowledgeDraftJob((int) $project->id, (int) $admin->id))
+        (new GenerateEnterpriseKnowledgeDraftJob((int) $project->id))
             ->handle(app(EnterpriseKnowledgeDraftService::class));
 
         $project->refresh();
@@ -140,6 +149,8 @@ class AdminEnterpriseKnowledgeTest extends TestCase
     public function test_fallback_draft_is_grounded_in_uploaded_materials(): void
     {
         $admin = $this->admin();
+        $model = $this->executionModel($admin);
+        Http::fake(fn () => Http::response([], 500));
         $project = EnterpriseKnowledgeProject::query()->create([
             'name' => '星河智能企业资料',
             'description' => '制造业设备巡检资料',
@@ -170,7 +181,9 @@ MARKDOWN,
             'sort_order' => 0,
         ]);
 
-        $result = app(EnterpriseKnowledgeDraftService::class)->generateDraft($project->fresh(['sources']));
+        $result = app(EnterpriseKnowledgeDraftService::class)->generateDraft(
+            $this->claimForExecution($project, $admin, $model),
+        );
 
         $this->assertSame('fallback', $result['source']);
         $this->assertStringContainsString('星河智能为制造企业提供设备巡检 SaaS', $result['content']);
@@ -191,6 +204,8 @@ MARKDOWN,
     public function test_enterprise_knowledge_draft_generation_does_not_require_embedding_model(): void
     {
         $admin = $this->admin();
+        $chatModel = $this->executionModel($admin);
+        Http::fake(fn () => Http::response([], 500));
         AiModel::query()->create([
             'name' => 'Embedding Only',
             'version' => 'v1',
@@ -219,7 +234,9 @@ MARKDOWN,
             'sort_order' => 0,
         ]);
 
-        $result = app(EnterpriseKnowledgeDraftService::class)->generateDraft($project->fresh(['sources']));
+        $result = app(EnterpriseKnowledgeDraftService::class)->generateDraft(
+            $this->claimForExecution($project, $admin, $chatModel),
+        );
 
         $this->assertSame('fallback', $result['source']);
         $this->assertNull($result['model_id']);
@@ -243,6 +260,7 @@ MARKDOWN,
             'total_used' => 0,
             'status' => 'active',
         ]);
+        $this->ownModel($model, $admin);
         Http::fake([
             'https://ai.test/*' => Http::response($this->chatCompletion($this->completeDraftContent('AI 结构化企业知识稿')), 200),
         ]);
@@ -262,7 +280,9 @@ MARKDOWN,
             'sort_order' => 0,
         ]);
 
-        $result = app(EnterpriseKnowledgeDraftService::class)->generateDraft($project->fresh(['sources']));
+        $result = app(EnterpriseKnowledgeDraftService::class)->generateDraft(
+            $this->claimForExecution($project, $admin, $model),
+        );
 
         $this->assertSame('ai', $result['source']);
         $this->assertSame((int) $model->id, $result['model_id']);
@@ -274,7 +294,7 @@ MARKDOWN,
     public function test_ai_draft_generation_backfills_source_details_missing_from_model_output(): void
     {
         $admin = $this->admin();
-        AiModel::query()->create([
+        $model = AiModel::query()->create([
             'name' => 'Detail Preserving Chat',
             'version' => 'v1',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
@@ -287,6 +307,7 @@ MARKDOWN,
             'total_used' => 0,
             'status' => 'active',
         ]);
+        $this->ownModel($model, $admin);
         Http::fake([
             'https://ai.test/*' => Http::response($this->chatCompletion($this->completeDraftContent('AI 简化草稿')), 200),
         ]);
@@ -320,7 +341,9 @@ MARKDOWN,
             'sort_order' => 0,
         ]);
 
-        $result = app(EnterpriseKnowledgeDraftService::class)->generateDraft($project->fresh(['sources']));
+        $result = app(EnterpriseKnowledgeDraftService::class)->generateDraft(
+            $this->claimForExecution($project, $admin, $model),
+        );
 
         $this->assertSame('ai', $result['source']);
         $this->assertStringContainsString('### 补充细节', $result['content']);
@@ -334,6 +357,8 @@ MARKDOWN,
     public function test_fallback_draft_preserves_late_details_from_long_sources(): void
     {
         $admin = $this->admin();
+        $model = $this->executionModel($admin);
+        Http::fake(fn () => Http::response([], 500));
         $project = EnterpriseKnowledgeProject::query()->create([
             'name' => '长资料企业知识稿',
             'description' => '测试长资料尾部信息保留',
@@ -354,7 +379,9 @@ MARKDOWN,
             'sort_order' => 0,
         ]);
 
-        $result = app(EnterpriseKnowledgeDraftService::class)->generateDraft($project->fresh(['sources']));
+        $result = app(EnterpriseKnowledgeDraftService::class)->generateDraft(
+            $this->claimForExecution($project, $admin, $model),
+        );
 
         $this->assertSame('fallback', $result['source']);
         $this->assertStringContainsString('第 1 条产品能力', $result['content']);
@@ -366,7 +393,7 @@ MARKDOWN,
     public function test_enterprise_knowledge_draft_generation_rejects_ai_source_numbering_noise(): void
     {
         $admin = $this->admin();
-        AiModel::query()->create([
+        $model = AiModel::query()->create([
             'name' => 'Noisy Chat',
             'version' => 'v1',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
@@ -379,6 +406,7 @@ MARKDOWN,
             'total_used' => 0,
             'status' => 'active',
         ]);
+        $this->ownModel($model, $admin);
         $noisyContent = $this->completeDraftContent('带来源噪音 AI 草稿')
             ."\n\n## 资料覆盖清单\n- [1] profile.md（markdown，36 字）";
         Http::fake([
@@ -400,7 +428,9 @@ MARKDOWN,
             'sort_order' => 0,
         ]);
 
-        $result = app(EnterpriseKnowledgeDraftService::class)->generateDraft($project->fresh(['sources']));
+        $result = app(EnterpriseKnowledgeDraftService::class)->generateDraft(
+            $this->claimForExecution($project, $admin, $model),
+        );
 
         $this->assertSame('fallback', $result['source']);
         $this->assertNull($result['model_id']);
@@ -414,7 +444,7 @@ MARKDOWN,
     public function test_enterprise_knowledge_draft_generation_falls_back_when_ai_response_is_incomplete(): void
     {
         $admin = $this->admin();
-        AiModel::query()->create([
+        $model = AiModel::query()->create([
             'name' => 'Incomplete Chat',
             'version' => 'v1',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
@@ -427,6 +457,7 @@ MARKDOWN,
             'total_used' => 0,
             'status' => 'active',
         ]);
+        $this->ownModel($model, $admin);
         Http::fake([
             'https://ai.test/*' => Http::response($this->chatCompletion("# 企业介绍\n独有内容治理平台。"), 200),
         ]);
@@ -446,7 +477,9 @@ MARKDOWN,
             'sort_order' => 0,
         ]);
 
-        $result = app(EnterpriseKnowledgeDraftService::class)->generateDraft($project->fresh(['sources']));
+        $result = app(EnterpriseKnowledgeDraftService::class)->generateDraft(
+            $this->claimForExecution($project, $admin, $model),
+        );
 
         $this->assertSame('fallback', $result['source']);
         $this->assertNull($result['model_id']);
@@ -547,6 +580,7 @@ MARKDOWN,
         Storage::fake('local');
 
         $admin = $this->admin();
+        $this->executionModel($admin);
         $response = $this->actingAs($admin, 'admin')
             ->post(route('admin.enterprise-knowledge.store'), [
                 'name' => '文件企业资料',
@@ -579,6 +613,7 @@ MARKDOWN,
         Storage::fake('local');
 
         $admin = $this->admin();
+        $this->executionModel($admin);
         $response = $this->actingAs($admin, 'admin')
             ->post(route('admin.enterprise-knowledge.store'), [
                 'name' => 'Markdown 扩展名资料',
@@ -847,6 +882,51 @@ MARKDOWN,
             'role' => 'super_admin',
             'status' => 'active',
         ]);
+    }
+
+    private function executionModel(Admin $admin): AiModel
+    {
+        $model = AiModel::query()->create([
+            'name' => 'Enterprise execution '.uniqid(),
+            'version' => 'v1',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('enterprise-test-key'),
+            'model_id' => 'enterprise-chat-'.uniqid(),
+            'model_type' => 'chat',
+            'api_url' => 'https://ai.test/v1',
+            'failover_priority' => 10,
+            'daily_limit' => 100,
+            'used_today' => 0,
+            'total_used' => 0,
+            'status' => 'active',
+        ]);
+
+        return $this->ownModel($model, $admin);
+    }
+
+    private function ownModel(AiModel $model, Admin $admin): AiModel
+    {
+        $model->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
+
+        return $model;
+    }
+
+    private function claimForExecution(
+        EnterpriseKnowledgeProject $project,
+        Admin $admin,
+        AiModel $model,
+    ): EnterpriseKnowledgeProject {
+        DB::transaction(function () use ($project, $admin, $model): void {
+            $project->forceFill(
+                app(EnterpriseKnowledgeAiExecutionGuard::class)->snapshotForCreation($admin, $model),
+            )->save();
+        });
+
+        $claim = app(EnterpriseKnowledgeAiExecutionGuard::class)->claim($project->refresh());
+
+        return $claim['project']->load('sources');
     }
 
     /**

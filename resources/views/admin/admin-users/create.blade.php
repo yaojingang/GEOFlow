@@ -28,7 +28,7 @@
             </div>
 
             <div class="px-5 py-6 sm:px-6">
-                <x-admin.admin-user-form-fields mode="create" />
+                <x-admin.admin-user-form-fields mode="create" :shared-provider="$sharedProvider" />
             </div>
 
             <div class="flex flex-wrap items-center justify-start gap-3 border-t border-gray-200 bg-gray-50 px-5 py-4 sm:justify-end sm:px-6">

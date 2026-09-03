@@ -3,7 +3,12 @@
 namespace App\Services\GeoFlow;
 
 use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Data\Ai\AiExecutionContext;
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
+use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\Keyword;
 use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
@@ -12,8 +17,13 @@ use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
+use App\Services\Admin\AdminAiModelAccessResolver;
+use App\Services\Admin\AiModelProviderUsageSession;
+use App\Services\Admin\AiModelUsageAttemptFactory;
 use App\Services\Outbound\OutboundRequestBlockedException;
 use App\Services\Outbound\SafeOutboundHttpClient;
+use App\Support\GeoFlow\AiExecutionErrorSanitizer;
+use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use App\Support\LibraryImportPolicy;
@@ -29,11 +39,19 @@ final class UrlImportProcessingService
 {
     private const AI_ANALYSIS_MAX_ATTEMPTS = 3;
 
+    private const EXECUTION_LEASE_SECONDS = 600;
+
     public function __construct(
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly SafeOutboundHttpClient $safeHttp,
         private readonly Factory $http,
         private readonly AiUsageQuotaService $usageQuota,
+        private readonly AdminAiModelAccessResolver $modelAccessResolver,
+        private readonly UrlImportAiExecutionGuard $executionGuard,
+        private readonly AiExecutionErrorSanitizer $errorSanitizer,
+        private readonly AiModelFailoverDecider $failoverDecider,
+        private readonly AiModelUsageAttemptFactory $usageAttempts,
+        private readonly UrlImportExecutionBoundaryHook $executionBoundaryHook,
     ) {}
 
     /**
@@ -62,21 +80,13 @@ final class UrlImportProcessingService
         ];
     }
 
-    public function assertAnalysisModelReady(): AiModel
+    public function assertAnalysisModelReady(Admin $admin): AiModel
     {
-        $lastException = null;
-        foreach ($this->resolveAnalysisModels() as $model) {
-            try {
-                $this->prepareAiRuntime($model);
+        $model = $this->resolveAnalysisModels($admin)->first();
+        if ($model instanceof AiModel) {
+            $this->prepareAiRuntime($model);
 
-                return $model;
-            } catch (Throwable $exception) {
-                $lastException = $exception;
-            }
-        }
-
-        if ($lastException) {
-            throw new \RuntimeException($lastException->getMessage(), 0, $lastException);
+            return $model;
         }
 
         throw new \RuntimeException(__('admin.url_import.error.ai_model_required'));
@@ -85,37 +95,20 @@ final class UrlImportProcessingService
     /**
      * @return Collection<int, AiModel>
      */
-    private function assertAnalysisModelsReady(): Collection
+    private function assertAnalysisModelsReady(UrlImportJob $job): Collection
     {
-        $models = $this->resolveAnalysisModels();
+        $models = $this->executionGuard->resolveCandidates($job);
         if ($models->isEmpty()) {
             throw new \RuntimeException(__('admin.url_import.error.ai_model_required'));
         }
 
-        $ready = collect();
-        $errors = [];
-        foreach ($models as $model) {
-            try {
-                $this->prepareAiRuntime($model);
-                $ready->push($model);
-            } catch (Throwable $exception) {
-                $errors[] = $this->formatModelFailure($model, $exception);
-            }
-        }
-
-        if ($ready->isEmpty()) {
-            throw new \RuntimeException(__('admin.url_import.error.ai_all_models_failed', [
-                'messages' => implode('；', $errors),
-            ]));
-        }
-
-        return $ready;
+        return $models;
     }
 
-    public function hasReadyAnalysisModel(): bool
+    public function hasReadyAnalysisModel(Admin $admin): bool
     {
         try {
-            $this->assertAnalysisModelReady();
+            $this->assertAnalysisModelReady($admin);
 
             return true;
         } catch (Throwable) {
@@ -125,6 +118,27 @@ final class UrlImportProcessingService
 
     public function process(UrlImportJob $job): UrlImportJob
     {
+        $winningUsageSession = null;
+        if (in_array((string) $job->status, ['completed', 'imported'], true)) {
+            return $job->refresh();
+        }
+
+        if ((string) $job->status === 'failed' && ! (bool) $job->retryable_failure) {
+            return $job->refresh();
+        }
+
+        $claim = $this->claimExecution($job);
+        $job = $claim['job'];
+        if (! $claim['claimed']) {
+            return $job;
+        }
+
+        try {
+            $this->executionGuard->assertCurrent($job, $job->requested_ai_model_id);
+        } catch (AiModelAccessException $exception) {
+            return $this->markFailed($job, $exception, false);
+        }
+
         $this->updateStep($job, 'fetch', 10, [
             'status' => 'running',
             'started_at' => now(),
@@ -146,7 +160,7 @@ final class UrlImportProcessingService
                 'chars' => mb_strlen((string) data_get($parsed, 'raw_json.text', ''), 'UTF-8'),
             ]));
 
-            $analysis = $this->buildAnalysis($parsed, $job);
+            $analysis = $this->buildAnalysis($parsed, $job, $winningUsageSession);
 
             $result = [
                 'source' => [
@@ -167,25 +181,23 @@ final class UrlImportProcessingService
             $this->updateStep($job, 'preview', 96);
             $this->log($job, 'info', __('admin.url_import.log.preview_start'));
 
-            $this->updateStep($job, 'preview', 100, [
-                'page_title' => $parsed['title'],
-                'status' => 'completed',
-                'result_json' => json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE),
-                'finished_at' => now(),
-            ]);
+            $this->persistPreview($job, $parsed['title'], $result);
+            $winningUsageSession?->succeeded();
             $this->log($job, 'info', __('admin.url_import.log.preview_ready'));
 
             return $job->refresh();
-        } catch (Throwable $exception) {
-            $job->update([
-                'status' => 'failed',
-                'progress_percent' => 100,
-                'error_message' => $exception->getMessage(),
-                'finished_at' => now(),
-            ]);
-            $this->log($job, 'error', __('admin.url_import.log.failed', ['message' => $exception->getMessage()]));
+        } catch (AiModelAccessException $exception) {
+            $this->finalizeUsageForException($winningUsageSession, $exception, $job);
 
-            return $job->refresh();
+            return $this->markFailed($job, $exception, false);
+        } catch (PermanentAiProviderException $exception) {
+            $this->finalizeUsageForException($winningUsageSession, $exception, $job);
+
+            return $this->markFailed($job, $exception, false);
+        } catch (Throwable $exception) {
+            $this->finalizeUsageForException($winningUsageSession, $exception, $job);
+
+            return $this->markFailed($job, $exception, true);
         }
     }
 
@@ -198,12 +210,7 @@ final class UrlImportProcessingService
         if ($result === []) {
             throw new \RuntimeException(__('admin.url_import.error.commit_before_parse'));
         }
-        if (($result['import']['status'] ?? '') === 'imported' && is_array($result['import']['summary'] ?? null)) {
-            /** @var array{knowledge_base:int,keyword_library:int,title_library:int,keywords:int,titles:int} $summary */
-            $summary = $result['import']['summary'];
-
-            return $summary;
-        }
+        $expectedResultHash = hash('sha256', (string) $job->result_json);
 
         /** @var array<string, mixed> $page */
         $page = is_array($result['page'] ?? null) ? $result['page'] : [];
@@ -244,7 +251,25 @@ final class UrlImportProcessingService
             throw new \RuntimeException(__('admin.url_import.error.ai_titles_missing'));
         }
 
-        $summary = DB::transaction(function () use ($baseName, $knowledgeContent, $knowledgeDescription, $keywords, $titles): array {
+        $summary = DB::transaction(function () use ($job, $expectedResultHash, $baseName, $knowledgeContent, $knowledgeDescription, $keywords, $titles): array {
+            $lockedJob = UrlImportJob::query()->whereKey($job->getKey())->lockForUpdate()->firstOrFail();
+            $lockedResult = $this->decodeResult($lockedJob);
+            if (($lockedResult['import']['status'] ?? '') === 'imported'
+                && is_array($lockedResult['import']['summary'] ?? null)) {
+                return $lockedResult['import']['summary'];
+            }
+
+            $resolvedModelId = (int) ($lockedJob->resolved_ai_model_id ?? 0);
+            $hasResolvedSnapshot = trim((string) ($lockedJob->resolved_ai_model_snapshot ?? '')) !== '';
+            $commitModel = $resolvedModelId > 0
+                ? $resolvedModelId
+                : ($hasResolvedSnapshot ? null : $lockedJob->requested_ai_model_id);
+            $this->executionGuard->assertCommitCurrent(
+                $lockedJob,
+                $expectedResultHash,
+                $commitModel,
+            );
+
             $knowledgeBase = KnowledgeBase::query()->create([
                 'name' => $baseName.' 知识库',
                 'description' => $knowledgeDescription,
@@ -291,26 +316,33 @@ final class UrlImportProcessingService
             }
             $titleLibrary->update(['title_count' => Title::query()->where('library_id', (int) $titleLibrary->id)->count()]);
 
-            return [
+            $summary = [
                 'knowledge_base' => (int) $knowledgeBase->id,
                 'keyword_library' => (int) $keywordLibrary->id,
                 'title_library' => (int) $titleLibrary->id,
                 'keywords' => (int) Keyword::query()->where('library_id', (int) $keywordLibrary->id)->count(),
                 'titles' => (int) Title::query()->where('library_id', (int) $titleLibrary->id)->count(),
             ];
+
+            $lockedResult['import'] = [
+                'status' => 'imported',
+                'imported_at' => now()->toIso8601String(),
+                'summary' => $summary,
+            ];
+            $lockedJob->forceFill([
+                'result_json' => json_encode($lockedResult, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE),
+                'status' => 'imported',
+                'current_step' => 'imported',
+                'progress_percent' => 100,
+                'execution_lease_token' => null,
+                'lease_expires_at' => null,
+            ])->save();
+            $this->log($lockedJob, 'info', __('admin.url_import.log.import_done'));
+
+            return $summary;
         });
 
-        $result['import'] = [
-            'status' => 'imported',
-            'imported_at' => now()->toIso8601String(),
-            'summary' => $summary,
-        ];
-        $job->update([
-            'result_json' => json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE),
-            'current_step' => 'imported',
-            'progress_percent' => 100,
-        ]);
-        $this->log($job, 'info', __('admin.url_import.log.import_done'));
+        $job->refresh();
 
         return $summary;
     }
@@ -406,26 +438,40 @@ final class UrlImportProcessingService
      * @param  array<string, mixed>  $parsed
      * @return array{summary:string,library_name:string,keywords:list<string>,titles:list<string>,knowledge_markdown:string,analysis_source:string,model:mixed}
      */
-    private function buildAnalysis(array $parsed, UrlImportJob $job): array
-    {
+    private function buildAnalysis(
+        array $parsed,
+        UrlImportJob $job,
+        ?AiModelProviderUsageSession &$winningUsageSession,
+    ): array {
         $title = (string) ($parsed['title'] ?? '');
         $text = (string) ($parsed['text'] ?? '');
         $summary = (string) ($parsed['summary'] ?? '');
         $libraryName = $this->safeName($title !== '' ? $title : (string) $job->source_domain);
         $pageJson = $this->buildPageJson($parsed, $job);
 
-        $models = $this->assertAnalysisModelsReady();
+        $models = $this->assertAnalysisModelsReady($job);
         $errors = [];
 
-        foreach ($models as $model) {
+        foreach ($models as $candidateIndex => $model) {
             for ($attempt = 1; $attempt <= self::AI_ANALYSIS_MAX_ATTEMPTS; $attempt++) {
+                $usageSession = $this->urlImportUsageSession(
+                    $job,
+                    $model,
+                    $candidateIndex + 1,
+                    $attempt,
+                );
                 try {
                     $this->log($job, 'info', __('admin.url_import.log.ai_model_attempt', [
                         'model' => $this->modelDisplayName($model),
                         'current' => $attempt,
                         'max' => self::AI_ANALYSIS_MAX_ATTEMPTS,
                     ]), 'knowledge');
-                    $runtime = $this->prepareAiRuntime($model);
+                    $executionAdmin = $this->executionGuard->assertCurrent($job, $model);
+                    try {
+                        $runtime = $this->prepareAiRuntime($model);
+                    } catch (Throwable) {
+                        throw AiModelAccessException::modelUnavailable($executionAdmin, $model);
+                    }
 
                     $this->updateStep($job, 'knowledge', 45);
                     $this->log($job, 'info', __('admin.url_import.log.knowledge_start'));
@@ -433,7 +479,10 @@ final class UrlImportProcessingService
                     $cleaned = $this->normalizeCleanedPage($this->requestAiJson(
                         $runtime,
                         $this->buildCleanSystemPrompt(),
-                        $this->buildCleanUserPrompt($pageJson)
+                        $this->buildCleanUserPrompt($pageJson),
+                        job: $job,
+                        usageSession: $usageSession,
+                        stage: 'clean',
                     ), $parsed);
                     $this->log($job, 'info', __('admin.url_import.log.clean_done', [
                         'chars' => mb_strlen((string) $cleaned['text'], 'UTF-8'),
@@ -442,7 +491,10 @@ final class UrlImportProcessingService
                     $knowledgePayload = $this->requestAiJson(
                         $runtime,
                         $this->buildKnowledgeSystemPrompt(),
-                        $this->buildKnowledgeUserPrompt($pageJson, $cleaned, [])
+                        $this->buildKnowledgeUserPrompt($pageJson, $cleaned, []),
+                        job: $job,
+                        usageSession: $usageSession,
+                        stage: 'knowledge',
                     );
                     $aiSummary = $this->normalizeText($this->aiResponseTextToString($knowledgePayload['summary'] ?? $cleaned['summary'] ?? $summary));
                     $aiLibraryName = $this->safeName($this->aiResponseTextToString($knowledgePayload['library_name'] ?? $cleaned['title'] ?? $libraryName));
@@ -460,7 +512,10 @@ final class UrlImportProcessingService
                         $runtime,
                         $this->buildKeywordsSystemPrompt(),
                         $this->buildKeywordsUserPrompt($pageJson, $cleaned, $aiKnowledge),
-                        'keywords'
+                        'keywords',
+                        $job,
+                        $usageSession,
+                        'keywords',
                     );
                     $keywordValues = $keywordPayload['keywords'] ?? (array_is_list($keywordPayload) ? $keywordPayload : []);
                     $aiKeywords = array_slice($this->cleanKeywordList($this->stringList($keywordValues)), 0, 10);
@@ -475,7 +530,10 @@ final class UrlImportProcessingService
                         $runtime,
                         $this->buildTitlesSystemPrompt(),
                         $this->buildTitlesUserPrompt($pageJson, $cleaned, $aiKnowledge, $aiKeywords),
-                        'titles'
+                        'titles',
+                        $job,
+                        $usageSession,
+                        'titles',
                     );
                     $titleValues = $titlePayload['titles'] ?? (array_is_list($titlePayload) ? $titlePayload : []);
                     $aiTitles = array_slice($this->stringList($titleValues), 0, 50);
@@ -485,6 +543,9 @@ final class UrlImportProcessingService
                     $this->log($job, 'info', __('admin.url_import.log.titles_done', ['count' => count($aiTitles)]));
 
                     $this->log($job, 'info', __('admin.url_import.log.ai_analyze_done', ['model' => $this->modelDisplayName($model)]));
+
+                    $this->executionGuard->recordResolvedModel($job, $model);
+                    $winningUsageSession = $usageSession;
 
                     return [
                         'summary' => $aiSummary !== '' ? $aiSummary : Str::limit($text, 220, '...'),
@@ -500,7 +561,14 @@ final class UrlImportProcessingService
                         'page_json' => $pageJson,
                         'cleaned' => $cleaned,
                     ];
+                } catch (AiModelAccessException|PermanentAiProviderException $exception) {
+                    $this->finalizeUsageForException($usageSession, $exception, $job);
+                    throw $exception;
                 } catch (Throwable $exception) {
+                    $usageSession->discarded('url_import_analysis_retry');
+                    if ($this->failoverDecider->isPermanentProviderFailure($exception)) {
+                        throw PermanentAiProviderException::fromProviderFailure($exception);
+                    }
                     $message = $this->normalizeAiErrorMessage($exception, $model);
                     if ($attempt < self::AI_ANALYSIS_MAX_ATTEMPTS) {
                         $this->log($job, 'warning', __('admin.url_import.log.ai_model_retry', [
@@ -532,18 +600,9 @@ final class UrlImportProcessingService
     /**
      * @return Collection<int, AiModel>
      */
-    private function resolveAnalysisModels(): Collection
+    private function resolveAnalysisModels(Admin $admin): Collection
     {
-        return AiModel::query()
-            ->where('status', 'active')
-            ->where(function ($query): void {
-                $query->whereNull('model_type')
-                    ->orWhere('model_type', '')
-                    ->orWhere('model_type', 'chat');
-            })
-            ->orderBy('failover_priority')
-            ->orderBy('id')
-            ->get();
+        return $this->modelAccessResolver->resolveCandidates($admin, 'chat');
     }
 
     /**
@@ -575,8 +634,15 @@ final class UrlImportProcessingService
      * @param  array{provider:string,model_id:string,model:AiModel}  $runtime
      * @return array<string, mixed>
      */
-    private function requestAiJson(array $runtime, string $systemPrompt, string $userPrompt, ?string $listFallbackKey = null): array
-    {
+    private function requestAiJson(
+        array $runtime,
+        string $systemPrompt,
+        string $userPrompt,
+        ?string $listFallbackKey = null,
+        ?UrlImportJob $job = null,
+        ?AiModelProviderUsageSession $usageSession = null,
+        string $stage = 'analysis',
+    ): array {
         $agent = new MarkdownContentWriterAgent($systemPrompt);
         /** @var AiModel $model */
         $model = $runtime['model'];
@@ -585,13 +651,26 @@ final class UrlImportProcessingService
             throw new \RuntimeException('AI model has reached its daily usage limit.');
         }
 
+        $providerAttempt = null;
+        $providerReturned = false;
         try {
+            if ($job instanceof UrlImportJob) {
+                $this->executionGuard->assertCurrent($job, $model);
+            }
+            $providerAttempt = $usageSession?->begin($stage, $systemPrompt."\n".$userPrompt);
             $response = $agent->prompt(
                 $userPrompt,
                 [],
                 $runtime['provider'],
                 $runtime['model_id']
             );
+            $providerReturned = true;
+            if ($providerAttempt !== null) {
+                $usageSession?->providerReturned($providerAttempt, $response->usage ?? null);
+            }
+            if ($job instanceof UrlImportJob) {
+                $this->executionGuard->assertCurrent($job, $model);
+            }
             $content = $this->aiResponseTextToString($response->text ?? '');
             if ($content === '') {
                 throw new \RuntimeException(__('admin.url_import.error.ai_empty_content'));
@@ -610,8 +689,23 @@ final class UrlImportProcessingService
                     'preview' => $this->previewAiContent($content),
                 ]));
             }
+        } catch (AiModelAccessException|PermanentAiProviderException $exception) {
+            $this->usageQuota->releaseModel($reservation);
+
+            throw $exception;
         } catch (Throwable $exception) {
             $this->usageQuota->releaseModel($reservation);
+            if ($providerAttempt !== null) {
+                if ($providerReturned) {
+                    $usageSession?->providerResultDiscarded(
+                        $providerAttempt,
+                        $response->usage ?? null,
+                        'url_import_invalid_model_output',
+                    );
+                } else {
+                    $usageSession?->providerFailed($providerAttempt, 'url_import_provider_error');
+                }
+            }
 
             throw new \RuntimeException($this->normalizeAiErrorMessage($exception, $model), 0, $exception);
         }
@@ -619,6 +713,122 @@ final class UrlImportProcessingService
         $this->usageQuota->recordModelSuccess($reservation);
 
         return $decoded;
+    }
+
+    private function urlImportUsageSession(
+        UrlImportJob $job,
+        AiModel $model,
+        int $candidateOrdinal,
+        int $businessAttempt,
+    ): AiModelProviderUsageSession {
+        $executionAdminId = (int) ($job->model_access_admin_id ?? 0);
+        $accessVersion = (int) ($job->ai_config_access_version ?? 0);
+        $executionAttempt = (int) ($job->execution_attempt ?? 0);
+        $requestId = trim((string) ($job->execution_lease_token ?? ''));
+        if ($executionAdminId <= 0
+            || $accessVersion <= 0
+            || $executionAttempt <= 0
+            || ! in_array((string) ($job->model_access_admin_role ?? ''), ['admin', 'super_admin'], true)
+            || (int) ($job->resolver_policy_version ?? 0) <= 0
+            || ! Str::isUuid($requestId)) {
+            throw AiModelAccessException::configAccessRevokedForAdminId($executionAdminId);
+        }
+        $providerOrdinal = 0;
+        $modelSource = $this->usageAttempts->sourceFor($model, $executionAdminId);
+
+        return new AiModelProviderUsageSession(function (string $stage, ?string $requestPayload = null) use (
+            &$providerOrdinal,
+            $accessVersion,
+            $businessAttempt,
+            $candidateOrdinal,
+            $executionAdminId,
+            $executionAttempt,
+            $job,
+            $model,
+            $modelSource,
+            $requestId,
+        ) {
+            $providerOrdinal++;
+
+            return $this->usageAttempts->beginForAdmin(
+                model: $model,
+                executionAdminId: $executionAdminId,
+                accessVersion: $accessVersion,
+                executionScope: AiModelUsageEvent::EXECUTION_SCOPE_PERSISTED_ADMIN,
+                modelSource: $modelSource,
+                requestId: $requestId,
+                requestPayload: $requestPayload ?? sprintf('url-import:%d:%s', (int) $job->id, $stage),
+                callKey: sprintf(
+                    'a%d.c%d.t%d.s%s.p%d',
+                    $executionAttempt,
+                    $candidateOrdinal,
+                    $businessAttempt,
+                    $stage,
+                    $providerOrdinal,
+                ),
+                operation: 'url_import.analysis',
+                businessSource: 'url_import',
+                sourceType: UrlImportJob::class,
+                sourceId: (int) $job->id,
+            );
+        });
+    }
+
+    private function finalizeUsageForException(
+        ?AiModelProviderUsageSession $usageSession,
+        Throwable $exception,
+        UrlImportJob $job,
+    ): void {
+        if (! $usageSession instanceof AiModelProviderUsageSession) {
+            return;
+        }
+        if ($exception instanceof AiModelAccessException
+            && $this->isAuthorizationRevocation($exception, $job)) {
+            $usageSession->revoked($exception->getErrorCode());
+
+            return;
+        }
+        $errorCode = match (true) {
+            $exception instanceof AiModelAccessException => 'url_import_execution_invalidated',
+            $exception instanceof PermanentAiProviderException => $exception->getErrorCode(),
+            default => 'url_import_result_not_committed',
+        };
+        $usageSession->discarded($errorCode);
+    }
+
+    private function isAuthorizationRevocation(AiModelAccessException $exception, UrlImportJob $job): bool
+    {
+        if (in_array($exception->getErrorCode(), [
+            AiModelAccessException::AI_MODEL_NOT_ACCESSIBLE,
+            AiModelAccessException::AI_EXECUTION_ADMIN_INACTIVE,
+            AiModelAccessException::AI_CONFIG_OWNER_INACTIVE,
+            AiModelAccessException::AI_MODEL_UNAVAILABLE,
+        ], true)) {
+            return true;
+        }
+        if ($exception->getErrorCode() !== AiModelAccessException::AI_CONFIG_ACCESS_REVOKED) {
+            return false;
+        }
+
+        $currentJob = UrlImportJob::query()->whereKey($job->getKey())->first();
+        if (! $currentJob instanceof UrlImportJob
+            || (string) $currentJob->status !== 'running'
+            || ! hash_equals(
+                trim((string) ($job->execution_lease_token ?? '')),
+                trim((string) ($currentJob->execution_lease_token ?? '')),
+            )) {
+            return false;
+        }
+        $admin = Admin::query()->find((int) $job->model_access_admin_id);
+
+        return (int) $currentJob->model_access_admin_id !== (int) $job->model_access_admin_id
+            || (string) $currentJob->model_access_admin_role !== (string) $job->model_access_admin_role
+            || (int) $currentJob->ai_config_access_version !== (int) $job->ai_config_access_version
+            || (int) $currentJob->resolver_policy_version !== AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION
+            || ! $admin instanceof Admin
+            || (string) $admin->status !== 'active'
+            || (string) $admin->role !== (string) $job->model_access_admin_role
+            || max(1, (int) $admin->ai_config_access_version) !== (int) $job->ai_config_access_version;
     }
 
     private function aiResponseTextToString(mixed $value): string
@@ -689,7 +899,9 @@ final class UrlImportProcessingService
             $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) ($model->api_url ?? ''));
         }
 
-        return OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl);
+        return $this->errorSanitizer->sanitize(
+            OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl),
+        );
     }
 
     private function buildCleanSystemPrompt(): string
@@ -1256,9 +1468,134 @@ PROMPT;
      */
     private function updateStep(UrlImportJob $job, string $step, int $progress, array $extra = []): void
     {
-        $job->update(array_merge([
+        $lease = trim((string) ($job->execution_lease_token ?? ''));
+        if ($lease === '') {
+            throw AiModelAccessException::configAccessRevokedForAdminId(
+                (int) ($job->model_access_admin_id ?? 0),
+            );
+        }
+
+        $attributes = array_merge([
             'current_step' => $step,
             'progress_percent' => max(0, min(100, $progress)),
-        ], $extra));
+            'lease_expires_at' => now()->addSeconds(self::EXECUTION_LEASE_SECONDS),
+        ], $extra);
+        $affected = UrlImportJob::query()
+            ->whereKey($job->getKey())
+            ->where('status', 'running')
+            ->where('execution_lease_token', $lease)
+            ->where('lease_expires_at', '>', now())
+            ->update($attributes);
+        if ($affected !== 1) {
+            throw AiModelAccessException::configAccessRevokedForAdminId(
+                (int) ($job->model_access_admin_id ?? 0),
+            );
+        }
+
+        $job->forceFill($attributes);
+    }
+
+    /** @param array<string, mixed> $result */
+    private function persistPreview(UrlImportJob $job, string $pageTitle, array $result): void
+    {
+        DB::transaction(function () use ($job, $pageTitle, $result): void {
+            $lockedJob = UrlImportJob::query()->whereKey($job->getKey())->lockForUpdate()->firstOrFail();
+            $resolvedModelId = (int) ($lockedJob->resolved_ai_model_id ?? 0);
+            $this->executionGuard->assertCurrent(
+                $lockedJob,
+                $resolvedModelId > 0 ? $resolvedModelId : $lockedJob->requested_ai_model_id,
+            );
+            $lockedJob->forceFill([
+                'current_step' => 'preview',
+                'progress_percent' => 100,
+                'page_title' => $pageTitle,
+                'status' => 'completed',
+                'result_json' => json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE),
+                'error_code' => null,
+                'error_message' => '',
+                'retryable_failure' => true,
+                'execution_lease_token' => null,
+                'lease_expires_at' => null,
+                'finished_at' => now(),
+            ])->save();
+            $this->executionBoundaryHook->beforePreviewCommit($lockedJob);
+        });
+    }
+
+    private function markFailed(
+        UrlImportJob $job,
+        Throwable|string $error,
+        bool $retryable,
+    ): UrlImportJob {
+        $fallback = $error instanceof AiModelAccessException
+            ? $error->getErrorCode()
+            : 'url_import_failed';
+        $message = $this->errorSanitizer->sanitize($error, $fallback);
+        $errorCode = match (true) {
+            $error instanceof AiModelAccessException => $error->getErrorCode(),
+            $error instanceof PermanentAiProviderException => $error->getErrorCode(),
+            default => $retryable ? null : $message,
+        };
+
+        $query = UrlImportJob::query()
+            ->whereKey($job->getKey())
+            ->where('status', 'running')
+            ->where('lease_expires_at', '>', now());
+        $lease = trim((string) ($job->execution_lease_token ?? ''));
+        if ($lease === '') {
+            return $job->refresh();
+        }
+        $query->where('execution_lease_token', $lease);
+        $affected = $query->update([
+            'status' => 'failed',
+            'progress_percent' => 100,
+            'error_code' => $errorCode,
+            'error_message' => $message,
+            'retryable_failure' => $retryable,
+            'execution_lease_token' => null,
+            'lease_expires_at' => null,
+            'finished_at' => now(),
+            'updated_at' => now(),
+        ]);
+        if ($affected !== 1) {
+            return $job->refresh();
+        }
+        $this->log($job, 'error', __('admin.url_import.log.failed', ['message' => $message]));
+
+        return $job->refresh();
+    }
+
+    /** @return array{job:UrlImportJob,claimed:bool} */
+    private function claimExecution(UrlImportJob $job): array
+    {
+        return DB::transaction(function () use ($job): array {
+            $lockedJob = UrlImportJob::query()->whereKey($job->getKey())->lockForUpdate()->firstOrFail();
+            $status = (string) $lockedJob->status;
+            $lease = trim((string) ($lockedJob->execution_lease_token ?? ''));
+            $leaseExpired = $lockedJob->lease_expires_at !== null && $lockedJob->lease_expires_at->isPast();
+            $claimable = match ($status) {
+                'queued' => $lease === '',
+                'failed' => (bool) $lockedJob->retryable_failure && ($lease === '' || $leaseExpired),
+                'running' => $lease === '' || $leaseExpired,
+                default => false,
+            };
+            if (! $claimable) {
+                return ['job' => $lockedJob, 'claimed' => false];
+            }
+
+            $lockedJob->forceFill([
+                'status' => 'running',
+                'execution_lease_token' => (string) Str::uuid(),
+                'execution_attempt' => max(0, (int) $lockedJob->execution_attempt) + 1,
+                'lease_expires_at' => now()->addSeconds(self::EXECUTION_LEASE_SECONDS),
+                'error_code' => null,
+                'error_message' => '',
+                'retryable_failure' => true,
+                'started_at' => $lockedJob->started_at ?: now(),
+                'finished_at' => null,
+            ])->save();
+
+            return ['job' => $lockedJob, 'claimed' => true];
+        });
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\AiModelAccessException;
 use App\Exceptions\TitleGenerationException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\GenerateTitlesWithAiRequest;
@@ -11,6 +12,7 @@ use App\Models\Task;
 use App\Models\Title;
 use App\Models\TitleGenerationRun;
 use App\Models\TitleLibrary;
+use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Services\GeoFlow\TitleGenerationCoordinator;
 use App\Support\AdminWeb;
 use App\Support\LibraryImportPolicy;
@@ -34,7 +36,8 @@ class TitleLibraryController extends Controller
     private const DETAIL_PER_PAGE = 20;
 
     public function __construct(
-        private TitleGenerationCoordinator $titleGenerationCoordinator
+        private TitleGenerationCoordinator $titleGenerationCoordinator,
+        private AdminAiModelAccessResolver $adminAiModelAccessResolver,
     ) {}
 
     /**
@@ -62,11 +65,13 @@ class TitleLibraryController extends Controller
         $usageTotal = (int) (Title::query()->where('library_id', $libraryId)->sum('used_count') ?? 0);
         $generationRun = TitleGenerationRun::query()
             ->where('title_library_id', $libraryId)
+            ->where($this->generationRunActorScope($request))
             ->whereIn('status', [TitleGenerationRun::STATUS_QUEUED, TitleGenerationRun::STATUS_RUNNING])
             ->latest('id')
             ->first();
         $generationRun ??= TitleGenerationRun::query()
             ->where('title_library_id', $libraryId)
+            ->where($this->generationRunActorScope($request))
             ->latest('id')
             ->first();
         $generationStatus = $generationRun ? TitleGenerationStatus::payload($generationRun) : null;
@@ -117,7 +122,7 @@ class TitleLibraryController extends Controller
     /**
      * AI 生成标题页。
      */
-    public function aiGenerate(int $libraryId): View|RedirectResponse
+    public function aiGenerate(Request $request, int $libraryId): View|RedirectResponse
     {
         $library = TitleLibrary::query()->whereKey($libraryId)->firstOrFail();
 
@@ -126,12 +131,10 @@ class TitleLibraryController extends Controller
             ->withCount(['keywords as keyword_count'])
             ->orderByDesc('created_at')
             ->get();
-        $aiModels = AiModel::query()
-            ->select(['id', 'name', 'model_id'])
-            ->where('status', 'active')
+        $aiModels = $this->adminAiModelAccessResolver
+            ->usableQuery($request->user('admin'))
             ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'chat'")
-            ->orderBy('name')
-            ->get();
+            ->get(['id', 'name']);
 
         return view('admin.title-libraries.ai-generate', [
             'pageTitle' => __('admin.title_ai_generate.page_title'),
@@ -161,12 +164,21 @@ class TitleLibraryController extends Controller
         ];
 
         try {
+            $model = AiModel::query()->findOrFail($payload['ai_model_id']);
+            $this->adminAiModelAccessResolver->assertUsable($request->user('admin'), $model);
             $this->titleGenerationCoordinator->start(
                 $library,
                 $payload,
                 (int) $request->user('admin')?->getAuthIdentifier(),
                 app()->getLocale(),
             );
+        } catch (AiModelAccessException $exception) {
+            return back()
+                ->withInput($request->only([
+                    'keyword_library_id', 'ai_model_id', 'title_count', 'title_style',
+                    'custom_prompt', 'confirmed_keyword_reuse',
+                ]))
+                ->withErrors(['ai_model_id' => $exception->getErrorCode()]);
         } catch (TitleGenerationException $exception) {
             return back()
                 ->withInput($request->only([
@@ -188,25 +200,29 @@ class TitleLibraryController extends Controller
             ->with('message', __('admin.title_ai_generate.message.queued'));
     }
 
-    public function generationStatus(int $libraryId, int $runId): JsonResponse
+    public function generationStatus(Request $request, int $libraryId, int $runId): JsonResponse
     {
         $run = TitleGenerationRun::query()
             ->where('title_library_id', $libraryId)
+            ->where($this->generationRunActorScope($request))
             ->whereKey($runId)
             ->firstOrFail();
 
         return response()->json(TitleGenerationStatus::payload($run));
     }
 
-    public function retryGeneration(int $libraryId, int $runId): RedirectResponse
+    public function retryGeneration(Request $request, int $libraryId, int $runId): RedirectResponse
     {
         $run = TitleGenerationRun::query()
             ->where('title_library_id', $libraryId)
+            ->where($this->generationRunActorScope($request))
             ->whereKey($runId)
             ->firstOrFail();
 
         try {
-            $this->titleGenerationCoordinator->retry($run);
+            $this->titleGenerationCoordinator->retry($run, $request->user('admin'));
+        } catch (AiModelAccessException $exception) {
+            return back()->withErrors(['ai_model_id' => $exception->getErrorCode()]);
         } catch (TitleGenerationException $exception) {
             return back()->withErrors($this->generationErrorMessage($exception->reason));
         } catch (Throwable $exception) {
@@ -218,15 +234,16 @@ class TitleLibraryController extends Controller
         return back()->with('message', __('admin.title_ai_generate.message.retry_queued'));
     }
 
-    public function cancelGeneration(int $libraryId, int $runId): RedirectResponse
+    public function cancelGeneration(Request $request, int $libraryId, int $runId): RedirectResponse
     {
         $run = TitleGenerationRun::query()
             ->where('title_library_id', $libraryId)
+            ->where($this->generationRunActorScope($request))
             ->whereKey($runId)
             ->firstOrFail();
 
         try {
-            $this->titleGenerationCoordinator->cancel($run);
+            $this->titleGenerationCoordinator->cancel($run, $request->user('admin'));
         } catch (TitleGenerationException $exception) {
             return back()->withErrors($this->generationErrorMessage($exception->reason));
         } catch (Throwable $exception) {
@@ -793,6 +810,19 @@ class TitleLibraryController extends Controller
             'title_generation_keyword_reuse_confirmation_required' => __('admin.title_ai_generate.error.keyword_reuse_confirmation_required'),
             'title_generation_capacity_exceeded' => __('admin.title_ai_generate.error.capacity_exceeded'),
             default => __('admin.title_ai_generate.error.queue_failed'),
+        };
+    }
+
+    private function generationRunActorScope(Request $request): \Closure
+    {
+        $adminId = (int) $request->user('admin')?->getAuthIdentifier();
+
+        return static function ($query) use ($adminId): void {
+            $query->where('model_access_admin_id', $adminId)
+                ->orWhere(function ($legacy) use ($adminId): void {
+                    $legacy->whereNull('model_access_admin_id')
+                        ->where('created_by_admin_id', $adminId);
+                });
         };
     }
 

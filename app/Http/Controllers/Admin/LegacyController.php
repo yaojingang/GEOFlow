@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
 use App\Models\Prompt;
 use App\Models\Task;
+use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Support\AdminWeb;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -134,13 +136,17 @@ class LegacyController extends Controller
         return $this->stub('admin.materials.page_title', 'materials');
     }
 
-    public function aiConfigurator(): View
+    public function aiConfigurator(Request $request, AdminAiModelAccessResolver $modelAccess): View
     {
+        $actor = $request->user('admin');
+        abort_unless($actor instanceof Admin, 403);
+
         return view('admin.ai-configurator.index', [
             'pageTitle' => __('admin.ai_configurator.page_title'),
             'activeMenu' => 'ai_config',
             'adminSiteName' => AdminWeb::siteName(),
-            'stats' => $this->loadAiConfiguratorStats(),
+            'stats' => $this->loadAiConfiguratorStats($actor, $modelAccess),
+            'showSystemCollectionConfiguration' => $actor->isSuperAdmin(),
         ]);
     }
 
@@ -198,28 +204,31 @@ class LegacyController extends Controller
      *
      * @return array{model_count:int,prompt_count:int,total_usage:int,today_usage:int,search_provider_count:int,search_provider_today_usage:int,visibility_failed_runs:int}
      */
-    private function loadAiConfiguratorStats(): array
+    private function loadAiConfiguratorStats(Admin $actor, AdminAiModelAccessResolver $modelAccess): array
     {
+        $isSuperAdmin = $actor->isSuperAdmin();
         $hasSourceProviderTable = Schema::hasTable('ai_source_providers');
         $hasSourceProviderUsageDate = $hasSourceProviderTable
             && Schema::hasColumn('ai_source_providers', 'usage_date');
+        $ownedModels = AiModel::query()->ownedBy($actor);
+        $configuredModels = $modelAccess->managementQuery($actor)->active()->unarchived();
 
         return [
-            'model_count' => AiModel::query()->where('status', 'active')->count(),
+            'model_count' => (clone $configuredModels)->count(),
             'prompt_count' => Prompt::query()->count(),
-            'total_usage' => (int) (AiModel::query()->sum('total_used') ?? 0),
-            'today_usage' => (int) (AiModel::query()
+            'total_usage' => (int) ((clone $ownedModels)->sum('total_used') ?? 0),
+            'today_usage' => (int) ((clone $ownedModels)
                 ->forCurrentUsageDay()
                 ->sum('used_today') ?? 0),
-            'search_provider_count' => $hasSourceProviderTable
+            'search_provider_count' => $isSuperAdmin && $hasSourceProviderTable
                 ? AiSourceProvider::query()->where('status', 'active')->count()
                 : 0,
-            'search_provider_today_usage' => $hasSourceProviderUsageDate
+            'search_provider_today_usage' => $isSuperAdmin && $hasSourceProviderUsageDate
                 ? (int) (AiSourceProvider::query()
                     ->whereDate('usage_date', now()->toDateString())
                     ->sum('used_today') ?? 0)
                 : 0,
-            'visibility_failed_runs' => Schema::hasTable('ai_visibility_runs')
+            'visibility_failed_runs' => $isSuperAdmin && Schema::hasTable('ai_visibility_runs')
                 ? AiVisibilityRun::query()->where('status', AiVisibilityRun::STATUS_FAILED)->count()
                 : 0,
         ];

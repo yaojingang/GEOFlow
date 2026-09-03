@@ -400,7 +400,7 @@ class AdminTasksPageTest extends TestCase
     public function test_admin_task_form_persists_timeout_sampling_only_when_ai_quality_is_enabled(): void
     {
         $admin = $this->createTaskFormAdmin('tasks_timeout_sampling_admin');
-        $dependencies = $this->createTaskFormDependencies();
+        $dependencies = $this->createTaskFormDependencies($admin);
 
         $this->actingAs($admin, 'admin')
             ->post(route('admin.tasks.store'), $this->validTaskPayload($dependencies, [
@@ -549,6 +549,10 @@ class AdminTasksPageTest extends TestCase
             'api_url' => 'https://api.example.com/v1',
             'status' => 'active',
         ]);
+        $aiModel->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
         $prompt = Prompt::query()->create([
             'name' => '正文提示词',
             'type' => 'content',
@@ -597,7 +601,7 @@ class AdminTasksPageTest extends TestCase
     public function test_admin_can_create_task_with_zero_one_and_five_knowledge_bases(): void
     {
         $admin = $this->createTaskFormAdmin('tasks_multi_kb_create_admin');
-        $dependencies = $this->createTaskFormDependencies();
+        $dependencies = $this->createTaskFormDependencies($admin);
         $knowledgeBases = $this->createKnowledgeBases(5);
 
         $cases = [
@@ -630,7 +634,7 @@ class AdminTasksPageTest extends TestCase
     public function test_admin_cannot_create_task_with_more_than_five_knowledge_bases(): void
     {
         $admin = $this->createTaskFormAdmin('tasks_multi_kb_limit_admin');
-        $dependencies = $this->createTaskFormDependencies();
+        $dependencies = $this->createTaskFormDependencies($admin);
         $knowledgeBaseIds = $this->createKnowledgeBases(6)
             ->pluck('id')
             ->map(static fn ($id): string => (string) $id)
@@ -654,7 +658,7 @@ class AdminTasksPageTest extends TestCase
     {
         $admin = $this->createTaskFormAdmin('hosted_task_contract_admin');
         $admin->update(['role' => 'super_admin']);
-        $dependencies = $this->createTaskFormDependencies();
+        $dependencies = $this->createTaskFormDependencies($admin);
         $channels = collect(['alpha', 'beta'])->map(fn (string $label) => DistributionChannel::query()->create([
             'name' => ucfirst($label).' hosted site',
             'domain' => $label.'.sites.test',
@@ -690,7 +694,7 @@ class AdminTasksPageTest extends TestCase
     public function test_regular_admin_cannot_see_bind_or_edit_a_hosted_site_task(): void
     {
         $admin = $this->createTaskFormAdmin('regular_hosted_task_admin');
-        $dependencies = $this->createTaskFormDependencies();
+        $dependencies = $this->createTaskFormDependencies($admin);
         $channel = DistributionChannel::query()->create([
             'name' => 'Restricted hosted site',
             'domain' => 'restricted.sites.test',
@@ -750,7 +754,7 @@ class AdminTasksPageTest extends TestCase
     public function test_task_form_collapses_knowledge_bases_after_two_rows(): void
     {
         $admin = $this->createTaskFormAdmin('tasks_multi_kb_collapse_admin');
-        $dependencies = $this->createTaskFormDependencies();
+        $dependencies = $this->createTaskFormDependencies($admin);
         $knowledgeBases = $this->createKnowledgeBases(8);
 
         $response = $this->actingAs($admin, 'admin')
@@ -794,7 +798,7 @@ class AdminTasksPageTest extends TestCase
     public function test_admin_can_edit_task_knowledge_base_selection_and_clear_it(): void
     {
         $admin = $this->createTaskFormAdmin('tasks_multi_kb_edit_admin');
-        $dependencies = $this->createTaskFormDependencies();
+        $dependencies = $this->createTaskFormDependencies($admin);
         $knowledgeBases = $this->createKnowledgeBases(3);
 
         $task = Task::query()->create([
@@ -857,7 +861,7 @@ class AdminTasksPageTest extends TestCase
     public function test_stale_task_edit_cannot_restore_distribution_state_after_channel_deletion(): void
     {
         $admin = $this->createTaskFormAdmin('tasks_stale_distribution_edit_admin');
-        $dependencies = $this->createTaskFormDependencies();
+        $dependencies = $this->createTaskFormDependencies($admin);
         $channel = DistributionChannel::query()->create([
             'name' => '即将删除的任务渠道',
             'domain' => 'stale-task-channel.example.com',
@@ -1585,7 +1589,7 @@ class AdminTasksPageTest extends TestCase
     public function test_trashed_task_keeps_referenced_materials_protected_until_expiration(): void
     {
         $admin = $this->createTaskFormAdmin('tasks_trash_material_guard_admin');
-        $dependencies = $this->createTaskFormDependencies();
+        $dependencies = $this->createTaskFormDependencies($admin);
         $imageLibrary = ImageLibrary::query()->create(['name' => '任务回收站图片库']);
         $knowledgeBases = $this->createKnowledgeBases(2);
         $knowledgeBase = $knowledgeBases->firstOrFail();
@@ -1803,17 +1807,23 @@ class AdminTasksPageTest extends TestCase
     /**
      * @return array{ai_model: AiModel, prompt: Prompt, title_library: TitleLibrary, category: Category}
      */
-    private function createTaskFormDependencies(): array
+    private function createTaskFormDependencies(Admin $owner): array
     {
+        $aiModel = new AiModel([
+            'name' => '任务测试模型',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-key'),
+            'model_id' => 'test-model',
+            'model_type' => 'chat',
+            'api_url' => 'https://api.example.com/v1',
+            'status' => 'active',
+        ]);
+        $aiModel->forceFill([
+            'owner_admin_id' => $owner->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
+
         return [
-            'ai_model' => AiModel::query()->create([
-                'name' => '任务测试模型',
-                'api_key' => app(ApiKeyCrypto::class)->encrypt('test-key'),
-                'model_id' => 'test-model',
-                'model_type' => 'chat',
-                'api_url' => 'https://api.example.com/v1',
-                'status' => 'active',
-            ]),
+            'ai_model' => $aiModel,
             'prompt' => Prompt::query()->create([
                 'name' => '任务正文提示词',
                 'type' => 'content',

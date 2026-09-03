@@ -555,6 +555,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::get('/', [AiModelController::class, 'index'])->name('index');
                 Route::get('create', [AiModelController::class, 'create'])->name('create');
                 Route::post('create', [AiModelController::class, 'store'])->name('store');
+                Route::post('personal-defaults', [AiModelController::class, 'updatePersonalDefaults'])->name('personal-defaults');
                 Route::get('{modelId}/edit', [AiModelController::class, 'edit'])->name('edit')->whereNumber('modelId');
                 Route::put('{modelId}', [AiModelController::class, 'update'])->name('update')->whereNumber('modelId');
                 Route::post('{modelId}/test', [AiModelController::class, 'testConnection'])
@@ -562,11 +563,12 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                     ->name('test')
                     ->whereNumber('modelId');
                 Route::post('{modelId}/delete', [AiModelController::class, 'destroy'])->name('delete')->whereNumber('modelId');
-                Route::post('default-embedding', [AiModelController::class, 'updateDefaultEmbedding'])->name('default-embedding');
-                Route::post('chunking-config', [AiModelController::class, 'updateChunkingConfig'])->name('chunking-config');
+                Route::post('default-embedding', [AiModelController::class, 'updateDefaultEmbedding'])->middleware('admin.super')->name('default-embedding');
+                Route::post('chunking-config', [AiModelController::class, 'updateChunkingConfig'])->middleware('admin.super')->name('chunking-config');
             });
             Route::prefix('ai-source-providers')
                 ->name('ai-source-providers.')
+                ->middleware('admin.super')
                 ->where(['providerId' => '[1-9][0-9]{0,17}'])
                 ->group(function () {
                     Route::get('/', [AiSourceProviderController::class, 'index'])->name('index');

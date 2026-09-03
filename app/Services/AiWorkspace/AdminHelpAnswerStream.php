@@ -3,9 +3,13 @@
 namespace App\Services\AiWorkspace;
 
 use App\Contracts\AiWorkspace\AdminHelpResponder;
+use App\Data\Ai\AiWorkspaceExecutionContext;
+use App\Data\Ai\AiWorkspaceModelExecutionReceipt;
+use App\Exceptions\AiModelAccessException;
 use App\Models\Admin;
 use App\Models\AiConversation;
 use App\Models\AiConversationMessage;
+use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use Generator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\StreamedEvent;
@@ -28,6 +32,8 @@ final readonly class AdminHelpAnswerStream
         private AiConversationRepository $conversations,
         private AiWorkspaceModelReadiness $readiness,
         private AdminHelpResponder $responder,
+        private AiWorkspaceExecutionAccessGuard $executionGuard,
+        private AiExecutionErrorSanitizer $errorSanitizer,
     ) {}
 
     public function respond(Admin $admin, AiConversation $conversation, string $question): StreamedResponse
@@ -86,7 +92,7 @@ final readonly class AdminHelpAnswerStream
                 $queryContext,
             );
         } catch (Throwable $exception) {
-            report($exception);
+            report(new RuntimeException($this->errorSanitizer->sanitize($exception)));
             yield $this->errorEvent(
                 'conversation_unavailable',
                 __('admin.ai_workspace.workspace_internal_error'),
@@ -119,6 +125,10 @@ final readonly class AdminHelpAnswerStream
         string $generationId,
         array $queryContext,
     ): Generator {
+        $executionContext = $this->executionGuard->directContext(
+            $admin,
+            requestId: 'ai-workspace-generation:'.$generationId,
+        );
         if ($emitLocalTitle) {
             yield $this->event('title', ['title' => (string) $conversation->title]);
         }
@@ -139,9 +149,9 @@ final readonly class AdminHelpAnswerStream
         $suggestions = $this->catalog->suggestions($entries, $question);
 
         try {
-            $readiness = $this->readiness->status();
+            $readiness = $this->readiness->status($executionContext);
         } catch (Throwable $exception) {
-            report($exception);
+            report(new RuntimeException($this->errorSanitizer->sanitize($exception)));
             $readiness = ['ready' => false, 'reason' => __('admin.ai_workspace.ai_unavailable')];
         }
         if (! (bool) config('ai-workspace.runtime_enabled', false) || ! $readiness['ready']) {
@@ -161,7 +171,7 @@ final readonly class AdminHelpAnswerStream
         $result = null;
 
         try {
-            $stream = $this->responder->stream($question, $knowledgeContext, $history, (int) $admin->getKey());
+            $stream = $this->responder->stream($question, $knowledgeContext, $history, $executionContext);
             foreach ($stream as $responseEvent) {
                 if (connection_aborted()) {
                     return;
@@ -180,6 +190,10 @@ final readonly class AdminHelpAnswerStream
                     continue;
                 }
 
+                $this->assertModelReceiptCurrent(
+                    $executionContext,
+                    is_array($responseEvent) ? ($responseEvent['completion_receipt'] ?? null) : null,
+                );
                 $answer .= $delta;
                 if (! $firstDeltaSent) {
                     $firstDeltaSent = true;
@@ -192,7 +206,7 @@ final readonly class AdminHelpAnswerStream
             }
             $result = $stream->getReturn();
         } catch (Throwable $exception) {
-            report($exception);
+            report(new RuntimeException($this->errorSanitizer->sanitize($exception)));
             yield $this->errorEvent(
                 trim($answer) === '' ? 'ai_unavailable' : 'generation_interrupted',
                 trim($answer) === '' ? __('admin.ai_workspace.ai_unavailable') : __('admin.ai_workspace.generation_interrupted'),
@@ -222,28 +236,47 @@ final readonly class AdminHelpAnswerStream
         }
 
         $generationMeta = is_array($result) && is_array($result['meta'] ?? null)
-            ? $result['meta']
+            ? $this->safeGenerationMeta($result['meta'])
             : [];
         $usage = is_array($result) && is_array($result['usage'] ?? null)
-            ? $result['usage']
+            ? $this->safeUsage($result['usage'])
             : [];
-        $message = $this->conversations->completeGeneration($conversation, $generationId, $completedAnswer, [
-            'knowledge_entry_ids' => array_values(array_map(static fn (array $entry): string => (string) $entry['id'], $entries)),
-            'knowledge_sources' => $retrievedKnowledge['sources'],
-            'knowledge_health' => $retrievedKnowledge['knowledge_health'],
-            'related_media' => $relatedMedia,
-            'related_features' => $relatedFeatures,
-            'suggestions' => $suggestions,
-            'generation' => $generationMeta,
-            'retrieval' => [
-                'mode' => $retrievedKnowledge['retrieval_mode'],
-                'latency_ms' => $retrievedKnowledge['retrieval_latency_ms'],
-                'fallback_reason' => $retrievedKnowledge['fallback_reason'],
-                'evidence_count' => $retrievedKnowledge['evidence_count'],
-                'followup_expanded' => (bool) ($queryContext['followup_expanded'] ?? false),
-            ],
-        ], $usage);
+        $completionReceipt = is_array($result) ? ($result['completion_receipt'] ?? null) : null;
+        $usageDelivery = is_array($result) ? ($result['usage_delivery'] ?? null) : null;
+        try {
+            $message = $this->conversations->completeGeneration($conversation, $generationId, $completedAnswer, [
+                'knowledge_entry_ids' => array_values(array_map(static fn (array $entry): string => (string) $entry['id'], $entries)),
+                'knowledge_sources' => $retrievedKnowledge['sources'],
+                'knowledge_health' => $retrievedKnowledge['knowledge_health'],
+                'related_media' => $relatedMedia,
+                'related_features' => $relatedFeatures,
+                'suggestions' => $suggestions,
+                'generation' => $generationMeta,
+                'retrieval' => [
+                    'mode' => $retrievedKnowledge['retrieval_mode'],
+                    'latency_ms' => $retrievedKnowledge['retrieval_latency_ms'],
+                    'fallback_reason' => $retrievedKnowledge['fallback_reason'],
+                    'evidence_count' => $retrievedKnowledge['evidence_count'],
+                    'followup_expanded' => (bool) ($queryContext['followup_expanded'] ?? false),
+                ],
+            ], $usage, fn () => $this->assertModelReceiptCurrent($executionContext, $completionReceipt));
+        } catch (AiModelAccessException $exception) {
+            if ($usageDelivery instanceof AiWorkspaceModelUsageDelivery) {
+                $usageDelivery->revoked($exception->getErrorCode());
+            }
+
+            throw $exception;
+        } catch (Throwable $exception) {
+            if ($usageDelivery instanceof AiWorkspaceModelUsageDelivery) {
+                $usageDelivery->discarded('ai_result_not_committed');
+            }
+
+            throw $exception;
+        }
         if (! $message instanceof AiConversationMessage) {
+            if ($usageDelivery instanceof AiWorkspaceModelUsageDelivery) {
+                $usageDelivery->discarded('ai_result_not_committed');
+            }
             yield $this->errorEvent(
                 'conversation_closed',
                 __('admin.ai_workspace.conversation_closed'),
@@ -252,6 +285,9 @@ final readonly class AdminHelpAnswerStream
             );
 
             return;
+        }
+        if ($usageDelivery instanceof AiWorkspaceModelUsageDelivery) {
+            $usageDelivery->succeeded();
         }
         $conversation->refresh();
 
@@ -277,6 +313,23 @@ final readonly class AdminHelpAnswerStream
         ]);
     }
 
+    private function assertModelReceiptCurrent(
+        AiWorkspaceExecutionContext $context,
+        mixed $receipt,
+    ): void {
+        if ($receipt instanceof AiWorkspaceModelExecutionReceipt) {
+            $this->executionGuard->assertReceiptCurrent($context, $receipt);
+
+            return;
+        }
+
+        if ($this->responder instanceof AiWorkspaceModelRuntime || ! app()->environment('testing')) {
+            throw AiModelAccessException::configAccessRevokedForAdminId($context->modelAccessAdminId);
+        }
+
+        $this->executionGuard->assertCurrent($context);
+    }
+
     /** @param array<string, mixed> $runtimeEvent */
     private function statusEvent(string $stage, array $runtimeEvent): StreamedEvent
     {
@@ -292,6 +345,39 @@ final readonly class AdminHelpAnswerStream
             'provider' => isset($runtimeEvent['provider']) ? (string) $runtimeEvent['provider'] : null,
             'model' => isset($runtimeEvent['model']) ? (string) $runtimeEvent['model'] : null,
         ], static fn (mixed $value): bool => $value !== null));
+    }
+
+    /** @param array<string,mixed> $meta @return array<string,int|string|bool|null> */
+    private function safeGenerationMeta(array $meta): array
+    {
+        $safe = [];
+        foreach ([
+            'model_started_at', 'provider_first_event_ms', 'ttft_ms', 'total_ms',
+            'attempts', 'fallback_count', 'degraded_count', 'provider', 'model',
+            'finish_reason', 'late_stream_close',
+        ] as $key) {
+            $value = $meta[$key] ?? null;
+            if (is_string($value)) {
+                $safe[$key] = Str::limit($this->errorSanitizer->sanitize($value, ''), 160, '');
+            } elseif (is_int($value) || is_bool($value) || $value === null) {
+                $safe[$key] = $value;
+            }
+        }
+
+        return $safe;
+    }
+
+    /** @param array<string,mixed> $usage @return array<string,int> */
+    private function safeUsage(array $usage): array
+    {
+        $safe = [];
+        foreach (['prompt_tokens', 'completion_tokens', 'total_tokens'] as $key) {
+            if (isset($usage[$key]) && is_numeric($usage[$key])) {
+                $safe[$key] = max(0, (int) $usage[$key]);
+            }
+        }
+
+        return $safe;
     }
 
     /** @return list<mixed> */

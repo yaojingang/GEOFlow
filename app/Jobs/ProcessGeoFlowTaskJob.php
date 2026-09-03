@@ -2,15 +2,20 @@
 
 namespace App\Jobs;
 
+use App\Data\Ai\AiExecutionContext;
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
 use App\Exceptions\TaskTitleReadinessException;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\WorkerHeartbeat;
+use App\Services\GeoFlow\AiExecutionContextFactory;
 use App\Services\GeoFlow\JobQueueService;
 use App\Services\GeoFlow\WorkerExecutionService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -36,8 +41,13 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
      */
     public int $timeout = 300;
 
+    private ?AiExecutionContext $executionContext = null;
+
+    private ?string $claimedExecutionLeaseToken = null;
+
     public function __construct(
-        public readonly int $taskRunId
+        public readonly int $taskRunId,
+        public readonly ?string $claimLeaseToken = null,
     ) {}
 
     /**
@@ -57,10 +67,17 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
         ]));
     }
 
-    public function handle(JobQueueService $queueService, WorkerExecutionService $workerExecutionService): void
-    {
+    public function handle(
+        JobQueueService $queueService,
+        WorkerExecutionService $workerExecutionService,
+        ?AiExecutionContextFactory $contextFactory = null,
+    ): void {
         $workerId = gethostname().':queue:'.getmypid();
-        $job = $queueService->claimPendingJobById($this->taskRunId, $workerId);
+        $job = $queueService->claimPendingJobById(
+            $this->taskRunId,
+            $workerId,
+            $this->claimLeaseToken,
+        );
         if (! is_array($job)) {
             return;
         }
@@ -68,6 +85,21 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
         $taskId = (int) Arr::get($job, 'task_id', 0);
         if ($taskId <= 0) {
             return;
+        }
+        $run = TaskRun::query()->whereKey($this->taskRunId)->first();
+        $context = null;
+        if ($run instanceof TaskRun) {
+            $this->claimedExecutionLeaseToken = trim((string) $run->execution_lease_token);
+            if ($run->model_access_admin_id !== null) {
+                try {
+                    $context = ($contextFactory ?? app(AiExecutionContextFactory::class))->fromTaskRun($run);
+                    $this->executionContext = $context;
+                } catch (AiModelAccessException) {
+                    // WorkerExecutionService only permits a missing context for model-free work,
+                    // such as publishing an already generated approved draft.
+                    $context = null;
+                }
+            }
         }
 
         $this->heartbeat($workerId, 'running', [
@@ -79,15 +111,47 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
 
         $startedAt = microtime(true);
         try {
-            $result = $workerExecutionService->executeTask($taskId);
+            $result = $context === null
+                ? $workerExecutionService->executeTask($taskId)
+                : $workerExecutionService->executeTask($taskId, $context);
             $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
 
-            $queueService->completeJob(
-                jobId: $this->taskRunId,
-                taskId: $taskId,
-                articleId: Arr::get($result, 'article_id') !== null ? (int) Arr::get($result, 'article_id') : null,
-                durationMs: $durationMs,
-                meta: is_array(Arr::get($result, 'meta')) ? Arr::get($result, 'meta') : []
+            $alreadyCompleted = $context instanceof AiExecutionContext
+                && TaskRun::query()
+                    ->whereKey($this->taskRunId)
+                    ->where('status', 'completed')
+                    ->exists();
+            if (! $alreadyCompleted) {
+                $queueService->completeJob(
+                    jobId: $this->taskRunId,
+                    taskId: $taskId,
+                    articleId: Arr::get($result, 'article_id') !== null ? (int) Arr::get($result, 'article_id') : null,
+                    durationMs: $durationMs,
+                    meta: is_array(Arr::get($result, 'meta')) ? Arr::get($result, 'meta') : [],
+                    executionContext: $context,
+                    executionLeaseToken: $this->effectiveExecutionLeaseToken(),
+                    rejectStaleExecution: $context instanceof AiExecutionContext,
+                );
+            }
+        } catch (AiModelAccessException $exception) {
+            $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
+            $queueService->failForAiAuthorization(
+                $this->taskRunId,
+                $taskId,
+                $exception->getErrorCode(),
+                $durationMs,
+                $context,
+                $this->effectiveExecutionLeaseToken(),
+            );
+        } catch (PermanentAiProviderException $exception) {
+            $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
+            $queueService->failForPermanentAiProviderError(
+                $this->taskRunId,
+                $taskId,
+                $exception->getErrorCode(),
+                $durationMs,
+                $context,
+                $this->effectiveExecutionLeaseToken(),
             );
         } catch (TaskTitleReadinessException $exception) {
             $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
@@ -98,9 +162,14 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
                     $exception->getMessage(),
                     $durationMs,
                     $exception->getDetails()['title_readiness'] ?? [],
+                    $context,
+                    $this->effectiveExecutionLeaseToken(),
                 );
             } catch (Throwable $persistenceException) {
-                report($persistenceException);
+                Log::warning('GeoFlow task configuration failure could not be persisted.', [
+                    'task_run_id' => $this->taskRunId,
+                    'exception_type' => $persistenceException::class,
+                ]);
 
                 throw $exception;
             }
@@ -109,9 +178,22 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
             $message = $exception->getMessage();
 
             if ($this->shouldCancel($taskId, $message)) {
-                $queueService->cancelJob($this->taskRunId, $taskId, '管理员手动停止');
+                $queueService->cancelJob(
+                    $this->taskRunId,
+                    $taskId,
+                    '管理员手动停止',
+                    $context,
+                    $this->effectiveExecutionLeaseToken(),
+                );
             } else {
-                $queueService->failJob($this->taskRunId, $taskId, $message, $durationMs);
+                $queueService->failJob(
+                    $this->taskRunId,
+                    $taskId,
+                    $message,
+                    $durationMs,
+                    executionContext: $context,
+                    executionLeaseToken: $this->effectiveExecutionLeaseToken(),
+                );
             }
         } finally {
             $this->heartbeat($workerId, 'idle', [
@@ -140,6 +222,37 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
             }
 
             $queueService = app(JobQueueService::class);
+            $context = $this->executionContext;
+            if (! $context instanceof AiExecutionContext
+                && $this->effectiveExecutionLeaseToken() === null
+                && ((bool) config('geoflow.admin_ai_access.access_enforce_enabled', false)
+                    || (bool) config('geoflow.admin_ai_access.revocation_enforce_enabled', false))) {
+                return;
+            }
+            if ($exception instanceof AiModelAccessException) {
+                $queueService->failForAiAuthorization(
+                    (int) $run->id,
+                    (int) $run->task_id,
+                    $exception->getErrorCode(),
+                    0,
+                    $context,
+                    $this->effectiveExecutionLeaseToken(),
+                );
+
+                return;
+            }
+            if ($exception instanceof PermanentAiProviderException) {
+                $queueService->failForPermanentAiProviderError(
+                    (int) $run->id,
+                    (int) $run->task_id,
+                    $exception->getErrorCode(),
+                    0,
+                    $context,
+                    $this->effectiveExecutionLeaseToken(),
+                );
+
+                return;
+            }
             if ($exception instanceof TaskTitleReadinessException) {
                 $queueService->failForTaskConfiguration(
                     (int) $run->id,
@@ -147,6 +260,8 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
                     $exception->getMessage(),
                     0,
                     $exception->getDetails()['title_readiness'] ?? [],
+                    $context,
+                    $this->effectiveExecutionLeaseToken(),
                 );
 
                 return;
@@ -156,11 +271,20 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
                 (int) $run->id,
                 (int) $run->task_id,
                 '队列中断: '.$message,
-                0
+                0,
+                executionContext: $context,
+                executionLeaseToken: $this->effectiveExecutionLeaseToken(),
             );
         } catch (Throwable) {
             // 避免失败回调自身再抛错导致 Horizon 日志刷屏
         }
+    }
+
+    private function effectiveExecutionLeaseToken(): ?string
+    {
+        $token = trim((string) ($this->claimedExecutionLeaseToken ?? $this->claimLeaseToken));
+
+        return $token !== '' ? $token : null;
     }
 
     /**

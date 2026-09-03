@@ -2,12 +2,19 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Data\Ai\AiExecutionContext;
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
 use App\Jobs\ProcessGeoFlowTaskJob;
+use App\Models\Article;
 use App\Models\Task;
 use App\Models\TaskRun;
+use App\Support\GeoFlow\AiExecutionErrorSanitizer;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -24,6 +31,17 @@ use Throwable;
  */
 class JobQueueService
 {
+    private const ALLOWED_JOB_TYPES = ['generate_article'];
+
+    private const ALLOWED_PAYLOAD_SOURCES = ['api_enqueue', 'api_manual_start', 'follow_up_generation'];
+
+    public function __construct(
+        private readonly AiExecutionContextFactory $aiExecutionContextFactory,
+        private readonly AiExecutionAccessGuard $aiExecutionAccessGuard,
+        private readonly AiExecutionErrorSanitizer $aiExecutionErrorSanitizer,
+        private readonly ArticleAiQualityGate $articleAiQualityGate,
+    ) {}
+
     /**
      * 初始化任务调度字段。
      *
@@ -91,11 +109,21 @@ class JobQueueService
      */
     public function enqueueTaskJob(int $taskId, string $jobType = 'generate_article', array $payload = [], ?string $availableAt = null): ?int
     {
+        $jobType = in_array($jobType, self::ALLOWED_JOB_TYPES, true) ? $jobType : 'generate_article';
         $run = DB::transaction(function () use ($taskId, $jobType, $payload, $availableAt): ?TaskRun {
             $taskRow = Task::query()
                 ->whereKey($taskId)
                 ->lockForUpdate()
-                ->first(['id', 'status', 'schedule_enabled', 'max_retry_count']);
+                ->first([
+                    'id',
+                    'status',
+                    'schedule_enabled',
+                    'max_retry_count',
+                    'ai_model_id',
+                    'model_access_admin_id',
+                    'model_access_admin_role',
+                    'model_access_policy_version',
+                ]);
             if (! $taskRow
                 || ($taskRow->status ?? 'paused') !== 'active'
                 || (int) ($taskRow->schedule_enabled ?? 1) !== 1) {
@@ -114,14 +142,15 @@ class JobQueueService
 
             $maxAttempts = max(1, (int) ($taskRow->max_retry_count ?? 3));
             $availableAtValue = $availableAt ? Carbon::parse($availableAt) : now();
+            $executionIdentity = $this->aiExecutionContextFactory->taskRunIdentity($taskRow);
 
             // 建立“待执行记录”，作为后续状态流转的唯一主记录。
-            return TaskRun::query()->create([
+            $run = TaskRun::query()->create([
                 'task_id' => $taskId,
                 'status' => 'pending',
                 'meta' => [
                     'job_type' => $jobType,
-                    'payload' => $payload,
+                    'payload' => $this->sanitizeQueuePayload($payload),
                     'attempt_count' => 0,
                     'max_attempts' => $maxAttempts,
                     'available_at' => $availableAtValue->toDateTimeString(),
@@ -129,6 +158,9 @@ class JobQueueService
                 'started_at' => null,
                 'finished_at' => null,
             ]);
+            $run->forceFill($executionIdentity)->save();
+
+            return $run;
         });
         if (! $run) {
             return null;
@@ -147,21 +179,27 @@ class JobQueueService
      *
      * @return array<string,mixed>|null
      */
-    public function claimPendingJobById(int $jobId, string $workerId): ?array
-    {
-        $claimedJob = DB::transaction(function () use ($jobId, $workerId): ?array {
-            // 使用悲观锁 + 状态条件，确保同一条记录只会被一个 worker 成功 claim。
-            $run = TaskRun::query()
-                ->with('task:id,status,schedule_enabled,publish_interval')
+    public function claimPendingJobById(
+        int $jobId,
+        string $workerId,
+        ?string $claimLeaseToken = null,
+    ): ?array {
+        $claimedJob = DB::transaction(function () use ($jobId, $workerId, $claimLeaseToken): ?array {
+            $taskId = (int) (TaskRun::query()
                 ->whereKey($jobId)
                 ->where('status', 'pending')
-                ->lockForUpdate()
-                ->first();
+                ->value('task_id') ?? 0);
+            if ($taskId <= 0) {
+                return null;
+            }
+
+            // 所有 Worker 写事务固定按 Task -> TaskRun -> Article 获取行锁。
+            $task = $this->lockTaskForClaim($taskId);
+            $run = $this->lockRunForClaim($jobId, $taskId);
 
             if (! $run) {
                 return null;
             }
-            $task = $run->task;
             // 任务未激活或调度被关闭时，不允许执行。
             if (! $task || ($task->status ?? 'paused') !== 'active' || (int) ($task->schedule_enabled ?? 1) !== 1) {
                 TaskRun::query()
@@ -171,6 +209,7 @@ class JobQueueService
                         'status' => 'cancelled',
                         'finished_at' => now(),
                         'error_message' => '任务未启用，已取消待执行记录',
+                        'execution_lease_token' => null,
                     ]);
 
                 return null;
@@ -183,12 +222,14 @@ class JobQueueService
                 return null;
             }
 
+            $executionLeaseToken = $this->normalizeClaimLeaseToken($claimLeaseToken);
             $affected = TaskRun::query()
                 ->whereKey($jobId)
                 ->where('status', 'pending')
                 ->update([
                     'status' => 'running',
                     'started_at' => now(),
+                    'execution_lease_token' => $executionLeaseToken,
                     'meta' => array_merge($meta, ['worker_id' => $workerId]),
                 ]);
 
@@ -196,9 +237,20 @@ class JobQueueService
                 return null;
             }
 
+            $run->forceFill([
+                'status' => 'running',
+                'started_at' => now(),
+                'execution_lease_token' => $executionLeaseToken,
+                'meta' => array_merge($meta, ['worker_id' => $workerId]),
+            ]);
+            if (! $this->executionIdentityAllowsDispatch($run)) {
+                return null;
+            }
+
             // 返回轻量执行上下文，供 ProcessGeoFlowTaskJob 使用。
             $row = $run->getAttributes();
             $row['status'] = 'running';
+            unset($row['execution_lease_token']);
             $row['worker_id'] = $workerId;
             $row['publish_interval'] = (int) ($task->publish_interval ?? 0);
             $row['task_status'] = (string) ($task->status ?? 'paused');
@@ -227,14 +279,38 @@ class JobQueueService
         return null;
     }
 
+    public function lockRunningJobForWorker(AiExecutionContext $executionContext, int $taskId): void
+    {
+        $runQuery = TaskRun::query()
+            ->whereKey($executionContext->taskRunId)
+            ->where('task_id', $taskId)
+            ->where('status', 'running');
+        $this->constrainRunToExecutionContext(
+            $runQuery,
+            $executionContext,
+            $executionContext->executionLeaseToken(),
+        );
+        if (! $runQuery->lockForUpdate()->first() instanceof TaskRun) {
+            throw AiModelAccessException::configAccessRevokedForAdminId($executionContext->modelAccessAdminId);
+        }
+    }
+
     /**
      * 处理成功完成：回写执行记录 + 任务最近成功状态。
      *
      * @param  array<string,mixed>  $meta  执行产物元数据（如模型信息、trace 信息等）
      */
-    public function completeJob(int $jobId, int $taskId, ?int $articleId, int $durationMs, array $meta = []): void
-    {
-        $completed = DB::transaction(function () use ($jobId, $taskId, $articleId, $durationMs, $meta): bool {
+    public function completeJob(
+        int $jobId,
+        int $taskId,
+        ?int $articleId,
+        int $durationMs,
+        array $meta = [],
+        ?AiExecutionContext $executionContext = null,
+        ?string $executionLeaseToken = null,
+        bool $rejectStaleExecution = false,
+    ): void {
+        $completed = DB::transaction(function () use ($jobId, $taskId, $articleId, $durationMs, $meta, $executionContext, $executionLeaseToken): bool {
             $task = Task::query()
                 ->whereKey($taskId)
                 ->lockForUpdate()
@@ -243,21 +319,26 @@ class JobQueueService
                 return false;
             }
 
-            $affected = TaskRun::query()
+            $runQuery = TaskRun::query()
                 ->whereKey($jobId)
                 ->where('task_id', $taskId)
-                ->where('status', 'running')
-                ->update([
-                    'status' => 'completed',
-                    'finished_at' => now(),
-                    'article_id' => $articleId,
-                    'duration_ms' => $durationMs,
-                    'meta' => $meta,
-                    'error_message' => '',
-                ]);
-            if ($affected !== 1) {
+                ->where('status', 'running');
+            $this->constrainRunToExecutionContext($runQuery, $executionContext, $executionLeaseToken);
+            $run = $runQuery->lockForUpdate()->first();
+            if (! $run instanceof TaskRun) {
                 return false;
             }
+
+            $run->forceFill([
+                'status' => 'completed',
+                'finished_at' => now(),
+                'article_id' => $articleId,
+                'duration_ms' => $durationMs,
+                'meta' => $this->aiExecutionErrorSanitizer->sanitizeMeta($meta),
+                'error_message' => '',
+                'error_code' => null,
+                'execution_lease_token' => null,
+            ])->save();
 
             Task::query()->whereKey($taskId)->update([
                 'last_run_at' => now(),
@@ -270,6 +351,10 @@ class JobQueueService
             return true;
         });
         if (! $completed) {
+            if ($rejectStaleExecution && $executionContext instanceof AiExecutionContext) {
+                throw AiModelAccessException::configAccessRevokedForAdminId($executionContext->modelAccessAdminId);
+            }
+
             return;
         }
 
@@ -284,29 +369,38 @@ class JobQueueService
      * - attempt_count < max_attempts: 状态重置为 pending，写入下次 available_at，并再次 dispatch；
      * - 否则：状态置为 failed，结束本次执行生命周期。
      */
-    public function failJob(int $jobId, int $taskId, string $errorMessage, int $durationMs, int $retryDelaySeconds = 60): void
-    {
-        $result = DB::transaction(function () use ($jobId, $taskId, $errorMessage, $durationMs, $retryDelaySeconds): array {
+    public function failJob(
+        int $jobId,
+        int $taskId,
+        string $errorMessage,
+        int $durationMs,
+        int $retryDelaySeconds = 60,
+        ?AiExecutionContext $executionContext = null,
+        ?string $executionLeaseToken = null,
+    ): void {
+        $errorMessage = $this->aiExecutionErrorSanitizer->sanitize($errorMessage);
+        $result = DB::transaction(function () use ($jobId, $taskId, $errorMessage, $durationMs, $retryDelaySeconds, $executionContext, $executionLeaseToken): array {
             $task = Task::query()
                 ->whereKey($taskId)
                 ->lockForUpdate()
                 ->first(['id', 'status', 'schedule_enabled']);
-            $run = TaskRun::query()
+
+            $runQuery = TaskRun::query()
                 ->whereKey($jobId)
                 ->where('task_id', $taskId)
-                ->where('status', 'running')
-                ->lockForUpdate()
-                ->first();
-            if (! $run) {
+                ->where('status', 'running');
+            $this->constrainRunToExecutionContext($runQuery, $executionContext, $executionLeaseToken);
+            $run = $runQuery->lockForUpdate()->first();
+            if (! $run instanceof TaskRun) {
                 return ['changed' => false, 'retry' => false, 'available_at' => null];
             }
-
             if (! $task || ($task->status ?? 'paused') !== 'active' || (int) ($task->schedule_enabled ?? 1) !== 1) {
                 $run->update([
                     'status' => 'cancelled',
                     'finished_at' => now(),
                     'error_message' => '任务已删除或停用',
                     'duration_ms' => $durationMs,
+                    'execution_lease_token' => null,
                 ]);
 
                 return ['changed' => true, 'retry' => false, 'available_at' => null];
@@ -325,13 +419,21 @@ class JobQueueService
                 'available_at' => $shouldRetry ? $nextAvailableAt->toDateTimeString() : ($runMeta['available_at'] ?? ''),
             ]);
 
-            $run->update([
+            $runUpdate = [
                 'status' => $shouldRetry ? 'pending' : 'failed',
                 'error_message' => $errorMessage,
                 'duration_ms' => $durationMs,
                 'finished_at' => $shouldRetry ? null : now(),
+                'execution_lease_token' => null,
                 'meta' => $newMeta,
-            ]);
+            ];
+            if ($shouldRetry) {
+                $runUpdate['resolved_ai_model_id'] = null;
+                $runUpdate['resolved_model_source'] = null;
+                $runUpdate['model_resolved_at'] = null;
+                $runUpdate['error_code'] = null;
+            }
+            $run->forceFill($runUpdate)->save();
 
             Task::query()->whereKey($taskId)->update([
                 'last_run_at' => now(),
@@ -354,6 +456,110 @@ class JobQueueService
         $this->broadcastOverviewUpdate();
     }
 
+    public function failForAiAuthorization(
+        int $jobId,
+        int $taskId,
+        string $errorCode,
+        int $durationMs,
+        ?AiExecutionContext $executionContext = null,
+        ?string $executionLeaseToken = null,
+    ): void {
+        $changed = DB::transaction(function () use ($jobId, $taskId, $errorCode, $durationMs, $executionContext, $executionLeaseToken): bool {
+            $task = Task::query()
+                ->whereKey($taskId)
+                ->lockForUpdate()
+                ->first(['id']);
+            if (! $task instanceof Task) {
+                return false;
+            }
+
+            $runQuery = TaskRun::query()
+                ->whereKey($jobId)
+                ->where('task_id', $taskId)
+                ->where('status', 'running');
+            $this->constrainRunToExecutionContext($runQuery, $executionContext, $executionLeaseToken);
+            $run = $runQuery->lockForUpdate()->first();
+            if (! $run) {
+                return false;
+            }
+
+            $this->permanentlyFailAuthorizationRun($run, $errorCode, $durationMs);
+
+            Task::query()->whereKey($taskId)->update([
+                'last_run_at' => now(),
+                'last_error_at' => now(),
+                'last_error_message' => $errorCode,
+                'updated_at' => now(),
+            ]);
+
+            return true;
+        });
+
+        if ($changed) {
+            $this->broadcastOverviewUpdate();
+        }
+    }
+
+    public function failForPermanentAiProviderError(
+        int $jobId,
+        int $taskId,
+        string $errorCode,
+        int $durationMs,
+        ?AiExecutionContext $executionContext = null,
+        ?string $executionLeaseToken = null,
+    ): void {
+        $errorCode = $errorCode === PermanentAiProviderException::ERROR_CODE
+            ? $errorCode
+            : PermanentAiProviderException::ERROR_CODE;
+        $changed = DB::transaction(function () use ($jobId, $taskId, $errorCode, $durationMs, $executionContext, $executionLeaseToken): bool {
+            $task = Task::query()
+                ->whereKey($taskId)
+                ->lockForUpdate()
+                ->first(['id']);
+            if (! $task instanceof Task) {
+                return false;
+            }
+
+            $runQuery = TaskRun::query()
+                ->whereKey($jobId)
+                ->where('task_id', $taskId)
+                ->where('status', 'running');
+            $this->constrainRunToExecutionContext($runQuery, $executionContext, $executionLeaseToken);
+            $run = $runQuery->lockForUpdate()->first();
+            if (! $run instanceof TaskRun) {
+                return false;
+            }
+
+            $meta = $this->normalizeMeta($run->meta);
+            $meta['retryable'] = false;
+            $meta['failure_class'] = 'provider_permanent';
+            $meta['error_code'] = $errorCode;
+            $meta['last_error'] = $errorCode;
+            $run->forceFill([
+                'status' => 'failed',
+                'error_code' => $errorCode,
+                'error_message' => $errorCode,
+                'duration_ms' => $durationMs,
+                'finished_at' => now(),
+                'execution_lease_token' => null,
+                'meta' => $meta,
+            ])->save();
+
+            Task::query()->whereKey($taskId)->update([
+                'last_run_at' => now(),
+                'last_error_at' => now(),
+                'last_error_message' => $errorCode,
+                'updated_at' => now(),
+            ]);
+
+            return true;
+        });
+
+        if ($changed) {
+            $this->broadcastOverviewUpdate();
+        }
+    }
+
     /**
      * 将不可重试的标题库配置错误标记为终态，并暂停任务阻止后续无效调度。
      *
@@ -365,18 +571,27 @@ class JobQueueService
         string $errorMessage,
         int $durationMs,
         array $details = [],
+        ?AiExecutionContext $executionContext = null,
+        ?string $executionLeaseToken = null,
     ): void {
-        $changed = DB::transaction(function () use ($jobId, $taskId, $errorMessage, $durationMs, $details): bool {
+        $errorMessage = $this->aiExecutionErrorSanitizer->sanitize($errorMessage, 'Task configuration failed');
+        $details = $this->aiExecutionErrorSanitizer->sanitizeMeta($details);
+        $changed = DB::transaction(function () use ($jobId, $taskId, $errorMessage, $durationMs, $details, $executionContext, $executionLeaseToken): bool {
             $task = Task::query()
                 ->whereKey($taskId)
                 ->lockForUpdate()
                 ->first(['id']);
-            $run = TaskRun::query()
+            if (! $task instanceof Task) {
+                return false;
+            }
+
+            $runQuery = TaskRun::query()
                 ->whereKey($jobId)
                 ->where('task_id', $taskId)
-                ->lockForUpdate()
-                ->first();
-            if (! $task || ! $run || $run->status !== 'running') {
+                ->where('status', 'running');
+            $this->constrainRunToExecutionContext($runQuery, $executionContext, $executionLeaseToken);
+            $run = $runQuery->lockForUpdate()->first();
+            if (! $run instanceof TaskRun) {
                 return false;
             }
 
@@ -393,6 +608,7 @@ class JobQueueService
                 'error_message' => $errorMessage,
                 'duration_ms' => $durationMs,
                 'finished_at' => now(),
+                'execution_lease_token' => null,
                 'meta' => $meta,
             ]);
             TaskRun::query()
@@ -425,18 +641,30 @@ class JobQueueService
     /**
      * 主动取消执行（如管理员手动停止任务）。
      */
-    public function cancelJob(int $jobId, int $taskId, string $reason = '管理员手动停止'): void
-    {
-        $cancelled = TaskRun::query()
+    public function cancelJob(
+        int $jobId,
+        int $taskId,
+        string $reason = '管理员手动停止',
+        ?AiExecutionContext $executionContext = null,
+        ?string $executionLeaseToken = null,
+    ): void {
+        $reason = $this->aiExecutionErrorSanitizer->sanitize($reason, '任务已取消');
+        $query = TaskRun::query()
             ->whereKey($jobId)
             ->where('task_id', $taskId)
-            ->where('status', 'running')
-            ->update([
-                'status' => 'cancelled',
-                'finished_at' => now(),
-                'error_message' => $reason,
-                'duration_ms' => 0,
-            ]);
+            ->where('status', 'running');
+        if ($executionContext instanceof AiExecutionContext) {
+            $this->constrainRunToExecutionContext($query, $executionContext, $executionLeaseToken);
+        } elseif (is_string($executionLeaseToken) && $executionLeaseToken !== '') {
+            $query->where('execution_lease_token', $executionLeaseToken);
+        }
+        $cancelled = $query->update([
+            'status' => 'cancelled',
+            'finished_at' => now(),
+            'error_message' => $reason,
+            'duration_ms' => 0,
+            'execution_lease_token' => null,
+        ]);
         if ($cancelled !== 1) {
             return;
         }
@@ -482,9 +710,19 @@ class JobQueueService
             $dispatchToken = (string) Str::uuid();
             try {
                 $redispatched = DB::transaction(function () use ($jobId, $threshold, $dispatchToken): bool {
-                    $run = TaskRun::query()
-                        ->with('task:id,status,schedule_enabled')
+                    $taskId = (int) TaskRun::query()
                         ->whereKey($jobId)
+                        ->where('status', 'running')
+                        ->where('started_at', '<', $threshold)
+                        ->value('task_id');
+                    if ($taskId <= 0) {
+                        return false;
+                    }
+
+                    $task = $this->lockTaskForRecovery($taskId);
+                    $run = TaskRun::query()
+                        ->whereKey($jobId)
+                        ->where('task_id', $taskId)
                         ->where('status', 'running')
                         ->where('started_at', '<', $threshold)
                         ->lockForUpdate()
@@ -493,7 +731,6 @@ class JobQueueService
                         return false;
                     }
 
-                    $task = $run->task;
                     if (! $task || ($task->status ?? 'paused') !== 'active' || (int) ($task->schedule_enabled ?? 1) !== 1) {
                         TaskRun::query()
                             ->whereKey($jobId)
@@ -503,8 +740,13 @@ class JobQueueService
                                 'status' => 'cancelled',
                                 'finished_at' => now(),
                                 'error_message' => '任务未启用，已取消超时执行记录',
+                                'execution_lease_token' => null,
                             ]);
 
+                        return false;
+                    }
+
+                    if (! $this->executionIdentityAllowsRecovery($run)) {
                         return false;
                     }
 
@@ -517,6 +759,11 @@ class JobQueueService
                             'status' => 'pending',
                             'finished_at' => null,
                             'error_message' => '',
+                            'error_code' => null,
+                            'execution_lease_token' => null,
+                            'resolved_ai_model_id' => null,
+                            'resolved_model_source' => null,
+                            'model_resolved_at' => null,
                             'meta' => array_merge($meta, [
                                 'recovery_dispatched_at' => now()->toDateTimeString(),
                                 'recovery_dispatch_token' => $dispatchToken,
@@ -532,7 +779,7 @@ class JobQueueService
                 });
             } catch (Throwable $exception) {
                 $this->clearFailedPendingRecoveryAttempt($jobId, $dispatchToken);
-                report($exception);
+                $this->logRecoveryFailure($jobId, $exception);
 
                 continue;
             }
@@ -561,17 +808,27 @@ class JobQueueService
             $dispatchToken = (string) Str::uuid();
             try {
                 $redispatched = DB::transaction(function () use ($jobId, $threshold, $dispatchToken): bool {
-                    $run = TaskRun::query()
-                        ->with('task:id,status,schedule_enabled')
+                    $taskId = (int) TaskRun::query()
                         ->whereKey($jobId)
                         ->where('status', 'pending')
+                        ->where('created_at', '<', $threshold)
+                        ->value('task_id');
+                    if ($taskId <= 0) {
+                        return false;
+                    }
+
+                    $task = $this->lockTaskForRecovery($taskId);
+                    $run = TaskRun::query()
+                        ->whereKey($jobId)
+                        ->where('task_id', $taskId)
+                        ->where('status', 'pending')
+                        ->where('created_at', '<', $threshold)
                         ->lockForUpdate()
                         ->first();
                     if (! $run) {
                         return false;
                     }
 
-                    $task = $run->task;
                     if (! $task || ($task->status ?? 'paused') !== 'active' || (int) ($task->schedule_enabled ?? 1) !== 1) {
                         TaskRun::query()
                             ->whereKey($jobId)
@@ -580,8 +837,13 @@ class JobQueueService
                                 'status' => 'cancelled',
                                 'finished_at' => now(),
                                 'error_message' => '任务未启用，已取消待执行记录',
+                                'execution_lease_token' => null,
                             ]);
 
+                        return false;
+                    }
+
+                    if (! $this->executionIdentityAllowsRecovery($run)) {
                         return false;
                     }
 
@@ -604,6 +866,7 @@ class JobQueueService
                         ->whereKey($jobId)
                         ->where('status', 'pending')
                         ->update([
+                            'execution_lease_token' => null,
                             'meta' => array_merge($meta, [
                                 'recovery_dispatched_at' => now()->toDateTimeString(),
                                 'recovery_dispatch_token' => $dispatchToken,
@@ -619,7 +882,7 @@ class JobQueueService
                 });
             } catch (Throwable $exception) {
                 $this->clearFailedPendingRecoveryAttempt($jobId, $dispatchToken);
-                report($exception);
+                $this->logRecoveryFailure($jobId, $exception);
 
                 continue;
             }
@@ -657,7 +920,7 @@ class JobQueueService
                     ->update(['meta' => $meta]);
             });
         } catch (Throwable $exception) {
-            report($exception);
+            $this->logRecoveryFailure($jobId, $exception);
         }
     }
 
@@ -674,13 +937,24 @@ class JobQueueService
         }
     }
 
+    private function logRecoveryFailure(int $jobId, Throwable $exception): void
+    {
+        report(new RuntimeException(
+            $this->aiExecutionErrorSanitizer->sanitize(
+                $exception,
+                'Task recovery failed for run '.$jobId,
+            ),
+        ));
+    }
+
     /**
      * 将 task_runs 执行记录投递到 Laravel 队列。
      */
     private function dispatchLaravelQueueJob(int $taskRunId, mixed $availableAt = null): void
     {
-        DB::afterCommit(function () use ($taskRunId, $availableAt): void {
-            $dispatch = ProcessGeoFlowTaskJob::dispatch($taskRunId)
+        $claimLeaseToken = (string) Str::uuid();
+        DB::afterCommit(function () use ($taskRunId, $availableAt, $claimLeaseToken): void {
+            $dispatch = ProcessGeoFlowTaskJob::dispatch($taskRunId, $claimLeaseToken)
                 ->onQueue('geoflow')
                 ->afterCommit();
 
@@ -763,6 +1037,241 @@ class JobQueueService
         }
 
         return [];
+    }
+
+    /**
+     * Keep queue metadata free of credentials, provider endpoints, prompts, and forged identity fields.
+     *
+     * @param  array<string,mixed>  $payload
+     * @return array<string,mixed>
+     */
+    private function sanitizeQueuePayload(array $payload): array
+    {
+        $source = $payload['source'] ?? null;
+        if (! is_string($source)) {
+            return [];
+        }
+
+        $source = trim($source);
+        if (! in_array($source, self::ALLOWED_PAYLOAD_SOURCES, true)) {
+            return [];
+        }
+
+        return ['source' => $source];
+    }
+
+    private function normalizeClaimLeaseToken(?string $claimLeaseToken): string
+    {
+        $claimLeaseToken = trim((string) $claimLeaseToken);
+
+        return Str::isUuid($claimLeaseToken)
+            ? $claimLeaseToken
+            : (string) Str::uuid();
+    }
+
+    private function executionBoundariesEnforced(): bool
+    {
+        return (bool) config('geoflow.admin_ai_access.access_enforce_enabled', false)
+            || (bool) config('geoflow.admin_ai_access.revocation_enforce_enabled', false);
+    }
+
+    /** @return array{requested_model_required:bool,quality_model_id:?int} */
+    private function taskRunAiRequirement(TaskRun $run): array
+    {
+        $task = Task::query()->whereKey((int) $run->task_id)->first(['id', 'next_publish_at']);
+        if (! $task instanceof Task || ($task->next_publish_at !== null && $task->next_publish_at->isFuture())) {
+            return ['requested_model_required' => true, 'quality_model_id' => null];
+        }
+
+        $dueDraft = Article::query()
+            ->where('task_id', (int) $task->getKey())
+            ->where('status', 'draft')
+            ->whereIn('review_status', ['approved', 'auto_approved'])
+            ->whereNull('deleted_at')
+            ->orderBy('id')
+            ->first();
+        if (! $dueDraft instanceof Article) {
+            return ['requested_model_required' => true, 'quality_model_id' => null];
+        }
+
+        try {
+            return [
+                'requested_model_required' => false,
+                'quality_model_id' => $this->articleAiQualityGate->modelIdThatWouldBeDispatched($dueDraft),
+            ];
+        } catch (Throwable) {
+            return ['requested_model_required' => true, 'quality_model_id' => null];
+        }
+    }
+
+    private function executionIdentityAllowsDispatch(TaskRun $run): bool
+    {
+        $requirement = $this->taskRunAiRequirement($run);
+        $requiresAiModel = $requirement['requested_model_required'] || $requirement['quality_model_id'] !== null;
+        if (! $requiresAiModel && ! $this->executionBoundariesEnforced()) {
+            return true;
+        }
+
+        try {
+            $context = $this->aiExecutionContextFactory->fromTaskRun($run);
+            if ($requirement['requested_model_required'] && $context->requestedModelId === null) {
+                throw AiModelAccessException::configAccessRevokedForAdminId($context->modelAccessAdminId);
+            }
+            $admin = $this->aiExecutionAccessGuard->assertCurrent(
+                $context,
+                validateRequestedModel: $requirement['requested_model_required'],
+            );
+            if ($requirement['quality_model_id'] !== null) {
+                $this->aiExecutionAccessGuard->assertModelCurrent(
+                    $context,
+                    $requirement['quality_model_id'],
+                    $admin,
+                );
+            }
+        } catch (AiModelAccessException $exception) {
+            $this->permanentlyFailAuthorizationRun($run, $exception->getErrorCode());
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private function executionIdentityAllowsRecovery(TaskRun $run): bool
+    {
+        $requirement = $this->taskRunAiRequirement($run);
+        $requiresAiModel = $requirement['requested_model_required'] || $requirement['quality_model_id'] !== null;
+        if (! $requiresAiModel && ! $this->executionBoundariesEnforced()) {
+            return true;
+        }
+
+        try {
+            if ((string) $run->status === 'pending') {
+                $this->assertPendingRunIdentityComplete($run, $requirement['requested_model_required']);
+            } else {
+                $context = $this->aiExecutionContextFactory->fromTaskRun($run);
+                if ($requirement['requested_model_required'] && $context->requestedModelId === null) {
+                    throw AiModelAccessException::configAccessRevokedForAdminId($context->modelAccessAdminId);
+                }
+            }
+        } catch (AiModelAccessException $exception) {
+            $this->permanentlyFailAuthorizationRun($run, $exception->getErrorCode());
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private function assertPendingRunIdentityComplete(TaskRun $run, bool $requestedModelRequired): void
+    {
+        $adminId = (int) ($run->model_access_admin_id ?? 0);
+        if ($adminId <= 0
+            || ! in_array((string) ($run->model_access_admin_role ?? ''), ['admin', 'super_admin'], true)
+            || (int) ($run->ai_config_access_version ?? 0) <= 0
+            || (int) ($run->resolver_policy_version ?? 0) <= 0
+            || ($requestedModelRequired && (int) ($run->requested_ai_model_id ?? 0) <= 0)) {
+            throw AiModelAccessException::configAccessRevokedForAdminId($adminId);
+        }
+    }
+
+    private function lockTaskForClaim(int $taskId): ?Task
+    {
+        return Task::query()
+            ->whereKey($taskId)
+            ->lockForUpdate()
+            ->first(['id', 'status', 'schedule_enabled', 'publish_interval']);
+    }
+
+    private function lockRunForClaim(int $jobId, int $taskId): ?TaskRun
+    {
+        return TaskRun::query()
+            ->whereKey($jobId)
+            ->where('task_id', $taskId)
+            ->where('status', 'pending')
+            ->lockForUpdate()
+            ->first();
+    }
+
+    private function lockTaskForRecovery(int $taskId): ?Task
+    {
+        return Task::query()
+            ->whereKey($taskId)
+            ->lockForUpdate()
+            ->first(['id', 'status', 'schedule_enabled']);
+    }
+
+    private function permanentlyFailAuthorizationRun(
+        TaskRun $run,
+        string $errorCode,
+        int $durationMs = 0,
+    ): void {
+        $errorCode = $this->normalizeAuthorizationErrorCode($errorCode);
+        $meta = $this->normalizeMeta($run->meta);
+        $meta['retryable'] = false;
+        $meta['failure_class'] = 'authorization';
+        $meta['error_code'] = $errorCode;
+        $meta['last_error'] = $errorCode;
+
+        $run->forceFill([
+            'status' => 'failed',
+            'error_code' => $errorCode,
+            'error_message' => $errorCode,
+            'duration_ms' => $durationMs,
+            'finished_at' => now(),
+            'execution_lease_token' => null,
+            'meta' => $meta,
+        ])->save();
+
+        Task::query()->whereKey((int) $run->task_id)->update([
+            'status' => 'paused',
+            'schedule_enabled' => 0,
+            'next_run_at' => null,
+            'last_run_at' => now(),
+            'last_error_at' => now(),
+            'last_error_message' => $errorCode,
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function normalizeAuthorizationErrorCode(string $errorCode): string
+    {
+        return in_array($errorCode, [
+            AiModelAccessException::AI_MODEL_NOT_ACCESSIBLE,
+            AiModelAccessException::AI_EXECUTION_ADMIN_INACTIVE,
+            AiModelAccessException::AI_CONFIG_ACCESS_REVOKED,
+            AiModelAccessException::AI_CONFIG_OWNER_INACTIVE,
+            AiModelAccessException::AI_MODEL_UNAVAILABLE,
+            AiModelAccessException::AI_EMBEDDING_INCOMPATIBLE,
+        ], true)
+            ? $errorCode
+            : AiModelAccessException::AI_CONFIG_ACCESS_REVOKED;
+    }
+
+    private function constrainRunToExecutionContext(
+        Builder $query,
+        ?AiExecutionContext $executionContext,
+        ?string $executionLeaseToken = null,
+    ): void {
+        if (! $executionContext instanceof AiExecutionContext) {
+            if (is_string($executionLeaseToken) && $executionLeaseToken !== '') {
+                $query->where('execution_lease_token', $executionLeaseToken);
+            } elseif ($this->executionBoundariesEnforced()) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->whereNull('execution_lease_token');
+            }
+
+            return;
+        }
+
+        $query
+            ->whereKey($executionContext->taskRunId)
+            ->where('model_access_admin_id', $executionContext->modelAccessAdminId)
+            ->where('model_access_admin_role', $executionContext->modelAccessAdminRole)
+            ->where('ai_config_access_version', $executionContext->aiConfigAccessVersion)
+            ->where('resolver_policy_version', $executionContext->resolverPolicyVersion)
+            ->where('execution_lease_token', $executionContext->executionLeaseToken());
     }
 
     /**

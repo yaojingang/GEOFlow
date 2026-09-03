@@ -2,13 +2,19 @@
 
 namespace App\Services\GeoFlow\AiVisibility;
 
+use App\Data\Ai\SystemAiIdentity;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
 use App\Models\AiVisibilitySource;
+use App\Services\Admin\AiModelUsageAttemptFactory;
+use App\Services\AiWorkspace\AiModelInvocationLock;
+use App\Services\AiWorkspace\AiWorkspaceModelUnavailableException;
 use App\Services\GeoFlow\AiUsageQuotaService;
 use App\Services\GeoFlow\AiUsageReservation;
+use Closure;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Throwable;
 
@@ -20,13 +26,17 @@ final class AiVisibilityService
         private readonly DeepSeekAnalysisClient $deepSeekAnalysisClient,
         private readonly AiUsageQuotaService $usageQuota,
         private readonly AiProviderEndpointPolicy $endpointPolicy,
+        private readonly AiVisibilityModelExecutionGuard $executionGuard,
+        private readonly AiModelUsageAttemptFactory $usageAttempts,
+        private readonly AiModelInvocationLock $invocationLocks,
     ) {}
 
     /**
      * @param  array<string,mixed>  $options
      */
-    public function runDoubaoArkResponses(AiModel $model, string $keyword, ?string $prompt = null, array $options = []): AiVisibilityRun
+    public function runDoubaoArkResponses(SystemAiIdentity $identity, AiModel $model, string $keyword, ?string $prompt = null, array $options = []): AiVisibilityRun
     {
+        $identity->assertCanCollectVisibility();
         $keyword = $this->normalizeKeyword($keyword);
         $prompt = $this->resolvePrompt($keyword, $prompt);
         $run = $this->createRun([
@@ -39,23 +49,19 @@ final class AiVisibilityService
             'locale' => (string) ($options['locale'] ?? 'zh_CN'),
         ]);
 
-        $reservation = null;
-        try {
-            $this->assertAiModelEnabled($model, 'ark', '豆包 Ark 模型');
-            $reservation = $this->usageQuota->reserveModel($model);
-            if ($reservation === null) {
-                throw new RuntimeException('豆包 Ark 模型已达到每日调用上限');
-            }
-            $result = $this->doubaoArkResponsesClient->answerWithWebSearch($model, $prompt, $options);
-
-            return $this->completeRun($run, $result, modelReservation: $reservation);
-        } catch (Throwable $exception) {
-            if ($reservation !== null) {
-                $this->usageQuota->releaseModel($reservation);
-            }
-            $this->failRun($run, $exception);
-            throw $exception;
-        }
+        return $this->runModelCall(
+            identity: $identity,
+            run: $run,
+            model: $model,
+            bindingType: 'ark',
+            callKeyPrefix: 'ark',
+            operation: 'ai_visibility.collect.ark',
+            maxProviderAttempts: max(1, (int) config('geoflow.ai_visibility.http_retry_attempts', 2)),
+            requestPayload: fn (AiModel $current): AiVisibilityPreparedModelRequest => $this->doubaoArkResponsesClient
+                ->prepareRequest($current, $prompt, $options),
+            provider: fn (AiModel $current, AiVisibilityPreparedModelRequest $prepared): AiVisibilityResult => $this->doubaoArkResponsesClient
+                ->answerWithWebSearch($current, $prompt, $options, $prepared),
+        );
     }
 
     /**
@@ -78,7 +84,7 @@ final class AiVisibilityService
             $this->assertSourceProviderEnabled($provider, '豆包 Search Custom 信源供应商');
             $reservation = $this->usageQuota->reserveProvider($provider);
             if ($reservation === null) {
-                throw new RuntimeException('豆包 Search Custom 信源供应商已达到每日调用上限');
+                throw new RuntimeException('ai_source_provider_quota_exhausted');
             }
             $result = $this->doubaoSearchCustomClient->search(
                 $provider,
@@ -91,8 +97,9 @@ final class AiVisibilityService
             if ($reservation !== null) {
                 $this->usageQuota->releaseProvider($reservation);
             }
-            $this->failRun($run, $exception);
-            throw $exception;
+            $errorCode = $this->safeErrorCode($exception);
+            $this->failRun($run, $errorCode);
+            throw new RuntimeException($errorCode);
         }
     }
 
@@ -100,9 +107,14 @@ final class AiVisibilityService
      * @param  list<AiVisibilitySourceData>  $sources
      * @param  array<string,mixed>  $options
      */
-    public function runDeepSeekAnalysis(AiModel $model, string $keyword, string $prompt, array $sources = [], array $options = []): AiVisibilityRun
+    public function runDeepSeekAnalysis(SystemAiIdentity $identity, AiModel $model, string $keyword, string $prompt, array $sources = [], array $options = []): AiVisibilityRun
     {
+        $identity->assertCanCollectVisibility();
         $keyword = $this->normalizeKeyword($keyword);
+        $prompt = trim($prompt);
+        if ($prompt === '') {
+            throw new RuntimeException('ai_visibility_prompt_missing');
+        }
         $run = $this->createRun([
             'keyword' => $keyword,
             'prompt' => $prompt,
@@ -113,23 +125,19 @@ final class AiVisibilityService
             'locale' => (string) ($options['locale'] ?? 'zh_CN'),
         ]);
 
-        $reservation = null;
-        try {
-            $this->assertAiModelEnabled($model, 'deepseek', 'DeepSeek 分析模型');
-            $reservation = $this->usageQuota->reserveModel($model);
-            if ($reservation === null) {
-                throw new RuntimeException('DeepSeek 分析模型已达到每日调用上限');
-            }
-            $result = $this->deepSeekAnalysisClient->analyze($model, $prompt, $sources, $options);
-
-            return $this->completeRun($run, $result, modelReservation: $reservation);
-        } catch (Throwable $exception) {
-            if ($reservation !== null) {
-                $this->usageQuota->releaseModel($reservation);
-            }
-            $this->failRun($run, $exception);
-            throw $exception;
-        }
+        return $this->runModelCall(
+            identity: $identity,
+            run: $run,
+            model: $model,
+            bindingType: 'deepseek',
+            callKeyPrefix: 'deepseek',
+            operation: 'ai_visibility.collect.deepseek',
+            maxProviderAttempts: 1,
+            requestPayload: fn (): AiVisibilityPreparedModelRequest => $this->deepSeekAnalysisClient
+                ->prepareRequest($prompt, $sources),
+            provider: fn (AiModel $current, AiVisibilityPreparedModelRequest $prepared): AiVisibilityResult => $this->deepSeekAnalysisClient
+                ->analyze($current, $prompt, $sources, $options, $prepared),
+        );
     }
 
     /**
@@ -138,6 +146,7 @@ final class AiVisibilityService
      * @return array{search_run:AiVisibilityRun,analysis_run:AiVisibilityRun}
      */
     public function runDoubaoSearchThenDeepSeekAnalysis(
+        SystemAiIdentity $identity,
         AiSourceProvider $sourceProvider,
         AiModel $analysisModel,
         string $keyword,
@@ -145,6 +154,7 @@ final class AiVisibilityService
         array $searchOptions = [],
         array $analysisOptions = [],
     ): array {
+        $identity->assertCanCollectVisibility();
         $searchRun = $this->runDoubaoSearchCustom($sourceProvider, $keyword, $searchOptions);
         $searchRun->load('sources');
         $sources = $this->sourceDataFromRun($searchRun);
@@ -152,7 +162,7 @@ final class AiVisibilityService
             ? $analysisPrompt
             : $this->defaultAnalysisPrompt($keyword);
 
-        $analysisRun = $this->runDeepSeekAnalysis($analysisModel, $keyword, $prompt, $sources, $analysisOptions);
+        $analysisRun = $this->runDeepSeekAnalysis($identity, $analysisModel, $keyword, $prompt, $sources, $analysisOptions);
 
         return [
             'search_run' => $searchRun->fresh('sources') ?? $searchRun,
@@ -174,11 +184,21 @@ final class AiVisibilityService
     private function completeRun(
         AiVisibilityRun $run,
         AiVisibilityResult $result,
+        ?SystemAiIdentity $identity = null,
+        ?AiVisibilityModelExecutionSnapshot $snapshot = null,
         ?AiUsageReservation $modelReservation = null,
         ?AiUsageReservation $providerReservation = null,
     ): AiVisibilityRun {
-        return DB::transaction(function () use ($run, $result, $modelReservation, $providerReservation): AiVisibilityRun {
-            $run->update([
+        return DB::transaction(function () use ($run, $result, $identity, $snapshot, $modelReservation, $providerReservation): AiVisibilityRun {
+            if ($identity instanceof SystemAiIdentity && $snapshot instanceof AiVisibilityModelExecutionSnapshot) {
+                $this->executionGuard->assertCurrent($identity, $snapshot, lockForUpdate: true);
+            }
+            $lockedRun = AiVisibilityRun::query()->whereKey((int) $run->id)->lockForUpdate()->first();
+            if (! $lockedRun instanceof AiVisibilityRun
+                || (string) $lockedRun->status !== AiVisibilityRun::STATUS_RUNNING) {
+                throw new AiVisibilityRunDiscardedException('ai_result_discarded');
+            }
+            $attributes = [
                 'provider_key' => $result->providerKey ?? $run->provider_key,
                 'model_id' => $result->modelId ?? $run->model_id,
                 'status' => AiVisibilityRun::STATUS_COMPLETED,
@@ -190,7 +210,8 @@ final class AiVisibilityService
                 'raw_response_json' => $result->rawResponse !== [] ? $result->rawResponse : null,
                 'error_message' => null,
                 'completed_at' => now(),
-            ]);
+            ];
+            $lockedRun->update($attributes);
 
             AiVisibilitySource::query()->where('ai_visibility_run_id', (int) $run->id)->delete();
             foreach ($result->sources as $source) {
@@ -207,27 +228,166 @@ final class AiVisibilityService
                 $this->usageQuota->recordProviderSuccess($providerReservation);
             }
 
-            return $run->fresh('sources') ?? $run;
+            $run->setRawAttributes($lockedRun->getAttributes(), true);
+
+            return $run;
         });
     }
 
-    private function failRun(AiVisibilityRun $run, Throwable $exception): void
+    /**
+     * @param  Closure(AiModel):AiVisibilityPreparedModelRequest  $requestPayload
+     * @param  Closure(AiModel,AiVisibilityPreparedModelRequest):AiVisibilityResult  $provider
+     */
+    private function runModelCall(
+        SystemAiIdentity $identity,
+        AiVisibilityRun $run,
+        AiModel $model,
+        string $bindingType,
+        string $callKeyPrefix,
+        string $operation,
+        int $maxProviderAttempts,
+        Closure $requestPayload,
+        Closure $provider,
+    ): AiVisibilityRun {
+        $snapshot = null;
+        $maxProviderAttempts = max(1, $maxProviderAttempts);
+        for ($providerOrdinal = 1; $providerOrdinal <= $maxProviderAttempts; $providerOrdinal++) {
+            $lock = null;
+            $reservation = null;
+            $providerCalled = false;
+            try {
+                $lock = $this->invocationLocks->acquireForInvocation((int) $model->id, 300);
+                $snapshot ??= $this->executionGuard->snapshotForRun($identity, $run, $model, $bindingType);
+                $current = $this->executionGuard->assertCurrent($identity, $snapshot);
+                $reservation = $this->usageQuota->reserveModel($current);
+                if (! $reservation instanceof AiUsageReservation) {
+                    throw new RuntimeException('ai_model_quota_exhausted');
+                }
+                $current = $this->executionGuard->assertCurrent($identity, $snapshot);
+                $preparedRequest = $requestPayload($current);
+                $attempt = $this->usageAttempts->beginForVisibilityCollection(
+                    model: $current,
+                    identity: $identity,
+                    requestId: (string) $run->uuid,
+                    requestPayload: $preparedRequest->digestPayload,
+                    callKey: sprintf('%s.p%d', $callKeyPrefix, $providerOrdinal),
+                    operation: $operation,
+                    businessSource: 'ai_visibility_collection',
+                    sourceType: AiVisibilityRun::class,
+                    sourceId: (int) $run->id,
+                );
+                $current = $this->executionGuard->assertCurrent($identity, $snapshot);
+                $providerCalled = true;
+                try {
+                    $result = $provider($current, $preparedRequest);
+                } catch (Throwable $exception) {
+                    $this->recordModelAttempt($reservation);
+                    $attempt->failed($this->providerErrorCode($exception));
+                    if ($providerOrdinal < $maxProviderAttempts && $this->isTransientProviderFailure($exception)) {
+                        continue;
+                    }
+
+                    throw new RuntimeException($this->providerErrorCode($exception));
+                }
+
+                try {
+                    $completed = $this->completeRun(
+                        $run,
+                        $result,
+                        identity: $identity,
+                        snapshot: $snapshot,
+                        modelReservation: $reservation,
+                    );
+                } catch (AiVisibilityModelAccessRevokedException $exception) {
+                    $this->recordModelAttempt($reservation);
+                    $attempt->revoked('ai_config_access_revoked', $result->usage);
+                    throw $exception;
+                } catch (Throwable $exception) {
+                    $this->recordModelAttempt($reservation);
+                    $attempt->discarded('ai_result_discarded', $result->usage);
+                    throw new AiVisibilityRunDiscardedException('ai_result_discarded');
+                }
+
+                $attempt->succeeded($result->usage);
+
+                return $completed;
+            } catch (Throwable $exception) {
+                if ($reservation instanceof AiUsageReservation && ! $providerCalled) {
+                    $this->usageQuota->releaseModel($reservation);
+                }
+                $errorCode = $this->safeErrorCode($exception);
+                $this->failRun($run, $errorCode);
+
+                throw new RuntimeException($errorCode);
+            } finally {
+                $this->invocationLocks->release($lock);
+            }
+        }
+
+        throw new RuntimeException('ai_provider_request_failed');
+    }
+
+    private function isTransientProviderFailure(Throwable $exception): bool
     {
-        $run->update([
+        $message = $exception->getMessage();
+
+        return preg_match('/HTTP\s*(?:429|5\d\d)\b/i', $message) === 1
+            || preg_match('/(?:connection|connect|timed?\s*out|cURL\s+error)/i', $message) === 1;
+    }
+
+    private function failRun(AiVisibilityRun $run, Throwable|string $failure): void
+    {
+        $errorCode = is_string($failure) ? $failure : $this->safeErrorCode($failure);
+        AiVisibilityRun::query()
+            ->whereKey((int) $run->id)
+            ->where('status', AiVisibilityRun::STATUS_RUNNING)
+            ->update([
+                'status' => AiVisibilityRun::STATUS_FAILED,
+                'error_message' => $errorCode,
+                'completed_at' => now(),
+            ]);
+        $run->forceFill([
             'status' => AiVisibilityRun::STATUS_FAILED,
-            'error_message' => mb_substr($exception->getMessage(), 0, 4000, 'UTF-8'),
+            'error_message' => $errorCode,
             'completed_at' => now(),
         ]);
     }
 
-    private function assertAiModelEnabled(AiModel $model, string $bindingType, string $label): void
+    private function recordModelAttempt(AiUsageReservation $reservation): void
     {
-        $modelType = trim((string) ($model->model_type ?? ''));
-        if (($model->status ?? 'inactive') !== 'active'
-            || ($modelType !== '' && $modelType !== 'chat')
-            || ! $this->endpointPolicy->acceptsModelApi($bindingType, (string) ($model->api_url ?? ''))) {
-            throw new RuntimeException($label.'不可用或已停用');
+        try {
+            $this->usageQuota->recordModelAttempt($reservation);
+        } catch (Throwable) {
+            // Quota settlement must not replace the stable collection result.
         }
+    }
+
+    private function providerErrorCode(Throwable $exception): string
+    {
+        return preg_match('/(?:HTTP\s*)?(?:401|403)\b/i', $exception->getMessage()) === 1
+            ? 'ai_provider_auth_failed'
+            : 'ai_provider_request_failed';
+    }
+
+    private function safeErrorCode(Throwable $exception): string
+    {
+        if ($exception instanceof AiVisibilityModelAccessRevokedException) {
+            return 'ai_config_access_revoked';
+        }
+        if ($exception instanceof AiVisibilityRunDiscardedException) {
+            return 'ai_result_discarded';
+        }
+        if ($exception instanceof ValidationException) {
+            return 'ai_config_access_revoked';
+        }
+        if ($exception instanceof AiWorkspaceModelUnavailableException) {
+            return 'ai_model_unavailable';
+        }
+        $message = trim($exception->getMessage());
+
+        return preg_match('/\A[a-z0-9_.:-]{1,100}\z/', $message) === 1
+            ? $message
+            : $this->providerErrorCode($exception);
     }
 
     private function assertSourceProviderEnabled(AiSourceProvider $provider, string $label): void

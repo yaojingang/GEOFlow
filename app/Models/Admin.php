@@ -8,8 +8,10 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -25,6 +27,7 @@ class Admin extends Authenticatable
 
     protected $attributes = [
         'auth_version' => 1,
+        'ai_config_access_version' => 1,
     ];
 
     protected $hidden = [
@@ -53,6 +56,8 @@ class Admin extends Authenticatable
             'welcome_dismissed_at' => 'datetime',
             'created_by' => 'integer',
             'auth_version' => 'integer',
+            'shared_ai_config_owner_id' => 'integer',
+            'ai_config_access_version' => 'integer',
             'password' => 'hashed',
         ];
     }
@@ -82,6 +87,16 @@ class Admin extends Authenticatable
         return in_array($role, ['super_admin', 'superadmin'], true);
     }
 
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->where('status', 'active');
+    }
+
+    public function scopeSuperAdmins(Builder $query): Builder
+    {
+        return $query->whereIn('role', ['super_admin', 'superadmin']);
+    }
+
     public function canManageProtectedWorkflows(): bool
     {
         return $this->isSuperAdmin();
@@ -108,6 +123,56 @@ class Admin extends Authenticatable
     public function creator(): BelongsTo
     {
         return $this->belongsTo(self::class, 'created_by');
+    }
+
+    public function sharedAiConfigOwner(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'shared_ai_config_owner_id');
+    }
+
+    public function aiConfigDependents(): HasMany
+    {
+        return $this->hasMany(self::class, 'shared_ai_config_owner_id');
+    }
+
+    public function ownedAiModels(): HasMany
+    {
+        return $this->hasMany(AiModel::class, 'owner_admin_id');
+    }
+
+    public function aiSettings(): HasOne
+    {
+        return $this->hasOne(AdminAiSetting::class);
+    }
+
+    public function updatedAiSettings(): HasMany
+    {
+        return $this->hasMany(AdminAiSetting::class, 'updated_by_admin_id');
+    }
+
+    public function ownedAiModelUsageEvents(): HasMany
+    {
+        return $this->hasMany(AiModelUsageEvent::class, 'config_owner_admin_id');
+    }
+
+    public function executedAiModelUsageEvents(): HasMany
+    {
+        return $this->hasMany(AiModelUsageEvent::class, 'execution_admin_id');
+    }
+
+    public function aiExecutionTasks(): HasMany
+    {
+        return $this->hasMany(Task::class, 'model_access_admin_id');
+    }
+
+    public function aiExecutionTaskRuns(): HasMany
+    {
+        return $this->hasMany(TaskRun::class, 'model_access_admin_id');
+    }
+
+    public function aiExecutionUrlImportJobs(): HasMany
+    {
+        return $this->hasMany(UrlImportJob::class, 'model_access_admin_id');
     }
 
     public function activityLogs(): HasMany

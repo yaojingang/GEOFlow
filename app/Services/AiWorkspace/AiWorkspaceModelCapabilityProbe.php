@@ -2,7 +2,10 @@
 
 namespace App\Services\AiWorkspace;
 
+use App\Data\AiWorkspace\AiWorkspaceModelProbeAttempt;
+use App\Data\AiWorkspace\AiWorkspaceModelProbeResult;
 use App\Models\AiModel;
+use App\Services\Admin\GovernanceAiModelUsageSession;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Carbon\CarbonImmutable;
 use RuntimeException;
@@ -17,17 +20,16 @@ final readonly class AiWorkspaceModelCapabilityProbe
         private AiWorkspaceModelReadiness $readiness,
     ) {}
 
-    /** @return array<string,mixed> */
-    public function probe(AiModel $model): array
+    public function start(AiModel $model, ?GovernanceAiModelUsageSession $usageSession = null): AiWorkspaceModelProbeAttempt
     {
         $checkedAt = CarbonImmutable::now();
         $deadline = microtime(true) + (int) config('ai-workspace.model_total_timeout_seconds', 90);
-        $streamingFailure = null;
         try {
             $result = $this->runtime->probeStreaming(
                 $model,
                 '请用一句话确认 GEOFlow 后台帮助助手流式回答可用。',
                 $this->remainingTimeout($deadline),
+                $usageSession,
             );
             $streaming = [
                 'status' => 'ready',
@@ -35,19 +37,53 @@ final readonly class AiWorkspaceModelCapabilityProbe
                 'delta_count' => (int) $result['delta_count'],
             ];
         } catch (Throwable $exception) {
-            $streamingFailure = $exception;
+            if ($usageSession instanceof GovernanceAiModelUsageSession
+                && ! $usageSession->hasStartedProviderAttempt()
+            ) {
+                throw $exception;
+            }
+
+            return new AiWorkspaceModelProbeAttempt(
+                checkedAt: $checkedAt,
+                deadline: $deadline,
+                providerResult: null,
+                streamingProfile: [
+                    'status' => 'degraded',
+                    'observed' => true,
+                    'fallback' => 'non_streaming',
+                    'failure_code' => $this->failureCode($exception),
+                ],
+                streamingFailure: $exception,
+            );
+        }
+
+        return new AiWorkspaceModelProbeAttempt(
+            checkedAt: $checkedAt,
+            deadline: $deadline,
+            providerResult: $result,
+            streamingProfile: $streaming,
+            streamingFailure: null,
+        );
+    }
+
+    public function finish(
+        AiModel $model,
+        AiWorkspaceModelProbeAttempt $attempt,
+        ?GovernanceAiModelUsageSession $usageSession = null,
+    ): AiWorkspaceModelProbeResult {
+        $result = $attempt->providerResult;
+        if ($attempt->requiresPlainTextFallback()) {
             $result = $this->runtime->probePlainText(
                 $model,
                 '请用一句话确认 GEOFlow 后台帮助助手普通文本回答可用。',
-                $this->remainingTimeout($deadline),
+                $this->remainingTimeout($attempt->deadline),
+                $usageSession,
             );
-            $streaming = [
-                'status' => 'degraded',
-                'observed' => true,
-                'fallback' => 'non_streaming',
-                'failure_code' => $this->failureCode($exception),
-            ];
         }
+        if (! is_array($result)) {
+            throw new RuntimeException('AI 工作台模型连接检测未返回可用结果。');
+        }
+
         $profile = [
             'version' => self::PROFILE_VERSION,
             'configuration' => [
@@ -57,7 +93,7 @@ final readonly class AiWorkspaceModelCapabilityProbe
             ],
             'authentication' => ['status' => 'ready', 'observed' => true],
             'plain_text' => ['status' => 'ready', 'observed' => true],
-            'streaming' => $streaming,
+            'streaming' => $attempt->streamingProfile,
             'structured_output' => ['status' => 'not_required', 'observed' => false],
             'article_quality_structured_output' => [
                 'status' => 'unknown',
@@ -85,46 +121,39 @@ final readonly class AiWorkspaceModelCapabilityProbe
             'performance' => array_filter([
                 'status' => 'ready',
                 'latency_ms' => (int) $result['latency_ms'],
-                'streaming_probe_failed' => $streamingFailure instanceof Throwable ? true : null,
+                'streaming_probe_failed' => $attempt->streamingFailure instanceof Throwable ? true : null,
             ], static fn (mixed $value): bool => $value !== null),
             'provider' => (string) $result['provider'],
             'model' => (string) $model->model_id,
             'endpoint_digest' => hash('sha256', OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url)),
         ];
-        $expiresAt = $checkedAt->addDays(7);
 
-        $model->forceFill([
-            'ai_workspace_structured_output_status' => null,
-            'ai_workspace_structured_output_verified_at' => null,
-            'ai_workspace_readiness_status' => 'ready',
-            'ai_workspace_readiness_profile' => $profile,
-            'ai_workspace_readiness_checked_at' => $checkedAt,
-            'ai_workspace_readiness_expires_at' => $expiresAt,
-            'ai_workspace_readiness_failure_code' => null,
-        ])->save();
-
-        return $result + ['readiness_status' => 'ready', 'profile' => $profile, 'expires_at' => $expiresAt->toISOString()];
+        return new AiWorkspaceModelProbeResult(
+            providerResult: $result,
+            profile: $profile,
+            checkedAt: $attempt->checkedAt,
+            expiresAt: $attempt->checkedAt->addDays(7),
+        );
     }
 
-    public function recordFailure(AiModel $model, Throwable $exception): void
+    /** @return array<string, mixed> */
+    public function probe(AiModel $model): array
     {
-        $model->forceFill([
-            'ai_workspace_structured_output_status' => null,
-            'ai_workspace_structured_output_verified_at' => null,
-            'ai_workspace_readiness_status' => 'failed',
-            'ai_workspace_readiness_profile' => null,
-            'ai_workspace_readiness_checked_at' => now(),
-            'ai_workspace_readiness_expires_at' => null,
-            'ai_workspace_readiness_failure_code' => $this->failureCode($exception),
-        ])->save();
+        return $this->finish($model, $this->start($model))->responseData();
     }
 
-    private function failureCode(Throwable $exception): string
+    public function failureCode(Throwable $exception): string
     {
-        $message = mb_strtolower($exception->getMessage());
+        $messages = [];
+        for ($current = $exception; $current instanceof Throwable; $current = $current->getPrevious()) {
+            $messages[] = $current->getMessage();
+        }
+        $message = mb_strtolower(implode(' ', $messages));
 
         return match (true) {
             str_contains($message, 'key'), str_contains($message, '鉴权'), str_contains($message, '401'), str_contains($message, '403') => 'authentication_failed',
+            str_contains($message, 'capability'), str_contains($message, '能力'), str_contains($message, 'unsupported') => 'capability_incompatible',
+            str_contains($message, 'configuration'), str_contains($message, '配置'), str_contains($message, '400'), str_contains($message, '402'), str_contains($message, '404'), str_contains($message, '422') => 'configuration_invalid',
             str_contains($message, '内容'), str_contains($message, '文本') => 'plain_text_invalid',
             str_contains($message, 'timeout'), str_contains($message, '超时') => 'provider_timeout',
             default => 'provider_unavailable',

@@ -7,10 +7,10 @@
         data-test-initialization-error="{{ __('admin.ai_models.test_dialog.initialization_error') }}"
         data-client-timeout-ms="100000"
     >
-        <div class="flex items-center justify-between mb-8">
-            <div>
-                <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.ai_models.page_title') }}</h1>
-                <p class="mt-1 text-sm text-gray-600">{{ __('admin.ai_models.page_subtitle') }}</p>
+        <div class="mb-8 flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div class="min-w-0">
+                <h1 class="break-words text-2xl font-bold text-gray-900 text-balance">{{ __('admin.ai_models.page_title') }}</h1>
+                <p class="mt-1 text-pretty text-sm leading-6 text-gray-600">{{ __('admin.ai_models.page_subtitle') }}</p>
             </div>
             <a href="{{ route('admin.ai-models.create') }}" class="inline-flex min-h-10 items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-blue-700 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
                 <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
@@ -18,7 +18,74 @@
             </a>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <section class="mb-6 overflow-hidden rounded-lg bg-white shadow" aria-labelledby="personal-ai-defaults-title">
+            <div class="border-b border-gray-200 px-5 py-4 sm:px-6">
+                <h2 id="personal-ai-defaults-title" class="text-lg font-medium text-gray-900">{{ __('admin.ai_models.personal_defaults_title') }}</h2>
+                <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.ai_models.personal_defaults_desc') }}</p>
+            </div>
+            <form method="POST" action="{{ route('admin.ai-models.personal-defaults') }}" class="grid gap-4 px-5 py-5 sm:px-6 lg:grid-cols-2" data-personal-ai-defaults-form>
+                @csrf
+                <div>
+                    <label for="personal_default_chat_model_id" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.personal_default_chat') }}</label>
+                    <select id="personal_default_chat_model_id" name="default_chat_model_id" class="mt-1 block min-h-10 w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        <option value="0">{{ __('admin.ai_models.personal_default_auto') }}</option>
+                        @foreach (collect($personalDefaultModelOptions)->where('model_type', 'chat') as $option)
+                            <option value="{{ $option['id'] }}" @selected($personalDefaultChatModelId === $option['id'])>
+                                {{ $option['name'] }}{{ $option['version'] !== '' ? ' · '.$option['version'] : '' }} · {{ __('admin.ai_models.source_'.$option['source']) }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label for="personal_default_embedding_model_id" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_models.personal_default_embedding') }}</label>
+                    <select id="personal_default_embedding_model_id" name="default_embedding_model_id" class="mt-1 block min-h-10 w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        <option value="0">{{ __('admin.ai_models.personal_default_auto') }}</option>
+                        @foreach (collect($personalDefaultModelOptions)->where('model_type', 'embedding') as $option)
+                            <option value="{{ $option['id'] }}" @selected($personalDefaultEmbeddingModelId === $option['id'])>
+                                {{ $option['name'] }}{{ $option['version'] !== '' ? ' · '.$option['version'] : '' }} · {{ __('admin.ai_models.source_'.$option['source']) }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="flex justify-start lg:col-span-2 lg:justify-end">
+                    <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-slate-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2">
+                        {{ __('admin.ai_models.save_personal_defaults') }}
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        @if (! $actorIsSuperAdmin)
+            <section class="mb-6 rounded-lg bg-white px-5 py-5 shadow sm:px-6" aria-labelledby="ai-access-preview-title">
+                <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div class="min-w-0">
+                        <h2 id="ai-access-preview-title" class="text-base font-semibold text-gray-900">{{ __('admin.ai_models.preview_title') }}</h2>
+                        <p class="mt-1 text-sm leading-6 text-gray-600">
+                            {{ $accessPreview['mode'] === 'shared' ? __('admin.ai_models.preview_mode_shared') : __('admin.ai_models.preview_mode_independent') }}
+                        </p>
+                        @if ($accessPreview['mode'] === 'shared')
+                            <p class="mt-1 break-words text-sm leading-6 {{ $accessPreview['provider_available'] ? 'text-gray-600' : 'text-amber-700' }}">
+                                {{ $accessPreview['provider_available']
+                                    ? __('admin.ai_models.preview_provider_available', ['provider' => $accessPreview['provider_name']])
+                                    : __('admin.ai_models.preview_provider_inactive') }}
+                            </p>
+                        @endif
+                    </div>
+                    <div class="shrink-0 rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium leading-6 text-blue-800">
+                        {{ __('admin.ai_models.preview_personal_first') }}
+                    </div>
+                </div>
+                @if ($accessPreview['needs_repair'])
+                    <div class="mt-4 flex gap-3 rounded-lg bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800" role="status">
+                        <i data-lucide="triangle-alert" class="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true"></i>
+                        <p>{{ __('admin.ai_models.preview_no_available_models') }}</p>
+                    </div>
+                @endif
+            </section>
+        @endif
+
+        @if ($showSystemConfiguration)
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6" data-system-ai-configuration>
             <div class="bg-white shadow rounded-lg">
                 <div class="px-6 py-4 border-b border-gray-200">
                     <h3 class="text-lg font-medium text-gray-900">{{ __('admin.ai_models.vector_title') }}</h3>
@@ -106,23 +173,24 @@
                 </div>
             </div>
         </div>
+        @endif
 
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">{{ __('admin.ai_models.list_title') }}</h3>
+                <h3 class="text-lg font-medium text-gray-900">{{ __('admin.ai_models.section_my_models') }}</h3>
                 <p class="mt-1 text-sm text-gray-600">{{ __('admin.ai_models.list_desc') }}</p>
             </div>
 
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200" data-sticky-actions>
+            <div class="max-w-full overflow-x-auto overscroll-x-contain" data-personal-ai-model-table-scroll tabindex="0" aria-label="{{ __('admin.ai_models.section_my_models') }}">
+                <table class="w-full min-w-[920px] divide-y divide-gray-200" data-sticky-actions>
                     <thead class="bg-gray-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.info') }}</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.version') }}</th>
+                        <th class="w-[28%] min-w-64 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.info') }}</th>
+                        <th class="min-w-32 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.version') }}</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.usage') }}</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.limit') }}</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.status') }}</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.actions') }}</th>
+                        <th class="min-w-60 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.ai_models.column.actions') }}</th>
                     </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
@@ -139,10 +207,10 @@
                     @else
                         @foreach ($models as $model)
                             <tr>
-                                <td class="px-6 py-4">
+                                <td class="min-w-64 max-w-sm px-6 py-4 align-top">
                                     <div>
                                         <div class="flex items-center gap-2">
-                                            <div class="text-sm font-medium text-gray-900">{{ $model['name'] }}</div>
+                                            <div class="break-all text-sm font-medium text-gray-900">{{ $model['name'] }}</div>
                                             <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full {{ $model['model_type'] === 'embedding' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800' }}">
                                                 {{ $model['model_type'] === 'embedding' ? __('admin.ai_models.type_embedding_option') : __('admin.ai_models.chat') }}
                                             </span>
@@ -150,12 +218,12 @@
                                                 <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800">{{ __('admin.ai_models.embedding_default') }}</span>
                                             @endif
                                         </div>
-                                        <div class="text-sm text-gray-500">{{ $model['model_id'] }}</div>
+                                        <div class="break-all text-sm text-gray-500">{{ $model['model_id'] }}</div>
                                         <div class="text-xs text-gray-400">{{ __('admin.ai_models.api_key_mask') }}: {{ $model['api_key_configured'] ? __('admin.ai_models.api_key_configured') : __('admin.ai_models.api_key_not_configured') }}</div>
                                         <div class="text-xs text-gray-400">{{ __('admin.ai_models.failover_priority_label', ['priority' => (int) $model['failover_priority']]) }}</div>
                                     </div>
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <td class="min-w-32 break-all px-6 py-4 align-top text-sm text-gray-900">
                                     {{ $model['version'] !== '' ? $model['version'] : '-' }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
@@ -212,11 +280,11 @@
                                         </span>
                                     @endif
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                    <div class="flex items-center gap-3">
+                                <td class="min-w-60 whitespace-nowrap px-6 py-4 align-top text-sm font-medium">
+                                    <div class="flex min-w-max items-center gap-3">
                                         <button
                                             type="button"
-                                            class="min-h-10 text-emerald-600 transition-[color,transform] duration-150 hover:text-emerald-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                            class="inline-flex min-h-10 items-center text-emerald-600 transition-[color,transform] duration-150 hover:text-emerald-900 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                             data-ai-model-test-button
                                             data-model-id="{{ (int) $model['id'] }}"
                                             data-model-name="{{ $model['name'] }}"
@@ -252,6 +320,68 @@
                 </table>
             </div>
         </div>
+
+        @if (! $actorIsSuperAdmin)
+            <section class="mt-6 overflow-hidden rounded-lg bg-white shadow" aria-labelledby="shared-ai-models-title">
+                <div class="border-b border-gray-200 px-5 py-4 sm:px-6">
+                    <h2 id="shared-ai-models-title" class="text-lg font-medium text-gray-900">{{ __('admin.ai_models.section_shared_models') }}</h2>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.ai_models.shared_models_desc') }}</p>
+                </div>
+                <div class="divide-y divide-gray-200">
+                    @forelse ($sharedModels as $model)
+                        <div class="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6" data-shared-ai-model>
+                            <div class="min-w-0">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <h3 class="break-words text-sm font-semibold text-gray-900">{{ $model['name'] }}</h3>
+                                    <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold {{ $model['model_type'] === 'embedding' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800' }}">
+                                        {{ $model['model_type'] === 'embedding' ? __('admin.ai_models.type_embedding_option') : __('admin.ai_models.chat') }}
+                                    </span>
+                                </div>
+                                <p class="mt-1 break-words text-sm text-gray-500">{{ $model['version'] !== '' ? $model['version'] : __('admin.ai_models.version_unspecified') }}</p>
+                            </div>
+                            <span class="inline-flex w-fit rounded-full px-2 py-1 text-xs font-semibold {{ $model['is_available'] ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700' }}">
+                                {{ $model['is_available'] ? __('admin.ai_models.status_available') : __('admin.ai_models.status_unavailable') }}
+                            </span>
+                        </div>
+                    @empty
+                        <p class="px-5 py-6 text-sm leading-6 text-gray-500 sm:px-6">{{ __('admin.ai_models.shared_models_empty') }}</p>
+                    @endforelse
+                </div>
+            </section>
+        @endif
+
+        @if ($actorIsSuperAdmin)
+            <section class="mt-6 overflow-hidden rounded-lg bg-white shadow" aria-labelledby="governance-ai-models-title">
+                <div class="border-b border-gray-200 px-5 py-4 sm:px-6">
+                    <h2 id="governance-ai-models-title" class="text-lg font-medium text-gray-900">{{ __('admin.ai_models.section_governance_models') }}</h2>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.ai_models.governance_models_desc') }}</p>
+                </div>
+                <div class="divide-y divide-gray-200">
+                    @forelse ($governanceModels as $model)
+                        <div class="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,auto)_auto] sm:items-center sm:px-6" data-governance-ai-model>
+                            <div class="min-w-0">
+                                <h3 class="break-words text-sm font-semibold text-gray-900">{{ $model['name'] }}</h3>
+                                <p class="mt-1 break-words text-sm text-gray-500">{{ $model['version'] !== '' ? $model['version'] : __('admin.ai_models.version_unspecified') }}</p>
+                            </div>
+                            <div class="min-w-0 text-sm text-gray-600">
+                                <p class="break-words font-medium text-gray-800">{{ $model['owner']['display_name'] }}</p>
+                                <p class="mt-0.5">{{ __('admin.ai_models.owner_status_label', ['status' => $model['owner']['status']]) }}</p>
+                            </div>
+                            <span class="inline-flex w-fit rounded-full px-2 py-1 text-xs font-semibold {{ $model['is_available'] ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700' }}">
+                                {{ $model['is_available'] ? __('admin.ai_models.status_available') : __('admin.ai_models.status_unavailable') }}
+                            </span>
+                        </div>
+                    @empty
+                        <p class="px-5 py-6 text-sm leading-6 text-gray-500 sm:px-6">{{ __('admin.ai_models.governance_models_empty') }}</p>
+                    @endforelse
+                </div>
+                @if ($governancePaginator?->hasPages())
+                    <div class="border-t border-gray-200 px-5 py-4 sm:px-6">
+                        {{ $governancePaginator->withQueryString()->links() }}
+                    </div>
+                @endif
+            </section>
+        @endif
 
         <dialog
             class="fixed inset-0 m-auto w-[min(640px,calc(100vw-2rem))] max-w-none overflow-hidden overscroll-contain rounded-2xl border-0 bg-white p-0 text-left text-gray-900 shadow-[0_24px_72px_rgba(15,23,42,0.28)] backdrop:bg-[rgba(15,23,42,0.48)]"

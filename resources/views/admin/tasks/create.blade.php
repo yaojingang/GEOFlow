@@ -217,10 +217,15 @@
                             </div>
                             <div>
                                 <label for="ai_model_id" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.ai_model') }} *</label>
+                                @if (collect($formOptions['aiModels'])->contains(fn (array $model): bool => in_array('ai_model_id', (array) ($model['current_inaccessible_for'] ?? []), true)))
+                                    <input type="hidden" name="ai_model_id" value="{{ old('ai_model_id', (string) ($taskForm['ai_model_id'] ?? '')) }}">
+                                @endif
                                 <select name="ai_model_id" id="ai_model_id" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
                                     <option value="">{{ $t('task_create.option.select_ai_model') }}</option>
                                     @foreach ($formOptions['aiModels'] as $model)
-                                        <option value="{{ $model['id'] }}" @selected((string) old('ai_model_id', (string) ($taskForm['ai_model_id'] ?? '')) === (string) $model['id'])>{{ $model['name'] }}</option>
+                                        <option value="{{ $model['id'] }}"
+                                                @selected((string) old('ai_model_id', (string) ($taskForm['ai_model_id'] ?? '')) === (string) $model['id'])
+                                                @disabled($model['disabled'] ?? false)>{{ $model['name'] }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -412,11 +417,16 @@
                             </div>
                             <div>
                                 <label for="ai_quality_model_id" class="block text-sm font-medium text-gray-700">{{ $t('task_create.ai_quality.model_label') }}</label>
+                                @if (collect($formOptions['aiModels'])->contains(fn (array $model): bool => in_array('ai_quality_model_id', (array) ($model['current_inaccessible_for'] ?? []), true)))
+                                    <input type="hidden" name="ai_quality_model_id" value="{{ old('ai_quality_model_id', (string) ($taskForm['ai_quality_model_id'] ?? '')) }}">
+                                @endif
                                 <select name="ai_quality_model_id" id="ai_quality_model_id"
                                         class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
                                     <option value="">{{ $t('task_create.ai_quality.follow_content_model') }}</option>
                                     @foreach ($formOptions['aiModels'] as $model)
-                                        <option value="{{ $model['id'] }}" @selected((string) old('ai_quality_model_id', (string) ($taskForm['ai_quality_model_id'] ?? '')) === (string) $model['id'])>{{ $model['name'] }}</option>
+                                        <option value="{{ $model['id'] }}"
+                                                @selected((string) old('ai_quality_model_id', (string) ($taskForm['ai_quality_model_id'] ?? '')) === (string) $model['id'])
+                                                @disabled($model['disabled'] ?? false)>{{ $model['name'] }}</option>
                                     @endforeach
                                 </select>
                                 <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.ai_quality.model_help') }}</p>

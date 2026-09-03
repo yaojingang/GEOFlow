@@ -40,7 +40,18 @@ final class AiWorkspaceStateMachine
                 throw new LogicException(sprintf('Invalid AI workspace state transition: %s -> %s', $current, $state));
             }
             $terminal = in_array($state, AiWorkspaceRun::TERMINAL_STATES, true);
-            $locked->forceFill($attributes + [
+            $leaseAttributes = match (true) {
+                $terminal => [
+                    'execution_lease_token' => null,
+                    'execution_lease_expires_at' => null,
+                ],
+                $state === 'queued' => [
+                    'execution_lease_token' => null,
+                    'execution_lease_expires_at' => null,
+                ],
+                default => [],
+            };
+            $locked->forceFill($leaseAttributes + $attributes + [
                 'state' => $state,
                 'state_version' => (int) $locked->state_version + 1,
                 'event_sequence' => (int) $locked->event_sequence + 1,
@@ -108,6 +119,10 @@ final class AiWorkspaceStateMachine
                 'failure_code' => null,
                 'failure_message' => null,
                 'finished_at' => null,
+                'answer' => null,
+                'answer_chunk_sequence' => 0,
+                'answer_is_partial' => false,
+                'first_token_at' => null,
             ])->save();
             $this->traces->recordTransition($locked, [
                 'event_type' => 'run.queued',

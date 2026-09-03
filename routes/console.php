@@ -4,6 +4,7 @@
  * Artisan 自定义命令注册（闭包命令或后续类命令）。
  */
 
+use App\Data\Ai\SystemAiIdentity;
 use App\Models\KnowledgeFactGenerationRun;
 use App\Services\GeoFlow\ArticleMarkdownExportService;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
@@ -20,6 +21,7 @@ Artisan::command(
     'geoflow:recover-knowledge-syncs {--stale=600} {--limit=50}',
     function (KnowledgeChunkSyncCoordinator $coordinator): int {
         $recovered = $coordinator->recoverStale(
+            SystemAiIdentity::knowledgeIndex(),
             max(60, (int) $this->option('stale')),
             max(1, min(200, (int) $this->option('limit'))),
         );
@@ -116,7 +118,32 @@ Schedule::command('geoflow:recover-knowledge-syncs')
     ->onOneServer()
     ->withoutOverlapping(10);
 
+Schedule::command('geoflow:recover-ai-workspace')
+    ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping(10);
+
+Schedule::command('geoflow:recover-url-imports')
+    ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping(2);
+
+Schedule::command('geoflow:recover-enterprise-knowledge-drafts')
+    ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping(2);
+
 Schedule::command('geoflow:recover-title-generations')
+    ->everyFiveMinutes()
+    ->onOneServer()
+    ->withoutOverlapping(10);
+
+Schedule::command('geoflow:recover-knowledge-fact-generations')
+    ->everyFiveMinutes()
+    ->onOneServer()
+    ->withoutOverlapping(10);
+
+Schedule::command('geoflow:reconcile-ai-usage-attempts --older-than=900')
     ->everyFiveMinutes()
     ->onOneServer()
     ->withoutOverlapping(10);

@@ -61,7 +61,7 @@
             </form>
         </section>
 
-        @if (! ($ai['configured'] ?? false))
+        @if (! ($ai['configured'] ?? false) && auth('admin')->user()?->isSuperAdmin())
             <section class="rounded-lg border border-violet-200 bg-violet-50 p-6" data-ai-visibility-setup-entry>
                 <h2 class="text-lg font-semibold text-violet-950">{{ __('admin.growth_center.ai_visibility.setup_entry_title') }}</h2>
                 <p class="mt-2 max-w-3xl text-sm leading-6 text-violet-800">{{ __('admin.growth_center.ai_visibility.setup_entry_desc') }}</p>

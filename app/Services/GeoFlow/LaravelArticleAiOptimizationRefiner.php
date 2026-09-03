@@ -4,8 +4,9 @@ namespace App\Services\GeoFlow;
 
 use App\Ai\Agents\ArticleOptimizationJsonRefinerAgent;
 use App\Ai\Agents\ArticleOptimizationRefinerAgent;
-use App\Contracts\ArticleAiOptimizationRefiner;
+use App\Contracts\ProviderAttemptAwareArticleAiOptimizationRefiner;
 use App\Models\AiModel;
+use App\Services\Admin\AiModelProviderUsageSession;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Support\Str;
@@ -13,7 +14,7 @@ use JsonException;
 use RuntimeException;
 use Throwable;
 
-final readonly class LaravelArticleAiOptimizationRefiner implements ArticleAiOptimizationRefiner
+final readonly class LaravelArticleAiOptimizationRefiner implements ProviderAttemptAwareArticleAiOptimizationRefiner
 {
     public function __construct(
         private ApiKeyCrypto $apiKeyCrypto,
@@ -26,6 +27,27 @@ final readonly class LaravelArticleAiOptimizationRefiner implements ArticleAiOpt
         int $timeoutSeconds,
         int $quotaReserve = 0,
     ): array {
+        return $this->refineTracking($model, $instructions, $timeoutSeconds, $quotaReserve);
+    }
+
+    public function refineTrackingProviderAttempts(
+        AiModel $model,
+        string $instructions,
+        int $timeoutSeconds,
+        int $quotaReserve,
+        AiModelProviderUsageSession $usageSession,
+    ): array {
+        return $this->refineTracking($model, $instructions, $timeoutSeconds, $quotaReserve, $usageSession);
+    }
+
+    /** @return array{result:array<string,mixed>,usage:array<string,mixed>,model:array<string,mixed>,mode:string} */
+    private function refineTracking(
+        AiModel $model,
+        string $instructions,
+        int $timeoutSeconds,
+        int $quotaReserve,
+        ?AiModelProviderUsageSession $usageSession = null,
+    ): array {
         [$provider, $driver, $baseUrl] = $this->runtimeProvider($model);
         $maxTokens = max(1024, min(8192, (int) ($model->max_tokens ?: 4096)));
         $timeout = max(1, min(300, $timeoutSeconds));
@@ -36,6 +58,7 @@ final readonly class LaravelArticleAiOptimizationRefiner implements ArticleAiOpt
         $attempted = false;
 
         try {
+            $providerAttempt = $usageSession?->begin('structured');
             $attempted = true;
             $response = (new ArticleOptimizationRefinerAgent($this->systemInstructions(), $maxTokens))->prompt(
                 $instructions,
@@ -46,7 +69,13 @@ final readonly class LaravelArticleAiOptimizationRefiner implements ArticleAiOpt
             );
             $result = $response->structured;
             $mode = 'structured';
+            if ($providerAttempt !== null) {
+                $usageSession?->providerReturned($providerAttempt, $response->usage);
+            }
         } catch (Throwable $structuredException) {
+            if (isset($providerAttempt) && $providerAttempt !== null) {
+                $usageSession?->providerFailed($providerAttempt, 'article_ai_optimization_provider_error');
+            }
             $normalized = Str::lower(OpenAiRuntimeProvider::normalizeApiException($structuredException, $baseUrl));
             if (! Str::contains($normalized, ['structured', 'schema', 'json'])) {
                 $this->usageQuota->recordModelAttempt($reservation);
@@ -62,6 +91,8 @@ final readonly class LaravelArticleAiOptimizationRefiner implements ArticleAiOpt
             }
             $attempted = false;
             try {
+                $providerAttempt = $usageSession?->begin('json_fallback');
+                $providerResponseReturned = false;
                 $attempted = true;
                 $response = (new ArticleOptimizationJsonRefinerAgent($this->systemInstructions(), $maxTokens))->prompt(
                     $instructions,
@@ -70,10 +101,28 @@ final readonly class LaravelArticleAiOptimizationRefiner implements ArticleAiOpt
                     (string) $model->model_id,
                     $timeout,
                 );
+                $providerResponseReturned = true;
                 $result = $this->decodeJson((string) $response->text);
                 $mode = 'json_fallback';
+                if ($providerAttempt !== null) {
+                    $usageSession?->providerReturned($providerAttempt, $response->usage);
+                }
             } catch (Throwable $fallbackException) {
+                if (isset($providerAttempt) && $providerAttempt !== null) {
+                    $providerResponseReturned
+                        ? $usageSession?->providerResultDiscarded(
+                            $providerAttempt,
+                            $response->usage ?? null,
+                            $fallbackException instanceof ArticleAiOptimizationException
+                                ? $fallbackException->errorCode()
+                                : 'article_ai_optimization_invalid_model_output',
+                        )
+                        : $usageSession?->providerFailed($providerAttempt, 'article_ai_optimization_provider_error');
+                }
                 $this->usageQuota->recordModelAttempt($reservation);
+                if ($fallbackException instanceof ArticleAiOptimizationException) {
+                    throw $fallbackException;
+                }
                 throw new ArticleAiOptimizationException(
                     'article_ai_optimization_provider_error',
                     previous: $fallbackException,
@@ -82,6 +131,13 @@ final readonly class LaravelArticleAiOptimizationRefiner implements ArticleAiOpt
         }
 
         if (! is_array($result) || $result === []) {
+            if (isset($providerAttempt) && $providerAttempt !== null) {
+                $usageSession?->providerResultDiscarded(
+                    $providerAttempt,
+                    $response->usage ?? null,
+                    'article_ai_optimization_invalid_model_output',
+                );
+            }
             if ($attempted) {
                 $this->usageQuota->recordModelAttempt($reservation);
             } else {

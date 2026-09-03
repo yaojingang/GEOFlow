@@ -4,6 +4,7 @@ namespace App\Services\GeoFlow;
 
 use App\Exceptions\ArticleAiQualityGateException;
 use App\Models\Admin;
+use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleAiOptimizationRun;
 use App\Models\ArticleAiOptimizationStep;
@@ -11,6 +12,7 @@ use App\Models\ArticleAiQualityCheck;
 use App\Models\Task;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 class ArticleAiQualityGate
 {
@@ -19,6 +21,108 @@ class ArticleAiQualityGate
         private readonly ArticleAiQualityInspectionService $inspectionService,
         private readonly ArticleAiQualityVersionPolicy $versionPolicy,
     ) {}
+
+    /**
+     * Return the configured model when the next gate evaluation would create or refresh an AI check.
+     * This preflight is read-only so a Worker can validate its frozen identity before any dispatch.
+     */
+    public function modelIdThatWouldBeDispatched(Article $article): ?int
+    {
+        return DB::transaction(function () use ($article): ?int {
+            $taskId = (int) (Article::query()
+                ->whereKey((int) $article->id)
+                ->value('task_id') ?? 0);
+            $task = $this->lockTaskBeforeArticle($taskId);
+            $article = $this->lockArticleAfterTask((int) $article->id, $taskId);
+            if ($task instanceof Task) {
+                $task->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
+                $article->setRelation('task', $task);
+            }
+
+            $optimization = ArticleAiOptimizationRun::query()
+                ->where('article_id', (int) $article->id)
+                ->latest('id')
+                ->lockForUpdate()
+                ->first();
+            if ($optimization
+                && in_array((string) $optimization->status, ArticleAiOptimizationRun::ACTIVE_STATUSES, true)) {
+                return null;
+            }
+
+            $policy = $this->policyResolver->resolve($article);
+            if (! ($policy['required'] ?? false)) {
+                return null;
+            }
+
+            $model = $policy['model'] ?? null;
+            if (! $model instanceof AiModel) {
+                return null;
+            }
+
+            try {
+                $this->policyResolver->assertExecutable($policy);
+            } catch (\Throwable) {
+                return (int) $model->getKey();
+            }
+            $policy['model_candidates'] = $this->policyResolver->modelCandidates($policy);
+
+            $versionSelection = $this->versionPolicy->selection((int) $article->id);
+            $currentFingerprint = $this->inspectionService->currentFingerprint(
+                $article,
+                $policy,
+                $this->inspectionService->rules(),
+                $versionSelection,
+            );
+            $check = ArticleAiQualityCheck::query()
+                ->where('article_id', $article->id)
+                ->where('gate_applied', true)
+                ->latest('id')
+                ->lockForUpdate()
+                ->first();
+
+            $optimizationStillApplies = $optimization && $check && (
+                in_array((int) $check->id, array_filter([
+                    (int) $optimization->source_check_id,
+                    (int) $optimization->best_check_id,
+                    (int) $optimization->final_check_id,
+                ]), true)
+                || ! $check->created_at
+                || ! $optimization->updated_at
+                || $check->created_at->lessThanOrEqualTo($optimization->updated_at)
+            );
+            if ($optimizationStillApplies && in_array((string) $optimization->status, [
+                ArticleAiOptimizationRun::STATUS_STALE,
+                ArticleAiOptimizationRun::STATUS_NEEDS_REVIEW,
+                ArticleAiOptimizationRun::STATUS_FAILED,
+            ], true)) {
+                return null;
+            }
+
+            if ($check === null) {
+                return (int) $model->getKey();
+            }
+            if (! hash_equals((string) $check->input_fingerprint, $currentFingerprint)
+                || ! $this->inspectionService->retrievalBasisMatches(
+                    $check,
+                    $policy,
+                    $this->inspectionService->rules(),
+                )) {
+                return (int) $model->getKey();
+            }
+            if ((string) $check->status === 'stale') {
+                return (int) $model->getKey();
+            }
+            if ((string) $check->status !== 'completed') {
+                return null;
+            }
+            if ((string) $check->inspection_scope === 'fallback_sampled'
+                && ! $this->sampledResultCanAuthorize($check, $policy)) {
+                return (int) $model->getKey();
+            }
+
+            return null;
+        });
+    }
 
     public function check(
         Article $article,
@@ -54,16 +158,14 @@ class ArticleAiQualityGate
         ?string $overrideReason,
         bool $allowExistingOverride,
     ): ?ArticleAiQualityCheck {
-        $article = Article::query()->whereKey((int) $article->id)->lockForUpdate()->firstOrFail();
-        if ($article->task_id) {
-            $task = Task::withTrashed()
-                ->whereKey((int) $article->task_id)
-                ->lockForUpdate()
-                ->first();
-            if ($task instanceof Task) {
-                $task->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
-                $article->setRelation('task', $task);
-            }
+        $taskId = (int) (Article::query()
+            ->whereKey((int) $article->id)
+            ->value('task_id') ?? 0);
+        $task = $this->lockTaskBeforeArticle($taskId);
+        $article = $this->lockArticleAfterTask((int) $article->id, $taskId);
+        if ($task instanceof Task) {
+            $task->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
+            $article->setRelation('task', $task);
         }
         $optimization = ArticleAiOptimizationRun::query()
             ->where('article_id', (int) $article->id)
@@ -273,6 +375,31 @@ class ArticleAiQualityGate
                 : 'AI 质检未通过，文章需要人工审核。',
             $check,
         );
+    }
+
+    private function lockTaskBeforeArticle(int $taskId): ?Task
+    {
+        if ($taskId <= 0) {
+            return null;
+        }
+
+        return Task::withTrashed()
+            ->whereKey($taskId)
+            ->lockForUpdate()
+            ->first();
+    }
+
+    private function lockArticleAfterTask(int $articleId, int $expectedTaskId): Article
+    {
+        $article = Article::query()
+            ->whereKey($articleId)
+            ->lockForUpdate()
+            ->firstOrFail();
+        if ((int) ($article->task_id ?? 0) !== $expectedTaskId) {
+            throw new RuntimeException('文章所属任务已变更，请重试。');
+        }
+
+        return $article;
     }
 
     private function cancelOptimizationForOverride(ArticleAiOptimizationRun $run, ?int $adminId): void

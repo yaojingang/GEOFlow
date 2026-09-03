@@ -2,7 +2,10 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Data\Api\TaskRunData;
+use App\Exceptions\AiModelAccessException;
 use App\Exceptions\ApiException;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleDistribution;
@@ -16,6 +19,7 @@ use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\TaskSchedule;
 use App\Models\TitleLibrary;
+use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Support\GeoFlow\AiQualityRetrievalMode;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
@@ -41,6 +45,7 @@ class TaskLifecycleService
      */
     public function __construct(
         private JobQueueService $queueService,
+        private AiExecutionContextFactory $aiExecutionContextFactory,
         private TaskMonitoringQueryService $taskMonitoringQueryService,
         private TaskRealtimeBroadcastService $taskRealtimeBroadcastService,
         private TaskTitleReadinessService $taskTitleReadinessService,
@@ -48,7 +53,90 @@ class TaskLifecycleService
         private ArticleAiQualityPolicyResolver $articleAiQualityPolicyResolver,
         private AiQualityRetrievalReadinessService $aiQualityRetrievalReadinessService,
         private AiQualityAuditService $aiQualityAuditService,
+        private TaskRunData $taskRunData,
+        private AdminAiModelAccessResolver $adminAiModelAccessResolver,
+        private ?TaskActivationGuard $taskActivationGuard = null,
     ) {}
+
+    /** @return array{items:list<array<string,mixed>>,pagination:array{page:int,per_page:int,total:int,total_pages:int}} */
+    public function listTasksForApi(int $page, int $perPage, array $filters, Admin $viewer): array
+    {
+        return $this->listTasks($page, $perPage, $filters, $viewer);
+    }
+
+    /** @param array<string,mixed> $data @return array<string,mixed> */
+    public function createTaskForApi(
+        array $data,
+        int $auditAdminId,
+        int $apiTokenId,
+        Admin $viewer,
+    ): array {
+        return $this->createTask($data, $auditAdminId, $apiTokenId, $viewer);
+    }
+
+    /** @return array<string,mixed> */
+    public function getTaskForApi(int $taskId, Admin $viewer): array
+    {
+        return $this->getTask($taskId, $viewer);
+    }
+
+    /** @param array<string,mixed> $data @return array<string,mixed> */
+    public function updateTaskForApi(
+        int $taskId,
+        array $data,
+        bool $canManageHostedTask,
+        int $auditAdminId,
+        int $apiTokenId,
+        Admin $viewer,
+    ): array {
+        return $this->updateTask(
+            $taskId,
+            $data,
+            $canManageHostedTask,
+            $auditAdminId,
+            $apiTokenId,
+            $viewer,
+        );
+    }
+
+    /** @return array<string,mixed> */
+    public function startTaskForApi(
+        int $taskId,
+        bool $enqueueNow,
+        bool $canManageHostedTask,
+        Admin $viewer,
+    ): array {
+        return $this->startTask($taskId, $enqueueNow, $canManageHostedTask, $viewer, $viewer);
+    }
+
+    /** @return array<string,mixed> */
+    public function stopTaskForApi(int $taskId, bool $canManageHostedTask, Admin $viewer): array
+    {
+        return $this->stopTask($taskId, $canManageHostedTask, $viewer);
+    }
+
+    /** @param array<string,mixed> $payload @return array{task_id:int,job_id:int,status:string} */
+    public function enqueueTaskForApi(
+        int $taskId,
+        string $jobType,
+        array $payload,
+        bool $canManageHostedTask,
+        Admin $viewer,
+    ): array {
+        return $this->enqueueTask($taskId, $jobType, $payload, $canManageHostedTask, $viewer);
+    }
+
+    /** @return array{items:list<array<string,mixed>>} */
+    public function listTaskJobsForApi(int $taskId, ?string $status, int $limit, Admin $viewer): array
+    {
+        return $this->listTaskJobs($taskId, $status, $limit, $viewer);
+    }
+
+    /** @return array<string,mixed> */
+    public function getJobForApi(int $jobId, Admin $viewer): array
+    {
+        return $this->getJob($jobId, $viewer);
+    }
 
     /**
      * 分页查询任务列表（含 pending/running 运行计数）。
@@ -61,9 +149,13 @@ class TaskLifecycleService
      *     pagination:array{page:int,per_page:int,total:int,total_pages:int}
      * }
      */
-    public function listTasks(int $page = 1, int $perPage = 20, array $filters = []): array
-    {
-        return $this->taskMonitoringQueryService->listTasksPaginated($page, $perPage, $filters);
+    public function listTasks(
+        int $page = 1,
+        int $perPage = 20,
+        array $filters = [],
+        ?Admin $modelViewer = null,
+    ): array {
+        return $this->taskMonitoringQueryService->listTasksPaginated($page, $perPage, $filters, $modelViewer);
     }
 
     /**
@@ -82,8 +174,10 @@ class TaskLifecycleService
         array $data,
         ?int $auditAdminId = null,
         ?int $apiTokenId = null,
+        ?Admin $responseViewer = null,
     ): array {
-        $normalized = $this->normalizeTaskInput($data, false);
+        $accessAdmin = $this->accessAdmin($auditAdminId);
+        $normalized = $this->normalizeTaskInput($data, false, $accessAdmin);
         if (! empty($normalized['ai_quality_enabled'])) {
             $readiness = $this->aiQualityRetrievalReadinessService->inspect($normalized['knowledge_base_ids'] ?? []);
             $mode = $normalized['ai_quality_retrieval_mode'] ?? $readiness['highest_available_mode'];
@@ -104,7 +198,9 @@ class TaskLifecycleService
             );
         }
 
-        $taskId = DB::transaction(function () use ($normalized, $auditAdminId, $apiTokenId): int {
+        $taskId = DB::transaction(function () use ($normalized, $auditAdminId, $apiTokenId, $accessAdmin): int {
+            $executionIdentity = $this->aiExecutionContextFactory->identityForTaskCreation($auditAdminId);
+            $this->assertSelectedModelsUsable($accessAdmin, $normalized);
             $task = Task::query()->create([
                 'name' => $normalized['name'],
                 'title_library_id' => $normalized['title_library_id'],
@@ -140,6 +236,12 @@ class TaskLifecycleService
                 'category_mode' => $normalized['category_mode'],
                 'fixed_category_id' => $normalized['fixed_category_id'],
             ]);
+            if ($executionIdentity !== null) {
+                $task->forceFill($executionIdentity)->save();
+            }
+            if ((string) $task->status === 'active') {
+                $this->activationGuard()->assertCanActivate($task, $accessAdmin);
+            }
 
             $taskId = (int) $task->id;
             $this->syncTaskKnowledgeBases($taskId, $normalized['knowledge_base_ids'] ?? []);
@@ -174,7 +276,7 @@ class TaskLifecycleService
             return $taskId;
         });
 
-        $task = $this->getTask($taskId);
+        $task = $this->getTask($taskId, $responseViewer);
         $this->broadcastOverviewAfterCommit();
 
         return $task;
@@ -188,7 +290,7 @@ class TaskLifecycleService
      * @param  array<string,mixed>  $data
      * @return array<string,mixed>
      */
-    public function createDraftTask(array $data): array
+    public function createDraftTask(array $data, Admin|int $executionAdmin): array
     {
         $name = trim((string) ($data['name'] ?? ''));
         if ($name === '') {
@@ -197,8 +299,11 @@ class TaskLifecycleService
         $articleLimit = max(1, min(100, (int) ($data['article_limit'] ?? 10)));
         $publishInterval = max(60, min(2592000, (int) ($data['publish_interval'] ?? 3600)));
 
-        $taskId = DB::transaction(function () use ($name, $articleLimit, $publishInterval): int {
-            $dependencies = $this->resolveDraftTaskDependencies();
+        $taskId = DB::transaction(function () use ($name, $articleLimit, $publishInterval, $executionAdmin): int {
+            $executionIdentity = $this->aiExecutionContextFactory->identityForTaskCreation($executionAdmin);
+            $accessAdmin = $this->accessAdmin($executionAdmin);
+            $dependencies = $this->resolveDraftTaskDependencies($accessAdmin);
+            $this->assertSelectedModelsUsable($accessAdmin, $dependencies);
             $task = Task::query()->create([
                 'name' => $name,
                 'title_library_id' => $dependencies['title_library_id'],
@@ -220,6 +325,9 @@ class TaskLifecycleService
                 'category_mode' => 'smart',
                 'max_retry_count' => 3,
             ]);
+            if ($executionIdentity !== null) {
+                $task->forceFill($executionIdentity)->save();
+            }
             $this->queueService->initializeTaskSchedule((int) $task->id);
             Task::query()->whereKey($task->id)->update([
                 'schedule_enabled' => 0,
@@ -237,22 +345,20 @@ class TaskLifecycleService
     }
 
     /** @return array{title_library_id:int,prompt_id:int,ai_model_id:int} */
-    private function resolveDraftTaskDependencies(): array
+    private function resolveDraftTaskDependencies(Admin $accessAdmin): array
     {
         $titleLibraryId = TitleLibrary::query()->orderByDesc('id')->value('id');
         $promptId = Prompt::query()
             ->where('type', 'content')
             ->orderByDesc('id')
             ->value('id');
-        $aiModelId = AiModel::query()
-            ->where('status', 'active')
+        $aiModelId = $this->adminAiModelAccessResolver
+            ->usableQuery($accessAdmin)
             ->where(function ($query): void {
                 $query->whereNull('model_type')
                     ->orWhere('model_type', '')
                     ->orWhere('model_type', 'chat');
             })
-            ->orderBy('failover_priority')
-            ->orderByDesc('id')
             ->value('id');
 
         $missing = [];
@@ -288,10 +394,10 @@ class TaskLifecycleService
      *
      * @throws ApiException 当任务不存在时抛出 404
      */
-    public function getTask(int $taskId): array
+    public function getTask(int $taskId, ?Admin $modelViewer = null): array
     {
         try {
-            return $this->taskMonitoringQueryService->getTaskMonitoringDetail($taskId);
+            return $this->taskMonitoringQueryService->getTaskMonitoringDetail($taskId, $modelViewer);
         } catch (ModelNotFoundException) {
             throw new ApiException('task_not_found', '任务不存在', 404);
         }
@@ -313,8 +419,10 @@ class TaskLifecycleService
         bool $canManageHostedTask = false,
         ?int $auditAdminId = null,
         ?int $apiTokenId = null,
+        ?Admin $responseViewer = null,
     ): array {
         $this->ensureTaskExists($taskId);
+        $accessAdmin = $this->accessAdmin($auditAdminId);
         $qualityFields = [
             'knowledge_base_id', 'knowledge_base_ids', 'ai_quality_enabled', 'ai_quality_retrieval_mode',
             'ai_quality_timeout_sampling_enabled', 'ai_quality_prompt_id', 'ai_quality_model_id',
@@ -348,7 +456,7 @@ class TaskLifecycleService
         unset($normalized['knowledge_base_ids']);
         $samplingWasDisabled = false;
 
-        DB::transaction(function () use (&$qualityConfigurationChanged, &$qualityControlConfigurationChanged, &$optimizationLevelChanged, &$optimizationWasDisabled, &$samplingWasDisabled, $normalized, $knowledgeBaseIdsProvided, $knowledgeBaseIds, $status, $taskId, $canManageHostedTask, $auditAdminId, $apiTokenId, $qualityConfigurationRequested, $expectedQualityVersion): void {
+        DB::transaction(function () use (&$qualityConfigurationChanged, &$qualityControlConfigurationChanged, &$optimizationLevelChanged, &$optimizationWasDisabled, &$samplingWasDisabled, $normalized, $knowledgeBaseIdsProvided, $knowledgeBaseIds, $status, $taskId, $canManageHostedTask, $auditAdminId, $apiTokenId, $qualityConfigurationRequested, $expectedQualityVersion, $accessAdmin): void {
             Article::withTrashed()
                 ->where('task_id', $taskId)
                 ->orderBy('id')
@@ -381,8 +489,23 @@ class TaskLifecycleService
                     'publish_scope',
                     'distribution_strategy',
                     'need_review',
+                    'model_access_admin_id',
+                    'model_access_admin_role',
+                    'model_access_policy_version',
                 ]);
             $this->assertCanManageHostedTask($current, $canManageHostedTask);
+            $changedModels = [];
+            foreach (['ai_model_id', 'ai_quality_model_id'] as $modelField) {
+                if (array_key_exists($modelField, $normalized)
+                    && (int) ($normalized[$modelField] ?? 0) !== (int) ($current->{$modelField} ?? 0)) {
+                    $changedModels[$modelField] = $normalized[$modelField];
+                }
+            }
+            $this->assertSelectedModelsUsable($accessAdmin, $changedModels);
+            $executionAdminId = (int) ($current->model_access_admin_id ?? 0);
+            if ($executionAdminId > 0 && $executionAdminId !== (int) ($accessAdmin?->getKey() ?? 0)) {
+                $this->assertSelectedModelsUsable($this->accessAdmin($executionAdminId), $changedModels);
+            }
             if ($qualityConfigurationRequested
                 && $expectedQualityVersion !== null
                 && $this->taskConfigurationVersion($current) !== $expectedQualityVersion) {
@@ -392,6 +515,19 @@ class TaskLifecycleService
                 ]);
             }
             $effectiveStatus = $status ?? (string) $current->status;
+            $effectiveAiQualityEnabledForAccess = array_key_exists('ai_quality_enabled', $normalized)
+                ? (bool) $normalized['ai_quality_enabled']
+                : (bool) $current->ai_quality_enabled;
+            $effectiveAutoOptimizationEnabledForAccess = $effectiveAiQualityEnabledForAccess
+                && (array_key_exists('ai_quality_auto_optimize_enabled', $normalized)
+                    ? (bool) $normalized['ai_quality_auto_optimize_enabled']
+                    : (bool) $current->ai_quality_auto_optimize_enabled);
+            $mustRevalidateExecutionModels = $effectiveStatus === 'active'
+                || (! (bool) $current->ai_quality_enabled && $effectiveAiQualityEnabledForAccess)
+                || (! (bool) $current->ai_quality_auto_optimize_enabled && $effectiveAutoOptimizationEnabledForAccess);
+            if ($mustRevalidateExecutionModels) {
+                $this->activationGuard()->assertCanActivate($current, $accessAdmin, $normalized);
+            }
             if ($effectiveStatus === 'active') {
                 $effectiveTitleLibraryId = array_key_exists('title_library_id', $normalized)
                     ? (int) ($normalized['title_library_id'] ?? 0)
@@ -570,7 +706,7 @@ class TaskLifecycleService
             $this->articleAiQualityInvalidationService->invalidateTask($taskId, '任务质检配置或知识依据已更新');
         }
 
-        $task = $this->getTask($taskId);
+        $task = $this->getTask($taskId, $responseViewer);
         $this->broadcastOverviewAfterCommit();
 
         return $task;
@@ -830,19 +966,25 @@ class TaskLifecycleService
      * @param  bool  $enqueueNow  是否立即投递一条执行任务（手动启动场景）
      * @return array<string,mixed>
      */
-    public function startTask(int $taskId, bool $enqueueNow = false, bool $canManageHostedTask = false): array
-    {
+    public function startTask(
+        int $taskId,
+        bool $enqueueNow = false,
+        bool $canManageHostedTask = false,
+        Admin|int|null $operator = null,
+        ?Admin $responseViewer = null,
+    ): array {
         $this->ensureTaskExists($taskId);
-        $jobId = DB::transaction(function () use ($taskId, $enqueueNow, $canManageHostedTask): ?int {
+        $jobId = DB::transaction(function () use ($taskId, $enqueueNow, $canManageHostedTask, $operator): ?int {
             $task = Task::query()
                 ->whereKey($taskId)
                 ->lockForUpdate()
-                ->firstOrFail(['id', 'title_library_id', 'article_limit', 'created_count', 'is_loop']);
+                ->firstOrFail();
             $this->assertCanManageHostedTask($task, $canManageHostedTask);
             $this->taskTitleReadinessService->assertCanActivate(
                 $this->taskTitleReadinessService->inspectTask($task),
                 409,
             );
+            $this->activationGuard()->assertCanActivate($task, $operator);
 
             // 手动“立即执行”场景下，不把 next_run_at 强行置为 now，
             // 避免与手动入队叠加导致一次点击触发两次执行。
@@ -861,7 +1003,7 @@ class TaskLifecycleService
             return $jobId;
         });
 
-        $task = $this->getTask($taskId);
+        $task = $this->getTask($taskId, $responseViewer);
         if ($jobId !== null) {
             $task['started_job_id'] = $jobId;
         }
@@ -880,8 +1022,11 @@ class TaskLifecycleService
      *
      * @return array<string,mixed>
      */
-    public function stopTask(int $taskId, bool $canManageHostedTask = false): array
-    {
+    public function stopTask(
+        int $taskId,
+        bool $canManageHostedTask = false,
+        ?Admin $responseViewer = null,
+    ): array {
         $this->ensureTaskExists($taskId);
         [$cancelledJobs, $runningJobs] = DB::transaction(function () use ($taskId, $canManageHostedTask): array {
             $task = Task::query()
@@ -897,7 +1042,7 @@ class TaskLifecycleService
 
             return [$cancelledJobs, $runningJobs];
         });
-        $task = $this->getTask($taskId);
+        $task = $this->getTask($taskId, $responseViewer);
         $task['cancelled_jobs'] = $cancelledJobs;
         $task['running_jobs'] = $runningJobs;
         $this->broadcastOverviewAfterCommit();
@@ -921,8 +1066,9 @@ class TaskLifecycleService
         string $jobType = 'generate_article',
         array $payload = [],
         bool $canManageHostedTask = false,
+        Admin|int|null $operator = null,
     ): array {
-        $jobId = DB::transaction(function () use ($taskId, $jobType, $payload, $canManageHostedTask): ?int {
+        $jobId = DB::transaction(function () use ($taskId, $jobType, $payload, $canManageHostedTask, $operator): ?int {
             $task = Task::query()
                 ->whereKey($taskId)
                 ->lockForUpdate()
@@ -934,6 +1080,12 @@ class TaskLifecycleService
                     'is_loop',
                     'status',
                     'schedule_enabled',
+                    'ai_model_id',
+                    'ai_quality_enabled',
+                    'ai_quality_model_id',
+                    'model_access_admin_id',
+                    'model_access_admin_role',
+                    'model_access_policy_version',
                 ]);
             if (! $task) {
                 throw new ApiException('task_not_found', '任务不存在', 404);
@@ -944,6 +1096,7 @@ class TaskLifecycleService
                 throw new ApiException('task_not_active', '任务未启用，无法入队', 409);
             }
 
+            $this->activationGuard()->assertCanActivate($task, $operator);
             $this->taskTitleReadinessService->assertCanActivate(
                 $this->taskTitleReadinessService->inspectTask($task),
                 409,
@@ -1009,8 +1162,12 @@ class TaskLifecycleService
      * @param  int  $limit  返回数量上限（1~100）
      * @return array{items:list<array<string,mixed>>}
      */
-    public function listTaskJobs(int $taskId, ?string $status = null, int $limit = 20): array
-    {
+    public function listTaskJobs(
+        int $taskId,
+        ?string $status,
+        int $limit,
+        Admin $viewer,
+    ): array {
         $this->ensureTaskExists($taskId);
         $limit = max(1, min(100, $limit));
 
@@ -1024,7 +1181,7 @@ class TaskLifecycleService
             $q->where('status', $status);
         }
 
-        return ['items' => $q->get()->map(fn (TaskRun $run) => $run->getAttributes())->all()];
+        return ['items' => $q->get()->map(fn (TaskRun $run) => $this->taskRunData->fromModel($run, $viewer))->all()];
     }
 
     /**
@@ -1036,35 +1193,14 @@ class TaskLifecycleService
      *
      * @throws ApiException 当执行记录不存在时抛出 404
      */
-    public function getJob(int $jobId): array
+    public function getJob(int $jobId, Admin $viewer): array
     {
         $run = TaskRun::query()->find($jobId);
         if (! $run) {
             throw new ApiException('job_not_found', 'Job 不存在', 404);
         }
-        $meta = is_array($run->meta) ? $run->meta : [];
-        $payload = is_array($meta['payload'] ?? null) ? $meta['payload'] : [];
 
-        return [
-            'id' => (int) $run->id,
-            'task_id' => (int) $run->task_id,
-            'job_type' => (string) ($meta['job_type'] ?? 'generate_article'),
-            'status' => (string) $run->status,
-            'attempt_count' => (int) ($meta['attempt_count'] ?? 0),
-            'max_attempts' => (int) ($meta['max_attempts'] ?? 0),
-            'worker_id' => is_string($meta['worker_id'] ?? null) ? $meta['worker_id'] : null,
-            'claimed_at' => $run->started_at?->format('Y-m-d H:i:s'),
-            'finished_at' => $run->finished_at?->format('Y-m-d H:i:s'),
-            'error_message' => $run->error_message ?? '',
-            'payload' => $payload,
-            'task_run_summary' => [
-                'article_id' => $run->article_id !== null ? (int) $run->article_id : null,
-                'duration_ms' => (int) ($run->duration_ms ?? 0),
-                'status' => $run->status ?? null,
-                'error_message' => $run->error_message ?? '',
-                'meta' => $meta,
-            ],
-        ];
+        return $this->taskRunData->fromModel($run, $viewer);
     }
 
     /**
@@ -1079,7 +1215,7 @@ class TaskLifecycleService
      *
      * @throws ApiException 字段校验失败时抛 422，并附带 field_errors
      */
-    private function normalizeTaskInput(array $data, bool $isUpdate): array
+    private function normalizeTaskInput(array $data, bool $isUpdate, ?Admin $accessAdmin = null): array
     {
         $output = [];
         $fieldErrors = [];
@@ -1148,15 +1284,16 @@ class TaskLifecycleService
             } elseif (! empty($config['prompt_quality'])) {
                 $exists = Prompt::query()->whereKey($id)->where('type', 'quality_check')->exists();
             } elseif (! empty($config['ai_active_chat'])) {
-                $exists = AiModel::query()
-                    ->whereKey($id)
-                    ->where('status', 'active')
-                    ->where(function ($q) {
-                        $q->whereNull('model_type')
-                            ->orWhere('model_type', '')
-                            ->orWhere('model_type', 'chat');
-                    })
-                    ->exists();
+                $model = AiModel::query()->whereKey($id)->first();
+                $exists = $model instanceof AiModel;
+                if ($exists && ! $isUpdate) {
+                    $exists = (string) $model->status === 'active'
+                        && $model->archived_at === null
+                        && in_array((string) ($model->model_type ?? ''), ['', 'chat'], true);
+                }
+                if ($exists && $accessAdmin instanceof Admin) {
+                    $this->assertModelUsable($accessAdmin, $model, $field);
+                }
             } else {
                 $exists = $modelClass::query()->whereKey($id)->exists();
             }
@@ -1349,6 +1486,84 @@ class TaskLifecycleService
         }
 
         return $output;
+    }
+
+    private function accessAdmin(Admin|int|null $admin): ?Admin
+    {
+        if ($admin instanceof Admin) {
+            return $admin;
+        }
+        if ($admin === null || $admin <= 0) {
+            return null;
+        }
+
+        $accessAdmin = Admin::query()->find($admin);
+        if (! $accessAdmin instanceof Admin) {
+            throw new ApiException('ai_execution_admin_inactive', '执行管理员不可用', 409);
+        }
+
+        return $accessAdmin;
+    }
+
+    private function activationGuard(): TaskActivationGuard
+    {
+        return $this->taskActivationGuard ??= app(TaskActivationGuard::class);
+    }
+
+    /** @param array<string, mixed> $normalized */
+    private function assertSelectedModelsUsable(?Admin $accessAdmin, array $normalized): void
+    {
+        foreach (['ai_model_id', 'ai_quality_model_id'] as $field) {
+            $modelId = (int) ($normalized[$field] ?? 0);
+            if ($modelId <= 0) {
+                continue;
+            }
+            $model = AiModel::query()->find($modelId);
+            if (! $model instanceof AiModel) {
+                throw new ApiException(
+                    'ai_model_unavailable',
+                    '选择的 AI 模型当前不可用',
+                    409,
+                    ['field_errors' => [$field => '选择的 AI 模型当前不可用']],
+                );
+            }
+            if ((string) $model->status !== 'active'
+                || $model->archived_at !== null
+                || ! in_array((string) ($model->model_type ?? ''), ['', 'chat'], true)) {
+                throw new ApiException(
+                    'ai_model_unavailable',
+                    '选择的 AI 模型当前不可用',
+                    409,
+                    ['field_errors' => [$field => '选择的 AI 模型当前不可用']],
+                );
+            }
+            if ($accessAdmin instanceof Admin) {
+                $this->assertModelUsable($accessAdmin, $model, $field);
+            }
+        }
+    }
+
+    private function assertModelUsable(Admin $accessAdmin, AiModel $model, string $field): void
+    {
+        try {
+            $this->adminAiModelAccessResolver->assertUsable($accessAdmin, $model);
+        } catch (AiModelAccessException $exception) {
+            if ($exception->getErrorCode() === AiModelAccessException::AI_MODEL_NOT_ACCESSIBLE) {
+                throw new ApiException(
+                    $exception->getErrorCode(),
+                    '选择的 AI 模型不可访问',
+                    404,
+                    ['field_errors' => [$field => '选择的 AI 模型不可访问']],
+                );
+            }
+
+            throw new ApiException(
+                $exception->getErrorCode(),
+                '选择的 AI 模型当前不可用',
+                409,
+                ['field_errors' => [$field => '选择的 AI 模型当前不可用']],
+            );
+        }
     }
 
     /**

@@ -4,12 +4,22 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Schema;
 
 class AiModel extends Model
 {
+    public const ACCESS_SCOPE_USER_CONTENT = 'user_content';
+
+    public const ACCESS_SCOPE_SYSTEM_ONLY = 'system_only';
+
     protected $table = 'ai_models';
+
+    protected $attributes = [
+        'access_scope' => self::ACCESS_SCOPE_USER_CONTENT,
+        'failover_priority' => 100,
+    ];
 
     protected $hidden = [
         'api_key',
@@ -41,6 +51,7 @@ class AiModel extends Model
     protected function casts(): array
     {
         return [
+            'owner_admin_id' => 'integer',
             'failover_priority' => 'integer',
             'daily_limit' => 'integer',
             'used_today' => 'integer',
@@ -51,6 +62,7 @@ class AiModel extends Model
             'ai_workspace_readiness_profile' => 'array',
             'ai_workspace_readiness_checked_at' => 'immutable_datetime',
             'ai_workspace_readiness_expires_at' => 'immutable_datetime',
+            'archived_at' => 'immutable_datetime',
         ];
     }
 
@@ -74,6 +86,56 @@ class AiModel extends Model
     public function titleLibraries(): HasMany
     {
         return $this->hasMany(TitleLibrary::class, 'ai_model_id');
+    }
+
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(Admin::class, 'owner_admin_id');
+    }
+
+    public function chatDefaultForAdmins(): HasMany
+    {
+        return $this->hasMany(AdminAiSetting::class, 'default_chat_model_id');
+    }
+
+    public function embeddingDefaultForAdmins(): HasMany
+    {
+        return $this->hasMany(AdminAiSetting::class, 'default_embedding_model_id');
+    }
+
+    public function usageEvents(): HasMany
+    {
+        return $this->hasMany(AiModelUsageEvent::class, 'ai_model_id');
+    }
+
+    public function scopeOwnedBy(Builder $query, Admin|int $owner): Builder
+    {
+        return $query->where('owner_admin_id', $owner instanceof Admin ? $owner->getKey() : $owner);
+    }
+
+    public function scopeUserContent(Builder $query): Builder
+    {
+        return $query->where('access_scope', self::ACCESS_SCOPE_USER_CONTENT);
+    }
+
+    public function scopeSystemOnly(Builder $query): Builder
+    {
+        return $query->where('access_scope', self::ACCESS_SCOPE_SYSTEM_ONLY);
+    }
+
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->where('status', 'active');
+    }
+
+    public function scopeUnarchived(Builder $query): Builder
+    {
+        return $query->whereNull('archived_at');
+    }
+
+    public function scopeInFailoverOrder(Builder $query): Builder
+    {
+        return $query->orderBy('failover_priority')->orderBy('id');
     }
 
     public function tasks(): HasMany

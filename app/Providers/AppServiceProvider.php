@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Contracts\Admin\AiModelWriteLock;
 use App\Contracts\AiWorkspace\AdminHelpResponder;
 use App\Contracts\ArticleAiOptimizationRefiner;
 use App\Contracts\ArticleAiQualityReviewer;
@@ -15,6 +16,7 @@ use App\Models\Admin;
 use App\Models\KnowledgeFactGenerationRun;
 use App\Services\Admin\AdminUpdateMetadataService;
 use App\Services\Admin\AdminWelcomeModalService;
+use App\Services\Admin\DatabaseAiModelWriteLock;
 use App\Services\AiWorkspace\AiWorkspaceModelRuntime;
 use App\Services\GeoFlow\AnonymousUsageTelemetry;
 use App\Services\GeoFlow\ArticleAiQualityWorkerLiveness;
@@ -63,6 +65,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(ArticleAiQualityReviewer::class, LaravelArticleAiQualityReviewer::class);
         $this->app->bind(ArticleAiOptimizationRefiner::class, LaravelArticleAiOptimizationRefiner::class);
         $this->app->bind(AgentClient::class, UnixSocketAgentClient::class);
+        $this->app->bind(AiModelWriteLock::class, DatabaseAiModelWriteLock::class);
         $this->app->singleton(FinalOutboundSecurityPolicy::class);
         $this->app->bind(OutboundTransport::class, function () use ($fixedContextCapability): LaravelPinnedOutboundTransport {
             return new LaravelPinnedOutboundTransport($fixedContextCapability);
@@ -190,10 +193,26 @@ class AppServiceProvider extends ServiceProvider
                 ->by('title-generation:model:'.$job->aiModelId);
         });
         RateLimiter::for('knowledge-fact-generation', function (GenerateKnowledgeFactBatchJob $job): Limit {
-            $modelId = (int) KnowledgeFactGenerationRun::query()->whereKey($job->runId)->value('ai_model_id');
+            $run = KnowledgeFactGenerationRun::query()
+                ->whereKey($job->runId)
+                ->first(['id', 'status', 'model_access_admin_id', 'execution_attempt', 'batch_claims_json']);
+            $claim = (array) data_get($run?->batch_claims_json, (string) $job->sequence, []);
+            $validClaim = $run instanceof KnowledgeFactGenerationRun
+                && $run->isActive()
+                && (int) $run->execution_attempt === $job->executionAttempt
+                && (int) data_get($claim, 'execution_attempt') === $job->executionAttempt
+                && hash_equals((string) data_get($claim, 'input_hash'), $job->inputHash)
+                && (string) data_get($claim, 'dispatch_token') !== ''
+                && $job->claimToken !== ''
+                && hash_equals((string) data_get($claim, 'dispatch_token'), $job->claimToken);
+
+            $key = 'knowledge-fact-generation:invalid';
+            if ($validClaim) {
+                $key = 'knowledge-fact-generation:admin:'.(int) $run->model_access_admin_id;
+            }
 
             return Limit::perMinute((int) config('geoflow.knowledge_fact_generation_rate_per_minute', 10))
-                ->by('knowledge-fact-generation:model:'.$modelId);
+                ->by($key);
         });
         RateLimiter::for('title-generation-submissions', function (Request $request): array {
             $adminId = (int) ($request->user('admin')?->getAuthIdentifier() ?? 0);
@@ -243,7 +262,7 @@ class AppServiceProvider extends ServiceProvider
                     'settings_navigation' => $registry->settingsNavigation($admin, $routeName),
                     'show_settings_navigation' => $registry->activeKey($routeName) === 'site_settings'
                         && ! request()->routeIs('admin.account.*'),
-                    'ai_configurator_navigation' => $registry->aiConfiguratorNavigation($routeName),
+                    'ai_configurator_navigation' => $registry->aiConfiguratorNavigation($admin, $routeName),
                     'show_ai_configurator_navigation' => $registry->activeKey($routeName) === 'ai_config',
                     'site_url' => (string) config('geoflow.site_url', config('app.url')),
                 ]);

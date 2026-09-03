@@ -88,14 +88,14 @@ final class AdminUiRegistry
         ];
     }
 
-    /** @return list<array{key:string,label_key:string,route:string,patterns:list<string>}> */
+    /** @return list<array{key:string,label_key:string,route:string,patterns:list<string>,protected:bool}> */
     private function aiConfiguratorSections(): array
     {
         return [
-            ['key' => 'models', 'label_key' => 'admin.ai_configurator.models_title', 'route' => 'admin.ai-models.index', 'patterns' => ['admin.ai-models.*']],
-            ['key' => 'prompts', 'label_key' => 'admin.ai_configurator.prompts_title', 'route' => 'admin.ai-prompts', 'patterns' => ['admin.ai-prompts', 'admin.ai-prompts.*']],
-            ['key' => 'special', 'label_key' => 'admin.ai_configurator.special_title', 'route' => 'admin.ai-special-prompts', 'patterns' => ['admin.ai-special-prompts', 'admin.ai-special-prompts.*']],
-            ['key' => 'sources', 'label_key' => 'admin.ai_configurator.search_title', 'route' => 'admin.ai-source-providers.index', 'patterns' => ['admin.ai-source-providers.*']],
+            ['key' => 'models', 'label_key' => 'admin.ai_configurator.models_title', 'route' => 'admin.ai-models.index', 'patterns' => ['admin.ai-models.*'], 'protected' => false],
+            ['key' => 'prompts', 'label_key' => 'admin.ai_configurator.prompts_title', 'route' => 'admin.ai-prompts', 'patterns' => ['admin.ai-prompts', 'admin.ai-prompts.*'], 'protected' => false],
+            ['key' => 'special', 'label_key' => 'admin.ai_configurator.special_title', 'route' => 'admin.ai-special-prompts', 'patterns' => ['admin.ai-special-prompts', 'admin.ai-special-prompts.*'], 'protected' => false],
+            ['key' => 'sources', 'label_key' => 'admin.ai_configurator.search_title', 'route' => 'admin.ai-source-providers.index', 'patterns' => ['admin.ai-source-providers.*'], 'protected' => true],
         ];
     }
 
@@ -315,11 +315,12 @@ final class AdminUiRegistry
     }
 
     /** @return list<array{key:string,label:string,route:string,active:bool}> */
-    public function aiConfiguratorNavigation(?string $routeName): array
+    public function aiConfiguratorNavigation(Admin $admin, ?string $routeName): array
     {
         $routeName = (string) $routeName;
 
         return collect($this->aiConfiguratorSections())
+            ->filter(fn (array $item): bool => ! $item['protected'] || $admin->canManageProtectedWorkflows())
             ->map(static fn (array $item): array => [
                 'key' => $item['key'],
                 'label' => __($item['label_key']),

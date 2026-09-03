@@ -78,6 +78,7 @@ class TrustedProxyConfigurationTest extends TestCase
 
     public function test_wrapped_untrusted_host_exception_is_a_quiet_web_not_found(): void
     {
+        config(['geoflow.hosted_sites.primary_hosts' => ['localhost']]);
         Log::spy();
         Route::get('/_wrapped-host-rejection', static function (): never {
             throw new BadRequestHttpException(

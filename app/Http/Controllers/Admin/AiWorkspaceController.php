@@ -18,7 +18,7 @@ final class AiWorkspaceController extends Controller
     ): View {
         /** @var Admin $admin */
         $admin = auth('admin')->user();
-        $modelStatus = $readiness->status();
+        $modelStatus = $readiness->status($admin);
         $displayName = trim((string) ($admin->display_name ?: $admin->username));
 
         return view('admin.ai-workspace.index', [

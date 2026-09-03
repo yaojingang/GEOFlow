@@ -87,6 +87,7 @@
                         <tr>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.admin_users.column_account') }}</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.admin_users.column_role') }}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.admin_users.column_ai_config') }}</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.admin_users.column_status') }}</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.admin_users.column_last_login') }}</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.admin_users.column_created') }}</th>
@@ -109,6 +110,21 @@
                                         <span class="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">{{ __('admin.admin_users.role_super_admin') }}</span>
                                     @else
                                         <span class="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{{ __('admin.admin_users.role_admin') }}</span>
+                                    @endif
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-600">
+                                    @if ($admin['ai_config_mode'] === 'super_self')
+                                        <div class="font-medium text-gray-800">{{ __('admin.admin_users.ai_config_super_self') }}</div>
+                                    @elseif ($admin['ai_config_mode'] === 'shared')
+                                        <div class="font-medium text-blue-700">{{ __('admin.admin_users.ai_config_shared') }}</div>
+                                        <div class="mt-1 whitespace-nowrap text-xs text-gray-500">
+                                            {{ $admin['shared_provider_name'] }}
+                                            <span class="ml-1 {{ $admin['shared_provider_status'] === 'active' ? 'text-green-700' : 'text-gray-500' }}">
+                                                {{ $admin['shared_provider_status'] === 'active' ? __('admin.admin_users.status_active') : __('admin.admin_users.status_inactive') }}
+                                            </span>
+                                        </div>
+                                    @else
+                                        <div class="font-medium text-gray-800">{{ __('admin.admin_users.ai_config_independent') }}</div>
                                     @endif
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">

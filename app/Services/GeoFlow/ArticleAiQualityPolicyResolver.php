@@ -2,11 +2,13 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
+use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Support\GeoFlow\AiQualityRetrievalMode;
 use Illuminate\Support\Arr;
 use RuntimeException;
@@ -17,6 +19,7 @@ class ArticleAiQualityPolicyResolver
 
     public function __construct(
         private readonly AiQualityRetrievalReadinessService $retrievalReadinessService,
+        private readonly AdminAiModelAccessResolver $adminAiModelAccessResolver,
     ) {}
 
     /** @return array<string, mixed> */
@@ -515,6 +518,42 @@ class ArticleAiQualityPolicyResolver
             ->all();
 
         return array_values(array_merge([$primary], $fallbacks));
+    }
+
+    /** @param array<string,mixed> $policy @return array<string,mixed> */
+    public function forExecutionAdmin(array $policy, Admin $admin): array
+    {
+        $primary = $policy['model'] ?? null;
+        if (! $primary instanceof AiModel) {
+            throw new RuntimeException('ai_quality_model_unavailable');
+        }
+        $this->adminAiModelAccessResolver->assertUsable($admin, $primary);
+        if ((string) ($policy['model_selection_mode'] ?? 'fixed') !== 'smart_failover') {
+            $policy['model_candidates'] = [$primary];
+
+            return $policy;
+        }
+
+        $candidates = $this->adminAiModelAccessResolver->resolveCandidates($admin, 'chat')->values();
+        $requested = $candidates->firstWhere('id', (int) $primary->id);
+        if (! $requested instanceof AiModel) {
+            throw new RuntimeException('ai_quality_model_unavailable');
+        }
+        $personal = $candidates->filter(
+            static fn (AiModel $model): bool => (int) $model->owner_admin_id === (int) $admin->id,
+        );
+        $shared = $candidates->reject(
+            static fn (AiModel $model): bool => (int) $model->owner_admin_id === (int) $admin->id,
+        );
+        $maximumCandidates = max(1, min(10, (int) config('geoflow.ai_quality_max_model_candidates', 2)));
+        $policy['model_candidates'] = collect([$requested])
+            ->concat($personal->reject(static fn (AiModel $model): bool => (int) $model->id === (int) $requested->id))
+            ->concat($shared->reject(static fn (AiModel $model): bool => (int) $model->id === (int) $requested->id))
+            ->take($maximumCandidates)
+            ->values()
+            ->all();
+
+        return $policy;
     }
 
     /** @return array<string, int|string|null> */

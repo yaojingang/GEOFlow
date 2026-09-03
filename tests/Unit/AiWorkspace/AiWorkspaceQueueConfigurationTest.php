@@ -31,6 +31,21 @@ final class AiWorkspaceQueueConfigurationTest extends TestCase
         self::assertArrayNotHasKey('redis-interactive:ai-workspace-interactive', $horizon['waits']);
     }
 
+    public function test_workspace_jobs_use_the_consumed_default_production_queue(): void
+    {
+        $root = dirname(__DIR__, 3);
+        $workspace = require $root.'/config/ai-workspace.php';
+        $compose = (string) file_get_contents($root.'/docker-compose.prod.yml');
+        $horizon = require $root.'/config/horizon.php';
+
+        self::assertSame('redis', $workspace['connection']);
+        self::assertSame('default', $workspace['queue']);
+        self::assertSame('redis', $workspace['interactive_connection']);
+        self::assertSame('default', $workspace['interactive_queue']);
+        self::assertStringContainsString('--queue=system-updates,geoflow,distribution,theme-replication,default', $compose);
+        self::assertContains('default', $horizon['defaults']['supervisor-1']['queue']);
+    }
+
     public function test_examples_and_runtime_docs_have_no_workflow_queue_variables(): void
     {
         $root = dirname(__DIR__, 3);
@@ -50,11 +65,12 @@ final class AiWorkspaceQueueConfigurationTest extends TestCase
         }
     }
 
-    public function test_recovery_schedule_is_disabled(): void
+    public function test_recovery_schedule_releases_expired_workspace_leases(): void
     {
         $schedule = (string) file_get_contents(dirname(__DIR__, 3).'/routes/console.php');
 
-        self::assertStringNotContainsString('recover-ai-workspace', $schedule);
+        self::assertStringContainsString("Schedule::command('geoflow:recover-ai-workspace')", $schedule);
+        self::assertStringContainsString('->everyMinute()', $schedule);
         self::assertStringContainsString('prune-ai-workspace', $schedule);
     }
 

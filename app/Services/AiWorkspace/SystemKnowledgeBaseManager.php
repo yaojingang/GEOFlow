@@ -2,6 +2,7 @@
 
 namespace App\Services\AiWorkspace;
 
+use App\Data\Ai\SystemAiIdentity;
 use App\Exceptions\SystemKnowledgeBaseDeletionException;
 use App\Models\Admin;
 use App\Models\KnowledgeBase;
@@ -108,6 +109,7 @@ final class SystemKnowledgeBaseManager
                 || ! in_array((string) $knowledgeBase->chunk_sync_status, ['pending', 'processing', 'ready'], true);
             $indexRequested = $needsIndex && $this->chunkSyncCoordinator->request(
                 (int) $knowledgeBase->getKey(),
+                SystemAiIdentity::knowledgeIndex(),
                 requireRealEmbedding: false,
                 force: $result['updated'],
             );
@@ -519,6 +521,7 @@ final class SystemKnowledgeBaseManager
     {
         $this->chunkSyncCoordinator->request(
             $knowledgeBaseId,
+            SystemAiIdentity::knowledgeIndex(),
             requireRealEmbedding: false,
             force: true,
         );

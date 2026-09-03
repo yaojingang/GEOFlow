@@ -14,12 +14,22 @@ final class AiVisibilityHttpClientFactory
 
     public function jsonRequest(string $apiKey): SafeOutboundRequest
     {
+        return $this->request($apiKey, $this->retryAttempts());
+    }
+
+    public function singleAttemptJsonRequest(string $apiKey): SafeOutboundRequest
+    {
+        return $this->request($apiKey, 1);
+    }
+
+    private function request(string $apiKey, int $attempts): SafeOutboundRequest
+    {
         $request = Http::acceptJson()
             ->asJson()
             ->withToken($apiKey)
             ->timeout($this->timeoutSeconds())
             ->connectTimeout($this->connectTimeoutSeconds())
-            ->retry($this->retryAttempts(), $this->retrySleepMs(), throw: false);
+            ->retry(max(1, $attempts), $this->retrySleepMs(), throw: false);
 
         return new SafeOutboundRequest(
             $this->safeHttp,

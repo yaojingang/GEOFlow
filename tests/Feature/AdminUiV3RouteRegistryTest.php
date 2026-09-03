@@ -42,8 +42,9 @@ class AdminUiV3RouteRegistryTest extends TestCase
     {
         App::setLocale('zh_CN');
         $registry = app(AdminUiRegistry::class);
+        $admin = new Admin(['role' => 'super_admin']);
 
-        $navigation = $registry->aiConfiguratorNavigation('admin.ai.configurator');
+        $navigation = $registry->aiConfiguratorNavigation($admin, 'admin.ai.configurator');
 
         $this->assertSame(
             ['models', 'prompts', 'special', 'sources'],
@@ -61,7 +62,7 @@ class AdminUiV3RouteRegistryTest extends TestCase
             'admin.ai-special-prompts' => 'special',
             'admin.ai-source-providers.edit' => 'sources',
         ] as $routeName => $activeKey) {
-            $activeItems = collect($registry->aiConfiguratorNavigation($routeName))
+            $activeItems = collect($registry->aiConfiguratorNavigation($admin, $routeName))
                 ->where('active', true)
                 ->pluck('key')
                 ->all();
@@ -81,7 +82,7 @@ class AdminUiV3RouteRegistryTest extends TestCase
 
             $this->assertSame(
                 $sourceLabel,
-                collect($registry->aiConfiguratorNavigation('admin.ai-source-providers.index'))
+                collect($registry->aiConfiguratorNavigation($admin, 'admin.ai-source-providers.index'))
                     ->firstWhere('key', 'sources')['label'],
                 $locale,
             );

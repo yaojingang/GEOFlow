@@ -2,9 +2,14 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\ApiException;
+use App\Models\Admin;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\WorkerHeartbeat;
+use App\Services\Admin\AdminAiModelAccessResolver;
+use App\Support\GeoFlow\PublicExecutionErrorProjector;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -21,7 +26,9 @@ use Illuminate\Support\Facades\Schema;
 class TaskMonitoringQueryService
 {
     public function __construct(
-        private readonly HorizonMetricsAdapter $horizonMetrics
+        private readonly HorizonMetricsAdapter $horizonMetrics,
+        private readonly AdminAiModelAccessResolver $adminAiModelAccessResolver,
+        private readonly PublicExecutionErrorProjector $publicExecutionErrorProjector,
     ) {}
 
     /**
@@ -146,8 +153,12 @@ class TaskMonitoringQueryService
      *     pagination:array{page:int,per_page:int,total:int,total_pages:int}
      * }
      */
-    public function listTasksPaginated(int $page = 1, int $perPage = 20, array $filters = []): array
-    {
+    public function listTasksPaginated(
+        int $page = 1,
+        int $perPage = 20,
+        array $filters = [],
+        ?Admin $modelViewer = null,
+    ): array {
         $page = max(1, $page);
         $perPage = max(1, min(100, $perPage));
 
@@ -162,7 +173,7 @@ class TaskMonitoringQueryService
         $rows = $query->forPage($page, $perPage)->get();
 
         return [
-            'items' => $this->decorateTasks($rows)->values()->all(),
+            'items' => $this->decorateTasks($rows, $modelViewer)->values()->all(),
             'pagination' => [
                 'page' => $page,
                 'per_page' => $perPage,
@@ -177,10 +188,10 @@ class TaskMonitoringQueryService
      *
      * @return array<string,mixed>
      */
-    public function getTaskMonitoringDetail(int $taskId): array
+    public function getTaskMonitoringDetail(int $taskId, ?Admin $modelViewer = null): array
     {
         $task = Task::query()->whereKey($taskId)->firstOrFail();
-        $decorated = $this->decorateTasks(collect([$task]))->first();
+        $decorated = $this->decorateTasks(collect([$task]), $modelViewer)->first();
 
         return is_array($decorated) ? $decorated : [];
     }
@@ -189,7 +200,7 @@ class TaskMonitoringQueryService
      * @param  Collection<int, Task>  $tasks
      * @return Collection<int, array<string,mixed>>
      */
-    private function decorateTasks(Collection $tasks): Collection
+    private function decorateTasks(Collection $tasks, ?Admin $modelViewer = null): Collection
     {
         if ($tasks->isEmpty()) {
             return collect([]);
@@ -345,17 +356,11 @@ class TaskMonitoringQueryService
             ->whereIn('id', $tasks->pluck('title_library_id')->filter()->all())
             ->pluck('name', 'id');
 
-        $modelNames = DB::table('ai_models')
-            ->whereIn('id', $tasks->pluck('ai_model_id')->filter()->all())
-            ->pluck('name', 'id');
-
         $qualityPromptNames = DB::table('prompts')
             ->whereIn('id', $tasks->pluck('ai_quality_prompt_id')->filter()->all())
             ->pluck('name', 'id');
 
-        $qualityModelNames = DB::table('ai_models')
-            ->whereIn('id', $tasks->pluck('ai_quality_model_id')->filter()->all())
-            ->pluck('name', 'id');
+        $modelNames = $this->modelNamesForProjection($tasks, $modelViewer);
 
         $legacyKnowledgeBaseNames = DB::table('knowledge_bases')
             ->whereIn('id', $tasks->pluck('knowledge_base_id')->filter()->all())
@@ -363,7 +368,7 @@ class TaskMonitoringQueryService
 
         $taskKnowledgeBaseLinks = $this->loadTaskKnowledgeBaseLinks($taskIds);
 
-        return $tasks->map(function (Task $task) use ($articleStats, $distributionStats, $qualityStats, $optimizationStats, $runStats, $latestRuns, $titleNames, $modelNames, $qualityPromptNames, $qualityModelNames, $legacyKnowledgeBaseNames, $taskKnowledgeBaseLinks): array {
+        return $tasks->map(function (Task $task) use ($articleStats, $distributionStats, $qualityStats, $optimizationStats, $runStats, $latestRuns, $titleNames, $modelNames, $qualityPromptNames, $legacyKnowledgeBaseNames, $taskKnowledgeBaseLinks, $modelViewer): array {
             $taskId = (int) $task->id;
             $articles = $articleStats->get($taskId, ['total_articles' => 0, 'published_articles' => 0, 'draft_articles' => 0, 'publishable_drafts' => 0]);
             $distributions = $distributionStats->get($taskId, ['distribution_total_count' => 0, 'distribution_synced_count' => 0, 'distribution_failed_count' => 0]);
@@ -400,14 +405,35 @@ class TaskMonitoringQueryService
                 ->filter(static fn (int $id): bool => $id > 0)
                 ->values()
                 ->all();
+            $contentModelReference = $this->modelReferenceProjection(
+                $this->nullableInt($task->ai_model_id),
+                $modelNames,
+                $modelViewer,
+            );
+            $qualityModelReference = $this->modelReferenceProjection(
+                $this->nullableInt($task->ai_quality_model_id),
+                $modelNames,
+                $modelViewer,
+            );
 
             // batch_status 是任务页按钮与状态徽标的关键字段：
             // running > pending > paused(idle) > failed/cancelled > waiting。
             $batchStatus = $this->resolveBatchStatus($task, $runs, $latestRun, $articles);
-            // 错误信息优先取最近 run 的 error_message，其次退回 tasks.last_error_message。
-            $batchErrorMessage = (string) ($latestRun?->error_message ?: ($task->last_error_message ?? ''));
+            // 错误信息优先取最近 run，其次退回 tasks.last_error_message。
+            $rawTaskError = (string) ($task->last_error_message ?? '');
+            $rawBatchError = (string) ($latestRun?->error_message ?: $rawTaskError);
+            if ($modelViewer instanceof Admin) {
+                $batchErrorMessage = $this->publicExecutionErrorProjector->stableCode(
+                    $latestRun?->error_code,
+                    $rawBatchError,
+                ) ?? '';
+                $taskErrorMessage = $this->publicExecutionErrorProjector->stableCode(null, $rawTaskError) ?? '';
+            } else {
+                $batchErrorMessage = $this->publicExecutionErrorProjector->sanitizedDiagnostic($rawBatchError);
+                $taskErrorMessage = $this->publicExecutionErrorProjector->sanitizedDiagnostic($rawTaskError);
+            }
 
-            return [
+            $projection = [
                 'id' => $taskId,
                 'name' => (string) $task->name,
                 'status' => (string) ($task->status ?? 'paused'),
@@ -418,7 +444,7 @@ class TaskMonitoringQueryService
                 'distribution_cursor' => (int) ($task->distribution_cursor ?? 0),
                 'title_library_id' => $this->nullableInt($task->title_library_id),
                 'prompt_id' => $this->nullableInt($task->prompt_id),
-                'ai_model_id' => $this->nullableInt($task->ai_model_id),
+                'ai_model_id' => $contentModelReference['id'],
                 'ai_quality_enabled' => (bool) ($task->ai_quality_enabled ?? false),
                 'ai_quality_retrieval_mode' => (string) ($task->ai_quality_retrieval_mode ?: 'chunk'),
                 'ai_quality_policy_version' => max(1, (int) ($task->ai_quality_policy_version ?? 1)),
@@ -437,8 +463,8 @@ class TaskMonitoringQueryService
                 'ai_quality_optimization_level' => (string) ($task->ai_quality_optimization_level ?? ArticleAiOptimizationPolicy::STRATEGY_EXCELLENT_80),
                 'ai_quality_prompt_id' => $this->nullableInt($task->ai_quality_prompt_id),
                 'ai_quality_prompt_name' => (string) ($qualityPromptNames[(int) ($task->ai_quality_prompt_id ?? 0)] ?? ''),
-                'ai_quality_model_id' => $this->nullableInt($task->ai_quality_model_id),
-                'ai_quality_model_name' => (string) ($qualityModelNames[(int) ($task->ai_quality_model_id ?? 0)] ?? ''),
+                'ai_quality_model_id' => $qualityModelReference['id'],
+                'ai_quality_model_name' => $qualityModelReference['name'],
                 'ai_quality_pass_score' => (int) ($task->ai_quality_pass_score ?? 85),
                 'ai_quality_manual_override_min_score' => (int) ($task->ai_quality_manual_override_min_score ?? 70),
                 'knowledge_base_id' => $legacyKnowledgeBaseId,
@@ -454,7 +480,7 @@ class TaskMonitoringQueryService
                 'category_mode' => (string) ($task->category_mode ?? 'smart'),
                 'fixed_category_id' => $this->nullableInt($task->fixed_category_id),
                 'title_library_name' => (string) ($titleNames[(int) ($task->title_library_id ?? 0)] ?? ''),
-                'ai_model_name' => (string) ($modelNames[(int) ($task->ai_model_id ?? 0)] ?? ''),
+                'ai_model_name' => $contentModelReference['name'],
                 'model_selection_mode' => (string) ($task->model_selection_mode ?? 'fixed'),
                 'created_at' => $task->created_at?->toDateTimeString(),
                 'updated_at' => $task->updated_at?->toDateTimeString(),
@@ -465,7 +491,7 @@ class TaskMonitoringQueryService
                 'draft_limit' => (int) ($task->draft_limit ?? 10),
                 'publish_interval' => (int) ($task->publish_interval ?? 3600),
                 'batch_status' => $batchStatus,
-                'batch_error_message' => trim($batchErrorMessage),
+                'batch_error_message' => $batchErrorMessage,
                 'batch_last_run' => $task->last_run_at?->toDateTimeString(),
                 'last_error_at' => $task->last_error_at?->toDateTimeString(),
                 'next_run_at' => $task->next_run_at?->toDateTimeString(),
@@ -507,7 +533,7 @@ class TaskMonitoringQueryService
                     'article_limit' => (int) ($task->article_limit ?? $task->draft_limit ?? 10),
                     'draft_limit' => (int) ($task->draft_limit ?? 10),
                     'last_run_at' => $task->last_run_at?->toDateTimeString(),
-                    'last_error_message' => trim((string) ($task->last_error_message ?? '')),
+                    'last_error_message' => $taskErrorMessage,
                 ],
                 // 新契约字段：任务级队列视图（来自 task_runs 聚合，不是全局 Redis 队列长度）。
                 'queue_overview' => [
@@ -518,7 +544,100 @@ class TaskMonitoringQueryService
                     'latest_status' => (string) ($latestRun?->status ?? 'idle'),
                 ],
             ];
+
+            if ($modelViewer instanceof Admin) {
+                $projection['ai_model_accessible'] = $contentModelReference['accessible'];
+                $projection['ai_model_access_reason'] = $contentModelReference['reason'];
+                $projection['ai_quality_model_accessible'] = $qualityModelReference['accessible'];
+                $projection['ai_quality_model_access_reason'] = $qualityModelReference['reason'];
+            }
+
+            return $projection;
         });
+    }
+
+    /**
+     * @param  Collection<int, Task>  $tasks
+     * @return Collection<int, string>
+     */
+    private function modelNamesForProjection(Collection $tasks, ?Admin $modelViewer): Collection
+    {
+        $modelIds = $tasks
+            ->flatMap(static fn (Task $task): array => [$task->ai_model_id, $task->ai_quality_model_id])
+            ->filter(static fn ($modelId): bool => is_numeric($modelId) && (int) $modelId > 0)
+            ->map(static fn ($modelId): int => (int) $modelId)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($modelIds === []) {
+            return collect([]);
+        }
+
+        if (! $modelViewer instanceof Admin) {
+            return DB::table('ai_models')
+                ->whereIn('id', $modelIds)
+                ->pluck('name', 'id');
+        }
+
+        try {
+            return $this->adminAiModelAccessResolver
+                ->usableQuery($modelViewer)
+                ->whereIn('id', $modelIds)
+                ->where(static function (Builder $query): void {
+                    $query->whereNull('model_type')
+                        ->orWhere('model_type', '')
+                        ->orWhere('model_type', 'chat');
+                })
+                ->pluck('name', 'id');
+        } catch (AiModelAccessException $exception) {
+            throw new ApiException(
+                $exception->getErrorCode(),
+                '任务模型引用当前不可访问',
+                $exception->getErrorCode() === AiModelAccessException::AI_EXECUTION_ADMIN_INACTIVE ? 403 : 409,
+            );
+        }
+    }
+
+    /**
+     * @param  Collection<int, string>  $modelNames
+     * @return array{id:?int,name:string|null,accessible:bool,reason:?string}
+     */
+    private function modelReferenceProjection(?int $modelId, Collection $modelNames, ?Admin $modelViewer): array
+    {
+        if (! $modelViewer instanceof Admin) {
+            return [
+                'id' => $modelId,
+                'name' => (string) ($modelNames[$modelId ?? 0] ?? ''),
+                'accessible' => $modelId !== null && $modelNames->has($modelId),
+                'reason' => null,
+            ];
+        }
+
+        if ($modelId === null) {
+            return [
+                'id' => null,
+                'name' => null,
+                'accessible' => false,
+                'reason' => null,
+            ];
+        }
+
+        if (! $modelNames->has($modelId)) {
+            return [
+                'id' => null,
+                'name' => null,
+                'accessible' => false,
+                'reason' => AiModelAccessException::AI_MODEL_NOT_ACCESSIBLE,
+            ];
+        }
+
+        return [
+            'id' => $modelId,
+            'name' => (string) $modelNames->get($modelId),
+            'accessible' => true,
+            'reason' => null,
+        ];
     }
 
     /**

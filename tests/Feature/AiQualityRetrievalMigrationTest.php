@@ -22,6 +22,8 @@ class AiQualityRetrievalMigrationTest extends TestCase
             database_path('migrations/2026_08_31_120328_add_serving_generation_to_knowledge_chunks.php'),
             database_path('migrations/2026_08_31_120329_add_epoch_to_article_ai_quality_rollouts_table.php'),
             database_path('migrations/2026_08_31_120330_create_ai_quality_audit_events_table.php'),
+            database_path('migrations/2026_09_02_154000_harden_knowledge_embedding_profiles.php'),
+            database_path('migrations/2026_09_02_155000_expand_knowledge_embedding_provider_columns.php'),
         ];
         $migrations = array_map(static fn (string $path): object => require $path, $paths);
 
@@ -37,6 +39,7 @@ class AiQualityRetrievalMigrationTest extends TestCase
         $this->assertFalse(Schema::hasColumn('knowledge_bases', 'ai_quality_content_hash'));
         $this->assertFalse(Schema::hasColumn('knowledge_fact_libraries', 'active_fact_count'));
         $this->assertFalse(Schema::hasColumn('knowledge_chunks', 'generation_key'));
+        $this->assertFalse(Schema::hasColumn('knowledge_chunks', 'embedding_profile_digest'));
         $this->assertFalse(Schema::hasColumn('article_ai_quality_rollouts', 'epoch'));
         $this->assertFalse(Schema::hasTable('ai_quality_audit_events'));
 
@@ -72,6 +75,11 @@ class AiQualityRetrievalMigrationTest extends TestCase
             'chunk_manifest_hash',
         ]));
         $this->assertTrue(Schema::hasColumn('knowledge_chunks', 'generation_key'));
+        $this->assertTrue(Schema::hasColumns('knowledge_chunks', [
+            'embedding_profile_version',
+            'embedding_profile_digest',
+            'embedding_config_revision',
+        ]));
         $this->assertTrue(Schema::hasColumn('article_ai_quality_rollouts', 'epoch'));
         $this->assertTrue(Schema::hasTable('ai_quality_audit_events'));
     }

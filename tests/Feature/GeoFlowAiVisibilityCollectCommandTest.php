@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
@@ -43,7 +44,18 @@ class GeoFlowAiVisibilityCollectCommandTest extends TestCase
             'status' => 'active',
             'daily_limit' => 10,
         ]);
-        $model = AiModel::query()->create([
+        $owner = Admin::query()->create([
+            'username' => 'visibility_system_owner',
+            'password' => 'secret-123',
+            'email' => 'visibility-system-owner@example.com',
+            'display_name' => 'Visibility System Owner',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        $model = new AiModel;
+        $model->forceFill([
+            'owner_admin_id' => $owner->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
             'name' => 'DeepSeek Analysis',
             'version' => 'test',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('deepseek-key'),
@@ -53,7 +65,7 @@ class GeoFlowAiVisibilityCollectCommandTest extends TestCase
             'failover_priority' => 10,
             'daily_limit' => 10,
             'status' => 'active',
-        ]);
+        ])->save();
         SiteSetting::query()->create([
             'setting_key' => 'ai_visibility_deepseek_analysis_model_id',
             'setting_value' => (string) $model->id,

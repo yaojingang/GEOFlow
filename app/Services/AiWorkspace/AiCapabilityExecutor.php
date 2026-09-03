@@ -31,6 +31,7 @@ use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionPublisherManager;
 use App\Services\GeoFlow\FrontendExperienceInspector;
 use App\Services\GeoFlow\TaskLifecycleService;
+use App\Services\GeoFlow\UrlImportAiExecutionGuard;
 use App\Services\GeoFlow\UrlImportProcessingService;
 use App\Services\HostedSites\HostedSiteQualityService;
 use Illuminate\Support\Carbon;
@@ -46,6 +47,7 @@ final readonly class AiCapabilityExecutor implements AiWorkspaceCapabilityDriver
         private DistributionOrchestrator $distribution,
         private HostedSiteQualityService $hostedSiteQuality,
         private UrlImportProcessingService $urlImports,
+        private UrlImportAiExecutionGuard $urlImportExecutionGuard,
         private DistributionChannelOperationLeaseService $channelOperations,
         private DistributionPublisherManager $publishers,
         private FrontendExperienceInspector $frontendInspector,
@@ -82,8 +84,8 @@ final readonly class AiCapabilityExecutor implements AiWorkspaceCapabilityDriver
             'analytics.daily_report', 'analytics.weekly_report' => $this->operationalReport($capabilityKey, $parameters, $admin),
             'visibility.diagnose' => $this->visibilityDiagnosis($parameters),
             'content.opportunities' => $this->contentOpportunities($parameters),
-            'url_import.preview' => $this->urlImportPreview($parameters, $executionKey),
-            'url_import.commit' => $this->urlImportCommit($parameters),
+            'url_import.preview' => $this->urlImportPreview($parameters, $admin, $executionKey),
+            'url_import.commit' => $this->urlImportCommit($parameters, $admin),
             'distribution.preview' => $this->distributionPreview($parameters),
             'task.status.change' => $this->taskStatus($parameters, $admin),
             'distribution.publish' => $this->distributionPublish($parameters, $executionKey),
@@ -361,26 +363,33 @@ final readonly class AiCapabilityExecutor implements AiWorkspaceCapabilityDriver
     }
 
     /** @param array<string,mixed> $parameters */
-    private function urlImportPreview(array $parameters, ?string $executionKey): AiCapabilityResult
+    private function urlImportPreview(array $parameters, Admin $admin, ?string $executionKey): AiCapabilityResult
     {
         $normalized = $this->urlImports->normalizeInputUrl((string) $parameters['url']);
-        $this->urlImports->assertAnalysisModelReady();
+        $analysisModel = $this->urlImports->assertAnalysisModelReady($admin);
         $createdBy = 'GEOHub:'.hash('sha256', (string) ($executionKey ?: $normalized['url']));
-        $job = UrlImportJob::query()->firstOrCreate(
-            ['created_by' => $createdBy],
-            [
-                'url' => (string) $parameters['url'],
-                'normalized_url' => $normalized['url'],
-                'source_domain' => $normalized['host'],
-                'page_title' => '',
-                'status' => 'queued',
-                'current_step' => 'queued',
-                'progress_percent' => 0,
-                'options_json' => json_encode(['outputs' => ['knowledge', 'keywords', 'titles']], JSON_UNESCAPED_UNICODE),
-                'result_json' => '',
-                'error_message' => '',
-            ],
-        );
+        $job = DB::transaction(function () use ($admin, $analysisModel, $createdBy, $normalized, $parameters): UrlImportJob {
+            $identity = $this->urlImportExecutionGuard->snapshotForCreation($admin, $analysisModel);
+
+            return UrlImportJob::query()->firstOrCreate(
+                [
+                    'created_by' => $createdBy,
+                    'model_access_admin_id' => $admin->getKey(),
+                ],
+                array_merge([
+                    'url' => (string) $parameters['url'],
+                    'normalized_url' => $normalized['url'],
+                    'source_domain' => $normalized['host'],
+                    'page_title' => '',
+                    'status' => 'queued',
+                    'current_step' => 'queued',
+                    'progress_percent' => 0,
+                    'options_json' => json_encode(['outputs' => ['knowledge', 'keywords', 'titles']], JSON_UNESCAPED_UNICODE),
+                    'result_json' => '',
+                    'error_message' => '',
+                ], $identity),
+            );
+        });
         if ($job->wasRecentlyCreated) {
             UrlImportJobLog::query()->create([
                 'job_id' => $job->id,
@@ -417,9 +426,12 @@ final readonly class AiCapabilityExecutor implements AiWorkspaceCapabilityDriver
     }
 
     /** @param array<string,mixed> $parameters */
-    private function urlImportCommit(array $parameters): AiCapabilityResult
+    private function urlImportCommit(array $parameters, Admin $admin): AiCapabilityResult
     {
-        $job = UrlImportJob::query()->findOrFail((int) $parameters['job_id']);
+        $job = UrlImportJob::query()
+            ->whereKey((int) $parameters['job_id'])
+            ->where('model_access_admin_id', $admin->getKey())
+            ->firstOrFail();
         $summary = $this->urlImports->commit($job);
 
         return new AiCapabilityResult(
@@ -465,7 +477,12 @@ final readonly class AiCapabilityExecutor implements AiWorkspaceCapabilityDriver
     {
         $result = $parameters['action'] === 'stop'
             ? $this->taskLifecycle->stopTask((int) $parameters['task_id'], $admin->isSuperAdmin())
-            : $this->taskLifecycle->startTask((int) $parameters['task_id'], false, $admin->isSuperAdmin());
+            : $this->taskLifecycle->startTask(
+                (int) $parameters['task_id'],
+                false,
+                $admin->isSuperAdmin(),
+                $admin,
+            );
 
         return new AiCapabilityResult(
             summary: $parameters['action'] === 'stop' ? '任务已暂停。' : '任务已启用。',

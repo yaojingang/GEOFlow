@@ -18,6 +18,8 @@ class JobController extends BaseApiController
      */
     public function show(Request $request, int $job, TaskLifecycleService $tasks): JsonResponse
     {
-        return $this->success($request, $tasks->getJob($job));
+        $viewer = $this->executionAdmin($request);
+
+        return $this->success($request, $tasks->getJobForApi(jobId: $job, viewer: $viewer));
     }
 }

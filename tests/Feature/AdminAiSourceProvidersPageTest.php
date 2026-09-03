@@ -2,10 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Ai\Agents\AdminHelpAssistant;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\AiSourceProvider;
 use App\Models\SiteSetting;
+use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -562,7 +565,9 @@ class AdminAiSourceProvidersPageTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('meta.source_count', 1)
-            ->assertJsonPath('meta.sources.0.domain', 'example.com');
+            ->assertJsonMissingPath('meta.sources')
+            ->assertDontSee('example.com', false)
+            ->assertDontSee('test-search-key', false);
 
         $provider->refresh();
         $this->assertSame(1, (int) $provider->used_today);
@@ -597,9 +602,7 @@ class AdminAiSourceProvidersPageTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->postJson(route('admin.ai-source-providers.test', ['providerId' => (int) $provider->id]))
             ->assertUnprocessable()
-            ->assertJsonFragment(['message' => __('admin.ai_source_providers.test_failed', [
-                'message' => '搜索源已达到每日调用上限',
-            ])]);
+            ->assertJsonPath('error_code', 'ai_model_unavailable');
 
         $provider->refresh();
         $this->assertSame(1, (int) $provider->used_today);
@@ -609,23 +612,7 @@ class AdminAiSourceProvidersPageTest extends TestCase
 
     public function test_admin_can_test_deepseek_structured_output(): void
     {
-        Http::preventStrayRequests();
-        Http::fake([
-            'https://api.deepseek.com/v1/chat/completions' => Http::response([
-                'choices' => [
-                    [
-                        'message' => [
-                            'content' => json_encode([
-                                'keyword' => 'GEOFlow',
-                                'intent' => 'ai_visibility_analysis',
-                                'source_actions' => ['publish docs', 'refresh citations'],
-                                'confidence' => 0.91,
-                            ]),
-                        ],
-                    ],
-                ],
-            ]),
-        ]);
+        AdminHelpAssistant::fake(['workspace ready'])->preventStrayPrompts();
 
         $model = $this->createAiModel([
             'name' => 'DeepSeek Structured',
@@ -642,48 +629,75 @@ class AdminAiSourceProvidersPageTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('meta.provider_key', 'deepseek')
-            ->assertJsonPath('meta.structured_output.keyword', 'GEOFlow')
-            ->assertJsonPath('meta.structured_output.source_actions.0', 'publish docs');
-
-        Http::assertSent(fn ($request): bool => $request->url() === 'https://api.deepseek.com/v1/chat/completions'
-            && $request->hasHeader('Authorization', 'Bearer test-model-key')
-            && ($request['response_format']['type'] ?? null) === 'json_object'
-            && $request['model'] === 'deepseek-v4-flash');
+            ->assertJsonPath('meta.workspace_readiness.configuration.status', 'ready')
+            ->assertJsonMissingPath('meta.structured_output')
+            ->assertJsonMissingPath('meta.provider_key')
+            ->assertDontSee('workspace ready', false)
+            ->assertDontSee('test-model-key', false);
 
         $model->refresh();
         $this->assertSame(1, (int) $model->used_today);
         $this->assertSame(1, (int) $model->total_used);
         $this->assertSame(now()->toDateString(), $model->usage_date?->toDateString());
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame('stream.p1', $event->call_key);
+        $this->assertSame(AiModelUsageEvent::EXECUTION_SCOPE_INTERACTIVE_ADMIN, $event->execution_scope);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_SYSTEM, $event->model_source);
+        $this->assertSame($model->owner_admin_id, $event->execution_admin_id);
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $event->status);
+    }
+
+    public function test_system_binding_lock_contention_stops_before_provider_without_changing_readiness_or_quota(): void
+    {
+        $providerCalls = 0;
+        AdminHelpAssistant::fake(function () use (&$providerCalls): string {
+            $providerCalls++;
+
+            return 'provider must not run';
+        })->preventStrayPrompts();
+        $admin = $this->createAdmin();
+        $model = $this->createAiModel([
+            'name' => 'Locked DeepSeek Probe',
+            'model_id' => 'deepseek-v4-flash',
+            'api_url' => 'https://api.deepseek.com',
+            'ai_workspace_readiness_status' => 'failed',
+            'ai_workspace_readiness_profile' => ['sentinel' => 'unchanged'],
+            'ai_workspace_readiness_failure_code' => 'existing_failure',
+        ]);
+        $locks = app(AiModelInvocationLock::class);
+        $mutationLock = $locks->acquireForMutation((int) $model->id);
+        $this->assertNotNull($mutationLock);
+
+        try {
+            $this->actingAs($admin, 'admin')
+                ->postJson(route('admin.ai-source-providers.model-bindings.test'), [
+                    'binding_type' => 'deepseek',
+                    'model_id' => (int) $model->id,
+                ])
+                ->assertUnprocessable()
+                ->assertJsonPath('success', false);
+        } finally {
+            $locks->release($mutationLock);
+        }
+
+        $current = $model->fresh();
+        $this->assertSame(0, $providerCalls);
+        $this->assertSame(0, (int) $current->used_today);
+        $this->assertSame(0, (int) $current->total_used);
+        $this->assertSame('failed', $current->ai_workspace_readiness_status);
+        $this->assertSame('unchanged', data_get($current->ai_workspace_readiness_profile, 'sentinel'));
+        $this->assertSame('existing_failure', $current->ai_workspace_readiness_failure_code);
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
     }
 
     public function test_super_admin_probe_result_without_structured_output_key_does_not_crash(): void
     {
-        Http::preventStrayRequests();
-        Http::fake([
-            'https://api.deepseek.com/v1/chat/completions' => Http::response(
-                "data: {\"id\":\"1\",\"model\":\"deepseek-v4-flash\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\\u4f60\\u597d\"},\"finish_reason\":null}]}\n\n"
-                ."data: {\"id\":\"1\",\"model\":\"deepseek-v4-flash\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\\uff0c\"},\"finish_reason\":null}]}\n\n"
-                ."data: {\"id\":\"1\",\"model\":\"deepseek-v4-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"
-                ."data: [DONE]\n\n",
-                200,
-                ['Content-Type' => 'text/event-stream'],
-            ),
-        ]);
-
+        AdminHelpAssistant::fake(['workspace ready'])->preventStrayPrompts();
+        $superAdmin = $this->createAdmin();
         $model = $this->createAiModel([
             'name' => 'DeepSeek Super Admin Probe',
             'model_id' => 'deepseek-v4-flash',
             'api_url' => 'https://api.deepseek.com',
-        ]);
-
-        $superAdmin = Admin::query()->create([
-            'username' => 'deepseek_super_probe_admin',
-            'password' => 'secret-123',
-            'email' => 'deepseek-super-probe-admin@example.com',
-            'display_name' => 'DeepSeek Super Probe Admin',
-            'role' => 'super_admin',
-            'status' => 'active',
         ]);
 
         $response = $this->actingAs($superAdmin, 'admin')
@@ -694,7 +708,7 @@ class AdminAiSourceProvidersPageTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('meta.structured_output', [])
+            ->assertJsonMissingPath('meta.structured_output')
             ->assertJsonPath('meta.workspace_readiness.configuration.status', 'ready')
             ->assertJsonPath('meta.workspace_readiness.streaming.status', 'ready');
 
@@ -702,12 +716,62 @@ class AdminAiSourceProvidersPageTest extends TestCase
         $this->assertSame('ready', (string) $model->ai_workspace_readiness_status);
     }
 
+    public function test_super_admin_model_binding_probe_discards_readiness_after_role_revocation(): void
+    {
+        $superAdmin = Admin::query()->create([
+            'username' => 'revoked_super_probe_admin',
+            'password' => 'secret-123',
+            'email' => 'revoked-super-probe-admin@example.com',
+            'display_name' => 'Revoked Super Probe Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        $model = $this->createAiModelForOwner($superAdmin, [
+            'name' => 'Revoked Super Admin Probe',
+            'model_id' => 'deepseek-v4-flash',
+            'api_url' => 'https://api.deepseek.com',
+            'ai_workspace_readiness_status' => 'failed',
+            'ai_workspace_readiness_profile' => ['sentinel' => 'keep-existing-readiness'],
+            'ai_workspace_readiness_failure_code' => 'existing_failure',
+        ]);
+        $providerCalls = 0;
+        AdminHelpAssistant::fake(function () use ($superAdmin, &$providerCalls): string {
+            $providerCalls++;
+            Admin::query()->whereKey($superAdmin->id)->update(['role' => 'admin']);
+
+            return 'provider result must be discarded';
+        })->preventStrayPrompts();
+
+        $response = $this->actingAs($superAdmin, 'admin')
+            ->postJson(route('admin.ai-source-providers.model-bindings.test'), [
+                'binding_type' => 'deepseek',
+                'model_id' => (int) $model->id,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('error_code', 'ai_config_access_revoked');
+
+        $current = $model->fresh();
+        $this->assertSame('failed', $current->ai_workspace_readiness_status);
+        $this->assertSame('keep-existing-readiness', data_get($current->ai_workspace_readiness_profile, 'sentinel'));
+        $this->assertSame('existing_failure', $current->ai_workspace_readiness_failure_code);
+        $this->assertSame(1, (int) $current->used_today);
+        $this->assertSame(0, (int) $current->total_used);
+        $this->assertSame(1, $providerCalls);
+        $this->assertSame(
+            AiModelUsageEvent::STATUS_REVOKED,
+            AiModelUsageEvent::query()->sole()->status,
+        );
+        $response->assertDontSee('provider result must be discarded', false);
+    }
+
     public function test_failed_model_binding_test_attempt_consumes_daily_quota(): void
     {
-        Http::preventStrayRequests();
-        Http::fake([
-            'https://api.deepseek.com/v1/chat/completions' => Http::response('Provider unavailable', 503),
-        ]);
+        $providerCalls = 0;
+        AdminHelpAssistant::fake(function () use (&$providerCalls): string {
+            $providerCalls++;
+            throw new \RuntimeException('provider failure body must stay hidden');
+        })->preventStrayPrompts();
 
         $model = $this->createAiModel([
             'name' => 'DeepSeek Quota Probe',
@@ -730,22 +794,23 @@ class AdminAiSourceProvidersPageTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->postJson(route('admin.ai-source-providers.model-bindings.test'), $payload)
             ->assertUnprocessable()
-            ->assertJsonFragment(['message' => __('admin.ai_source_providers.test_failed', [
-                'message' => '模型已达到每日调用上限',
-            ])]);
+            ->assertJsonPath('error_code', 'ai_model_unavailable');
 
         $model->refresh();
         $this->assertSame(1, (int) $model->used_today);
         $this->assertSame(0, (int) $model->total_used);
-        Http::assertSentCount(2);
+        $this->assertSame(2, $providerCalls);
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame(['stream.p1', 'plain.p2'], $events->pluck('call_key')->all());
+        $this->assertSame(
+            [AiModelUsageEvent::STATUS_FAILED, AiModelUsageEvent::STATUS_FAILED],
+            $events->pluck('status')->all(),
+        );
     }
 
     public function test_regular_admin_probe_failure_cannot_clear_workspace_model_readiness(): void
     {
-        Http::preventStrayRequests();
-        Http::fake([
-            'https://api.deepseek.com/v1/chat/completions' => Http::response('Provider unavailable', 503),
-        ]);
+        AdminHelpAssistant::fake()->preventStrayPrompts();
         $model = $this->createAiModel([
             'name' => 'Ready Workspace Model',
             'model_id' => 'deepseek-ready',
@@ -754,30 +819,29 @@ class AdminAiSourceProvidersPageTest extends TestCase
             'ai_workspace_structured_output_verified_at' => now(),
         ]);
 
-        $this->actingAs($this->createAdmin(), 'admin')
+        $ordinary = Admin::query()->create([
+            'username' => 'ordinary_source_probe',
+            'password' => 'secret-123',
+            'email' => 'ordinary-source-probe@example.com',
+            'display_name' => 'Ordinary Source Probe',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $this->actingAs($ordinary, 'admin')
             ->postJson(route('admin.ai-source-providers.model-bindings.test'), [
                 'binding_type' => 'deepseek',
                 'model_id' => (int) $model->id,
             ])
-            ->assertUnprocessable();
+            ->assertForbidden();
 
         self::assertSame('ready', $model->fresh()->ai_workspace_structured_output_status);
         self::assertNotNull($model->fresh()->ai_workspace_structured_output_verified_at);
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
     }
 
     public function test_admin_can_test_doubao_ark_structured_output(): void
     {
-        Http::preventStrayRequests();
-        Http::fake([
-            'https://ark.cn-beijing.volces.com/api/v3/responses' => Http::response([
-                'output_text' => json_encode([
-                    'keyword' => 'GEOFlow',
-                    'intent' => 'search_visibility',
-                    'source_actions' => ['enable web search', 'collect source URLs'],
-                    'confidence' => 0.88,
-                ]),
-            ]),
-        ]);
+        AdminHelpAssistant::fake(['workspace ready'])->preventStrayPrompts();
 
         $model = $this->createAiModel([
             'name' => 'Doubao Ark Structured',
@@ -794,30 +858,14 @@ class AdminAiSourceProvidersPageTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('meta.provider_key', 'doubao_ark')
-            ->assertJsonPath('meta.structured_output.keyword', 'GEOFlow')
-            ->assertJsonPath('meta.structured_output.source_actions.0', 'enable web search');
-
-        Http::assertSent(fn ($request): bool => $request->url() === 'https://ark.cn-beijing.volces.com/api/v3/responses'
-            && $request->hasHeader('Authorization', 'Bearer test-model-key')
-            && ($request['text']['format']['type'] ?? null) === 'json_schema'
-            && ($request['text']['format']['strict'] ?? null) === true
-            && $request['model'] === 'doubao-seed-2-0-lite-260428');
+            ->assertJsonPath('meta.workspace_readiness.configuration.status', 'ready')
+            ->assertJsonMissingPath('meta.structured_output')
+            ->assertDontSee('workspace ready', false);
     }
 
     public function test_doubao_ark_structured_test_accepts_full_responses_endpoint(): void
     {
-        Http::preventStrayRequests();
-        Http::fake([
-            'https://ark.cn-beijing.volces.com/api/v3/responses' => Http::response([
-                'output_text' => json_encode([
-                    'keyword' => 'GEOFlow',
-                    'intent' => 'endpoint_check',
-                    'source_actions' => ['keep endpoint stable'],
-                    'confidence' => 0.82,
-                ]),
-            ]),
-        ]);
+        AdminHelpAssistant::fake(['workspace ready'])->preventStrayPrompts();
 
         $model = $this->createAiModel([
             'name' => 'Doubao Ark Full Endpoint',
@@ -831,9 +879,8 @@ class AdminAiSourceProvidersPageTest extends TestCase
                 'model_id' => (int) $model->id,
             ])
             ->assertOk()
-            ->assertJsonPath('meta.structured_output.intent', 'endpoint_check');
-
-        Http::assertSent(fn ($request): bool => $request->url() === 'https://ark.cn-beijing.volces.com/api/v3/responses');
+            ->assertJsonPath('meta.workspace_readiness.configuration.status', 'ready')
+            ->assertJsonMissingPath('meta.structured_output');
     }
 
     public function test_provider_connection_test_validates_query_length_before_calling_provider(): void
@@ -878,12 +925,11 @@ class AdminAiSourceProvidersPageTest extends TestCase
 
     private function createAdmin(): Admin
     {
-        return Admin::query()->create([
-            'username' => 'ai_source_admin',
+        return Admin::query()->firstOrCreate(['username' => 'ai_source_admin'], [
             'password' => 'secret-123',
             'email' => 'ai-source-admin@example.com',
             'display_name' => 'AI Source Admin',
-            'role' => 'admin',
+            'role' => 'super_admin',
             'status' => 'active',
         ]);
     }
@@ -914,7 +960,16 @@ class AdminAiSourceProvidersPageTest extends TestCase
 
     private function createAiModel(array $overrides = []): AiModel
     {
-        return AiModel::query()->create(array_merge([
+        return $this->createAiModelForOwner($this->createAdmin(), $overrides);
+    }
+
+    /** @param array<string, mixed> $overrides */
+    private function createAiModelForOwner(Admin $owner, array $overrides = []): AiModel
+    {
+        $model = new AiModel;
+        $model->forceFill(array_merge([
+            'owner_admin_id' => $owner->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
             'name' => 'Test Chat',
             'version' => 'test',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-model-key'),
@@ -927,5 +982,8 @@ class AdminAiSourceProvidersPageTest extends TestCase
             'total_used' => 0,
             'status' => 'active',
         ], $overrides));
+        $model->save();
+
+        return $model;
     }
 }

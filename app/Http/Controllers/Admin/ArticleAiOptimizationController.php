@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\AiModelAccessException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ArticleAiOptimizationActionRequest;
 use App\Http\Requests\Admin\StartArticleAiOptimizationRequest;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleAiOptimizationRun;
+use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Services\GeoFlow\ArticleAiOptimizationCoordinator;
 use App\Services\GeoFlow\ArticleAiOptimizationException;
 use Illuminate\Http\JsonResponse;
@@ -16,20 +18,29 @@ use Illuminate\Support\Facades\Lang;
 
 class ArticleAiOptimizationController extends Controller
 {
-    public function __construct(private readonly ArticleAiOptimizationCoordinator $coordinator) {}
+    public function __construct(
+        private readonly ArticleAiOptimizationCoordinator $coordinator,
+        private readonly AdminAiModelAccessResolver $adminAiModelAccessResolver,
+    ) {}
 
     public function store(StartArticleAiOptimizationRequest $request, int $articleId): JsonResponse
     {
         $article = Article::query()->with('task.aiModel')->whereKey($articleId)->firstOrFail();
-        $model = $article->task?->aiModel;
-        if (! $model && $request->integer('optimization_model_id') > 0) {
-            $model = AiModel::query()->find($request->integer('optimization_model_id'));
-        }
+        $model = $request->integer('optimization_model_id') > 0
+            ? AiModel::query()->find($request->integer('optimization_model_id'))
+            : $article->task?->aiModel;
         if (! $model instanceof AiModel) {
             return $this->failure(new ArticleAiOptimizationException(
                 'article_ai_optimization_model_required',
                 httpStatus: 422,
             ));
+        }
+        try {
+            $this->adminAiModelAccessResolver->assertUsable($request->user('admin'), $model);
+        } catch (AiModelAccessException $exception) {
+            return response()->json([
+                'error' => ['code' => $exception->getErrorCode()],
+            ], 404);
         }
 
         try {

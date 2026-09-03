@@ -29,11 +29,22 @@ class AiWorkspaceRun extends Model
         'model_snapshot', 'usage', 'context_snapshot_digest', 'last_event_at',
     ];
 
+    protected $hidden = [
+        'resolution_lease_owner',
+        'execution_lease_token',
+    ];
+
     protected function casts(): array
     {
         return [
             'resolution_score' => 'float',
             'admin_auth_version' => 'integer',
+            'model_access_admin_id' => 'integer',
+            'ai_config_access_version' => 'integer',
+            'requested_ai_model_id' => 'integer',
+            'resolved_ai_model_id' => 'integer',
+            'resolver_policy_version' => 'integer',
+            'retryable_failure' => 'boolean',
             'prompt_versions' => 'array',
             'candidate_capabilities' => 'array',
             'known_parameters' => 'array',
@@ -50,6 +61,8 @@ class AiWorkspaceRun extends Model
             'usage' => 'array',
             'system_operations_executed' => 'boolean',
             'resolution_lease_expires_at' => 'datetime',
+            'model_resolved_at' => 'datetime',
+            'execution_lease_expires_at' => 'datetime',
             'resolution_started_at' => 'datetime',
             'resolution_finished_at' => 'datetime',
             'queued_at' => 'datetime',
@@ -70,6 +83,21 @@ class AiWorkspaceRun extends Model
     public function admin(): BelongsTo
     {
         return $this->belongsTo(Admin::class);
+    }
+
+    public function modelAccessAdmin(): BelongsTo
+    {
+        return $this->belongsTo(Admin::class, 'model_access_admin_id');
+    }
+
+    public function requestedAiModel(): BelongsTo
+    {
+        return $this->belongsTo(AiModel::class, 'requested_ai_model_id');
+    }
+
+    public function resolvedAiModel(): BelongsTo
+    {
+        return $this->belongsTo(AiModel::class, 'resolved_ai_model_id');
     }
 
     public function parentRun(): BelongsTo

@@ -42,6 +42,7 @@ final class TitleGenerationStatus
             'batch_attempts_exhausted' => __('admin.title_ai_generate.error.run_failed'),
             'dispatch_failed' => __('admin.title_ai_generate.error.queue_failed'),
             'batch_failed' => __('admin.title_ai_generate.error.run_failed'),
+            'permanent_ai_failure' => __('admin.title_ai_generate.error.run_failed'),
             default => null,
         };
     }

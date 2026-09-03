@@ -37,7 +37,7 @@
                     <input type="hidden" name="request_key" value="{{ (string) Str::uuid() }}">
                     <select name="ai_model_id" required class="min-h-10 rounded-lg border-slate-300 text-sm focus:border-orange-500 focus:ring-orange-500">
                         <option value="">{{ __('admin.knowledge_facts.select_model') }}</option>
-                        @foreach($factGenerationModels ?? collect() as $model)<option value="{{ $model->id }}">{{ $model->name }} · {{ $model->model_id }}</option>@endforeach
+                        @foreach($factGenerationModels ?? collect() as $model)<option value="{{ $model->id }}">{{ $model->name }}</option>@endforeach
                     </select>
                     <div class="grid grid-cols-[1fr_7rem] gap-3">
                         <select name="mode" class="min-h-10 rounded-lg border-slate-300 text-sm focus:border-orange-500 focus:ring-orange-500"><option value="initial">首次生成</option><option value="supplement">补充事实</option><option value="refresh_stale">更新陈旧事实</option></select>
