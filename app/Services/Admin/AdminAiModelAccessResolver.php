@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\Collection;
 
 final class AdminAiModelAccessResolver
 {
+    public function __construct(private readonly AdminAiAccessShadowRecorder $shadowRecorder) {}
+
     private const SANITIZED_COLUMNS = [
         'id',
         'owner_admin_id',
@@ -191,7 +193,7 @@ final class AdminAiModelAccessResolver
         $personal = $this->candidatePool($actor, $modelType)->get();
 
         if ($actor->isSuperAdmin() || $actor->shared_ai_config_owner_id === null) {
-            return $this->requireCandidates($actor, $personal);
+            return $this->recordShadowAndRequireCandidates($actor, $modelType, $personal);
         }
 
         $provider = $this->activeSharedProvider($actor);
@@ -204,11 +206,12 @@ final class AdminAiModelAccessResolver
                 );
             }
 
-            return $personal;
+            return $this->recordShadowAndRequireCandidates($actor, $modelType, $personal);
         }
 
-        return $this->requireCandidates(
+        return $this->recordShadowAndRequireCandidates(
             $actor,
+            $modelType,
             $personal->concat($this->candidatePool($provider, $modelType)->get()),
         );
     }
@@ -297,5 +300,19 @@ final class AdminAiModelAccessResolver
         }
 
         return $candidates;
+    }
+
+    /**
+     * @param  Collection<int, AiModel>  $candidates
+     * @return Collection<int, AiModel>
+     */
+    private function recordShadowAndRequireCandidates(
+        Admin $actor,
+        ?string $modelType,
+        Collection $candidates,
+    ): Collection {
+        $this->shadowRecorder->record($actor, $modelType, $candidates);
+
+        return $this->requireCandidates($actor, $candidates);
     }
 }
