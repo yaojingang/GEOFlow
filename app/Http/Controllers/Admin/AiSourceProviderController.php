@@ -236,8 +236,8 @@ class AiSourceProviderController extends Controller
             $this->modelTestBoundaryHook->beforeRevalidation($snapshot);
             $this->modelTestPreparation->revalidateImmediatelyBeforeOutbound($snapshot);
             $this->safeHttp->resolveTarget($snapshot->endpoint);
-            $outboundAttempted = true;
             $probeAttempt = $this->aiWorkspaceModelProbe->start($model, $usageSession);
+            $outboundAttempted = $usageSession->hasStartedProviderAttempt();
             $this->modelTestBoundaryHook->afterOutboundBeforePersist($snapshot);
             $this->modelTestPreparation->revalidateWorkspaceAfterOutbound($snapshot);
             $usageSession->finalizePendingOutcomes();
@@ -283,6 +283,9 @@ class AiSourceProviderController extends Controller
         } catch (ModelNotFoundException $exception) {
             throw $exception;
         } catch (Throwable $exception) {
+            $outboundAttempted = $outboundAttempted
+                || ($usageSession instanceof GovernanceAiModelUsageSession
+                    && $usageSession->hasStartedProviderAttempt());
             if ($usageSession instanceof GovernanceAiModelUsageSession) {
                 if ($exception instanceof AiModelAccessException) {
                     $usageSession->revokedPending();

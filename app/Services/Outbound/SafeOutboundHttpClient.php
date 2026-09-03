@@ -124,10 +124,11 @@ final class SafeOutboundHttpClient
                 }
             }
 
+            if ($beforeTransport !== null) {
+                $beforeTransport();
+            }
+
             try {
-                if ($beforeTransport !== null) {
-                    $beforeTransport();
-                }
                 $response = $this->transport->send($currentRequest, $method, $target, $currentData, $maxBytes, $crossOrigin);
             } catch (OutboundRequestBlockedException|OutboundRequestFailedException $exception) {
                 throw $exception;

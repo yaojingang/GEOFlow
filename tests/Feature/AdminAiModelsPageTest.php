@@ -21,10 +21,14 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Laravel\Ai\Exceptions\InsufficientCreditsException;
+use Laravel\Ai\Responses\Data\Meta;
+use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\TextResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\InterruptedStreamingFakeTextGateway;
 use Tests\TestCase;
@@ -98,6 +102,27 @@ class AdminAiModelsPageTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_super_admin_streaming_probe_records_the_stream_usage(): void
+    {
+        AdminHelpAssistant::fake([
+            new TextResponse('流式能力调用可用。', new Usage(7, 3), new Meta('fake', 'test-chat-model')),
+        ])->preventStrayPrompts();
+        $model = $this->createAiModel('chat');
+        $superAdmin = $this->createAdmin();
+        $superAdmin->forceFill(['role' => 'super_admin'])->save();
+
+        $this->actingAs($superAdmin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame('stream.p1', $event->call_key);
+        $this->assertSame(7, $event->input_tokens);
+        $this->assertSame(3, $event->output_tokens);
+        $this->assertSame(10, $event->total_tokens);
+    }
+
     public function test_workspace_capability_probe_computes_readiness_without_writing_the_model(): void
     {
         AdminHelpAssistant::fake(['纯外呼检测结果。'])->preventStrayPrompts();
@@ -118,7 +143,7 @@ class AdminAiModelsPageTest extends TestCase
     public function test_super_admin_chat_test_records_observed_streaming_failure_before_plain_text_fallback(): void
     {
         AdminHelpAssistant::fake([
-            '',
+            new TextResponse('', new Usage(7, 3), new Meta('fake', 'test-chat-model')),
             '普通文本调用可用。',
         ])->preventStrayPrompts();
         $model = $this->createAiModel('chat');
@@ -141,6 +166,9 @@ class AdminAiModelsPageTest extends TestCase
             [AiModelUsageEvent::STATUS_DISCARDED, AiModelUsageEvent::STATUS_SUCCEEDED],
             $events->pluck('status')->all(),
         );
+        self::assertSame(7, $events->first()->input_tokens);
+        self::assertSame(3, $events->first()->output_tokens);
+        self::assertSame(10, $events->first()->total_tokens);
         self::assertSame(1, (int) $model->fresh()->used_today);
         Http::assertNothingSent();
     }
@@ -547,6 +575,92 @@ class AdminAiModelsPageTest extends TestCase
         $this->assertNotNull($mutationLock);
         $locks->release($mutationLock);
         $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, AiModelUsageEvent::query()->sole()->status);
+    }
+
+    public function test_model_connection_lock_contention_stops_before_provider_and_preserves_quota_and_readiness(): void
+    {
+        $providerCalls = 0;
+        AdminHelpAssistant::fake(function () use (&$providerCalls): string {
+            $providerCalls++;
+
+            return 'provider must not run';
+        })->preventStrayPrompts();
+        $model = $this->createAiModel('chat', [
+            'ai_workspace_readiness_status' => 'failed',
+            'ai_workspace_readiness_profile' => ['sentinel' => 'unchanged'],
+            'ai_workspace_readiness_failure_code' => 'existing_failure',
+        ]);
+        $superAdmin = $this->createAdmin();
+        $superAdmin->forceFill(['role' => 'super_admin'])->save();
+        $locks = app(AiModelInvocationLock::class);
+        $mutationLock = $locks->acquireForMutation((int) $model->id);
+        $this->assertNotNull($mutationLock);
+
+        try {
+            $this->actingAs($superAdmin, 'admin')
+                ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+                ->assertUnprocessable()
+                ->assertJsonPath('success', false);
+        } finally {
+            $locks->release($mutationLock);
+        }
+
+        $current = $model->fresh();
+        $this->assertSame(0, $providerCalls);
+        $this->assertSame(0, (int) $current->used_today);
+        $this->assertSame(0, (int) $current->total_used);
+        $this->assertSame('failed', $current->ai_workspace_readiness_status);
+        $this->assertSame('unchanged', data_get($current->ai_workspace_readiness_profile, 'sentinel'));
+        $this->assertSame('existing_failure', $current->ai_workspace_readiness_failure_code);
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
+    }
+
+    public function test_direct_model_test_permission_race_stops_before_transport_without_consuming_quota(): void
+    {
+        Http::fake();
+        $admin = $this->createAdmin();
+        $model = $this->createAiModel('embedding');
+        $this->app->instance(HostResolver::class, new class((int) $admin->id) implements HostResolver
+        {
+            public function __construct(private readonly int $adminId) {}
+
+            public function resolve(string $host): array
+            {
+                Admin::query()->whereKey($this->adminId)->increment('ai_config_access_version');
+
+                return ['93.184.216.34'];
+            }
+        });
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('meta.diagnosis.code', 'ai_config_access_revoked');
+
+        Http::assertNothingSent();
+        $this->assertSame(0, (int) $model->fresh()->used_today);
+        $this->assertSame(0, (int) $model->fresh()->total_used);
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
+    }
+
+    public function test_archived_owned_model_cannot_be_tested(): void
+    {
+        Http::fake();
+        $admin = $this->createAdmin();
+        $model = $this->createAiModel('embedding');
+        $model->forceFill(['archived_at' => now()])->save();
+
+        $this->assertFalse(Gate::forUser($admin)->allows('test', $model));
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]))
+            ->assertNotFound();
+
+        Http::assertNothingSent();
+        $this->assertSame(0, (int) $model->fresh()->used_today);
+        $this->assertSame(0, (int) $model->fresh()->total_used);
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
     }
 
     public function test_usage_telemetry_failure_does_not_change_connection_test_success(): void

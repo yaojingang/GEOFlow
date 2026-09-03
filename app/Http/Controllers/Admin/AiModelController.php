@@ -444,8 +444,8 @@ class AiModelController extends Controller
 
             if ($modelType === 'chat' && $actorIsSuperAdmin) {
                 $this->safeHttp->resolveTarget($endpoint);
-                $outboundAttempted = true;
                 $probeAttempt = $this->aiWorkspaceModelProbe->start($model, $usageSession);
+                $outboundAttempted = $usageSession->hasStartedProviderAttempt();
                 $this->testBoundaryHook->afterOutboundBeforePersist($snapshot);
                 $this->testPreparation->revalidateWorkspaceAfterOutbound($snapshot);
                 $usageSession->finalizePendingOutcomes();
@@ -514,12 +514,12 @@ class AiModelController extends Controller
                 $testPayload,
                 (int) config('geoflow.outbound_ai_max_bytes', 8 * 1024 * 1024),
                 function () use (&$outboundAttempted, $usageSession, $model, $testPayload): void {
-                    $outboundAttempted = true;
                     $usageSession->begin(
                         model: $model,
                         callKey: 'direct.p1',
                         requestPayload: json_encode($testPayload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
                     );
+                    $outboundAttempted = $usageSession->hasStartedProviderAttempt();
                 },
             );
             $providerReturned = true;
@@ -587,6 +587,9 @@ class AiModelController extends Controller
         } catch (HttpExceptionInterface $exception) {
             throw $exception;
         } catch (Throwable $exception) {
+            $outboundAttempted = $outboundAttempted
+                || ($usageSession instanceof GovernanceAiModelUsageSession
+                    && $usageSession->hasStartedProviderAttempt());
             if ($usageSession instanceof GovernanceAiModelUsageSession) {
                 if ($exception instanceof AiModelAccessException) {
                     $usageSession->revokedPending();

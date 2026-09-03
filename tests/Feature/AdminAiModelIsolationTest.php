@@ -18,6 +18,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Laravel\Ai\Responses\Data\Meta;
+use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\TextResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -409,7 +412,13 @@ final class AdminAiModelIsolationTest extends TestCase
         bool $requiresSuperAdmin,
     ): void {
         Log::spy();
-        AdminHelpAssistant::fake(['workspace-provider-result-must-be-discarded'])->preventStrayPrompts();
+        AdminHelpAssistant::fake([
+            new TextResponse(
+                'workspace-provider-result-must-be-discarded',
+                new Usage(7, 3),
+                new Meta('fake', 'post-workspace-model'),
+            ),
+        ])->preventStrayPrompts();
         $admin = $this->admin('post-workspace-'.$mutation, 'super_admin');
         $other = $this->admin('post-workspace-other-'.$mutation, 'admin');
         $originalKey = 'post-workspace-original-secret';
@@ -441,6 +450,9 @@ final class AdminAiModelIsolationTest extends TestCase
         $event = AiModelUsageEvent::query()->sole();
         $this->assertSame(AiModelUsageEvent::STATUS_REVOKED, $event->status);
         $this->assertSame('stream.p1', $event->call_key);
+        $this->assertSame(7, $event->input_tokens);
+        $this->assertSame(3, $event->output_tokens);
+        $this->assertSame(10, $event->total_tokens);
         $this->assertSame('failed', $current->ai_workspace_readiness_status);
         $this->assertSame('keep-existing-readiness', data_get($current->ai_workspace_readiness_profile, 'sentinel'));
         $this->assertSame('existing_failure', $current->ai_workspace_readiness_failure_code);

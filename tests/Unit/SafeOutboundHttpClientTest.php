@@ -50,6 +50,29 @@ class SafeOutboundHttpClientTest extends TestCase
         $this->assertInstanceOf(SafeOutboundHttpClient::class, app(SafeOutboundHttpClient::class));
     }
 
+    #[Test]
+    public function a_before_transport_domain_exception_is_not_wrapped_or_sent(): void
+    {
+        $transport = new RecordingOutboundTransport;
+        $client = $this->client(['public.test' => ['93.184.216.34']], $transport);
+        $exception = new \DomainException('governance_preflight_failed');
+
+        try {
+            $client->post(
+                Http::timeout(2),
+                'https://public.test/v1/models',
+                ['model' => 'test'],
+                1024,
+                static fn (): never => throw $exception,
+            );
+            $this->fail('Expected the pre-transport domain exception to escape unchanged.');
+        } catch (\DomainException $caught) {
+            $this->assertSame($exception, $caught);
+        }
+
+        $this->assertCount(0, $transport->targets);
+    }
+
     /**
      * @return array<string, array{string, list<string>, string}>
      */

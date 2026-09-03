@@ -270,9 +270,9 @@ final class AdminAiModelTestPreparationService
         bool $hideMissing = false,
         bool $systemOnly = false,
     ): AiModel {
-        $query = AiModel::query()->ownedBy($actor);
+        $query = AiModel::query()->ownedBy($actor)->unarchived();
         if ($systemOnly) {
-            $query->systemOnly()->active()->unarchived()->where(function ($query): void {
+            $query->systemOnly()->active()->where(function ($query): void {
                 $query->whereNull('model_type')->orWhere('model_type', '')->orWhere('model_type', 'chat');
             });
         } elseif (! $actor->isSuperAdmin()) {

@@ -594,11 +594,26 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         $timeout = $this->probeTimeout($timeout);
         $callKey = 'plain.p2';
         $agent = new AdminHelpAssistant([], '模型连接检测。', $modelId);
-        $usageSession?->begin($model, $callKey, $this->probePayload('plain', $driver, $modelId, $prompt, $agent));
         try {
-            $response = $this->withConcurrencySlot(
-                fn (): object => $agent->prompt($prompt, [], $provider, $modelId, $timeout),
-            );
+            $response = $this->withConcurrencySlot(function () use (
+                $agent,
+                $callKey,
+                $driver,
+                $model,
+                $modelId,
+                $prompt,
+                $provider,
+                $timeout,
+                $usageSession,
+            ): object {
+                $usageSession?->begin(
+                    $model,
+                    $callKey,
+                    $this->probePayload('plain', $driver, $modelId, $prompt, $agent),
+                );
+
+                return $agent->prompt($prompt, [], $provider, $modelId, $timeout);
+            });
         } catch (Throwable $exception) {
             $usageSession?->markFailed($callKey);
 
@@ -621,7 +636,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         ];
     }
 
-    /** @return array{provider:string,endpoint:string,http_status:int,latency_ms:int,raw_preview:string,delta_count:int} */
+    /** @return array{provider:string,endpoint:string,http_status:int,latency_ms:int,raw_preview:string,delta_count:int,usage:mixed} */
     public function probeStreaming(
         AiModel $model,
         string $prompt,
@@ -654,9 +669,23 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         $timeout = $this->probeTimeout($timeout);
         $callKey = 'stream.p1';
         $agent = new AdminHelpAssistant([], '模型流式连接检测。', $modelId);
-        $usageSession?->begin($model, $callKey, $this->probePayload('stream', $driver, $modelId, $prompt, $agent));
         try {
-            $result = $this->withConcurrencySlot(function () use ($agent, $modelId, $prompt, $provider, $timeout): array {
+            $result = $this->withConcurrencySlot(function () use (
+                $agent,
+                $callKey,
+                $driver,
+                $model,
+                $modelId,
+                $prompt,
+                $provider,
+                $timeout,
+                $usageSession,
+            ): array {
+                $usageSession?->begin(
+                    $model,
+                    $callKey,
+                    $this->probePayload('stream', $driver, $modelId, $prompt, $agent),
+                );
                 $stream = $agent->stream($prompt, [], $provider, $modelId, $timeout);
                 $text = '';
                 $deltaCount = 0;
@@ -686,6 +715,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                     'delta_count' => $deltaCount,
                     'stream_ended' => $streamEnded,
                     'finish_reason' => $finishReason,
+                    'usage' => $stream->usage,
                 ];
             });
         } catch (Throwable $exception) {
@@ -693,6 +723,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
 
             throw $exception;
         }
+        $usageSession?->retainUsage($callKey, $result['usage'] ?? null);
         if ((string) $result['text'] === ''
             || (int) $result['delta_count'] === 0
             || ! $this->streamCompletedSuccessfully(
@@ -711,6 +742,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
             'latency_ms' => $latencyMs,
             'raw_preview' => Str::limit((string) $result['text'], 500, ''),
             'delta_count' => (int) $result['delta_count'],
+            'usage' => $result['usage'] ?? null,
         ];
     }
 

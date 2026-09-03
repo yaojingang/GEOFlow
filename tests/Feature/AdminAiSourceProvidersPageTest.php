@@ -8,6 +8,7 @@ use App\Models\AiModel;
 use App\Models\AiModelUsageEvent;
 use App\Models\AiSourceProvider;
 use App\Models\SiteSetting;
+use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -644,6 +645,49 @@ class AdminAiSourceProvidersPageTest extends TestCase
         $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_SYSTEM, $event->model_source);
         $this->assertSame($model->owner_admin_id, $event->execution_admin_id);
         $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $event->status);
+    }
+
+    public function test_system_binding_lock_contention_stops_before_provider_without_changing_readiness_or_quota(): void
+    {
+        $providerCalls = 0;
+        AdminHelpAssistant::fake(function () use (&$providerCalls): string {
+            $providerCalls++;
+
+            return 'provider must not run';
+        })->preventStrayPrompts();
+        $admin = $this->createAdmin();
+        $model = $this->createAiModel([
+            'name' => 'Locked DeepSeek Probe',
+            'model_id' => 'deepseek-v4-flash',
+            'api_url' => 'https://api.deepseek.com',
+            'ai_workspace_readiness_status' => 'failed',
+            'ai_workspace_readiness_profile' => ['sentinel' => 'unchanged'],
+            'ai_workspace_readiness_failure_code' => 'existing_failure',
+        ]);
+        $locks = app(AiModelInvocationLock::class);
+        $mutationLock = $locks->acquireForMutation((int) $model->id);
+        $this->assertNotNull($mutationLock);
+
+        try {
+            $this->actingAs($admin, 'admin')
+                ->postJson(route('admin.ai-source-providers.model-bindings.test'), [
+                    'binding_type' => 'deepseek',
+                    'model_id' => (int) $model->id,
+                ])
+                ->assertUnprocessable()
+                ->assertJsonPath('success', false);
+        } finally {
+            $locks->release($mutationLock);
+        }
+
+        $current = $model->fresh();
+        $this->assertSame(0, $providerCalls);
+        $this->assertSame(0, (int) $current->used_today);
+        $this->assertSame(0, (int) $current->total_used);
+        $this->assertSame('failed', $current->ai_workspace_readiness_status);
+        $this->assertSame('unchanged', data_get($current->ai_workspace_readiness_profile, 'sentinel'));
+        $this->assertSame('existing_failure', $current->ai_workspace_readiness_failure_code);
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
     }
 
     public function test_super_admin_probe_result_without_structured_output_key_does_not_crash(): void

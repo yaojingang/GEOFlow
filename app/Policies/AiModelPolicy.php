@@ -46,7 +46,8 @@ final class AiModelPolicy
 
     public function test(Admin $admin, AiModel $model): bool
     {
-        return $this->accessResolver->canConfigure($admin, $model);
+        return $model->archived_at === null
+            && $this->accessResolver->canConfigure($admin, $model);
     }
 
     public function disable(Admin $admin, AiModel $model): bool

@@ -12,6 +12,8 @@ final class GovernanceAiModelUsageSession
     /** @var array<string, array{attempt:AiModelUsageAttempt,usage:mixed,lock:Lock,terminal_status:?string,error_code:?string}> */
     private array $pending = [];
 
+    private bool $providerAttemptStarted = false;
+
     public function __construct(
         private readonly AiModelUsageAttemptFactory $attempts,
         private readonly AiModelInvocationLock $invocationLocks,
@@ -38,11 +40,17 @@ final class GovernanceAiModelUsageSession
                 'terminal_status' => null,
                 'error_code' => null,
             ];
+            $this->providerAttemptStarted = true;
         } catch (\Throwable $exception) {
             $this->invocationLocks->release($lock);
 
             throw $exception;
         }
+    }
+
+    public function hasStartedProviderAttempt(): bool
+    {
+        return $this->providerAttemptStarted;
     }
 
     public function retainUsage(string $callKey, mixed $usage): void

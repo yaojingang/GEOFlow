@@ -37,6 +37,12 @@ final readonly class AiWorkspaceModelCapabilityProbe
                 'delta_count' => (int) $result['delta_count'],
             ];
         } catch (Throwable $exception) {
+            if ($usageSession instanceof GovernanceAiModelUsageSession
+                && ! $usageSession->hasStartedProviderAttempt()
+            ) {
+                throw $exception;
+            }
+
             return new AiWorkspaceModelProbeAttempt(
                 checkedAt: $checkedAt,
                 deadline: $deadline,
