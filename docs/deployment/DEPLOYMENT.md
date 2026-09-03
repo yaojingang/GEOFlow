@@ -160,6 +160,8 @@ $COMPOSE_PROD exec app php artisan up
 
 三层召回回填会在行锁内补齐知识库正文摘要、切片服务代次、原子事实数量、任务召回模式和历史质检来源账本。缺少可用切片的历史任务会计入 `tasks_deferred` 并保留空召回模式；缺少可验证召回依据的历史发布门禁结果会转为 `stale`，等待新版本重新质检。出现 `tasks_deferred` 时，保持维护模式，先修复对应知识库的切片同步，再重复执行实际回填和 dry-run。最终校验未全部归零时停止发布，不恢复入口流量。
 
+知识索引发布还需要确认 `knowledge-queue` 已完全排空。新版本会为每次索引流水线冻结 Embedding profile 与配置 revision；升级前已序列化、缺少该快照的旧任务会以 `knowledge_embedding_profile_incompatible` 终止。运维人员应在新版本中从知识库管理页重新发起更新切片，禁止直接重放旧任务 payload。PostgreSQL 环境的发布门禁需额外验证 pgvector 查询只读取当前 serving generation 且逐行匹配 model、provider、dimensions、profile version 和 profile digest。回滚到旧版 255 字符 provider 列前，需检查并缩短或清理 `knowledge_bases.chunk_embedding_provider`、`knowledge_chunks.embedding_provider` 和 `knowledge_chunk_sync_rows.embedding_provider` 中超过 255 字符的值；迁移检测到长值时会以 `knowledge_embedding_provider_downsize_blocked` 中止回滚。
+
 readiness 命令会回填已有图片路径哈希，并在路径锁内对账注册表、文件状态和内容哈希。永久无效的历史路径会保留稳定终态哈希，并计入 `terminal`；文件缺失、身份不一致或无法安全读取会计入 `registry_failed`。确认输出表格的 `remaining`、`terminal`、`registry_failed` 都为 `0`，再运行 `geoflow:security-audit`。该审计命令严格只读，不回填哈希、不修改数据库、不访问 HTTP/DNS，也不启动外部进程。人工可读模式和 JSON 模式使用相同 finding 集合：
 
 ```bash

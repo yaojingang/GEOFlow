@@ -6,6 +6,7 @@ use App\Exceptions\DistributionTaskRevisionMismatch;
 use App\Exceptions\TaskTitleReadinessException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\TaskTitleReadinessRequest;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Author;
 use App\Models\Category;
@@ -15,6 +16,7 @@ use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TitleLibrary;
+use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Services\GeoFlow\AiQualityRetrievalReadinessService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\TaskDistributionChannelSelector;
@@ -50,6 +52,7 @@ class TaskController extends Controller
         private readonly DistributionOrchestrator $distributionOrchestrator,
         private readonly TaskTitleReadinessService $taskTitleReadinessService,
         private readonly AiQualityRetrievalReadinessService $aiQualityRetrievalReadinessService,
+        private readonly AdminAiModelAccessResolver $adminAiModelAccessResolver,
     ) {}
 
     public function titleReadiness(TaskTitleReadinessRequest $request): JsonResponse
@@ -244,7 +247,12 @@ class TaskController extends Controller
                 return back()->with('message', __('admin.tasks.message.paused_stopped'));
             }
 
-            $this->taskLifecycleService->startTask($taskId, false, $this->canManageHostedTask());
+            $this->taskLifecycleService->startTask(
+                $taskId,
+                false,
+                $this->canManageHostedTask(),
+                $this->authenticatedAdmin(),
+            );
 
             return back()->with('message', __('admin.tasks.message.activated'));
         } catch (TaskTitleReadinessException $e) {
@@ -313,7 +321,7 @@ class TaskController extends Controller
      */
     public function create(): View
     {
-        $formOptions = $this->loadTaskFormOptions();
+        $formOptions = $this->loadTaskFormOptions($this->authenticatedAdmin());
 
         // 创建页选项与 tasks.php 数据口径一致（库/模型/作者/分类）。
         return view('admin.tasks.form', [
@@ -391,8 +399,8 @@ class TaskController extends Controller
             return redirect()->route('admin.tasks.index')->withErrors($e->getMessage());
         }
 
-        $formOptions = $this->loadTaskFormOptions();
         $taskModel = Task::query()->whereKey($taskId)->firstOrFail();
+        $formOptions = $this->loadTaskFormOptions($this->authenticatedAdmin(), $taskModel);
 
         return view('admin.tasks.form', [
             'pageTitle' => __('admin.task_edit.page_title'),
@@ -547,7 +555,12 @@ class TaskController extends Controller
         try {
             $taskId = (int) $payload['task_id'];
             $result = $payload['action'] === 'start'
-                ? $this->taskLifecycleService->startTask($taskId, true, $this->canManageHostedTask())
+                ? $this->taskLifecycleService->startTask(
+                    $taskId,
+                    true,
+                    $this->canManageHostedTask(),
+                    $this->authenticatedAdmin(),
+                )
                 : $this->taskLifecycleService->stopTask($taskId, $this->canManageHostedTask());
 
             return response()->json([
@@ -668,7 +681,7 @@ class TaskController extends Controller
      * @return array{
      *     titleLibraries: list<array{id:int,name:string}>,
      *     prompts: list<array{id:int,name:string}>,
-     *     aiModels: list<array{id:int,name:string}>,
+     *     aiModels: list<array{id:int,name:string,disabled?:bool,current_inaccessible?:bool,current_inaccessible_for?:list<string>}>,
      *     imageLibraries: list<array{id:int,name:string,count:int}>,
      *     knowledgeBases: list<array{id:int,name:string}>,
      *     authors: list<array{id:int,name:string}>,
@@ -676,7 +689,7 @@ class TaskController extends Controller
      *     distributionChannels: list<array{id:int,name:string,domain:string}>
      * }
      */
-    private function loadTaskFormOptions(): array
+    private function loadTaskFormOptions(Admin $actor, ?Task $task = null): array
     {
         // 直接附带标题总数与可用数，避免 Blade 层再次查询。
         $titleLibraries = TitleLibrary::query()
@@ -719,19 +732,40 @@ class TaskController extends Controller
             ])
             ->all();
 
-        $aiModels = AiModel::query()
-            ->select(['id', 'name'])
-            ->where('status', 'active')
+        $aiModels = $this->adminAiModelAccessResolver
+            ->usableQuery($actor)
             ->where(function ($query): void {
                 $query->whereNull('model_type')
                     ->orWhere('model_type', '')
                     ->orWhere('model_type', 'chat');
             })
             ->orderBy('failover_priority')
-            ->orderByDesc('id')
             ->get()
-            ->map(static fn (AiModel $row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])
+            ->map(static fn ($row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])
             ->all();
+        $inaccessibleCurrentFields = collect([
+            'ai_model_id' => (int) ($task?->ai_model_id ?? 0),
+            'ai_quality_model_id' => (int) ($task?->ai_quality_model_id ?? 0),
+        ])->filter(static fn (int $modelId): bool => $modelId > 0)
+            ->reject(static fn (int $modelId): bool => collect($aiModels)->contains('id', $modelId))
+            ->groupBy(static fn (int $modelId): int => $modelId);
+        foreach ($inaccessibleCurrentFields->keys() as $modelId) {
+            $currentModel = AiModel::query()->select(['id', 'name'])->find((int) $modelId);
+            if (! $currentModel instanceof AiModel) {
+                continue;
+            }
+            $fields = collect(['ai_model_id', 'ai_quality_model_id'])
+                ->filter(static fn (string $field): bool => (int) ($task?->{$field} ?? 0) === (int) $modelId)
+                ->values()
+                ->all();
+            $aiModels[] = [
+                'id' => (int) $currentModel->id,
+                'name' => (string) $currentModel->name,
+                'disabled' => true,
+                'current_inaccessible' => true,
+                'current_inaccessible_for' => $fields,
+            ];
+        }
 
         // 兼容上游展示：图库名称 + 图片数量。
         $imageLibraries = ImageLibrary::query()
@@ -1100,6 +1134,14 @@ class TaskController extends Controller
     private function canManageHostedTask(): bool
     {
         return auth('admin')->user()?->isSuperAdmin() === true;
+    }
+
+    private function authenticatedAdmin(): Admin
+    {
+        $admin = auth('admin')->user();
+        abort_unless($admin instanceof Admin, 401);
+
+        return $admin;
     }
 
     /**

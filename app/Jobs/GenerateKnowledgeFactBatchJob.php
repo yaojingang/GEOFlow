@@ -2,6 +2,10 @@
 
 namespace App\Jobs;
 
+use App\Data\Ai\KnowledgeFactGenerationExecutionContext;
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\KnowledgeFactModelRateLimitExceeded;
+use App\Exceptions\PermanentAiProviderException;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactGenerationCoordinator;
 use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -9,6 +13,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Str;
 use Throwable;
 
 class GenerateKnowledgeFactBatchJob implements ShouldBeUnique, ShouldQueue
@@ -27,8 +32,14 @@ class GenerateKnowledgeFactBatchJob implements ShouldBeUnique, ShouldQueue
 
     public int $uniqueFor = 3600;
 
-    public function __construct(public readonly int $runId, public readonly int $sequence, public readonly string $inputHash, public readonly array $evidence)
-    {
+    public function __construct(
+        public readonly int $runId,
+        public readonly int $sequence,
+        public readonly string $inputHash,
+        public readonly array $evidence,
+        public readonly int $executionAttempt = 1,
+        public readonly string $claimToken = '',
+    ) {
         $this->onQueue('knowledge');
     }
 
@@ -39,7 +50,7 @@ class GenerateKnowledgeFactBatchJob implements ShouldBeUnique, ShouldQueue
 
     public function uniqueId(): string
     {
-        return "{$this->runId}:{$this->sequence}:{$this->inputHash}";
+        return "{$this->runId}:{$this->executionAttempt}:{$this->sequence}:{$this->inputHash}";
     }
 
     public function tags(): array
@@ -49,11 +60,59 @@ class GenerateKnowledgeFactBatchJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(KnowledgeFactGenerationCoordinator $coordinator): void
     {
-        $coordinator->processBatch($this->runId, $this->sequence, $this->inputHash, $this->evidence);
+        $context = null;
+        try {
+            $context = $coordinator->claimBatch(
+                $this->runId,
+                $this->sequence,
+                $this->inputHash,
+                $this->executionAttempt,
+                $this->claimToken,
+                (string) Str::uuid7(),
+            );
+            if (! $context instanceof KnowledgeFactGenerationExecutionContext) {
+                return;
+            }
+            $coordinator->processClaimedBatch($context, $this->evidence);
+        } catch (KnowledgeFactModelRateLimitExceeded $exception) {
+            if ($context instanceof KnowledgeFactGenerationExecutionContext) {
+                $coordinator->releaseBatchForRetry($context, refundAttempt: true);
+            }
+
+            $this->release($exception->retryAfterSeconds());
+        } catch (AiModelAccessException|PermanentAiProviderException $exception) {
+            $coordinator->recordBatchFailure(
+                $this->runId,
+                $this->sequence,
+                $this->inputHash,
+                $exception,
+                $this->executionAttempt,
+                $this->claimToken,
+                false,
+                $context?->leaseToken(),
+                $context?->batchAttempt ?? 0,
+            );
+        } catch (Throwable $exception) {
+            if ($context instanceof KnowledgeFactGenerationExecutionContext) {
+                $coordinator->releaseBatchForRetry($context);
+            }
+
+            throw $exception;
+        }
     }
 
     public function failed(?Throwable $exception = null): void
     {
-        app(KnowledgeFactGenerationCoordinator::class)->recordBatchFailure($this->runId, $this->sequence, $this->inputHash, $exception);
+        app(KnowledgeFactGenerationCoordinator::class)->recordBatchFailure(
+            $this->runId,
+            $this->sequence,
+            $this->inputHash,
+            $exception,
+            $this->executionAttempt,
+            $this->claimToken,
+            true,
+            null,
+            $this->attempts(),
+        );
     }
 }

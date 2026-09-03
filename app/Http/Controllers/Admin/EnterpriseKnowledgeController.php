@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\GenerateEnterpriseKnowledgeDraftJob;
+use App\Models\Admin;
 use App\Models\EnterpriseKnowledgeProject;
 use App\Models\EnterpriseKnowledgeRevision;
 use App\Models\EnterpriseKnowledgeSource;
+use App\Services\GeoFlow\EnterpriseKnowledgeAiExecutionGuard;
 use App\Services\GeoFlow\EnterpriseKnowledgeDraftService;
 use App\Services\GeoFlow\KnowledgeSourceParser;
 use App\Support\AdminWeb;
@@ -30,6 +32,7 @@ class EnterpriseKnowledgeController extends Controller
     public function __construct(
         private readonly KnowledgeSourceParser $sourceParser,
         private readonly EnterpriseKnowledgeDraftService $draftService,
+        private readonly EnterpriseKnowledgeAiExecutionGuard $aiExecutionGuard,
     ) {}
 
     public function index(): View
@@ -85,6 +88,8 @@ class EnterpriseKnowledgeController extends Controller
 
         $storedPaths = [];
         try {
+            $admin = $this->currentAdmin();
+            $analysisModel = $this->draftService->assertAnalysisModelReady($admin);
             $parsedFiles = $this->sourceParser->parseUploadedKnowledgeFiles($uploadedFiles, $storedPaths, 'uploads/enterprise-knowledge');
             $mergedContent = $this->sourceParser->mergeKnowledgeSources($manualContent, $parsedFiles);
             $name = trim((string) ($payload['name'] ?? ''));
@@ -98,14 +103,15 @@ class EnterpriseKnowledgeController extends Controller
                 ]);
             }
 
-            $project = DB::transaction(function () use ($name, $payload, $manualContent, $parsedFiles): EnterpriseKnowledgeProject {
-                $project = EnterpriseKnowledgeProject::query()->create([
+            $project = DB::transaction(function () use ($name, $payload, $manualContent, $parsedFiles, $admin, $analysisModel): EnterpriseKnowledgeProject {
+                $identity = $this->aiExecutionGuard->snapshotForCreation($admin, $analysisModel);
+                $project = EnterpriseKnowledgeProject::query()->create(array_merge([
                     'name' => $name,
                     'description' => trim((string) ($payload['description'] ?? '')),
                     'status' => 'queued',
                     'structured_json' => $this->initialDraftProgressJson(),
-                    'created_by_admin_id' => auth('admin')->id(),
-                ]);
+                    'created_by_admin_id' => $admin->getKey(),
+                ], $identity));
 
                 $sortOrder = 0;
                 if ($manualContent !== '') {
@@ -135,7 +141,7 @@ class EnterpriseKnowledgeController extends Controller
                 return $project;
             });
 
-            GenerateEnterpriseKnowledgeDraftJob::dispatch((int) $project->id, auth('admin')->id())->onQueue('geoflow');
+            GenerateEnterpriseKnowledgeDraftJob::dispatch((int) $project->id)->onQueue('geoflow');
 
             return redirect()
                 ->route('admin.enterprise-knowledge.show', ['projectId' => (int) $project->id])
@@ -465,5 +471,13 @@ class EnterpriseKnowledgeController extends Controller
     private function enterpriseKnowledgeTranslation(string $key, string $fallback): string
     {
         return Lang::has($key) ? (string) __($key) : $fallback;
+    }
+
+    private function currentAdmin(): Admin
+    {
+        $admin = auth('admin')->user();
+        abort_unless($admin instanceof Admin, 403);
+
+        return $admin;
     }
 }

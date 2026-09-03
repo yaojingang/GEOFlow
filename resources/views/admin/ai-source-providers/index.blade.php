@@ -258,7 +258,7 @@
                         <label for="ark_model_id" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_source_providers.ark_model') }}</label>
                         <select name="ark_model_id" id="ark_model_id" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500">
                             <option value="0">{{ __('admin.ai_source_providers.model_none') }}</option>
-                            @foreach ($chatModels as $model)
+                            @foreach ($arkModels as $model)
                                 <option value="{{ (int) $model['id'] }}" @selected((int) $arkModelId === (int) $model['id'])>
                                     {{ $model['name'].' ('.$model['model_id'].')' }}
                                 </option>
@@ -275,7 +275,7 @@
                         <label for="deepseek_model_id" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_source_providers.deepseek_model') }}</label>
                         <select name="deepseek_model_id" id="deepseek_model_id" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500">
                             <option value="0">{{ __('admin.ai_source_providers.model_none') }}</option>
-                            @foreach ($chatModels as $model)
+                            @foreach ($deepSeekModels as $model)
                                 <option value="{{ (int) $model['id'] }}" @selected((int) $deepSeekModelId === (int) $model['id'])>
                                     {{ $model['name'].' ('.$model['model_id'].')' }}
                                 </option>

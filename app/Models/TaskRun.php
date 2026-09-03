@@ -11,6 +11,10 @@ class TaskRun extends Model
 
     protected $table = 'task_runs';
 
+    protected $hidden = [
+        'execution_lease_token',
+    ];
+
     protected $fillable = [
         'task_id',
         'status',
@@ -31,6 +35,12 @@ class TaskRun extends Model
             'meta' => 'array',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
+            'model_access_admin_id' => 'integer',
+            'ai_config_access_version' => 'integer',
+            'requested_ai_model_id' => 'integer',
+            'resolved_ai_model_id' => 'integer',
+            'model_resolved_at' => 'datetime',
+            'resolver_policy_version' => 'integer',
         ];
     }
 
@@ -42,5 +52,20 @@ class TaskRun extends Model
     public function article(): BelongsTo
     {
         return $this->belongsTo(Article::class, 'article_id');
+    }
+
+    public function modelAccessAdmin(): BelongsTo
+    {
+        return $this->belongsTo(Admin::class, 'model_access_admin_id');
+    }
+
+    public function requestedAiModel(): BelongsTo
+    {
+        return $this->belongsTo(AiModel::class, 'requested_ai_model_id');
+    }
+
+    public function resolvedAiModel(): BelongsTo
+    {
+        return $this->belongsTo(AiModel::class, 'resolved_ai_model_id');
     }
 }

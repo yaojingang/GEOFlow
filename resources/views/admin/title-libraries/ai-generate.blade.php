@@ -54,7 +54,7 @@
                             <option value="">{{ __('admin.title_ai_generate.option.select_ai_model') }}</option>
                             @foreach ($aiModels as $aiModel)
                                 <option value="{{ (int) $aiModel->id }}" @selected($aiModelValue === (string) $aiModel->id)>
-                                    {{ $aiModel->name }} ({{ $aiModel->model_id }})
+                                    {{ $aiModel->name }}
                                 </option>
                             @endforeach
                         </select>

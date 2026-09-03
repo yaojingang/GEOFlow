@@ -7,6 +7,7 @@ use App\Exceptions\ArticleRiskGateException;
 use App\Models\Article;
 use App\Models\Task;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 class ArticleWorkflowTransitionService
 {
@@ -37,20 +38,15 @@ class ArticleWorkflowTransitionService
             $rejectedWorkflowState,
             $lockedGuard,
         ): Article|ArticleRiskGateException|ArticleAiQualityGateException {
-            $lockedArticle = Article::query()
+            $taskId = (int) (Article::query()
                 ->whereKey($article->getKey())
-                ->lockForUpdate()
-                ->firstOrFail();
+                ->value('task_id') ?? 0);
+            $lockedTask = $this->lockTaskBeforeArticle($taskId);
+            $lockedArticle = $this->lockArticleAfterTask((int) $article->getKey(), $taskId);
 
-            if ($lockedArticle->task_id) {
-                $lockedTask = Task::withTrashed()
-                    ->whereKey((int) $lockedArticle->task_id)
-                    ->lockForUpdate()
-                    ->first();
-                if ($lockedTask instanceof Task) {
-                    $lockedTask->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
-                    $lockedArticle->setRelation('task', $lockedTask);
-                }
+            if ($lockedTask instanceof Task) {
+                $lockedTask->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
+                $lockedArticle->setRelation('task', $lockedTask);
             }
 
             if ($lockedGuard !== null) {
@@ -93,5 +89,30 @@ class ArticleWorkflowTransitionService
         }
 
         return $result;
+    }
+
+    private function lockTaskBeforeArticle(int $taskId): ?Task
+    {
+        if ($taskId <= 0) {
+            return null;
+        }
+
+        return Task::withTrashed()
+            ->whereKey($taskId)
+            ->lockForUpdate()
+            ->first();
+    }
+
+    private function lockArticleAfterTask(int $articleId, int $expectedTaskId): Article
+    {
+        $article = Article::query()
+            ->whereKey($articleId)
+            ->lockForUpdate()
+            ->firstOrFail();
+        if ((int) ($article->task_id ?? 0) !== $expectedTaskId) {
+            throw new RuntimeException('文章所属任务已变更，请重试。');
+        }
+
+        return $article;
     }
 }

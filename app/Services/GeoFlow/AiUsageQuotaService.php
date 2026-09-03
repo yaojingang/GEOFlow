@@ -37,6 +37,15 @@ final class AiUsageQuotaService
         });
     }
 
+    public function reserveLockedModelForTest(AiModel $lockedModel): ?AiUsageReservation
+    {
+        if (DB::connection()->transactionLevel() < 1) {
+            throw new \LogicException('A locked model reservation requires an active transaction.');
+        }
+
+        return $this->reserveLockedModel($lockedModel);
+    }
+
     public function releaseModel(AiUsageReservation $reservation): void
     {
         if ($reservation->resourceType !== 'model') {
@@ -79,6 +88,23 @@ final class AiUsageQuotaService
         $this->finalizeReservation($reservation, static function (): void {});
     }
 
+    /**
+     * 完成一次已发起外部请求的模型连接检测，并计入真实外呼总量。
+     */
+    public function recordModelOutboundAttempt(AiUsageReservation $reservation): void
+    {
+        if ($reservation->resourceType !== 'model') {
+            throw new \InvalidArgumentException('Expected an AI model usage reservation.');
+        }
+
+        $this->finalizeReservation($reservation, static function () use ($reservation): void {
+            AiModel::query()->whereKey($reservation->resourceId)->update([
+                'total_used' => DB::raw('COALESCE(total_used, 0) + 1'),
+                'updated_at' => now(),
+            ]);
+        });
+    }
+
     public function reserveProvider(AiSourceProvider $provider): ?AiUsageReservation
     {
         return DB::transaction(function () use ($provider): ?AiUsageReservation {
@@ -89,6 +115,15 @@ final class AiUsageQuotaService
 
             return $this->reserveLockedProvider($locked);
         });
+    }
+
+    public function reserveLockedProviderForTest(AiSourceProvider $lockedProvider): ?AiUsageReservation
+    {
+        if (DB::connection()->transactionLevel() < 1) {
+            throw new \LogicException('A locked provider reservation requires an active transaction.');
+        }
+
+        return $this->reserveLockedProvider($lockedProvider);
     }
 
     public function releaseProvider(AiUsageReservation $reservation): void

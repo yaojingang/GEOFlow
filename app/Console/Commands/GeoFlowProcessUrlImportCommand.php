@@ -27,7 +27,19 @@ class GeoFlowProcessUrlImportCommand extends Command
             return self::SUCCESS;
         }
 
-        $service->process($job);
+        if ((string) $job->status === 'failed' && ! (bool) $job->retryable_failure) {
+            $this->error('URL import job cannot be retried: '.((string) $job->error_code ?: 'url_import_failed'));
+
+            return self::FAILURE;
+        }
+
+        $job = $service->process($job);
+        if ((string) $job->status === 'failed') {
+            $this->error('URL import job failed: '.((string) $job->error_code ?: 'url_import_failed'));
+
+            return self::FAILURE;
+        }
+
         $this->info('URL import job processed.');
 
         return self::SUCCESS;

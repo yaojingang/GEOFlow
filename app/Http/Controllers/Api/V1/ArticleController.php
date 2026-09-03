@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Exceptions\AiModelAccessException;
 use App\Exceptions\ApiException;
 use App\Http\Requests\Api\ArticleAiOptimizationActionRequest;
 use App\Http\Requests\Api\StartArticleAiOptimizationRequest;
 use App\Http\Requests\Api\UpdateArticleRequest;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleAiOptimizationRun;
+use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Services\Api\ApiTokenService;
 use App\Services\Api\IdempotencyService;
 use App\Services\GeoFlow\AiQualityAuditService;
@@ -362,18 +365,31 @@ class ArticleController extends BaseApiController
         StartArticleAiOptimizationRequest $request,
         int $article,
         ArticleAiOptimizationCoordinator $coordinator,
+        AdminAiModelAccessResolver $modelAccessResolver,
     ): JsonResponse {
-        return IdempotencyService::executeJson($request, 'POST /articles/{id}/ai-quality/optimization', function () use ($request, $article, $coordinator): JsonResponse {
+        return IdempotencyService::executeJson($request, 'POST /articles/{id}/ai-quality/optimization', function () use ($request, $article, $coordinator, $modelAccessResolver): JsonResponse {
             $modelArticle = Article::query()->with('task.aiModel')->find($article);
             if (! $modelArticle) {
                 throw new ApiException('article_not_found', '文章不存在', 404);
             }
-            $model = $modelArticle->task?->aiModel;
-            if (! $model && $request->integer('optimization_model_id') > 0) {
-                $model = AiModel::query()->find($request->integer('optimization_model_id'));
-            }
+            $model = $request->integer('optimization_model_id') > 0
+                ? AiModel::query()->find($request->integer('optimization_model_id'))
+                : $modelArticle->task?->aiModel;
             if (! $model instanceof AiModel) {
                 throw new ApiException('article_ai_optimization_model_required', '请选择有效的内容模型', 422);
+            }
+            $actor = Admin::query()->find($this->auth($request)->auditAdminId);
+            if (! $actor instanceof Admin) {
+                throw new ApiException('unauthorized', '未认证', 401);
+            }
+            try {
+                $modelAccessResolver->assertUsable($actor, $model);
+            } catch (AiModelAccessException $exception) {
+                $status = $exception->getErrorCode() === AiModelAccessException::AI_MODEL_NOT_ACCESSIBLE
+                    ? 404
+                    : 409;
+
+                throw new ApiException($exception->getErrorCode(), '选择的 AI 模型当前不可用', $status);
             }
             try {
                 $coordinator->start(

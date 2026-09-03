@@ -2,8 +2,11 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Data\Ai\AiExecutionContext;
+use App\Exceptions\AiModelAccessException;
 use App\Exceptions\ArticleAiQualityGateException;
 use App\Exceptions\ArticleRiskGateException;
+use App\Exceptions\PermanentAiProviderException;
 use App\Exceptions\TaskTitleReadinessException;
 use App\Models\AiModel;
 use App\Models\Article;
@@ -16,9 +19,12 @@ use App\Models\KnowledgeChunk;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\Title;
+use App\Support\GeoFlow\AiExecutionErrorSanitizer;
+use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\GeoFlow\ImageUrlNormalizer;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use Closure;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -35,24 +41,29 @@ class WorkerExecutionService
      * 复用正文提示词和模型调用服务，确保任务生成与单篇生成规则一致。
      */
     public function __construct(
-        private readonly KnowledgeChunkSyncService $knowledgeChunkSyncService,
         private readonly KnowledgeRetrievalService $knowledgeRetrievalService,
         private readonly DistributionOrchestrator $distributionOrchestrator,
         private readonly ArticleRiskScanner $articleRiskScanner,
         private readonly ArticleWorkflowTransitionService $articleWorkflowTransitionService,
         private readonly ArticleContentPromptRenderer $articleContentPromptRenderer,
-        private readonly ArticleContentGenerationService $articleContentGenerationService,
+        private readonly WorkerAiModelInvocationGateway $aiModelInvocationGateway,
         private readonly ArticleCitationMarkerCleaner $articleCitationMarkerCleaner,
         private readonly TaskTitleReadinessService $taskTitleReadinessService,
+        private readonly ArticleAiQualityGate $articleAiQualityGate,
         private readonly ArticleAiQualityPolicyResolver $articleAiQualityPolicyResolver,
         private readonly ArticleAiQualityInspectionService $articleAiQualityInspectionService,
+        private readonly AiExecutionAccessGuard $aiExecutionAccessGuard,
+        private readonly AiExecutionErrorSanitizer $aiExecutionErrorSanitizer,
+        private readonly AiModelFailoverDecider $aiModelFailoverDecider,
+        private readonly JobQueueService $jobQueueService,
     ) {}
 
     /**
      * @return array{article_id:int|null, title:string, message:string, meta:array<string,mixed>}
      */
-    public function executeTask(int $taskId): array
+    public function executeTask(int $taskId, ?AiExecutionContext $executionContext = null): array
     {
+        $executionStartedAt = microtime(true);
         /** @var Task|null $task */
         $task = Task::query()->find($taskId);
         if (! $task) {
@@ -63,12 +74,22 @@ class WorkerExecutionService
             throw new RuntimeException('任务未激活');
         }
 
-        $publishResult = $this->publishDueDraftArticle($task);
+        $publishResult = $this->publishDueDraftArticle($task, $executionContext, $executionStartedAt);
         if ($publishResult !== null) {
-            $this->distributionOrchestrator->enqueueForArticle((int) $publishResult['article_id']);
+            if ($publishResult['article_id'] !== null
+                && (string) ($publishResult['meta']['action'] ?? '') === 'publish_draft') {
+                $this->distributionOrchestrator->enqueueForArticle((int) $publishResult['article_id']);
+            }
 
             return $publishResult;
         }
+
+        if (! $executionContext instanceof AiExecutionContext || $executionContext->requestedModelId === null) {
+            throw AiModelAccessException::configAccessRevokedForAdminId(
+                (int) ($task->model_access_admin_id ?? 0),
+            );
+        }
+        $this->aiExecutionAccessGuard->assertCurrent($executionContext);
 
         $generationBlockReason = $this->getGenerationBlockReason($task);
         if ($generationBlockReason !== null) {
@@ -90,150 +111,178 @@ class WorkerExecutionService
         $prompt = $task->prompt_id ? Prompt::query()->find((int) $task->prompt_id) : null;
 
         $keyword = (string) ($titleRow->keyword ?? '');
-        $knowledgeBundle = $this->resolveKnowledgeContext($task, (string) $titleRow->title, $keyword);
+        $knowledgeBundle = $this->resolveKnowledgeContext(
+            $task,
+            (string) $titleRow->title,
+            $keyword,
+            $executionContext,
+        );
         $knowledgeContext = $knowledgeBundle['context'];
         $generationEvidenceSnapshot = $this->generationEvidenceSnapshot($knowledgeBundle['evidence']);
         $contentPrompt = $this->buildContentPrompt((string) $titleRow->title, $keyword, $prompt?->content, $knowledgeContext);
-        $generation = $this->generateContentWithModelSelection($task, $contentPrompt);
-        $aiModel = $generation['model'];
-        $generatedContent = $generation['content'];
-        $imageResult = $this->insertTaskImagesIntoContent($task, $generatedContent);
-        $content = $imageResult['content'];
-        $selectedImages = $imageResult['images'];
-        $excerpt = $this->buildExcerpt($content);
-        $qualityPolicy = null;
-        $articleId = DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $selectedImages, &$qualityPolicy, $generationEvidenceSnapshot): int {
-            $freshTask = Task::query()
-                ->whereKey((int) $task->id)
-                ->lockForUpdate()
-                ->first();
-            if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
-                throw new RuntimeException('任务未激活');
-            }
-            $generationBlockReason = $this->getGenerationBlockReason($freshTask, true);
-            if ($generationBlockReason !== null) {
-                throw new RuntimeException($generationBlockReason);
-            }
-            $freshTask->loadMissing(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
-            $qualityPolicy = $this->articleAiQualityPolicyResolver->fromTask($freshTask);
-            $qualityPolicySnapshot = $this->articleAiQualityPolicyResolver->snapshot($qualityPolicy);
-            $workflow = [
-                'status' => 'draft',
-                'review_status' => (int) ($freshTask->need_review ?? 1) === 1 ? 'pending' : 'approved',
-                'published_at' => null,
-            ];
 
-            $pendingWorkflow = ArticleWorkflow::normalizeState('draft', 'pending');
-            $article = Article::query()->create([
-                'title' => (string) $titleRow->title,
-                'slug' => ArticleWorkflow::generateUniqueSlug((string) $titleRow->title),
-                'excerpt' => $excerpt,
-                'content' => $content,
-                'category_id' => $category?->id,
-                'author_id' => $author?->id,
-                'task_id' => (int) $task->id,
-                'source_title_id' => (int) $titleRow->id,
-                'original_keyword' => $keyword,
-                'keywords' => $keyword,
-                'meta_description' => mb_substr($excerpt, 0, 120),
-                'status' => $pendingWorkflow['status'],
-                'review_status' => $pendingWorkflow['review_status'],
-                'is_ai_generated' => 1,
-                'published_at' => $pendingWorkflow['published_at'],
-                'view_count' => 0,
-                'ai_quality_required_at_creation' => (bool) ($qualityPolicy['required'] ?? false),
-                'ai_quality_policy_snapshot' => $qualityPolicySnapshot,
-                'generation_evidence_snapshot' => $generationEvidenceSnapshot,
-            ]);
+        return $this->generateContentWithModelSelection(
+            $task,
+            $contentPrompt,
+            $executionContext,
+            function (array $generation) use ($task, $titleRow, $author, $category, $keyword, $generationEvidenceSnapshot, $executionContext, $knowledgeContext, $knowledgeBundle, $executionStartedAt): array {
+                $aiModel = $generation['model'];
+                $imageResult = $this->insertTaskImagesIntoContent($task, $generation['content']);
+                $content = $imageResult['content'];
+                $selectedImages = $imageResult['images'];
+                $excerpt = $this->buildExcerpt($content);
 
-            $this->articleRiskScanner->record($article, 'worker_generation');
+                return DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $selectedImages, $generationEvidenceSnapshot, $executionContext, $aiModel, $knowledgeContext, $knowledgeBundle, $generation, $executionStartedAt): array {
+                    $freshTask = Task::query()
+                        ->whereKey((int) $task->id)
+                        ->lockForUpdate()
+                        ->first();
+                    if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
+                        throw new RuntimeException('任务未激活');
+                    }
 
-            if ($workflow['review_status'] === 'approved') {
-                try {
-                    $this->articleWorkflowTransitionService->transition(
-                        $article,
-                        $workflow,
-                        'worker_generation',
-                        null,
-                        null,
-                        false,
-                        $pendingWorkflow,
+                    $this->jobQueueService->lockRunningJobForWorker(
+                        $executionContext,
+                        (int) $freshTask->getKey(),
                     );
-                } catch (ArticleRiskGateException|ArticleAiQualityGateException) {
-                    // 风险扫描和待审状态随当前生成事务一并保留。
-                }
-            }
-            if ($selectedImages !== []) {
-                foreach ($selectedImages as $position => $image) {
-                    ArticleImage::query()->create([
+                    $this->aiExecutionAccessGuard->assertCurrent($executionContext);
+                    $aiModel = $this->aiModelInvocationGateway->assertReceiptCurrent(
+                        $executionContext,
+                        $generation['receipt'],
+                    );
+
+                    $generationBlockReason = $this->getGenerationBlockReason($freshTask, true);
+                    if ($generationBlockReason !== null) {
+                        throw new RuntimeException($generationBlockReason);
+                    }
+                    $freshTask->loadMissing(['qualityPrompt', 'knowledgeBases']);
+                    $qualityPolicy = $this->articleAiQualityPolicyResolver->fromTask($freshTask);
+                    $qualityPolicySnapshot = $this->articleAiQualityPolicyResolver->snapshot($qualityPolicy);
+                    $workflow = [
+                        'status' => 'draft',
+                        'review_status' => (int) ($freshTask->need_review ?? 1) === 1 ? 'pending' : 'approved',
+                        'published_at' => null,
+                    ];
+
+                    $pendingWorkflow = ArticleWorkflow::normalizeState('draft', 'pending');
+                    $article = Article::query()->create([
+                        'title' => (string) $titleRow->title,
+                        'slug' => ArticleWorkflow::generateUniqueSlug((string) $titleRow->title),
+                        'excerpt' => $excerpt,
+                        'content' => $content,
+                        'category_id' => $category?->id,
+                        'author_id' => $author?->id,
+                        'task_id' => (int) $task->id,
+                        'source_title_id' => (int) $titleRow->id,
+                        'original_keyword' => $keyword,
+                        'keywords' => $keyword,
+                        'meta_description' => mb_substr($excerpt, 0, 120),
+                        'status' => $pendingWorkflow['status'],
+                        'review_status' => $pendingWorkflow['review_status'],
+                        'is_ai_generated' => 1,
+                        'published_at' => $pendingWorkflow['published_at'],
+                        'view_count' => 0,
+                        'ai_quality_required_at_creation' => (bool) ($qualityPolicy['required'] ?? false),
+                        'ai_quality_policy_snapshot' => $qualityPolicySnapshot,
+                        'generation_evidence_snapshot' => $generationEvidenceSnapshot,
+                    ]);
+
+                    $this->articleRiskScanner->record($article, 'worker_generation');
+
+                    if ($workflow['review_status'] === 'approved') {
+                        try {
+                            $this->articleWorkflowTransitionService->transition(
+                                $article,
+                                $workflow,
+                                'worker_generation',
+                                null,
+                                null,
+                                false,
+                                $pendingWorkflow,
+                            );
+                        } catch (ArticleRiskGateException|ArticleAiQualityGateException) {
+                            // 风险扫描和待审状态随当前生成事务一并保留。
+                        }
+                    }
+                    if ($selectedImages !== []) {
+                        foreach ($selectedImages as $position => $image) {
+                            ArticleImage::query()->create([
+                                'article_id' => (int) $article->id,
+                                'image_id' => (int) $image->id,
+                                'position' => $position,
+                            ]);
+                            Image::query()->whereKey((int) $image->id)->update([
+                                'used_count' => DB::raw('COALESCE(used_count,0)+1'),
+                                'usage_count' => DB::raw('COALESCE(usage_count,0)+1'),
+                            ]);
+                        }
+                    }
+
+                    // 保持与旧逻辑一致：每次任务执行会消耗标题并累加任务计数。
+                    Title::query()->whereKey($titleRow->id)->increment('used_count');
+                    Title::query()->whereKey($titleRow->id)->increment('usage_count');
+
+                    $taskUpdate = [
+                        'created_count' => DB::raw('COALESCE(created_count,0)+1'),
+                        'loop_count' => DB::raw('COALESCE(loop_count,0)+1'),
+                        'updated_at' => now(),
+                    ];
+                    if ($freshTask->next_publish_at === null || ! $freshTask->next_publish_at->greaterThan(now())) {
+                        $taskUpdate['next_publish_at'] = now()->addSeconds($this->normalizePublishInterval($freshTask));
+                    }
+                    Task::query()->whereKey($task->id)->update($taskUpdate);
+
+                    $qualityCheck = null;
+                    if ($qualityPolicy['required'] ?? false) {
+                        $qualityCheck = $this->articleAiQualityInspectionService->createOrReuse(
+                            $article,
+                            trigger: 'worker_generation',
+                        );
+                    }
+
+                    $result = [
                         'article_id' => (int) $article->id,
-                        'image_id' => (int) $image->id,
-                        'position' => $position,
-                    ]);
-                    Image::query()->whereKey((int) $image->id)->update([
-                        'used_count' => DB::raw('COALESCE(used_count,0)+1'),
-                        'usage_count' => DB::raw('COALESCE(usage_count,0)+1'),
-                    ]);
-                }
-            }
+                        'title' => (string) $titleRow->title,
+                        'message' => '草稿生成成功',
+                        'meta' => [
+                            'task_id' => (int) $task->id,
+                            'action' => 'generate_draft',
+                            'title_id' => (int) $titleRow->id,
+                            'author_id' => $author?->id,
+                            'category_id' => $category?->id,
+                            'knowledge_length' => mb_strlen($knowledgeContext, 'UTF-8'),
+                            'knowledge_retrieval' => $knowledgeBundle['retrieval_meta'] ?? null,
+                            'image_count' => count($selectedImages),
+                            'model_selection_mode' => (string) ($task->model_selection_mode ?? 'fixed'),
+                            'used_model_id' => (int) $aiModel->id,
+                            'used_model_name' => (string) $aiModel->name,
+                            'model_attempts' => $generation['attempts'],
+                            'ai_quality' => [
+                                'required' => (bool) ($qualityPolicy['required'] ?? false),
+                                'check_id' => $qualityCheck?->id,
+                                'status' => $qualityCheck?->status,
+                            ],
+                        ],
+                    ];
 
-            // 保持与旧逻辑一致：每次任务执行会消耗标题并累加任务计数。
-            Title::query()->whereKey($titleRow->id)->increment('used_count');
-            Title::query()->whereKey($titleRow->id)->increment('usage_count');
+                    $this->completePersistedExecution($freshTask, $result, $executionContext, $executionStartedAt);
 
-            $taskUpdate = [
-                'created_count' => DB::raw('COALESCE(created_count,0)+1'),
-                'loop_count' => DB::raw('COALESCE(loop_count,0)+1'),
-                'updated_at' => now(),
-            ];
-            if ($freshTask->next_publish_at === null || ! $freshTask->next_publish_at->greaterThan(now())) {
-                $taskUpdate['next_publish_at'] = now()->addSeconds($this->normalizePublishInterval($freshTask));
-            }
-            Task::query()->whereKey($task->id)->update($taskUpdate);
-
-            return (int) $article->id;
-        });
-
-        $qualityCheck = null;
-        if (is_array($qualityPolicy) && ($qualityPolicy['required'] ?? false)) {
-            $qualityCheck = $this->articleAiQualityInspectionService->createOrReuse(
-                Article::query()->findOrFail($articleId),
-                trigger: 'worker_generation',
-            );
-        }
-
-        return [
-            'article_id' => $articleId,
-            'title' => (string) $titleRow->title,
-            'message' => '草稿生成成功',
-            'meta' => [
-                'task_id' => (int) $task->id,
-                'action' => 'generate_draft',
-                'title_id' => (int) $titleRow->id,
-                'author_id' => $author?->id,
-                'category_id' => $category?->id,
-                'knowledge_length' => mb_strlen($knowledgeContext, 'UTF-8'),
-                'image_count' => count($selectedImages),
-                'model_selection_mode' => (string) ($task->model_selection_mode ?? 'fixed'),
-                'used_model_id' => (int) $aiModel->id,
-                'used_model_name' => (string) $aiModel->name,
-                'model_attempts' => $generation['attempts'],
-                'ai_quality' => [
-                    'required' => (bool) (is_array($qualityPolicy) && ($qualityPolicy['required'] ?? false)),
-                    'check_id' => $qualityCheck?->id,
-                    'status' => $qualityCheck?->status,
-                ],
-            ],
-        ];
+                    return $result;
+                });
+            },
+        );
     }
 
     /**
      * 发布一个已审核草稿。生成与发布解耦后，Worker 每次执行优先释放到期草稿。
      *
-     * @return array{article_id:int, title:string, message:string, meta:array<string,mixed>}|null
+     * @return array{article_id:int|null, title:string, message:string, meta:array<string,mixed>}|null
      */
-    private function publishDueDraftArticle(Task $task): ?array
-    {
+    private function publishDueDraftArticle(
+        Task $task,
+        ?AiExecutionContext $executionContext = null,
+        ?float $executionStartedAt = null,
+    ): ?array {
         if ($task->next_publish_at !== null && $task->next_publish_at->greaterThan(now())) {
             return null;
         }
@@ -249,7 +298,26 @@ class WorkerExecutionService
             return null;
         }
 
-        return DB::transaction(function () use ($task, $candidateArticleId): ?array {
+        return DB::transaction(function () use ($task, $candidateArticleId, $executionContext, $executionStartedAt): ?array {
+            $freshTask = Task::query()
+                ->whereKey((int) $task->id)
+                ->lockForUpdate()
+                ->first(['id', 'status', 'schedule_enabled', 'publish_interval', 'next_publish_at', 'publish_scope']);
+            if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
+                throw new RuntimeException('任务未激活');
+            }
+
+            if ($freshTask->next_publish_at !== null && $freshTask->next_publish_at->greaterThan(now())) {
+                return null;
+            }
+
+            if ($executionContext instanceof AiExecutionContext) {
+                $this->jobQueueService->lockRunningJobForWorker(
+                    $executionContext,
+                    (int) $freshTask->getKey(),
+                );
+            }
+
             /** @var Article|null $article */
             $article = Article::query()
                 ->whereKey((int) $candidateArticleId)
@@ -263,16 +331,19 @@ class WorkerExecutionService
                 return null;
             }
 
-            $freshTask = Task::query()
-                ->whereKey((int) $article->task_id)
-                ->lockForUpdate()
-                ->first(['id', 'status', 'schedule_enabled', 'publish_interval', 'next_publish_at', 'publish_scope']);
-            if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
-                throw new RuntimeException('任务未激活');
-            }
-
-            if ($freshTask->next_publish_at !== null && $freshTask->next_publish_at->greaterThan(now())) {
-                return null;
+            $qualityModelId = $this->articleAiQualityGate->modelIdThatWouldBeDispatched($article);
+            if ($qualityModelId !== null) {
+                if (! $executionContext instanceof AiExecutionContext) {
+                    throw AiModelAccessException::configAccessRevokedForAdminId(
+                        (int) ($freshTask->model_access_admin_id ?? 0),
+                    );
+                }
+                $executionAdmin = $this->aiExecutionAccessGuard->assertCurrent($executionContext);
+                $this->aiExecutionAccessGuard->assertModelCurrent(
+                    $executionContext,
+                    $qualityModelId,
+                    $executionAdmin,
+                );
             }
 
             $publishScope = (string) ($freshTask->publish_scope ?? 'local_and_distribution');
@@ -291,8 +362,32 @@ class WorkerExecutionService
                     $reviewStatus !== 'auto_approved',
                     $fallbackWorkflow,
                 );
-            } catch (ArticleRiskGateException|ArticleAiQualityGateException) {
+            } catch (ArticleRiskGateException) {
                 return null;
+            } catch (ArticleAiQualityGateException $exception) {
+                if ($qualityModelId === null || $exception->getCheck() === null) {
+                    return null;
+                }
+
+                $result = [
+                    'article_id' => null,
+                    'title' => (string) $article->title,
+                    'message' => '草稿等待 AI 质检',
+                    'meta' => [
+                        'task_id' => (int) $freshTask->id,
+                        'action' => 'await_ai_quality',
+                        'ai_quality_check_id' => (int) $exception->getCheck()->id,
+                        'ai_quality_error_code' => $exception->getErrorCode(),
+                    ],
+                ];
+                $this->completePersistedExecution(
+                    $freshTask,
+                    $result,
+                    $executionContext,
+                    $executionStartedAt ?? microtime(true),
+                );
+
+                return $result;
             }
 
             $publishInterval = $this->normalizePublishInterval($freshTask);
@@ -302,7 +397,7 @@ class WorkerExecutionService
                 'updated_at' => now(),
             ]);
 
-            return [
+            $result = [
                 'article_id' => (int) $article->id,
                 'title' => (string) $article->title,
                 'message' => '草稿发布成功',
@@ -312,6 +407,15 @@ class WorkerExecutionService
                     'publish_interval' => $publishInterval,
                 ],
             ];
+
+            $this->completePersistedExecution(
+                $freshTask,
+                $result,
+                $executionContext,
+                $executionStartedAt ?? microtime(true),
+            );
+
+            return $result;
         });
     }
 
@@ -348,9 +452,9 @@ class WorkerExecutionService
     /**
      * 解析并校验任务绑定的 AI 模型（必须是 active + chat）。
      */
-    private function resolveAiModel(Task $task): AiModel
+    private function resolveAiModel(Task $task, AiExecutionContext $executionContext): AiModel
     {
-        $aiModel = $this->resolveConfiguredAiModel($task);
+        $aiModel = $this->resolveConfiguredAiModel($task, $executionContext);
         if (($aiModel->status ?? 'inactive') !== 'active') {
             throw new RuntimeException('任务 AI 模型不可用');
         }
@@ -361,24 +465,19 @@ class WorkerExecutionService
     /**
      * 读取任务绑定的聊天模型；智能切换会保留停用主模型的尝试记录并继续备用模型。
      */
-    private function resolveConfiguredAiModel(Task $task): AiModel
+    private function resolveConfiguredAiModel(Task $task, AiExecutionContext $executionContext): AiModel
     {
-        $aiModelId = (int) ($task->ai_model_id ?? 0);
+        $aiModelId = (int) ($executionContext->requestedModelId ?? 0);
         if ($aiModelId <= 0) {
             throw new RuntimeException('任务未配置 AI 模型');
         }
 
-        $aiModel = AiModel::query()
-            ->whereKey($aiModelId)
-            ->where(function ($query): void {
-                $query->whereNull('model_type')
-                    ->orWhere('model_type', '')
-                    ->orWhere('model_type', 'chat');
-            })
-            ->first();
-
-        if (! $aiModel) {
-            throw new RuntimeException('任务 AI 模型不可用');
+        $aiModel = $this->aiExecutionAccessGuard->assertModelCurrent($executionContext, $aiModelId);
+        if (! in_array((string) ($aiModel->model_type ?? ''), ['', 'chat'], true)) {
+            throw AiModelAccessException::modelUnavailable(
+                $this->aiExecutionAccessGuard->assertCurrent($executionContext),
+                $aiModel,
+            );
         }
 
         return $aiModel;
@@ -387,15 +486,24 @@ class WorkerExecutionService
     /**
      * 固定模型只尝试主模型；智能切换按 failover_priority 依次尝试其它 active chat 模型。
      *
-     * @return array{content:string,model:AiModel,attempts:list<array{model_id:int,model_name:string,status:string,reason:?string}>}
+     * @template TResult
+     *
+     * @param  Closure(array{content:string,model:AiModel,receipt:array{model_id:int,request_id:string,configuration_digest:string},attempts:list<array{model_id:int,model_name:string,status:string,reason:?string}>}): TResult  $persistGeneratedContent
+     * @return TResult
      */
-    private function generateContentWithModelSelection(Task $task, string $contentPrompt): array
-    {
+    private function generateContentWithModelSelection(
+        Task $task,
+        string $contentPrompt,
+        AiExecutionContext $executionContext,
+        Closure $persistGeneratedContent,
+    ): mixed {
         $mode = (string) ($task->model_selection_mode ?? 'fixed');
         $attempts = [];
         $lastMessage = '';
 
-        foreach ($this->resolveAiModelCandidates($task) as $candidate) {
+        foreach ($this->resolveAiModelCandidates($task, $executionContext) as $candidate) {
+            $candidate = $this->aiExecutionAccessGuard->assertModelCurrent($executionContext, $candidate);
+
             $unavailableReason = $this->getAiModelUnavailableReason($candidate);
             if ($unavailableReason !== null) {
                 $attempts[] = $this->buildModelAttempt($candidate, 'skipped', $unavailableReason);
@@ -407,20 +515,41 @@ class WorkerExecutionService
                 continue;
             }
 
+            $persistenceStarted = false;
             try {
-                $content = $this->generateContent($candidate, $contentPrompt);
-                $attempts[] = $this->buildModelAttempt($candidate, 'success', null);
+                return $this->generateContent(
+                    $executionContext,
+                    $candidate,
+                    $contentPrompt,
+                    function (array $generated) use ($executionContext, &$attempts, &$persistenceStarted, $persistGeneratedContent) {
+                        $candidate = $generated['model'];
+                        $this->aiExecutionAccessGuard->recordResolvedModel($executionContext, $candidate);
+                        $attempts[] = $this->buildModelAttempt($candidate, 'success', null);
+                        $persistenceStarted = true;
 
-                return [
-                    'content' => $content,
-                    'model' => $candidate,
-                    'attempts' => $attempts,
-                ];
+                        return $persistGeneratedContent([
+                            'content' => $generated['content'],
+                            'model' => $candidate,
+                            'receipt' => $generated['receipt'],
+                            'attempts' => $attempts,
+                        ]);
+                    },
+                );
+            } catch (AiModelAccessException $exception) {
+                throw $exception;
             } catch (Throwable $exception) {
-                $lastMessage = trim($exception->getMessage());
+                if ($persistenceStarted) {
+                    throw $exception;
+                }
+
+                $lastMessage = $this->aiExecutionErrorSanitizer->sanitize($exception);
                 $attempts[] = $this->buildModelAttempt($candidate, 'failed', $lastMessage);
 
-                if ($mode !== 'smart_failover') {
+                if ($this->aiModelFailoverDecider->isPermanentProviderFailure($exception)) {
+                    throw PermanentAiProviderException::fromProviderFailure($exception);
+                }
+
+                if ($mode !== 'smart_failover' || ! $this->aiModelFailoverDecider->shouldFailover($exception)) {
                     throw $exception;
                 }
             }
@@ -436,27 +565,47 @@ class WorkerExecutionService
     /**
      * @return list<AiModel>
      */
-    private function resolveAiModelCandidates(Task $task): array
+    private function resolveAiModelCandidates(Task $task, AiExecutionContext $executionContext): array
     {
-        $primaryModel = $this->resolveConfiguredAiModel($task);
+        $primaryModel = $this->resolveConfiguredAiModel($task, $executionContext);
         if (($task->model_selection_mode ?? 'fixed') !== 'smart_failover') {
-            return [$this->resolveAiModel($task)];
+            return [$this->resolveAiModel($task, $executionContext)];
         }
 
-        $fallbackModels = AiModel::query()
-            ->whereKeyNot((int) $primaryModel->id)
-            ->where('status', 'active')
-            ->where(function ($query): void {
-                $query->whereNull('model_type')
-                    ->orWhere('model_type', '')
-                    ->orWhere('model_type', 'chat');
-            })
-            ->orderBy('failover_priority')
-            ->orderBy('id')
-            ->get()
-            ->all();
+        $scopedCandidates = $this->aiExecutionAccessGuard->resolveModelCandidates($executionContext, 'chat');
+        $fallbackModels = array_values(array_filter(
+            $scopedCandidates,
+            static fn (AiModel $model): bool => (int) $model->getKey() !== (int) $primaryModel->getKey(),
+        ));
 
         return array_values(array_merge([$primaryModel], $fallbackModels));
+    }
+
+    /**
+     * Finish the persisted run inside the same transaction as its business result.
+     *
+     * @param  array{article_id:int|null,title:string,message:string,meta:array<string,mixed>}  $result
+     */
+    private function completePersistedExecution(
+        Task $task,
+        array $result,
+        ?AiExecutionContext $executionContext,
+        float $executionStartedAt,
+    ): void {
+        if (! $executionContext instanceof AiExecutionContext || $executionContext->taskRunId === null) {
+            return;
+        }
+
+        $this->jobQueueService->completeJob(
+            jobId: $executionContext->taskRunId,
+            taskId: (int) $task->getKey(),
+            articleId: $result['article_id'],
+            durationMs: (int) round((microtime(true) - $executionStartedAt) * 1000),
+            meta: $result['meta'],
+            executionContext: $executionContext,
+            executionLeaseToken: $executionContext->executionLeaseToken(),
+            rejectStaleExecution: true,
+        );
     }
 
     private function getAiModelUnavailableReason(AiModel $aiModel): ?string
@@ -477,7 +626,7 @@ class WorkerExecutionService
             'model_id' => (int) $aiModel->id,
             'model_name' => (string) $aiModel->name,
             'status' => $status,
-            'reason' => $reason,
+            'reason' => $reason === null ? null : $this->aiExecutionErrorSanitizer->sanitize($reason, ''),
         ];
     }
 
@@ -569,8 +718,12 @@ class WorkerExecutionService
     /**
      * 按任务配置检索知识库上下文并回填到 {{Knowledge}}。
      */
-    private function resolveKnowledgeContext(Task $task, string $title, string $keyword): array
-    {
+    private function resolveKnowledgeContext(
+        Task $task,
+        string $title,
+        string $keyword,
+        ?AiExecutionContext $executionContext,
+    ): array {
         $knowledgeBaseIds = $this->resolveTaskKnowledgeBaseIds($task);
         if ($knowledgeBaseIds === []) {
             return ['context' => '', 'evidence' => []];
@@ -607,7 +760,13 @@ class WorkerExecutionService
         }
 
         $query = trim($title."\n".$keyword);
-        $bundle = $this->knowledgeRetrievalService->retrieveContextBundleFromMany($knowledgeBaseIds, $query, 5, 3200);
+        $bundle = $this->knowledgeRetrievalService->retrieveContextBundleFromMany(
+            $knowledgeBaseIds,
+            $query,
+            5,
+            3200,
+            $executionContext,
+        );
         if ($bundle['context'] !== '') {
             return $bundle;
         }
@@ -699,82 +858,6 @@ class WorkerExecutionService
     }
 
     /**
-     * 从 knowledge_chunks 中检索相关片段。
-     */
-    private function fetchKnowledgeContextFromChunks(int $knowledgeBaseId, string $query, int $limit, int $maxChars): string
-    {
-        if (trim($query) !== '') {
-            $vectorRows = $this->fetchKnowledgeChunksByPgvector($knowledgeBaseId, $query, max($limit * 3, 8));
-            if ($vectorRows !== []) {
-                return $this->composeKnowledgeContext($vectorRows, $limit, $maxChars);
-            }
-        }
-
-        $rows = KnowledgeChunk::query()
-            ->where('knowledge_base_id', $knowledgeBaseId)
-            ->orderBy('chunk_index')
-            ->get(['chunk_index', 'content', 'embedding_json', 'embedding_model_id', 'embedding_dimensions'])
-            ->all();
-        if ($rows === []) {
-            return '';
-        }
-
-        $queryTerms = $this->termFrequencies($query);
-        $hasRealEmbeddingRows = collect($rows)->contains(
-            fn ($row): bool => $this->chunkHasRealEmbedding($row)
-        );
-        $useRealEmbeddingScore = false;
-        $queryVector = [];
-        if ($hasRealEmbeddingRows && trim($query) !== '') {
-            $queryVector = $this->knowledgeChunkSyncService->generateQueryEmbeddingVector($query);
-            $useRealEmbeddingScore = $queryVector !== [];
-        }
-        if ($queryVector === []) {
-            $queryVector = $this->decodeVector(json_encode($this->buildFallbackVector($query, 256)));
-        }
-
-        $scored = [];
-        foreach ($rows as $row) {
-            $content = trim((string) ($row->content ?? ''));
-            if ($content === '') {
-                continue;
-            }
-
-            $vector = $this->decodeVector((string) ($row->embedding_json ?? ''));
-            $chunkTerms = $this->termFrequencies($content);
-            $lexicalScore = $this->lexicalScore($queryTerms, $chunkTerms);
-            $chunkUsesRealEmbedding = $this->chunkHasRealEmbedding($row);
-            $vectorScore = ($useRealEmbeddingScore === $chunkUsesRealEmbedding)
-                ? $this->dotProduct($queryVector, $vector)
-                : 0.0;
-            $score = ($vectorScore * 0.75) + ($lexicalScore * 0.25);
-
-            $scored[] = [
-                'chunk_index' => (int) ($row->chunk_index ?? 0),
-                'content' => $content,
-                'score' => $score,
-            ];
-        }
-
-        usort($scored, static function (array $a, array $b): int {
-            $diff = ($b['score'] <=> $a['score']);
-
-            return $diff !== 0 ? $diff : ($a['chunk_index'] <=> $b['chunk_index']);
-        });
-
-        return $this->composeKnowledgeContext($scored, $limit, $maxChars);
-    }
-
-    /**
-     * 判断 chunk 是否保存了真实 embedding；fallback hash 向量不满足要求。
-     */
-    private function chunkHasRealEmbedding(object $row): bool
-    {
-        return (int) ($row->embedding_model_id ?? 0) > 0
-            && (int) ($row->embedding_dimensions ?? 0) > 0;
-    }
-
-    /**
      * 按任务图片配置插入 Markdown 配图并返回被选中的图片列表。
      *
      * @return array{content:string,images:list<Image>}
@@ -863,26 +946,47 @@ class WorkerExecutionService
 
     /**
      * 调用任务配置模型生成正文。
+     *
+     * @template TResult
+     *
+     * @param  Closure(array{content:string,model:AiModel,receipt:array{model_id:int,request_id:string,configuration_digest:string}}): TResult  $persistGeneratedContent
+     * @return TResult
      */
-    private function generateContent(AiModel $aiModel, string $contentPrompt): string
-    {
-        $response = $this->articleContentGenerationService->generate($aiModel, $contentPrompt);
+    private function generateContent(
+        AiExecutionContext $executionContext,
+        AiModel $aiModel,
+        string $contentPrompt,
+        Closure $persistGeneratedContent,
+    ): mixed {
+        return $this->aiModelInvocationGateway->generate(
+            $executionContext,
+            $aiModel,
+            $contentPrompt,
+            function (array $invocation) use ($persistGeneratedContent) {
+                $aiModel = $invocation['model'];
+                $response = $invocation['response'];
 
-        $rawContent = (string) ($response->text ?? '');
-        $content = $this->articleCitationMarkerCleaner->cleanContent(
-            OpenAiRuntimeProvider::normalizeGeneratedText($rawContent),
-        );
-        if ($content === '') {
-            if (OpenAiRuntimeProvider::looksLikeSseCompletionPayload($rawContent)) {
-                throw new RuntimeException('AI 返回空流式响应，未生成正文内容，请重试或检查模型流式输出兼容性');
+                $rawContent = (string) ($response->text ?? '');
+                $content = $this->articleCitationMarkerCleaner->cleanContent(
+                    OpenAiRuntimeProvider::normalizeGeneratedText($rawContent),
+                );
+                if ($content === '') {
+                    if (OpenAiRuntimeProvider::looksLikeSseCompletionPayload($rawContent)) {
+                        throw new RuntimeException('AI 返回空流式响应，未生成正文内容，请重试或检查模型流式输出兼容性');
+                    }
+
+                    throw new RuntimeException('AI返回空正文');
+                }
+
+                $this->warnIfContentLooksTruncated($content, $aiModel, $response);
+
+                return $persistGeneratedContent([
+                    'content' => $content,
+                    'model' => $aiModel,
+                    'receipt' => $invocation['receipt'],
+                ]);
             }
-
-            throw new RuntimeException('AI返回空正文');
-        }
-
-        $this->warnIfContentLooksTruncated($content, $aiModel, $response);
-
-        return $content;
+        );
     }
 
     /**
@@ -890,7 +994,7 @@ class WorkerExecutionService
      */
     private function resolveMaxTokens(AiModel $aiModel): int
     {
-        return $this->articleContentGenerationService->maxTokens($aiModel);
+        return $this->aiModelInvocationGateway->maxTokens($aiModel);
     }
 
     /**
@@ -955,226 +1059,5 @@ class WorkerExecutionService
         }
 
         return mb_substr($plain, 0, 180);
-    }
-
-    /**
-     * @return array<string,int>
-     */
-    private function termFrequencies(string $text): array
-    {
-        $tokens = preg_split('/[^\p{L}\p{N}_]+/u', mb_strtolower(trim($text), 'UTF-8')) ?: [];
-        $frequencies = [];
-        foreach ($tokens as $token) {
-            $token = trim((string) $token);
-            if ($token === '' || mb_strlen($token, 'UTF-8') <= 1) {
-                continue;
-            }
-            $frequencies[$token] = (int) ($frequencies[$token] ?? 0) + 1;
-        }
-
-        return $frequencies;
-    }
-
-    /**
-     * @param  array<string,int>  $queryTerms
-     * @param  array<string,int>  $chunkTerms
-     */
-    private function lexicalScore(array $queryTerms, array $chunkTerms): float
-    {
-        if ($queryTerms === [] || $chunkTerms === []) {
-            return 0.0;
-        }
-
-        $matched = 0;
-        $total = 0;
-        foreach ($queryTerms as $term => $count) {
-            $total += $count;
-            if (isset($chunkTerms[$term])) {
-                $matched += min($count, (int) $chunkTerms[$term]);
-            }
-        }
-
-        return $total > 0 ? ($matched / $total) : 0.0;
-    }
-
-    /**
-     * @return list<float>
-     */
-    private function decodeVector(string $json): array
-    {
-        $decoded = json_decode($json, true);
-        if (! is_array($decoded) || $decoded === []) {
-            return [];
-        }
-
-        $vector = [];
-        foreach ($decoded as $value) {
-            if (is_numeric($value)) {
-                $vector[] = (float) $value;
-            }
-        }
-
-        return $vector;
-    }
-
-    /**
-     * @param  list<float>  $left
-     * @param  list<float>  $right
-     */
-    private function dotProduct(array $left, array $right): float
-    {
-        if ($left === [] || $right === []) {
-            return 0.0;
-        }
-        $sum = 0.0;
-        $limit = min(count($left), count($right));
-        for ($i = 0; $i < $limit; $i++) {
-            $sum += ((float) $left[$i]) * ((float) $right[$i]);
-        }
-
-        return $sum;
-    }
-
-    /**
-     * @return list<float>
-     */
-    private function buildFallbackVector(string $text, int $dimensions): array
-    {
-        $dimensions = max(1, $dimensions);
-        $vector = array_fill(0, $dimensions, 0.0);
-        foreach ($this->termFrequencies($text) as $token => $count) {
-            $indexSeed = abs((int) crc32('i:'.$token));
-            $signSeed = abs((int) crc32('s:'.$token));
-            $index = $indexSeed % $dimensions;
-            $sign = ($signSeed % 2 === 0) ? 1.0 : -1.0;
-            $tokenLength = max(1, mb_strlen($token, 'UTF-8'));
-            $weight = (1.0 + log(1 + $count)) * min(2.0, 0.8 + ($tokenLength / 4));
-            $vector[$index] += $sign * $weight;
-        }
-
-        $norm = 0.0;
-        foreach ($vector as $value) {
-            $norm += $value * $value;
-        }
-        if ($norm > 0.0) {
-            $norm = sqrt($norm);
-            foreach ($vector as $index => $value) {
-                $vector[$index] = $value / $norm;
-            }
-        }
-
-        return $vector;
-    }
-
-    /**
-     * 优先使用 pgvector 执行数据库向量检索，命中则返回候选块。
-     *
-     * @return list<array{chunk_index:int,content:string,score:float}>
-     */
-    private function fetchKnowledgeChunksByPgvector(int $knowledgeBaseId, string $query, int $candidateLimit): array
-    {
-        if (! $this->canUsePgvectorSearch()) {
-            return [];
-        }
-
-        $vectorLiteral = $this->knowledgeChunkSyncService->generateQueryVectorLiteral($query);
-        if ($vectorLiteral === '') {
-            return [];
-        }
-
-        $rows = DB::select(
-            '
-                SELECT chunk_index, content,
-                       (embedding_vector <=> CAST(? AS vector)) AS vector_distance
-                FROM knowledge_chunks
-                WHERE knowledge_base_id = ?
-                  AND embedding_vector IS NOT NULL
-                ORDER BY embedding_vector <=> CAST(? AS vector), chunk_index ASC
-                LIMIT ?
-            ',
-            [$vectorLiteral, $knowledgeBaseId, $vectorLiteral, max(1, $candidateLimit)]
-        );
-
-        $results = [];
-        foreach ($rows as $row) {
-            $content = trim((string) ($row->content ?? ''));
-            if ($content === '') {
-                continue;
-            }
-            $distance = (float) ($row->vector_distance ?? 1.0);
-            $results[] = [
-                'chunk_index' => (int) ($row->chunk_index ?? 0),
-                'content' => $content,
-                'score' => 1.0 - $distance,
-            ];
-        }
-
-        return $results;
-    }
-
-    /**
-     * 仅在 PostgreSQL 且 pgvector 可用时启用向量检索。
-     */
-    private function canUsePgvectorSearch(): bool
-    {
-        if (DB::getDriverName() !== 'pgsql') {
-            return false;
-        }
-
-        try {
-            $typeRow = DB::selectOne("
-                SELECT EXISTS (
-                    SELECT 1 FROM pg_type WHERE typname = 'vector'
-                ) AS ok
-            ");
-            if (! $typeRow || ! (bool) ($typeRow->ok ?? false)) {
-                return false;
-            }
-
-            $columnRow = DB::selectOne("
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name = 'knowledge_chunks'
-                      AND column_name = 'embedding_vector'
-                ) AS ok
-            ");
-
-            return $columnRow !== null && (bool) ($columnRow->ok ?? false);
-        } catch (Throwable) {
-            return false;
-        }
-    }
-
-    /**
-     * 从候选块拼装知识上下文，按片段顺序输出。
-     *
-     * @param  list<array{chunk_index:int,content:string,score:float}>  $scored
-     */
-    private function composeKnowledgeContext(array $scored, int $limit, int $maxChars): string
-    {
-        if ($scored === []) {
-            return '';
-        }
-
-        $selected = array_slice($scored, 0, max(1, $limit));
-        usort($selected, static fn (array $a, array $b): int => $a['chunk_index'] <=> $b['chunk_index']);
-
-        $parts = [];
-        $charCount = 0;
-        foreach ($selected as $index => $chunk) {
-            $content = trim((string) ($chunk['content'] ?? ''));
-            if ($content === '') {
-                continue;
-            }
-            $nextLength = $charCount + mb_strlen($content, 'UTF-8');
-            if ($parts !== [] && $nextLength > $maxChars) {
-                continue;
-            }
-            $parts[] = '【知识片段'.($index + 1)."】\n".$content;
-            $charCount = $nextLength;
-        }
-
-        return trim(implode("\n\n", $parts));
     }
 }

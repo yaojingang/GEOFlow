@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Ai\Agents\AdminHelpAssistant;
 use App\Contracts\AiWorkspace\AdminHelpResponder;
+use App\Exceptions\PermanentAiProviderException;
 use App\Models\Admin;
 use App\Models\AiConversationMessage;
 use App\Models\AiModel;
@@ -24,6 +25,8 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
 {
     use LazilyRefreshDatabase;
 
+    private Admin $runtimeAdmin;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -31,6 +34,7 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
         config()->set('geoflow.admin_ui_v3_enabled', true);
         config()->set('ai-workspace.runtime_enabled', true);
         config()->set('ai-workspace.require_verified_model', true);
+        $this->runtimeAdmin = $this->admin('runtime-owner');
     }
 
     public function test_plain_text_readiness_accepts_a_degraded_streaming_profile(): void
@@ -46,8 +50,8 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
             'ai_workspace_structured_output_status' => null,
         ]);
 
-        self::assertTrue(app(AiWorkspaceModelReadiness::class)->status()['ready']);
-        self::assertSame($model->id, app(AiWorkspaceModelReadiness::class)->status()['model_id']);
+        self::assertTrue(app(AiWorkspaceModelReadiness::class)->status($this->runtimeAdmin)['ready']);
+        self::assertSame($model->id, app(AiWorkspaceModelReadiness::class)->status($this->runtimeAdmin)['model_id']);
     }
 
     public function test_unverified_chat_model_is_skipped_when_verification_is_required(): void
@@ -67,7 +71,7 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
             'ai_workspace_readiness_expires_at' => now()->addDay(),
         ]);
 
-        $status = app(AiWorkspaceModelReadiness::class)->status();
+        $status = app(AiWorkspaceModelReadiness::class)->status($this->runtimeAdmin);
 
         self::assertTrue($status['ready']);
         self::assertSame($fallback->id, $status['model_id']);
@@ -101,7 +105,7 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
             'ai_workspace_readiness_expires_at' => null,
         ]);
 
-        $answer = app(AiWorkspaceModelRuntime::class)->answer('任务在哪里？', '任务管理帮助。');
+        $answer = app(AiWorkspaceModelRuntime::class)->answer('任务在哪里？', '任务管理帮助。', [], $this->runtimeAdmin);
         $model->refresh();
 
         self::assertSame('后台帮助回答。', $answer);
@@ -138,7 +142,7 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
             'ai_workspace_readiness_expires_at' => null,
         ]);
 
-        $stream = app(AiWorkspaceModelRuntime::class)->stream('文章在哪里？', '文章管理帮助。');
+        $stream = app(AiWorkspaceModelRuntime::class)->stream('文章在哪里？', '文章管理帮助。', [], $this->runtimeAdmin);
         $events = iterator_to_array($stream);
         $answer = collect($events)
             ->where('type', 'delta')
@@ -172,7 +176,7 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
             'ai_workspace_readiness_expires_at' => now()->addDay(),
         ]);
 
-        $stream = app(AiWorkspaceModelRuntime::class)->stream('任务在哪里？', '任务管理帮助。');
+        $stream = app(AiWorkspaceModelRuntime::class)->stream('任务在哪里？', '任务管理帮助。', [], $this->runtimeAdmin);
         $events = iterator_to_array($stream);
         $result = $stream->getReturn();
         $model->refresh();
@@ -195,7 +199,7 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
             'ai_workspace_readiness_expires_at' => null,
         ]);
 
-        $stream = app(AiWorkspaceModelRuntime::class)->stream('任务在哪里？', '任务管理帮助。');
+        $stream = app(AiWorkspaceModelRuntime::class)->stream('任务在哪里？', '任务管理帮助。', [], $this->runtimeAdmin);
         $failed = false;
 
         try {
@@ -227,7 +231,7 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
             }
         });
 
-        $answer = app(AiWorkspaceModelRuntime::class)->answer('任务在哪里？', '任务管理帮助。');
+        $answer = app(AiWorkspaceModelRuntime::class)->answer('任务在哪里？', '任务管理帮助。', [], $this->runtimeAdmin);
 
         self::assertSame('回答仍然可用。', $answer);
     }
@@ -244,7 +248,7 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
             'ai_workspace_readiness_expires_at' => now()->addDay(),
         ]);
 
-        $stream = app(AiWorkspaceModelRuntime::class)->stream('任务在哪里？', '任务管理帮助。');
+        $stream = app(AiWorkspaceModelRuntime::class)->stream('任务在哪里？', '任务管理帮助。', [], $this->runtimeAdmin);
         $events = iterator_to_array($stream);
         $result = $stream->getReturn();
 
@@ -267,7 +271,7 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
             'ai_workspace_readiness_expires_at' => null,
         ]);
 
-        $status = app(AiWorkspaceModelReadiness::class)->status();
+        $status = app(AiWorkspaceModelReadiness::class)->status($this->runtimeAdmin);
         self::assertFalse($status['ready']);
         self::assertStringContainsString('普通文本检测', $status['reason']);
     }
@@ -277,7 +281,7 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
         app()->setLocale('en');
         config()->set('ai.conversations.connection', 'separate-ai-database');
 
-        $status = app(AiWorkspaceModelReadiness::class)->status();
+        $status = app(AiWorkspaceModelReadiness::class)->status($this->runtimeAdmin);
 
         self::assertFalse($status['ready']);
         self::assertSame(__('admin.ai_workspace.readiness_database_mismatch'), $status['reason']);
@@ -299,21 +303,27 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
             'model_id' => 'fallback-model',
             'failover_priority' => 2,
         ]);
-        $blockedAdminId = 987654;
-        $availableAdminId = 987655;
+        $blockedAdmin = $this->admin('runtime-budget-blocked');
+        $availableAdmin = $this->admin('runtime-budget-available');
+        foreach ([$blockedAdmin, $availableAdmin] as $sharedAdmin) {
+            $sharedAdmin->forceFill([
+                'role' => 'admin',
+                'shared_ai_config_owner_id' => $this->runtimeAdmin->id,
+            ])->save();
+        }
         RateLimiter::hit(
-            'ai-workspace:model-budget:'.$blockedAdminId.':'.now()->toDateString(),
+            'ai-workspace:model-budget:'.$blockedAdmin->id.':'.now()->toDateString(),
             3600,
         );
 
         try {
-            app(AiWorkspaceModelRuntime::class)->answer('任务在哪里？', '任务管理帮助。', [], $blockedAdminId);
+            app(AiWorkspaceModelRuntime::class)->answer('任务在哪里？', '任务管理帮助。', [], $blockedAdmin);
             self::fail('The exhausted administrator budget should reject the request.');
         } catch (RuntimeException $exception) {
             self::assertStringContainsString('今日', $exception->getMessage());
         }
 
-        $answer = app(AiWorkspaceModelRuntime::class)->answer('任务在哪里？', '任务管理帮助。', [], $availableAdminId);
+        $answer = app(AiWorkspaceModelRuntime::class)->answer('任务在哪里？', '任务管理帮助。', [], $availableAdmin);
 
         self::assertSame('主模型回答。', $answer);
         AdminHelpAssistant::assertPrompted(
@@ -339,7 +349,7 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
             'failover_priority' => 2,
         ]);
 
-        $answer = app(AiWorkspaceModelRuntime::class)->answer('任务在哪里？', '任务管理帮助。');
+        $answer = app(AiWorkspaceModelRuntime::class)->answer('任务在哪里？', '任务管理帮助。', [], $this->runtimeAdmin);
         $fingerprint = hash('sha256', implode('|', [
             (string) $primary->id,
             (string) $primary->model_id,
@@ -353,34 +363,42 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
         );
     }
 
-    public function test_incomplete_model_configuration_falls_back_without_opening_the_provider_circuit(): void
+    public function test_incomplete_model_configuration_is_permanent_and_does_not_fail_over(): void
     {
         config()->set('ai-workspace.require_verified_model', false);
-        AdminHelpAssistant::fake(['配置完整的备用模型回答。'])->preventStrayPrompts();
+        $calls = 0;
+        AdminHelpAssistant::fake(function () use (&$calls): string {
+            $calls++;
+
+            return '配置完整的备用模型回答。';
+        })->preventStrayPrompts();
         $primary = $this->model([
             'name' => 'Incomplete Primary Model',
             'model_id' => 'incomplete-primary',
             'api_url' => '',
             'failover_priority' => 1,
         ]);
-        $fallback = $this->model([
+        $this->model([
             'name' => 'Configured Fallback Model',
             'model_id' => 'configured-fallback',
             'failover_priority' => 2,
         ]);
 
-        $answer = app(AiWorkspaceModelRuntime::class)->answer('任务在哪里？', '任务管理帮助。');
         $fingerprint = hash('sha256', implode('|', [
             (string) $primary->id,
             (string) $primary->model_id,
             OpenAiRuntimeProvider::resolveChatBaseUrl((string) $primary->api_url),
         ]));
+        Cache::forget('ai-workspace:provider-circuit:'.$fingerprint);
 
-        self::assertSame('配置完整的备用模型回答。', $answer);
+        $this->expectException(PermanentAiProviderException::class);
+        try {
+            app(AiWorkspaceModelRuntime::class)->answer('任务在哪里？', '任务管理帮助。', [], $this->runtimeAdmin);
+        } finally {
+            self::assertSame('', (string) $primary->fresh()->api_url);
+            self::assertSame(0, $calls);
+        }
         self::assertFalse(Cache::has('ai-workspace:provider-circuit:'.$fingerprint));
-        AdminHelpAssistant::assertPrompted(
-            static fn ($prompt): bool => $prompt->model === (string) $fallback->model_id,
-        );
     }
 
     public function test_empty_plain_text_response_fails_over_to_the_next_model(): void
@@ -390,7 +408,7 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
         $primary = $this->model(['name' => 'Primary Help Model', 'failover_priority' => 1]);
         $fallback = $this->model(['name' => 'Fallback Help Model', 'model_id' => 'fallback-help-model', 'failover_priority' => 2]);
 
-        $answer = app(AiWorkspaceModelRuntime::class)->answer('任务在哪里？', '任务管理帮助。');
+        $answer = app(AiWorkspaceModelRuntime::class)->answer('任务在哪里？', '任务管理帮助。', [], $this->runtimeAdmin);
 
         self::assertSame('备用模型回答。', $answer);
         self::assertSame(0, (int) $primary->fresh()->total_used);
@@ -408,7 +426,7 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
             'failover_priority' => 2,
         ]);
 
-        $stream = app(AiWorkspaceModelRuntime::class)->stream('任务在哪里？', '任务管理帮助。');
+        $stream = app(AiWorkspaceModelRuntime::class)->stream('任务在哪里？', '任务管理帮助。', [], $this->runtimeAdmin);
         $events = iterator_to_array($stream);
         $result = $stream->getReturn();
 
@@ -425,6 +443,7 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
         config()->set('ai-workspace.require_verified_model', false);
         $this->model();
         $admin = $this->admin('protocol-owner');
+        $admin->forceFill(['role' => 'admin', 'shared_ai_config_owner_id' => $this->runtimeAdmin->id])->save();
         $conversation = app(AiConversationRepository::class)->create($admin);
         $this->app->instance(AdminHelpResponder::class, new ProtocolFakeResponder(['回答']));
 
@@ -448,6 +467,7 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
         config()->set('ai-workspace.require_verified_model', false);
         $this->model();
         $admin = $this->admin('history-owner');
+        $admin->forceFill(['role' => 'admin', 'shared_ai_config_owner_id' => $this->runtimeAdmin->id])->save();
         $conversation = app(AiConversationRepository::class)->create($admin);
         $fake = new ProtocolFakeResponder(['请打开任务管理。']);
         $this->app->instance(AdminHelpResponder::class, $fake);
@@ -473,6 +493,7 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
         config()->set('ai-workspace.require_verified_model', false);
         $this->model();
         $admin = $this->admin('throttle-owner');
+        $admin->forceFill(['role' => 'admin', 'shared_ai_config_owner_id' => $this->runtimeAdmin->id])->save();
         $this->app->instance(AdminHelpResponder::class, new ProtocolFakeResponder(['回答']));
 
         for ($attempt = 1; $attempt <= 6; $attempt++) {
@@ -506,6 +527,10 @@ final class AiWorkspaceRuntimeProtocolV2Test extends TestCase
             'api_url' => 'https://example.invalid/v1',
             'status' => 'active',
         ]);
+        $model->forceFill([
+            'owner_admin_id' => $this->runtimeAdmin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
         if (is_array($model->ai_workspace_readiness_profile)) {
             $profile = $model->ai_workspace_readiness_profile;
             data_set($profile, 'configuration.fingerprint', app(AiWorkspaceModelReadiness::class)->configurationFingerprint($model));
@@ -535,7 +560,7 @@ final class ProtocolFakeResponder implements AdminHelpResponder
     /** @param list<string> $deltas */
     public function __construct(private readonly array $deltas) {}
 
-    public function stream(string $prompt, string $knowledgeContext, iterable $messages = [], ?int $adminId = null): Generator
+    public function stream(string $prompt, string $knowledgeContext, iterable $messages = [], mixed $actor = null): Generator
     {
         $this->streamCalls++;
         $answer = '';
@@ -547,7 +572,7 @@ final class ProtocolFakeResponder implements AdminHelpResponder
         return ['answer' => $answer, 'meta' => [], 'usage' => []];
     }
 
-    public function answer(string $prompt, string $knowledgeContext, iterable $messages = [], ?int $adminId = null): string
+    public function answer(string $prompt, string $knowledgeContext, iterable $messages = [], mixed $actor = null): string
     {
         return implode('', $this->deltas);
     }

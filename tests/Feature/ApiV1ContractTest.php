@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Data\Api\TaskRunData;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
@@ -13,8 +14,11 @@ use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
+use App\Models\TaskRun;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\Admin\AdminAiModelAccessResolver;
+use App\Services\GeoFlow\AiExecutionContextFactory;
 use App\Services\GeoFlow\AiQualityAuditService;
 use App\Services\GeoFlow\AiQualityRetrievalReadinessService;
 use App\Services\GeoFlow\ArticleAiQualityInvalidationService;
@@ -570,6 +574,260 @@ class ApiV1ContractTest extends TestCase
         $this->assertSame(4, (int) $task->fresh()->ai_quality_config_version);
     }
 
+    public function test_job_list_and_detail_return_only_sanitized_public_fields(): void
+    {
+        $admin = $this->createActiveAdmin('safe_job_dto_admin', 'p');
+        $bearer = $this->createBearerToken($admin, ['tasks:read', 'jobs:read']);
+        $task = Task::query()->create([
+            'name' => 'Safe job DTO task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+        ]);
+        $run = TaskRun::query()->create([
+            'task_id' => $task->id,
+            'status' => 'running',
+            'error_message' => 'provider https://secret.example.test?token=error-token api_key=error-key',
+            'meta' => [
+                'job_type' => 'generate_article',
+                'attempt_count' => 1,
+                'max_attempts' => 3,
+                'worker_id' => 'safe-worker',
+                'payload' => [
+                    'source' => 'api_enqueue',
+                    'api_key' => 'historical-payload-key',
+                    'nested' => ['password' => 'historical-nested-password'],
+                ],
+                'model_attempts' => [[
+                    'status' => 'failed',
+                    'reason' => 'Authorization: Bearer historical-bearer',
+                    'base_url' => 'https://historical.example.test?token=historical-url-token',
+                    'ai_config_access_version' => 456789,
+                    'execution_lease_token' => 'nested-lease-secret',
+                ]],
+                'ai_quality' => [
+                    'required' => true,
+                    'check_id' => 778899,
+                    'status' => 'queued',
+                    'nested' => [[
+                        'MODEL_ID' => 112233,
+                        'Model_Name' => 'Nested Historical Private Model',
+                        'Api_Url' => 'https://nested-provider.example.test/v1',
+                        'ENDPOINT' => 'https://nested-endpoint.example.test',
+                        'Prompt' => 'nested private prompt',
+                        'CONTENT' => 'nested private provider content',
+                        'Provider_Response' => 'nested provider response secret',
+                        'safe_status' => 'still-safe',
+                        'diagnostic' => 'https://camouflaged.example.test sk-camouflaged-secret Camouflaged Private Model',
+                    ]],
+                ],
+                'title_readiness' => [
+                    'status' => 'blocked',
+                    'can_save' => false,
+                    'can_activate' => false,
+                    'requires_acknowledgement' => true,
+                    'shortage' => 2,
+                    'suggested_article_limit' => 3,
+                    'conflict_count' => 1,
+                    'library' => [
+                        'id' => 991122,
+                        'name' => 'Peer Model Hidden In Library Name',
+                        'total' => 5,
+                        'used' => 2,
+                        'available' => 3,
+                        'diagnostic' => 'Peer Model Hidden In Library Diagnostic',
+                    ],
+                    'task' => [
+                        'id' => (int) $task->id,
+                        'status' => 'active',
+                        'article_limit' => 5,
+                        'created_count' => 2,
+                        'remaining' => 3,
+                        'is_loop' => false,
+                        'identifier' => 991122,
+                    ],
+                    'issues' => [[
+                        'code' => 'title_library_shortage',
+                        'severity' => 'blocking',
+                        'label' => 'Peer Model Hidden In Issue Label',
+                    ], [
+                        'code' => 'untrusted_peer_model_name',
+                        'severity' => 'blocking',
+                    ]],
+                    'diagnostic' => 'Peer Model Hidden In Readiness Diagnostic',
+                    'identifier' => 991122,
+                    'value' => 'Peer Model Hidden In Value',
+                    'label' => 'Peer Model Hidden In Label',
+                    'MODEL_ATTEMPTS' => [['model_name' => 'Attempt Private Model']],
+                ],
+                'used_model_id' => 246810,
+                'used_model_name' => 'Historical Private Model Name',
+                'note' => 'historical-note-secret',
+                'model_access_admin_id' => 999999,
+            ],
+        ]);
+        $run->forceFill([
+            'error_code' => 'ai_config_access_revoked',
+            'model_access_admin_id' => $admin->id,
+            'model_access_admin_role' => 'admin',
+            'ai_config_access_version' => 987654,
+            'requested_ai_model_id' => null,
+            'resolved_ai_model_id' => null,
+            'resolved_model_source' => 'personal',
+            'resolver_policy_version' => 876543,
+            'execution_lease_token' => '09070375-aa55-4f2f-b23b-5fc463ea42bc',
+        ])->save();
+
+        $listResponse = $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson("/api/v1/tasks/{$task->id}/jobs")
+            ->assertOk();
+        $listItem = $listResponse->json('data.items.0');
+        $this->assertIsArray($listItem);
+        $this->assertSame((int) $run->id, (int) data_get($listItem, 'id'));
+        $this->assertSame('running', data_get($listItem, 'status'));
+        $this->assertSame('api_enqueue', data_get($listItem, 'payload.source'));
+        $this->assertSame('ai_config_access_revoked', data_get($listItem, 'error_code'));
+        $this->assertSame('任务执行未完成', data_get($listItem, 'error_message'));
+        foreach (['execution_lease_token', 'model_access_admin_id', 'model_access_admin_role', 'ai_config_access_version', 'requested_ai_model_id', 'resolved_ai_model_id', 'resolved_model_source', 'resolver_policy_version', 'meta'] as $internalKey) {
+            $this->assertArrayNotHasKey($internalKey, $listItem);
+        }
+        foreach (['model_attempts', 'used_model_id', 'used_model_name'] as $modelReferenceKey) {
+            $this->assertArrayNotHasKey($modelReferenceKey, data_get($listItem, 'task_run_summary.meta', []));
+        }
+
+        $detailResponse = $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson("/api/v1/jobs/{$run->id}")
+            ->assertOk();
+        $detail = $detailResponse->json('data');
+        $this->assertIsArray($detail);
+        $this->assertSame((int) $run->id, (int) data_get($detail, 'id'));
+        $this->assertSame('generate_article', data_get($detail, 'job_type'));
+        $this->assertSame('api_enqueue', data_get($detail, 'payload.source'));
+        $this->assertSame('ai_config_access_revoked', data_get($detail, 'error_code'));
+        $this->assertSame('任务执行未完成', data_get($detail, 'error_message'));
+        $this->assertSame([
+            'required' => true,
+            'check_id' => 778899,
+            'status' => 'queued',
+        ], data_get($detail, 'task_run_summary.meta.ai_quality'));
+        $this->assertSame([
+            'status' => 'blocked',
+            'can_save' => false,
+            'can_activate' => false,
+            'requires_acknowledgement' => true,
+            'library' => [
+                'total' => 5,
+                'used' => 2,
+                'available' => 3,
+            ],
+            'task' => [
+                'id' => (int) $task->id,
+                'status' => 'active',
+                'article_limit' => 5,
+                'created_count' => 2,
+                'remaining' => 3,
+                'is_loop' => false,
+            ],
+            'shortage' => 2,
+            'suggested_article_limit' => 3,
+            'conflict_count' => 1,
+            'issues' => [[
+                'code' => 'title_library_shortage',
+                'severity' => 'blocking',
+            ]],
+        ], data_get($detail, 'task_run_summary.meta.title_readiness'));
+        foreach (['model_attempts', 'used_model_id', 'used_model_name'] as $modelReferenceKey) {
+            $this->assertArrayNotHasKey($modelReferenceKey, data_get($detail, 'task_run_summary.meta', []));
+        }
+
+        $serialized = json_encode([$listItem, $detail], JSON_THROW_ON_ERROR);
+        foreach ([
+            '09070375-aa55-4f2f-b23b-5fc463ea42bc',
+            '987654',
+            '876543',
+            'secret.example.test',
+            'error-token',
+            'error-key',
+            'historical-payload-key',
+            'historical-nested-password',
+            'historical-bearer',
+            'historical.example.test',
+            'historical-url-token',
+            'historical-note-secret',
+            '999999',
+            '456789',
+            'nested-lease-secret',
+            '246810',
+            'Historical Private Model Name',
+            'Nested Historical Private Model',
+            'nested-provider.example.test',
+            'nested-endpoint.example.test',
+            'nested private prompt',
+            'nested private provider content',
+            'nested provider response secret',
+            'readiness.example.test',
+            'readiness-key',
+            'Private Readiness Model',
+            'Attempt Private Model',
+            '112233',
+            'camouflaged.example.test',
+            'sk-camouflaged-secret',
+            'Camouflaged Private Model',
+            'Peer Model Hidden In Library Name',
+            'Peer Model Hidden In Library Diagnostic',
+            'Peer Model Hidden In Issue Label',
+            'Peer Model Hidden In Readiness Diagnostic',
+            'Peer Model Hidden In Value',
+            'Peer Model Hidden In Label',
+            'untrusted_peer_model_name',
+            '991122',
+        ] as $secret) {
+            $this->assertStringNotContainsString($secret, $serialized);
+        }
+
+        $run->forceFill([
+            'error_code' => 'historical_private_model_name',
+            'error_message' => 'historical_private_model_name',
+        ])->save();
+        $unsafeHistoricalCode = $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/jobs/'.(int) $run->id)
+            ->assertOk()
+            ->assertJsonPath('data.error_code', 'task_execution_failed')
+            ->assertJsonPath('data.error_message', '任务执行未完成');
+        $this->assertStringNotContainsString('historical_private_model_name', $unsafeHistoricalCode->getContent());
+    }
+
+    public function test_job_detail_rejects_an_active_token_owner_with_an_invalid_execution_role(): void
+    {
+        $admin = $this->createActiveAdmin('invalid_job_viewer_role', 'p');
+        $bearer = $this->createBearerToken($admin, ['jobs:read', 'tasks:read']);
+        $task = Task::query()->create(['name' => 'Invalid viewer task', 'status' => 'paused']);
+        $run = TaskRun::query()->create(['task_id' => $task->id, 'status' => 'failed']);
+        $admin->forceFill(['role' => 'auditor'])->save();
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/jobs/'.(int) $run->id)
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'ai_execution_admin_inactive');
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/tasks/'.(int) $task->id.'/jobs')
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'ai_execution_admin_inactive');
+
+        $admin->forceFill(['role' => 'admin', 'status' => 'inactive'])->save();
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/jobs/'.(int) $run->id)
+            ->assertUnauthorized()
+            ->assertJsonPath('error.code', 'unauthorized');
+
+        $admin->forceFill(['status' => 'active'])->save();
+        $admin->delete();
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/jobs/'.(int) $run->id)
+            ->assertUnauthorized()
+            ->assertJsonPath('error.code', 'unauthorized');
+    }
+
     public function test_super_admin_api_can_manage_a_hosted_site_task(): void
     {
         Queue::fake();
@@ -615,9 +873,21 @@ class ApiV1ContractTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.status', 'active');
         $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
-            ->postJson("/api/v1/tasks/{$task->id}/enqueue")
+            ->postJson("/api/v1/tasks/{$task->id}/enqueue", [
+                'job_type' => 'generate_article',
+                'api_key' => 'api-request-secret',
+                'base_url' => 'https://provider.example.test?token=url-secret',
+                'note' => 'Bearer note-secret',
+                'nested' => ['password' => 'nested-secret'],
+            ])
             ->assertCreated()
             ->assertJsonPath('data.status', 'pending');
+        $queuedMeta = TaskRun::query()->where('task_id', $task->id)->firstOrFail()->meta;
+        $this->assertSame(['source' => 'api_enqueue'], data_get($queuedMeta, 'payload'));
+        $serializedMeta = json_encode($queuedMeta, JSON_THROW_ON_ERROR);
+        foreach (['api-request-secret', 'provider.example.test', 'url-secret', 'note-secret', 'nested-secret'] as $secret) {
+            $this->assertStringNotContainsString($secret, $serializedMeta);
+        }
         $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
             ->postJson("/api/v1/tasks/{$task->id}/stop")
             ->assertOk()
@@ -678,6 +948,7 @@ class ApiV1ContractTest extends TestCase
             'model_type' => 'chat',
             'status' => 'active',
         ]);
+        $this->assignModelOwner($model, $admin);
         $prompt = Prompt::query()->create([
             'name' => 'Task Create Prompt',
             'type' => 'content',
@@ -730,6 +1001,7 @@ class ApiV1ContractTest extends TestCase
             'model_type' => 'chat',
             'status' => 'active',
         ]);
+        $this->assignModelOwner($model, $admin);
         $prompt = Prompt::query()->create([
             'name' => 'Timeout Sampling API Prompt',
             'type' => 'content',
@@ -773,6 +1045,7 @@ class ApiV1ContractTest extends TestCase
             'model_type' => 'chat',
             'status' => 'active',
         ]);
+        $this->assignModelOwner($model, $admin);
         $prompt = Prompt::query()->create([
             'name' => 'Task Create Prompt With Knowledge',
             'type' => 'content',
@@ -861,12 +1134,14 @@ class ApiV1ContractTest extends TestCase
         ]);
         $monitoring = Mockery::mock(TaskMonitoringQueryService::class);
         $monitoring->shouldReceive('getTaskMonitoringDetail')
+            ->with((int) $task->id, null)
             ->once()
             ->andThrow(new \RuntimeException('post-inner-read-failure'));
         $realtime = Mockery::mock(TaskRealtimeBroadcastService::class);
         $realtime->shouldReceive('broadcastOverview')->never();
         $service = new TaskLifecycleService(
             app(JobQueueService::class),
+            app(AiExecutionContextFactory::class),
             $monitoring,
             $realtime,
             app(TaskTitleReadinessService::class),
@@ -874,6 +1149,8 @@ class ApiV1ContractTest extends TestCase
             app(ArticleAiQualityPolicyResolver::class),
             app(AiQualityRetrievalReadinessService::class),
             app(AiQualityAuditService::class),
+            app(TaskRunData::class),
+            app(AdminAiModelAccessResolver::class),
         );
 
         $baselineTransactionLevel = DB::transactionLevel();
@@ -978,5 +1255,13 @@ class ApiV1ContractTest extends TestCase
             ->assertJsonPath('error.details.trashed_count', 1);
 
         $this->assertModelExists($author);
+    }
+
+    private function assignModelOwner(AiModel $model, Admin $admin): void
+    {
+        $model->forceFill([
+            'owner_admin_id' => $admin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+        ])->save();
     }
 }

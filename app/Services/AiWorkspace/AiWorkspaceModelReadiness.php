@@ -2,16 +2,21 @@
 
 namespace App\Services\AiWorkspace;
 
+use App\Data\Ai\AiWorkspaceExecutionContext;
+use App\Exceptions\AiModelAccessException;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Support\Facades\Schema;
 
-final class AiWorkspaceModelReadiness
+final readonly class AiWorkspaceModelReadiness
 {
     public const PROFILE_VERSION = 2;
 
+    public function __construct(private AiWorkspaceExecutionAccessGuard $executionGuard) {}
+
     /** @return array{ready:bool,reason:string|null,model_id:int|null} */
-    public function status(): array
+    public function status(Admin|AiWorkspaceExecutionContext|int|null $actor = null): array
     {
         $conversationConnection = config('ai.conversations.connection');
         if (is_string($conversationConnection)
@@ -24,18 +29,42 @@ final class AiWorkspaceModelReadiness
             return ['ready' => false, 'reason' => __('admin.ai_workspace.readiness_models_table_missing'), 'model_id' => null];
         }
 
-        $query = AiModel::query()
-            ->where('status', 'active')
-            ->where(function ($builder): void {
-                $builder->whereNull('model_type')->orWhereNotIn('model_type', ['embedding', 'image']);
-            });
+        try {
+            $context = $this->context($actor);
+            if (! $context instanceof AiWorkspaceExecutionContext) {
+                return ['ready' => false, 'reason' => __('admin.ai_workspace.readiness_no_verified_model'), 'model_id' => null];
+            }
+            $models = $this->executionGuard->resolveCandidates($context);
+        } catch (AiModelAccessException) {
+            return ['ready' => false, 'reason' => __('admin.ai_workspace.readiness_no_verified_model'), 'model_id' => null];
+        }
+        $model = null;
+        foreach ($models as $candidate) {
+            if ($this->hasPermanentFailure($candidate)) {
+                return ['ready' => false, 'reason' => __('admin.ai_workspace.readiness_no_verified_model'), 'model_id' => null];
+            }
+            if ($this->canAttempt($candidate)) {
+                $model = $candidate;
 
-        $models = $query->orderBy('failover_priority')->orderBy('id')->get();
-        $model = $models->first(fn (AiModel $model): bool => $this->canAttempt($model));
+                break;
+            }
+        }
 
         return $model instanceof AiModel
             ? ['ready' => true, 'reason' => null, 'model_id' => (int) $model->id]
             : ['ready' => false, 'reason' => __('admin.ai_workspace.readiness_no_verified_model'), 'model_id' => null];
+    }
+
+    private function context(Admin|AiWorkspaceExecutionContext|int|null $actor): ?AiWorkspaceExecutionContext
+    {
+        if ($actor instanceof AiWorkspaceExecutionContext) {
+            return $actor;
+        }
+        if (is_int($actor)) {
+            $actor = Admin::query()->find($actor);
+        }
+
+        return $actor instanceof Admin ? $this->executionGuard->directContext($actor) : null;
     }
 
     public function canAttempt(AiModel $model): bool
@@ -49,6 +78,40 @@ final class AiWorkspaceModelReadiness
         }
 
         return false;
+    }
+
+    public function hasPermanentFailure(AiModel $model): bool
+    {
+        if (! (bool) config('ai-workspace.require_verified_model', true)
+            || (string) $model->ai_workspace_readiness_status !== 'failed') {
+            return false;
+        }
+
+        $fingerprint = trim((string) data_get($model->ai_workspace_readiness_profile, 'configuration.fingerprint'));
+        if ($fingerprint !== '' && ! hash_equals($fingerprint, $this->configurationFingerprint($model))) {
+            return false;
+        }
+
+        $code = mb_strtolower(trim((string) $model->ai_workspace_readiness_failure_code));
+        if ($code === '') {
+            return false;
+        }
+
+        return in_array($code, [
+            'authentication_failed',
+            'configuration_invalid',
+            'ai_model_configuration_invalid',
+            'plain_text_invalid',
+            'capability_incompatible',
+            'unsupported_capability',
+            'parameter_invalid',
+            'provider_http_400',
+            'provider_http_401',
+            'provider_http_402',
+            'provider_http_403',
+            'provider_http_404',
+            'provider_http_422',
+        ], true);
     }
 
     public function prefersPlainTextFallback(AiModel $model): bool

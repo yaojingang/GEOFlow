@@ -11,6 +11,7 @@ use App\Models\AiWorkspaceRun;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Throwable;
 
 final readonly class AiWorkspaceReadOnlyAgentCoordinator
 {
@@ -20,6 +21,7 @@ final readonly class AiWorkspaceReadOnlyAgentCoordinator
         private AiWorkspaceTraceRecorder $traces,
         private AiConversationRepository $conversations,
         private AiWorkspaceRealtimeService $realtime,
+        private AiWorkspaceExecutionAccessGuard $executionGuard,
     ) {}
 
     /** @param list<array<string,mixed>> $steps */
@@ -66,6 +68,10 @@ final readonly class AiWorkspaceReadOnlyAgentCoordinator
                 || ! $locked->resolution_lease_expires_at?->isFuture()) {
                 throw new RuntimeException('只读子任务拆分时授权、状态或租约已经变化。');
             }
+            $persistedAdmin = $this->executionGuard->assertFrozenRunAdmin($locked);
+            if ((int) $persistedAdmin->getKey() !== (int) $lockedAdmin->getKey()) {
+                throw new RuntimeException('只读子任务拆分时 AI 执行身份已经变化。');
+            }
             if ($locked->childRuns()->exists()) {
                 throw new RuntimeException('当前父任务已经建立子任务。');
             }
@@ -90,6 +96,13 @@ final readonly class AiWorkspaceReadOnlyAgentCoordinator
                     'queued_at' => now(),
                     'status_message' => '只读子任务已建立，等待执行。',
                 ]);
+                $child->forceFill([
+                    'model_access_admin_id' => $locked->model_access_admin_id,
+                    'model_access_admin_role' => $locked->model_access_admin_role,
+                    'ai_config_access_version' => $locked->ai_config_access_version,
+                    'requested_ai_model_id' => $locked->requested_ai_model_id,
+                    'resolver_policy_version' => $locked->resolver_policy_version,
+                ])->save();
                 $this->traces->recordInitial($child);
                 $this->states->touchEvent($child, [], [
                     'event_type' => 'run.child_created',
@@ -152,7 +165,14 @@ final readonly class AiWorkspaceReadOnlyAgentCoordinator
                 return null;
             }
             $admin = Admin::query()->whereKey($locked->admin_id)->where('status', 'active')->lockForUpdate()->first();
+            try {
+                $persistedAdmin = $this->executionGuard->assertFrozenRunAdmin($locked);
+            } catch (Throwable) {
+                $persistedAdmin = null;
+            }
             if (! $admin instanceof Admin
+                || ! $persistedAdmin instanceof Admin
+                || (int) $persistedAdmin->getKey() !== (int) $admin->getKey()
                 || (int) $locked->admin_auth_version <= 0
                 || (int) $locked->admin_auth_version !== (int) $admin->auth_version) {
                 $this->states->touchEvent($locked, [], [

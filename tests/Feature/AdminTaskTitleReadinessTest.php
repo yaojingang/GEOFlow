@@ -263,7 +263,9 @@ class AdminTaskTitleReadinessTest extends TestCase
 
     public function test_active_form_submission_is_blocked_with_structured_report_while_paused_submission_is_allowed(): void
     {
+        $admin = $this->admin();
         $dependencies = $this->formDependencies();
+        $dependencies['model']->forceFill(['owner_admin_id' => $admin->id])->save();
         $payload = [
             'task_name' => '标题检查任务',
             'title_library_id' => $dependencies['library']->id,
@@ -278,7 +280,7 @@ class AdminTaskTitleReadinessTest extends TestCase
             'model_selection_mode' => 'fixed',
         ];
 
-        $this->actingAs($this->admin(), 'admin')
+        $this->actingAs($admin, 'admin')
             ->from(route('admin.tasks.create'))
             ->post(route('admin.tasks.store'), $payload + ['status' => 'active'])
             ->assertRedirect(route('admin.tasks.create'))
@@ -286,7 +288,7 @@ class AdminTaskTitleReadinessTest extends TestCase
             ->assertSessionHasErrors();
         $this->assertDatabaseMissing('tasks', ['name' => '标题检查任务']);
 
-        $this->actingAs($this->admin(), 'admin')
+        $this->actingAs($admin, 'admin')
             ->post(route('admin.tasks.store'), array_merge($payload, [
                 'task_name' => '暂停标题检查任务',
                 'status' => 'paused',

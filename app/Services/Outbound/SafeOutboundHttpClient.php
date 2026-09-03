@@ -74,9 +74,14 @@ final class SafeOutboundHttpClient
     }
 
     /** @param array<string, mixed> $data */
-    public function post(PendingRequest $request, string $url, array $data, int $maxBytes): Response
-    {
-        return $this->send($request, 'POST', $url, $data, $maxBytes);
+    public function post(
+        PendingRequest $request,
+        string $url,
+        array $data,
+        int $maxBytes,
+        ?callable $beforeTransport = null,
+    ): Response {
+        return $this->send($request, 'POST', $url, $data, $maxBytes, beforeTransport: $beforeTransport);
     }
 
     /** @param array<string, mixed> $data */
@@ -96,6 +101,7 @@ final class SafeOutboundHttpClient
         int $maxBytes,
         int $maxRedirects = 0,
         ?callable $redirectValidator = null,
+        ?callable $beforeTransport = null,
     ): Response {
         if ($maxBytes < 1 || $maxRedirects < 0 || $maxRedirects > 3) {
             throw new OutboundRequestBlockedException('invalid_request_policy');
@@ -116,6 +122,10 @@ final class SafeOutboundHttpClient
                 if (in_array($method, ['GET', 'HEAD'], true)) {
                     $currentData = [];
                 }
+            }
+
+            if ($beforeTransport !== null) {
+                $beforeTransport();
             }
 
             try {

@@ -3,8 +3,16 @@
 namespace App\Services\GeoFlow;
 
 use App\Ai\Agents\TitleGeneratorAgent;
+use App\Data\Ai\TitleGenerationExecutionContext;
+use App\Exceptions\AiModelAccessException;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\Title;
+use App\Models\TitleGenerationRun;
+use App\Services\Admin\AiModelUsageAttempt;
+use App\Services\Admin\AiModelUsageAttemptFactory;
+use App\Services\AiWorkspace\AiModelInvocationLock;
+use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Throwable;
@@ -25,6 +33,10 @@ class TitleAiGenerationService
     public function __construct(
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly AiUsageQuotaService $usageQuota,
+        private readonly AiModelFailoverDecider $failoverDecider,
+        private readonly AiModelInvocationLock $invocationLocks,
+        private readonly TitleGenerationAiExecutionGuard $executionGuard,
+        private readonly AiModelUsageAttemptFactory $usageAttempts,
     ) {}
 
     /**
@@ -37,61 +49,128 @@ class TitleAiGenerationService
         array $keywords,
         int $count,
         string $style,
-        string $customPrompt = ''
+        string $customPrompt = '',
+        ?TitleGenerationExecutionContext $executionContext = null,
+        int $candidateOrdinal = 1,
     ): TitleGenerationOutcome {
         $reservation = null;
+        $invocationLock = null;
+        $usageAttempt = null;
+        $providerReturned = false;
+        $providerUsage = null;
 
         try {
-            $reservation = $this->usageQuota->reserveModel($aiModel);
-            if ($reservation === null) {
-                $available = AiModel::query()
-                    ->whereKey($aiModel->getKey())
-                    ->where('status', 'active')
-                    ->exists();
-
-                return $available
-                    ? TitleGenerationOutcome::quotaExhausted()
-                    : TitleGenerationOutcome::failed('ai_model_unavailable');
-            }
-
-            $content = $this->requestTitlesFromModel($aiModel, $keywords, $count, $style, $customPrompt);
-            $titles = $this->parseGeneratedTitles($content);
-            if ($titles !== []) {
-                try {
-                    $this->usageQuota->recordModelSuccess($reservation);
-                } catch (Throwable $exception) {
-                    report($exception);
+            try {
+                $invocationLock = $this->invocationLocks->acquireForInvocation(
+                    (int) $aiModel->getKey(),
+                    $this->providerTimeoutSeconds() + 60,
+                );
+                $currentModel = AiModel::query()->find((int) $aiModel->getKey());
+                if (! $currentModel instanceof AiModel) {
+                    return TitleGenerationOutcome::failed('ai_model_unavailable');
+                }
+                if ($executionContext instanceof TitleGenerationExecutionContext) {
+                    $this->executionGuard->assertCurrent($executionContext, $currentModel);
                 }
 
-                return TitleGenerationOutcome::success($titles);
+                $request = $this->prepareRequest($currentModel, $keywords, $count, $style, $customPrompt);
+                $reservation = $this->usageQuota->reserveModel($currentModel);
+                if ($reservation === null) {
+                    $available = AiModel::query()
+                        ->whereKey($currentModel->getKey())
+                        ->where('status', 'active')
+                        ->exists();
+
+                    return $available
+                        ? TitleGenerationOutcome::quotaExhausted()
+                        : TitleGenerationOutcome::failed('ai_model_unavailable');
+                }
+                if ($executionContext instanceof TitleGenerationExecutionContext) {
+                    $this->executionGuard->assertCurrent($executionContext, $currentModel);
+                    $usageAttempt = $this->beginUsageAttempt(
+                        $executionContext,
+                        $currentModel,
+                        $candidateOrdinal,
+                        $request['user_prompt'],
+                    );
+                }
+
+                $response = (new TitleGeneratorAgent($request['system_prompt'], $request['output_token_limit']))->prompt(
+                    prompt: $request['user_prompt'],
+                    attachments: [],
+                    provider: $request['provider_name'],
+                    model: (string) ($currentModel->model_id ?? ''),
+                    timeout: $this->providerTimeoutSeconds(),
+                );
+                $providerReturned = true;
+                $providerUsage = $response->usage ?? null;
+                $content = $this->normalizeProviderContent((string) ($response->text ?? ''), $count);
+                $titles = $this->parseGeneratedTitles($content);
+                if ($titles !== []) {
+                    if ($executionContext instanceof TitleGenerationExecutionContext
+                        && $usageAttempt instanceof AiModelUsageAttempt
+                        && $invocationLock !== null) {
+                        $delivery = new TitleGenerationUsageDelivery(
+                            usageAttempt: $usageAttempt,
+                            providerUsage: $providerUsage,
+                            quotaReservation: $reservation,
+                            usageQuota: $this->usageQuota,
+                            invocationLocks: $this->invocationLocks,
+                            invocationLock: $invocationLock,
+                        );
+                        $invocationLock = null;
+
+                        return TitleGenerationOutcome::success($titles, $delivery);
+                    }
+
+                    $this->recordSuccess($reservation);
+
+                    return TitleGenerationOutcome::success($titles);
+                }
+            } catch (AiModelAccessException $exception) {
+                if ($reservation instanceof AiUsageReservation) {
+                    $this->releaseReservation($reservation);
+                }
+
+                throw $exception;
+            } catch (Throwable $exception) {
+                if ($reservation instanceof AiUsageReservation) {
+                    $this->recordAttempt($reservation);
+                }
+                if ($usageAttempt instanceof AiModelUsageAttempt) {
+                    $providerReturned
+                        ? $usageAttempt->discarded($this->safeFailureCode($exception), $providerUsage)
+                        : $usageAttempt->failed($this->safeFailureCode($exception));
+                }
+
+                return TitleGenerationOutcome::failed(
+                    $this->safeFailureCode($exception),
+                    retryable: $this->failoverDecider->shouldFailover($exception),
+                );
             }
-        } catch (Throwable $exception) {
+
             if ($reservation instanceof AiUsageReservation) {
                 $this->recordAttempt($reservation);
             }
+            $usageAttempt?->discarded('empty_result', $providerUsage);
 
-            return TitleGenerationOutcome::failed($this->safeFailureCode($exception));
+            return TitleGenerationOutcome::failed('empty_result', retryable: true);
+        } finally {
+            $this->invocationLocks->release($invocationLock);
         }
-
-        if ($reservation instanceof AiUsageReservation) {
-            $this->recordAttempt($reservation);
-        }
-
-        return TitleGenerationOutcome::failed('empty_result');
     }
 
     /**
-     * 请求真实模型生成标题。
-     *
      * @param  list<string>  $keywords
+     * @return array{provider_name:string,system_prompt:string,user_prompt:string,output_token_limit:int}
      */
-    private function requestTitlesFromModel(
+    private function prepareRequest(
         AiModel $aiModel,
         array $keywords,
         int $count,
         string $style,
-        string $customPrompt
-    ): string {
+        string $customPrompt,
+    ): array {
         $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) ($aiModel->api_url ?? ''));
         if ($providerUrl === '') {
             throw new \RuntimeException('ai_url_missing');
@@ -128,19 +207,19 @@ class TitleAiGenerationService
             $outputTokenLimit = min($outputTokenLimit, $configuredMaxTokens);
         }
 
-        try {
-            $response = (new TitleGeneratorAgent($systemPrompt, $outputTokenLimit))->prompt(
-                prompt: $userPrompt,
-                attachments: [],
-                provider: $providerName,
-                model: (string) ($aiModel->model_id ?? ''),
-                timeout: (int) config('geoflow.title_ai_request_timeout_seconds', 90),
-            );
-        } catch (Throwable $exception) {
-            throw new \RuntimeException('ai_provider_request_failed', 0, $exception);
-        }
+        return [
+            'provider_name' => $providerName,
+            'system_prompt' => $systemPrompt,
+            'user_prompt' => $userPrompt,
+            'output_token_limit' => $outputTokenLimit,
+        ];
+    }
 
-        $rawContent = (string) ($response->text ?? '');
+    /**
+     * 将供应商响应限制为标题解析器可接受的安全文本。
+     */
+    private function normalizeProviderContent(string $rawContent, int $count): string
+    {
         $content = OpenAiRuntimeProvider::normalizeGeneratedText($rawContent);
 
         $maxCharacters = max(2000, $count * 600);
@@ -159,6 +238,38 @@ class TitleAiGenerationService
         }
 
         return $content;
+    }
+
+    public function providerTimeoutSeconds(): int
+    {
+        return (int) config('geoflow.title_ai_request_timeout_seconds', 90);
+    }
+
+    private function beginUsageAttempt(
+        TitleGenerationExecutionContext $context,
+        AiModel $model,
+        int $candidateOrdinal,
+        string $requestPayload,
+    ): AiModelUsageAttempt {
+        return $this->usageAttempts->beginForAdmin(
+            model: $model,
+            executionAdminId: $context->modelAccessAdminId,
+            accessVersion: $context->aiConfigAccessVersion,
+            executionScope: AiModelUsageEvent::EXECUTION_SCOPE_PERSISTED_ADMIN,
+            modelSource: $this->usageAttempts->sourceFor($model, $context->modelAccessAdminId),
+            requestId: $context->leaseToken(),
+            requestPayload: $requestPayload,
+            callKey: sprintf(
+                'b%d.a%d.c%d.p1',
+                $context->batchSequence,
+                $context->batchAttemptCount,
+                max(1, $candidateOrdinal),
+            ),
+            operation: 'title_generation.generate',
+            businessSource: 'title_generation',
+            sourceType: TitleGenerationRun::class,
+            sourceId: $context->runId,
+        );
     }
 
     /**
@@ -241,6 +352,24 @@ class TitleAiGenerationService
     {
         try {
             $this->usageQuota->recordModelAttempt($reservation);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    private function recordSuccess(AiUsageReservation $reservation): void
+    {
+        try {
+            $this->usageQuota->recordModelSuccess($reservation);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    private function releaseReservation(AiUsageReservation $reservation): void
+    {
+        try {
+            $this->usageQuota->releaseModel($reservation);
         } catch (Throwable $exception) {
             report($exception);
         }

@@ -4,6 +4,11 @@ namespace App\Services\AiWorkspace;
 
 use App\Ai\Workspace\AiCapabilityRegistry;
 use App\Ai\Workspace\AiIntentResolution;
+use App\Data\Ai\AiWorkspaceExecutionContext;
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
+use App\Models\Admin;
+use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -17,11 +22,12 @@ final readonly class AiIntentResolver
     public function __construct(
         private AiCapabilityRegistry $registry,
         private AiWorkspaceModelRuntime $runtime,
+        private AiExecutionErrorSanitizer $errorSanitizer,
     ) {}
 
     public function resolve(
         string $prompt,
-        ?int $adminId = null,
+        Admin|AiWorkspaceExecutionContext|int|null $actor = null,
         ?callable $onModelComplete = null,
         ?callable $onModelFailure = null,
     ): AiIntentResolution {
@@ -30,13 +36,37 @@ final readonly class AiIntentResolver
         }
 
         if ((bool) config('ai-workspace.runtime_enabled', false)) {
+            $modelCompletion = null;
             try {
-                return $this->fromModel($this->runtime->resolveIntent($prompt, $adminId, $onModelComplete), $prompt);
+                $resolution = $this->fromModel($this->runtime->resolveIntent(
+                    $prompt,
+                    $actor,
+                    static function (array $telemetry, mixed $receipt = null, mixed $usageDelivery = null) use (&$modelCompletion): void {
+                        $modelCompletion = [$telemetry, $receipt, $usageDelivery];
+                    },
+                ), $prompt);
+                if (is_array($modelCompletion)) {
+                    if ($onModelComplete !== null) {
+                        $onModelComplete(...$modelCompletion);
+                    } elseif ($modelCompletion[2] instanceof AiWorkspaceModelUsageDelivery) {
+                        $modelCompletion[2]->succeeded();
+                    }
+                }
+
+                return $resolution;
             } catch (Throwable $exception) {
+                if (is_array($modelCompletion) && $modelCompletion[2] instanceof AiWorkspaceModelUsageDelivery) {
+                    $exception instanceof AiModelAccessException
+                        ? $modelCompletion[2]->revoked($exception->getErrorCode())
+                        : $modelCompletion[2]->discarded('ai_result_not_committed');
+                }
                 if ($onModelFailure !== null) {
                     $onModelFailure($exception);
                 }
-                report($exception);
+                if ($exception instanceof AiModelAccessException || $exception instanceof PermanentAiProviderException) {
+                    throw $exception;
+                }
+                report(new \RuntimeException($this->errorSanitizer->sanitize($exception)));
             }
         }
 

@@ -2,26 +2,42 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\AiModelAccessException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\DeleteAiSourceProviderRequest;
+use App\Http\Requests\Admin\StoreAiSourceProviderRequest;
+use App\Http\Requests\Admin\TestAiSourceProviderRequest;
+use App\Http\Requests\Admin\TestAiVisibilityModelBindingRequest;
+use App\Http\Requests\Admin\UpdateAiSourceProviderRequest;
+use App\Http\Requests\Admin\UpdateAiVisibilityModelBindingsRequest;
+use App\Http\Requests\Admin\UpsertAiVisibilityModelApiRequest;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
 use App\Models\SiteSetting;
+use App\Services\Admin\AdminAiModelTestBoundaryHook;
+use App\Services\Admin\AdminAiModelTestPreparationService;
+use App\Services\Admin\AdminAiSourceProviderService;
+use App\Services\Admin\AdminAiSystemConfigurationBoundaryHook;
+use App\Services\Admin\GovernanceAiModelUsageSession;
+use App\Services\Admin\GovernanceAiModelUsageSessionFactory;
 use App\Services\AiWorkspace\AiWorkspaceModelCapabilityProbe;
 use App\Services\GeoFlow\AiUsageQuotaService;
-use App\Services\GeoFlow\AiVisibility\AiProviderEndpointPolicy;
-use App\Services\GeoFlow\AiVisibility\AiStructuredOutputHealthCheck;
+use App\Services\GeoFlow\AiUsageReservation;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityConfigurationResolver;
-use App\Services\GeoFlow\AiVisibility\AiVisibilityResult;
 use App\Services\GeoFlow\AiVisibility\DoubaoSearchCustomClient;
+use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
-use RuntimeException;
 use Throwable;
 
 class AiSourceProviderController extends Controller
@@ -33,35 +49,43 @@ class AiSourceProviderController extends Controller
     public function __construct(
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly DoubaoSearchCustomClient $doubaoSearchCustomClient,
-        private readonly AiStructuredOutputHealthCheck $structuredOutputHealthCheck,
-        private readonly AiProviderEndpointPolicy $endpointPolicy,
         private readonly AiUsageQuotaService $usageQuota,
         private readonly AiVisibilityConfigurationResolver $configuration,
         private readonly AiWorkspaceModelCapabilityProbe $aiWorkspaceModelProbe,
+        private readonly AdminAiModelTestBoundaryHook $modelTestBoundaryHook,
+        private readonly AdminAiModelTestPreparationService $modelTestPreparation,
+        private readonly AdminAiSourceProviderService $sourceProviderService,
+        private readonly AdminAiSystemConfigurationBoundaryHook $boundaryHook,
+        private readonly GovernanceAiModelUsageSessionFactory $usageSessions,
+        private readonly SafeOutboundHttpClient $safeHttp,
     ) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        $arkModelId = $this->getConfiguredModelId(self::ARK_MODEL_SETTING_KEY);
-        $deepSeekModelId = $this->getConfiguredModelId(self::DEEPSEEK_MODEL_SETTING_KEY);
+        $actor = $this->sourceProviderService->activeSuperAdmin($this->actor($request));
+        $arkModelId = $this->configuredModelIdForActor($actor, self::ARK_MODEL_SETTING_KEY, 'ark');
+        $deepSeekModelId = $this->configuredModelIdForActor($actor, self::DEEPSEEK_MODEL_SETTING_KEY, 'deepseek');
 
         return view('admin.ai-source-providers.index', [
             'pageTitle' => __('admin.ai_source_providers.page_title'),
             'activeMenu' => 'ai_config',
             'adminSiteName' => AdminWeb::siteName(),
             'providers' => $this->loadProviders(),
-            'chatModels' => $this->loadActiveChatModels(),
+            'arkModels' => $this->sourceProviderService->modelOptions($actor, 'ark'),
+            'deepSeekModels' => $this->sourceProviderService->modelOptions($actor, 'deepseek'),
             'arkModelId' => $arkModelId,
             'deepSeekModelId' => $deepSeekModelId,
-            'arkApiConfig' => $this->loadModelApiConfig($arkModelId, 'ark'),
-            'deepSeekApiConfig' => $this->loadModelApiConfig($deepSeekModelId, 'deepseek'),
+            'arkApiConfig' => $this->loadModelApiConfig($actor, $arkModelId, 'ark'),
+            'deepSeekApiConfig' => $this->loadModelApiConfig($actor, $deepSeekModelId, 'deepseek'),
             'stats' => $this->loadStats(),
             'defaultDoubaoEndpoint' => (string) config('geoflow.ai_visibility.doubao_search_endpoint', ''),
         ]);
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
+        $this->sourceProviderService->activeSuperAdmin($this->actor($request));
+
         return view('admin.ai-source-providers.create', [
             'pageTitle' => __('admin.ai_source_providers.modal_create'),
             'activeMenu' => 'ai_config',
@@ -71,8 +95,9 @@ class AiSourceProviderController extends Controller
         ]);
     }
 
-    public function edit(int $providerId): View
+    public function edit(Request $request, int $providerId): View
     {
+        $this->sourceProviderService->activeSuperAdmin($this->actor($request));
         $provider = AiSourceProvider::query()
             ->select(['id', 'name', 'provider_key', 'endpoint_url', 'status', 'daily_limit', 'metadata_json'])
             ->whereKey($providerId)
@@ -87,266 +112,210 @@ class AiSourceProviderController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(StoreAiSourceProviderRequest $request): RedirectResponse
     {
-        $payload = $this->validateProviderPayload($request, false);
-        $providerData = $this->providerAttributes($payload, $request);
-        if (! $this->endpointPolicy->acceptsSearchApi((string) $providerData['endpoint_url'])) {
-            return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.unsupported_provider'));
-        }
-
-        try {
-            $encryptedApiKey = $this->apiKeyCrypto->encrypt(trim((string) $payload['api_key']));
-        } catch (RuntimeException) {
-            return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.crypto_key_missing'));
-        }
-
-        AiSourceProvider::query()->create(array_merge(
-            $providerData,
-            [
-                'provider_key' => AiSourceProvider::PROVIDER_DOUBAO_SEARCH_CUSTOM,
-                'api_key' => $encryptedApiKey,
-                'status' => 'active',
-            ],
-        ));
+        $actor = $this->actor($request);
+        $this->boundaryHook->beforeMutation($actor);
+        $this->sourceProviderService->createProvider($actor, $request->validated());
 
         return redirect()
             ->route('admin.ai-source-providers.index')
             ->with('message', __('admin.ai_source_providers.message.create_success'));
     }
 
-    public function update(Request $request, int $providerId): RedirectResponse
+    public function update(UpdateAiSourceProviderRequest $request, int $providerId): RedirectResponse
     {
-        $provider = AiSourceProvider::query()->whereKey($providerId)->firstOrFail();
-        $payload = $this->validateProviderPayload($request, true);
-        $updateData = $this->providerAttributes($payload, $request);
-        $updateData['status'] = $this->normalizeStatus((string) ($payload['status'] ?? 'active'));
-        if (! $this->endpointPolicy->acceptsSearchApi((string) $updateData['endpoint_url'])) {
-            return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.unsupported_provider'));
-        }
-
-        $apiKey = trim((string) ($payload['api_key'] ?? ''));
-        if (! $this->endpointPolicy->sameOrigin((string) $provider->endpoint_url, (string) $updateData['endpoint_url'])
-            && $apiKey === '') {
-            return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.api_key_required'));
-        }
-        if ($apiKey !== '') {
-            try {
-                $updateData['api_key'] = $this->apiKeyCrypto->encrypt($apiKey);
-            } catch (RuntimeException) {
-                return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.crypto_key_missing'));
-            }
-        }
-
-        $provider->update($updateData);
+        $actor = $this->actor($request);
+        $this->boundaryHook->beforeMutation($actor);
+        $this->sourceProviderService->updateProvider($actor, $providerId, $request->validated());
 
         return redirect()
             ->route('admin.ai-source-providers.index')
             ->with('message', __('admin.ai_source_providers.message.update_success'));
     }
 
-    public function destroy(int $providerId): RedirectResponse
+    public function destroy(DeleteAiSourceProviderRequest $request, int $providerId): RedirectResponse
     {
-        $provider = AiSourceProvider::query()->whereKey($providerId)->firstOrFail();
-
-        if (Schema::hasTable('ai_visibility_runs') && $provider->visibilityRuns()->exists()) {
-            return back()->withErrors(__('admin.ai_source_providers.error.provider_in_use'));
-        }
-
-        $provider->delete();
+        $actor = $this->actor($request);
+        $this->boundaryHook->beforeMutation($actor);
+        $this->sourceProviderService->deleteProvider($actor, $providerId);
 
         return redirect()
             ->route('admin.ai-source-providers.index')
             ->with('message', __('admin.ai_source_providers.message.delete_success'));
     }
 
-    public function updateModelBindings(Request $request): RedirectResponse
+    public function updateModelBindings(UpdateAiVisibilityModelBindingsRequest $request): RedirectResponse
     {
-        $payload = $request->validate([
-            'ark_model_id' => ['nullable', 'integer', 'min:0'],
-            'deepseek_model_id' => ['nullable', 'integer', 'min:0'],
-        ]);
-
+        $payload = $request->validated();
         $arkModelId = max(0, (int) ($payload['ark_model_id'] ?? 0));
         $deepSeekModelId = max(0, (int) ($payload['deepseek_model_id'] ?? 0));
-
-        if ($arkModelId > 0 && ! $this->isCallableArkModelId($arkModelId)) {
-            return back()->withErrors(__('admin.ai_source_providers.error.ark_model_unavailable'));
-        }
-
-        if ($deepSeekModelId > 0 && ! $this->isCallableDeepSeekModelId($deepSeekModelId)) {
-            return back()->withErrors(__('admin.ai_source_providers.error.deepseek_model_unavailable'));
-        }
-
-        $this->setConfiguredModelId(self::ARK_MODEL_SETTING_KEY, $arkModelId);
-        $this->setConfiguredModelId(self::DEEPSEEK_MODEL_SETTING_KEY, $deepSeekModelId);
+        $actor = $this->actor($request);
+        $this->boundaryHook->beforeMutation($actor);
+        $this->sourceProviderService->updateModelBindings($actor, $arkModelId, $deepSeekModelId);
 
         return redirect()
             ->route('admin.ai-source-providers.index')
             ->with('message', __('admin.ai_source_providers.message.bindings_updated'));
     }
 
-    public function upsertModelApi(Request $request): RedirectResponse
+    public function upsertModelApi(UpsertAiVisibilityModelApiRequest $request): RedirectResponse
     {
-        $payload = $this->validateModelApiPayload($request);
-        $bindingType = (string) $payload['binding_type'];
-        $model = $this->configuredModelForBinding($bindingType);
-        $apiKey = trim((string) ($payload['api_key'] ?? ''));
-
-        if ($model === null && $apiKey === '') {
-            return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.api_key_required'));
-        }
-        if ($model instanceof AiModel
-            && $apiKey === ''
-            && trim((string) ($model->getRawOriginal('api_key') ?? '')) === '') {
-            return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.api_key_required'));
-        }
-
-        if (! $this->isCallableModelApiPayload($bindingType, $payload)) {
-            $errorKey = $bindingType === 'ark' ? 'ark_model_unavailable' : 'deepseek_model_unavailable';
-
-            return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.'.$errorKey));
-        }
-        if ($model instanceof AiModel
-            && ! $this->endpointPolicy->sameOrigin((string) ($model->api_url ?? ''), (string) $payload['api_url'])
-            && $apiKey === '') {
-            return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.api_key_required'));
-        }
-
-        $modelData = [
-            'name' => trim((string) $payload['name']),
-            'version' => $bindingType === 'ark' ? 'Ark Responses API' : 'DeepSeek API',
-            'model_id' => trim((string) $payload['model_id']),
-            'model_type' => 'chat',
-            'api_url' => trim((string) $payload['api_url']),
-            'failover_priority' => $bindingType === 'ark' ? 40 : 45,
-            'daily_limit' => max(0, (int) ($payload['daily_limit'] ?? 0)),
-            'status' => 'active',
-            'ai_workspace_structured_output_status' => null,
-            'ai_workspace_structured_output_verified_at' => null,
-        ];
-        if ($this->supportsModelMaxTokens()) {
-            $modelData['max_tokens'] = $this->normalizeModelMaxTokens($payload['max_tokens'] ?? null);
-        }
-
-        if ($apiKey !== '') {
-            try {
-                $modelData['api_key'] = $this->apiKeyCrypto->encrypt($apiKey);
-            } catch (RuntimeException) {
-                return back()->withInput($request->except('api_key'))->withErrors(__('admin.ai_source_providers.error.crypto_key_missing'));
-            }
-        }
-
-        $model = $model instanceof AiModel
-            ? tap($model)->update($modelData)
-            : AiModel::query()->create($modelData);
-
-        $this->setConfiguredModelId($this->modelSettingKey($bindingType), (int) $model->id);
+        $actor = $this->actor($request);
+        $this->boundaryHook->beforeMutation($actor);
+        $this->sourceProviderService->upsertModelApi($actor, $request->validated());
 
         return redirect()
             ->route('admin.ai-source-providers.index')
             ->with('message', __('admin.ai_source_providers.message.api_config_saved'));
     }
 
-    public function testProvider(Request $request, int $providerId): JsonResponse
+    public function testProvider(TestAiSourceProviderRequest $request, int $providerId): JsonResponse
     {
-        $payload = $request->validate([
-            'query' => ['nullable', 'string', 'max:200'],
-        ]);
-
-        $provider = AiSourceProvider::query()->whereKey($providerId)->firstOrFail();
+        $payload = $request->validated();
         $query = $this->normalizeTestQuery((string) ($payload['query'] ?? 'GEOFlow'));
-
         $reservation = null;
+        $outboundAttempted = false;
         try {
-            $this->assertProviderReady($provider);
-            $reservation = $this->usageQuota->reserveProvider($provider);
+            $snapshot = $this->sourceProviderService->prepareProviderTest($this->actor($request), $providerId);
+            $reservation = $snapshot->reservation;
             if ($reservation === null) {
-                throw new RuntimeException('搜索源已达到每日调用上限');
+                return $this->safeTestFailure('ai_model_unavailable');
             }
-            $result = $this->doubaoSearchCustomClient->search($provider, $query, $this->providerOptions($provider));
+            $this->boundaryHook->beforeProviderOutbound($snapshot);
+            $this->sourceProviderService->revalidateProviderBeforeOutbound($snapshot);
+            $outboundAttempted = true;
+            $result = $this->doubaoSearchCustomClient->search(
+                $snapshot->providerForProbe(),
+                $query,
+                $snapshot->probeOptions(),
+            );
+            $this->boundaryHook->afterProviderOutbound($snapshot);
+            $this->sourceProviderService->revalidateProviderAfterOutbound($snapshot);
             $this->usageQuota->recordProviderSuccess($reservation);
             $reservation = null;
 
-            return $this->testResultResponse($result, __('admin.ai_source_providers.test_success', [
-                'count' => count($result->sources),
-            ]));
+            return response()->json([
+                'success' => true,
+                'message' => __('admin.ai_source_providers.test_success', ['count' => count($result->sources)]),
+                'meta' => ['source_count' => count($result->sources), 'latency_ms' => $result->latencyMs],
+            ]);
+        } catch (ModelNotFoundException $exception) {
+            throw $exception;
         } catch (Throwable $exception) {
-            if ($reservation !== null) {
+            if ($reservation instanceof AiUsageReservation && $outboundAttempted) {
                 $this->usageQuota->recordProviderAttempt($reservation);
+            } elseif ($reservation instanceof AiUsageReservation) {
+                $this->usageQuota->releaseProvider($reservation);
             }
 
-            return response()->json([
-                'success' => false,
-                'message' => __('admin.ai_source_providers.test_failed', [
-                    'message' => $this->previewMessage($exception->getMessage()),
-                ]),
-            ], 422);
+            return $this->safeTestFailure($this->safeErrorCode($exception));
         }
     }
 
-    public function testModelBinding(Request $request): JsonResponse
+    public function testModelBinding(TestAiVisibilityModelBindingRequest $request): JsonResponse
     {
-        $payload = $request->validate([
-            'binding_type' => ['required', 'in:ark,deepseek'],
-            'model_id' => ['required', 'integer', 'min:1'],
-            'query' => ['nullable', 'string', 'max:200'],
-        ]);
-
+        $payload = $request->validated();
         $bindingType = (string) $payload['binding_type'];
-        $model = AiModel::query()->whereKey((int) $payload['model_id'])->firstOrFail();
-        $query = $this->normalizeTestQuery((string) ($payload['query'] ?? 'GEOFlow'));
-        $canUpdateWorkspaceReadiness = (bool) $request->user('admin')?->isSuperAdmin();
-
-        if ($bindingType === 'ark' && ! $this->isCallableArkModel($model)) {
-            return response()->json([
-                'success' => false,
-                'message' => __('admin.ai_source_providers.test_failed', [
-                    'message' => $this->previewMessage(__('admin.ai_source_providers.error.ark_model_unavailable')),
-                ]),
-            ], 422);
-        }
-        if ($bindingType === 'deepseek' && ! $this->isCallableDeepSeekModel($model)) {
-            return response()->json([
-                'success' => false,
-                'message' => __('admin.ai_source_providers.test_failed', [
-                    'message' => $this->previewMessage(__('admin.ai_source_providers.error.deepseek_model_unavailable')),
-                ]),
-            ], 422);
-        }
-
         $reservation = null;
+        $outboundAttempted = false;
+        $workspaceFailurePersisted = false;
+        $usageSession = null;
         try {
-            $reservation = $this->usageQuota->reserveModel($model);
+            $snapshot = $this->modelTestPreparation->prepareSystemBinding(
+                $this->actor($request),
+                (int) $payload['model_id'],
+                $bindingType,
+            );
+            $reservation = $snapshot->reservation;
+            $usageSession = $this->usageSessions->create($snapshot);
             if ($reservation === null) {
-                throw new RuntimeException('模型已达到每日调用上限');
+                return $this->safeTestFailure('ai_model_unavailable');
             }
+            $model = $snapshot->modelForWorkspaceProbe();
+            $this->modelTestBoundaryHook->beforeRevalidation($snapshot);
+            $this->modelTestPreparation->revalidateImmediatelyBeforeOutbound($snapshot);
+            $this->safeHttp->resolveTarget($snapshot->endpoint);
+            $probeAttempt = $this->aiWorkspaceModelProbe->start($model, $usageSession);
+            $outboundAttempted = $usageSession->hasStartedProviderAttempt();
+            $this->modelTestBoundaryHook->afterOutboundBeforePersist($snapshot);
+            $this->modelTestPreparation->revalidateWorkspaceAfterOutbound($snapshot);
+            $usageSession->finalizePendingOutcomes();
+            if ($probeAttempt->requiresPlainTextFallback()) {
+                $this->modelTestBoundaryHook->beforeRevalidation($snapshot);
+                $this->modelTestPreparation->revalidateImmediatelyBeforeOutbound($snapshot);
+                $this->safeHttp->resolveTarget($snapshot->endpoint);
+            }
+            try {
+                $probeResult = $this->aiWorkspaceModelProbe->finish($model, $probeAttempt, $usageSession);
+            } catch (Throwable $exception) {
+                if ($probeAttempt->requiresPlainTextFallback()) {
+                    $this->modelTestBoundaryHook->afterOutboundBeforePersist($snapshot);
+                    $this->modelTestPreparation->revalidateWorkspaceAfterOutbound($snapshot);
+                }
+                $this->modelTestPreparation->persistWorkspaceFailure(
+                    $snapshot,
+                    $this->aiWorkspaceModelProbe->failureCode($exception),
+                );
+                $workspaceFailurePersisted = true;
+                $usageSession->finalizePendingOutcomes();
 
-            $result = $canUpdateWorkspaceReadiness
-                ? $this->aiWorkspaceModelProbe->probe($model)
-                : ($bindingType === 'ark'
-                    ? $this->structuredOutputHealthCheck->testArkResponsesStructuredOutput($model, $query)
-                    : $this->structuredOutputHealthCheck->testDeepSeekJsonOutput($model, $query));
+                throw $exception;
+            }
+            if ($probeAttempt->requiresPlainTextFallback()) {
+                $this->modelTestBoundaryHook->afterOutboundBeforePersist($snapshot);
+            }
+            $this->modelTestPreparation->persistWorkspaceReadiness($snapshot, $probeResult);
+            $usageSession->succeededPending();
             $this->usageQuota->recordModelSuccess($reservation);
             $reservation = null;
 
-            return $this->structuredTestResponse($result, __('admin.ai_source_providers.model_test_success', [
-                'provider' => $bindingType === 'ark' ? 'Ark Web Search' : 'DeepSeek',
-            ]));
+            return response()->json([
+                'success' => true,
+                'message' => __('admin.ai_source_providers.model_test_success', [
+                    'provider' => $bindingType === 'ark' ? 'Ark Web Search' : 'DeepSeek',
+                ]),
+                'meta' => [
+                    'workspace_readiness' => $probeResult->profile,
+                    'workspace_readiness_expires_at' => $probeResult->expiresAt->toISOString(),
+                ],
+            ]);
+        } catch (ModelNotFoundException $exception) {
+            throw $exception;
         } catch (Throwable $exception) {
-            if ($canUpdateWorkspaceReadiness) {
-                $this->aiWorkspaceModelProbe->recordFailure($model, $exception);
+            $outboundAttempted = $outboundAttempted
+                || ($usageSession instanceof GovernanceAiModelUsageSession
+                    && $usageSession->hasStartedProviderAttempt());
+            if ($usageSession instanceof GovernanceAiModelUsageSession) {
+                if ($exception instanceof AiModelAccessException) {
+                    $usageSession->revokedPending();
+                } else {
+                    $usageSession->discardedPending();
+                }
             }
-            if ($reservation !== null) {
+            if ($outboundAttempted
+                && ! $workspaceFailurePersisted
+                && ! $exception instanceof AiModelAccessException
+                && isset($snapshot)
+            ) {
+                try {
+                    $this->modelTestPreparation->persistWorkspaceFailure(
+                        $snapshot,
+                        $this->aiWorkspaceModelProbe->failureCode($exception),
+                    );
+                } catch (AiModelAccessException $accessException) {
+                    $exception = $accessException;
+                } catch (Throwable $persistenceException) {
+                    report($persistenceException);
+                }
+            }
+            if ($reservation instanceof AiUsageReservation && $outboundAttempted) {
                 $this->usageQuota->recordModelAttempt($reservation);
+            } elseif ($reservation instanceof AiUsageReservation) {
+                $this->usageQuota->releaseModel($reservation);
             }
 
-            return response()->json([
-                'success' => false,
-                'message' => __('admin.ai_source_providers.test_failed', [
-                    'message' => $this->previewMessage($exception->getMessage()),
-                ]),
-            ], 422);
+            return $this->safeTestFailure($this->safeErrorCode($exception));
         }
     }
 
@@ -420,14 +389,20 @@ class AiSourceProviderController extends Controller
     /**
      * @return array{id:int,name:string,model_id:string,api_url:string,daily_limit:int,max_tokens:?int,masked_api_key:string}
      */
-    private function loadModelApiConfig(int $modelId, string $bindingType): array
+    private function loadModelApiConfig(Admin $actor, int $modelId, string $bindingType): array
     {
         $defaults = $this->defaultModelApiConfig($bindingType);
         if ($modelId <= 0 || ! Schema::hasTable('ai_models')) {
             return $defaults;
         }
 
-        $model = AiModel::query()->whereKey($modelId)->first();
+        $model = AiModel::query()
+            ->ownedBy($actor)
+            ->systemOnly()
+            ->active()
+            ->unarchived()
+            ->whereKey($modelId)
+            ->first();
         if (! $model instanceof AiModel) {
             return $defaults;
         }
@@ -472,36 +447,6 @@ class AiSourceProviderController extends Controller
     }
 
     /**
-     * @return array<int, array{id:int,name:string,model_id:string,api_url:string,provider_hint:string}>
-     */
-    private function loadActiveChatModels(): array
-    {
-        if (! Schema::hasTable('ai_models')) {
-            return [];
-        }
-
-        return AiModel::query()
-            ->select(['id', 'name', 'model_id', 'api_url'])
-            ->where('status', 'active')
-            ->where(function ($query): void {
-                $query->whereNull('model_type')
-                    ->orWhere('model_type', '')
-                    ->orWhere('model_type', 'chat');
-            })
-            ->orderBy('failover_priority')
-            ->orderBy('name')
-            ->get()
-            ->map(fn (AiModel $model): array => [
-                'id' => (int) $model->id,
-                'name' => (string) $model->name,
-                'model_id' => (string) ($model->model_id ?? ''),
-                'api_url' => (string) ($model->api_url ?? ''),
-                'provider_hint' => $this->modelProviderHint($model),
-            ])
-            ->all();
-    }
-
-    /**
      * @return array{provider_count:int,active_provider_count:int,provider_today_usage:int,failed_runs:int}
      */
     private function loadStats(): array
@@ -522,188 +467,6 @@ class AiSourceProviderController extends Controller
         ];
     }
 
-    /**
-     * @return array<string, mixed>
-     */
-    private function validateProviderPayload(Request $request, bool $isUpdate): array
-    {
-        $rules = [
-            'name' => ['required', 'string', 'max:120'],
-            'endpoint_url' => ['nullable', 'url', 'max:500'],
-            'api_key' => [$isUpdate ? 'nullable' : 'required', 'string', 'max:2000'],
-            'daily_limit' => ['nullable', 'integer', 'min:0'],
-            'count' => ['nullable', 'integer', 'min:1', 'max:20'],
-            'search_type' => ['nullable', 'in:web'],
-            'content_formats' => ['nullable', 'in:Markdown,Text'],
-            'need_summary' => ['nullable', 'boolean'],
-            'need_content' => ['nullable', 'boolean'],
-            'need_url' => ['nullable', 'boolean'],
-            'auth_info_level' => ['nullable', 'string', 'max:80'],
-            'sites' => ['nullable', 'string', 'max:1000'],
-            'block_hosts' => ['nullable', 'string', 'max:1000'],
-        ];
-
-        if ($isUpdate) {
-            $rules['status'] = ['nullable', 'in:active,inactive'];
-        }
-
-        return $request->validate($rules);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function validateModelApiPayload(Request $request): array
-    {
-        return $request->validate([
-            'binding_type' => ['required', 'in:ark,deepseek'],
-            'name' => ['required', 'string', 'max:100'],
-            'model_id' => ['required', 'string', 'max:100'],
-            'api_url' => ['required', 'url', 'max:500'],
-            'api_key' => ['nullable', 'string', 'max:500'],
-            'daily_limit' => ['nullable', 'integer', 'min:0'],
-            'max_tokens' => ['nullable', 'integer', 'min:1', 'max:1000000'],
-        ]);
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     * @return array<string, mixed>
-     */
-    private function providerAttributes(array $payload, Request $request): array
-    {
-        return [
-            'name' => trim((string) $payload['name']),
-            'endpoint_url' => $this->providerEndpoint((string) ($payload['endpoint_url'] ?? '')),
-            'daily_limit' => max(0, (int) ($payload['daily_limit'] ?? 0)),
-            'metadata_json' => [
-                'count' => max(1, min(20, (int) ($payload['count'] ?? config('geoflow.ai_visibility.default_search_count', 10)))),
-                'search_type' => (string) ($payload['search_type'] ?? 'web'),
-                'need_summary' => $request->boolean('need_summary'),
-                'need_content' => $request->boolean('need_content'),
-                'need_url' => $request->boolean('need_url', true),
-                'content_formats' => (string) ($payload['content_formats'] ?? 'Markdown'),
-                'auth_info_level' => trim((string) ($payload['auth_info_level'] ?? '')),
-                'sites' => $this->parseList((string) ($payload['sites'] ?? '')),
-                'block_hosts' => $this->parseList((string) ($payload['block_hosts'] ?? '')),
-            ],
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function providerOptions(AiSourceProvider $provider): array
-    {
-        return $provider->visibilitySearchOptions();
-    }
-
-    private function providerEndpoint(string $endpoint): string
-    {
-        $endpoint = trim($endpoint);
-        if ($endpoint !== '') {
-            return $endpoint;
-        }
-
-        return (string) config('geoflow.ai_visibility.doubao_search_endpoint', 'https://open.feedcoopapi.com/search_api/web_search');
-    }
-
-    private function assertProviderReady(AiSourceProvider $provider): void
-    {
-        if ((string) ($provider->provider_key ?? '') !== AiSourceProvider::PROVIDER_DOUBAO_SEARCH_CUSTOM) {
-            throw new RuntimeException(__('admin.ai_source_providers.error.unsupported_provider'));
-        }
-
-        if ((string) ($provider->status ?? 'inactive') !== 'active') {
-            throw new RuntimeException(__('admin.ai_source_providers.error.provider_inactive'));
-        }
-        if (! $this->endpointPolicy->acceptsSearchApi((string) ($provider->endpoint_url ?? ''))) {
-            throw new RuntimeException(__('admin.ai_source_providers.error.unsupported_provider'));
-        }
-    }
-
-    private function testResultResponse(AiVisibilityResult $result, string $message): JsonResponse
-    {
-        $sources = array_map(static fn ($source): array => [
-            'title' => $source->title,
-            'url' => $source->url,
-            'domain' => $source->domain,
-        ], array_slice($result->sources, 0, 3));
-
-        return response()->json([
-            'success' => true,
-            'message' => $message,
-            'meta' => [
-                'provider_type' => $result->providerType,
-                'provider_key' => $result->providerKey,
-                'model_id' => $result->modelId,
-                'source_count' => count($result->sources),
-                'latency_ms' => $result->latencyMs,
-                'answer_preview' => mb_substr($result->answerText, 0, 240, 'UTF-8'),
-                'sources' => $sources,
-                'structured_output' => [
-                    'source_count' => count($result->sources),
-                    'sources' => $sources,
-                ],
-            ],
-        ]);
-    }
-
-    /**
-     * @param  array{provider:string,endpoint:string,http_status:int,latency_ms:int,structured_output:array<string,mixed>,raw_preview:string}  $result
-     */
-    private function structuredTestResponse(array $result, string $message): JsonResponse
-    {
-        return response()->json([
-            'success' => true,
-            'message' => $message,
-            'meta' => [
-                'provider_type' => 'model_structured_output',
-                'provider_key' => $result['provider'],
-                'http_status' => $result['http_status'],
-                'latency_ms' => $result['latency_ms'],
-                'endpoint' => $result['endpoint'],
-                'structured_output' => $result['structured_output'] ?? [],
-                'answer_preview' => $result['raw_preview'],
-                'workspace_readiness' => $result['profile'] ?? null,
-                'workspace_readiness_expires_at' => $result['expires_at'] ?? null,
-            ],
-        ]);
-    }
-
-    private function isCallableArkModelId(int $modelId): bool
-    {
-        return $this->configuration->isCallableModelId($modelId, 'ark');
-    }
-
-    private function isCallableDeepSeekModelId(int $modelId): bool
-    {
-        return $this->configuration->isCallableModelId($modelId, 'deepseek');
-    }
-
-    private function isCallableArkModel(AiModel $model): bool
-    {
-        return $this->configuration->isCallableModel($model, 'ark');
-    }
-
-    private function isCallableDeepSeekModel(AiModel $model): bool
-    {
-        return $this->configuration->isCallableModel($model, 'deepseek');
-    }
-
-    private function modelProviderHint(AiModel $model): string
-    {
-        if ($this->isCallableArkModel($model)) {
-            return 'ark';
-        }
-
-        if ($this->isCallableDeepSeekModel($model)) {
-            return 'deepseek';
-        }
-
-        return 'chat';
-    }
-
     private function getConfiguredModelId(string $settingKey): int
     {
         return (int) (SiteSetting::query()
@@ -711,42 +474,16 @@ class AiSourceProviderController extends Controller
             ->value('setting_value') ?? 0);
     }
 
-    private function configuredModelForBinding(string $bindingType): ?AiModel
-    {
-        $modelId = $this->getConfiguredModelId($this->modelSettingKey($bindingType));
-        if ($modelId <= 0) {
-            return null;
-        }
+    private function configuredModelIdForActor(
+        Admin $actor,
+        string $settingKey,
+        string $bindingType,
+    ): int {
+        $modelId = $this->getConfiguredModelId($settingKey);
 
-        $model = AiModel::query()->whereKey($modelId)->first();
-
-        return $model instanceof AiModel ? $model : null;
-    }
-
-    private function setConfiguredModelId(string $settingKey, int $modelId): void
-    {
-        SiteSetting::query()->updateOrCreate(
-            ['setting_key' => $settingKey],
-            ['setting_value' => (string) max(0, $modelId)],
-        );
-    }
-
-    private function modelSettingKey(string $bindingType): string
-    {
-        return $bindingType === 'ark'
-            ? self::ARK_MODEL_SETTING_KEY
-            : self::DEEPSEEK_MODEL_SETTING_KEY;
-    }
-
-    /**
-     * @param  array<string,mixed>  $payload
-     */
-    private function isCallableModelApiPayload(string $bindingType, array $payload): bool
-    {
-        return $this->endpointPolicy->acceptsModelApi(
-            $bindingType,
-            (string) ($payload['api_url'] ?? ''),
-        );
+        return $modelId > 0 && $this->configuration->isCallableAdminOwnedModelId($modelId, $bindingType, $actor)
+            ? $modelId
+            : 0;
     }
 
     private function supportsModelMaxTokens(): bool
@@ -754,40 +491,11 @@ class AiSourceProviderController extends Controller
         return Schema::hasTable('ai_models') && Schema::hasColumn('ai_models', 'max_tokens');
     }
 
-    private function normalizeModelMaxTokens(mixed $value): ?int
-    {
-        if ($value === null || $value === '') {
-            return null;
-        }
-
-        $intValue = (int) $value;
-
-        return $intValue > 0 ? $intValue : null;
-    }
-
-    private function normalizeStatus(string $status): string
-    {
-        return in_array($status, ['active', 'inactive'], true) ? $status : 'active';
-    }
-
     private function normalizeTestQuery(string $query): string
     {
         $query = trim($query);
 
         return $query !== '' ? mb_substr($query, 0, 200, 'UTF-8') : 'GEOFlow';
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function parseList(string $value): array
-    {
-        $items = preg_split('/[\r\n,]+/u', $value) ?: [];
-
-        return array_values(array_filter(
-            array_map(static fn (string $item): string => trim($item), $items),
-            static fn (string $item): bool => $item !== '',
-        ));
     }
 
     private function joinList(mixed $value): string
@@ -810,8 +518,35 @@ class AiSourceProviderController extends Controller
         };
     }
 
-    private function previewMessage(string $message): string
+    private function actor(Request $request): Admin
     {
-        return mb_substr(trim($message), 0, 300, 'UTF-8');
+        $actor = $request->user('admin');
+        abort_unless($actor instanceof Admin, 403);
+
+        return $actor;
+    }
+
+    private function safeErrorCode(Throwable $exception): string
+    {
+        if ($exception instanceof AiModelAccessException) {
+            return $exception->getErrorCode();
+        }
+        if ($exception instanceof AuthorizationException) {
+            return 'ai_system_config_super_admin_only';
+        }
+        if ($exception instanceof ValidationException) {
+            return 'ai_model_unavailable';
+        }
+
+        return 'ai_model_unavailable';
+    }
+
+    private function safeTestFailure(string $errorCode): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'error_code' => $errorCode,
+            'message' => __('admin.ai_source_providers.test_failed', ['message' => $errorCode]),
+        ], 422);
     }
 }

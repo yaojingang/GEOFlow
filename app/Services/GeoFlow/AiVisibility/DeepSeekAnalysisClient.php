@@ -23,8 +23,13 @@ final class DeepSeekAnalysisClient
      * @param  list<AiVisibilitySourceData>  $sources
      * @param  array<string,mixed>  $options
      */
-    public function analyze(AiModel $model, string $prompt, array $sources = [], array $options = []): AiVisibilityResult
-    {
+    public function analyze(
+        AiModel $model,
+        string $prompt,
+        array $sources = [],
+        array $options = [],
+        ?AiVisibilityPreparedModelRequest $preparedRequest = null,
+    ): AiVisibilityResult {
         $prompt = trim($prompt);
         if ($prompt === '') {
             throw new RuntimeException('DeepSeek 分析提示词为空');
@@ -53,7 +58,11 @@ final class DeepSeekAnalysisClient
             maxTokens: $maxTokens > 0 ? $maxTokens : null,
         );
 
-        $fullPrompt = $this->buildPrompt($prompt, $sources);
+        $preparedRequest ??= $this->prepareRequest($prompt, $sources);
+        $fullPrompt = $preparedRequest->providerPayload;
+        if (! is_string($fullPrompt)) {
+            throw new RuntimeException('DeepSeek 分析请求结构无效');
+        }
         $request = [
             'provider_url' => $providerUrl,
             'model_id' => $modelId,
@@ -96,7 +105,7 @@ final class DeepSeekAnalysisClient
     /**
      * @param  list<AiVisibilitySourceData>  $sources
      */
-    private function buildPrompt(string $prompt, array $sources): string
+    public function fullPrompt(string $prompt, array $sources): string
     {
         if ($sources === []) {
             return $prompt;
@@ -112,6 +121,14 @@ final class DeepSeekAnalysisClient
         }
 
         return $prompt."\n\n可用信源如下（这些是外部搜索/工具返回的信源，不代表 DeepSeek 原生引用）：\n".implode("\n\n", $sourceLines);
+    }
+
+    /** @param list<AiVisibilitySourceData> $sources */
+    public function prepareRequest(string $prompt, array $sources): AiVisibilityPreparedModelRequest
+    {
+        $fullPrompt = $this->fullPrompt($prompt, $sources);
+
+        return new AiVisibilityPreparedModelRequest($fullPrompt, $fullPrompt);
     }
 
     /**

@@ -2,7 +2,11 @@
 
 namespace App\Services\GeoFlow\KnowledgeFacts;
 
-use App\Jobs\FinalizeKnowledgeFactGenerationJob;
+use App\Data\Ai\KnowledgeFactGenerationExecutionContext;
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\KnowledgeFactAiGenerationException;
+use App\Exceptions\KnowledgeFactFinalizationException;
+use App\Exceptions\PermanentAiProviderException;
 use App\Jobs\GenerateKnowledgeFactBatchJob;
 use App\Models\Admin;
 use App\Models\AiModel;
@@ -10,6 +14,8 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeFactGenerationRun;
 use App\Models\KnowledgeFactLibrary;
 use App\Services\AiWorkspace\AiWorkspaceModelReadiness;
+use App\Support\GeoFlow\AiExecutionErrorSanitizer;
+use App\Support\GeoFlow\AiModelFailoverDecider;
 use Illuminate\Bus\Batch;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
@@ -24,26 +30,32 @@ class KnowledgeFactGenerationCoordinator
         private readonly KnowledgeFactAiGenerator $generator,
         private readonly AiWorkspaceModelReadiness $readiness,
         private readonly KnowledgeFactValuePolicy $valuePolicy,
+        private readonly KnowledgeFactGenerationAiExecutionGuard $executionGuard,
+        private readonly KnowledgeFactGenerationModelRateLimiter $modelRateLimiter,
+        private readonly AiModelFailoverDecider $failoverDecider,
+        private readonly AiExecutionErrorSanitizer $errorSanitizer,
     ) {}
 
-    public function start(KnowledgeFactLibrary $library, AiModel $model, Admin $admin, string $mode, int $targetCount, ?string $requestKey = null): KnowledgeFactGenerationRun
+    public function start(KnowledgeFactLibrary $library, AiModel|int $model, Admin $admin, string $mode, int $targetCount, ?string $requestKey = null): KnowledgeFactGenerationRun
     {
         if (! in_array($mode, ['initial', 'supplement', 'refresh_stale'], true)) {
             throw ValidationException::withMessages(['mode' => 'knowledge_fact_generation_mode_invalid']);
         }
         $targetCount = max(1, min((int) config('geoflow.knowledge_fact_generation_max_per_run', 200), $targetCount));
         $requestKey ??= (string) Str::uuid();
-        $run = DB::transaction(function () use ($library, $model, $admin, $mode, $targetCount, $requestKey): KnowledgeFactGenerationRun {
+        $requestedModelId = $model instanceof AiModel ? (int) $model->getKey() : $model;
+        $run = DB::transaction(function () use ($library, $requestedModelId, $admin, $mode, $targetCount, $requestKey): KnowledgeFactGenerationRun {
             $locked = KnowledgeFactLibrary::query()->whereKey($library->id)->lockForUpdate()->firstOrFail();
             $locked->load('knowledgeBase');
             $existingRun = $locked->generationRuns()->where('request_key', $requestKey)->first();
             if ($existingRun instanceof KnowledgeFactGenerationRun) {
-                if ($existingRun->mode !== $mode || (int) $existingRun->target_count !== $targetCount || (int) $existingRun->ai_model_id !== (int) $model->id) {
+                if ($existingRun->mode !== $mode || (int) $existingRun->target_count !== $targetCount || (int) $existingRun->ai_model_id !== $requestedModelId) {
                     throw new ConflictHttpException('knowledge_fact_generation_idempotency_conflict');
                 }
 
                 return $existingRun;
             }
+            $identity = $this->executionGuard->snapshotForCreation($admin, $requestedModelId);
             $servingSourceHash = $locked->knowledgeBase->servingChunkSourceHash();
             if ($locked->knowledgeBase->chunk_sync_status !== 'ready'
                 || $servingSourceHash === '') {
@@ -52,7 +64,9 @@ class KnowledgeFactGenerationCoordinator
             if (KnowledgeFactGenerationRun::query()->where('active_key', $this->activeKey($locked->id))->exists()) {
                 throw new ConflictHttpException('knowledge_fact_generation_active');
             }
-            if ($model->status !== 'active' || in_array((string) $model->model_type, ['embedding', 'image'], true) || ! $this->readiness->canAttempt($model)) {
+            $lockedModel = AiModel::query()->whereKey($identity['requested_ai_model_id'])->lockForUpdate()->firstOrFail();
+            if (! in_array((string) ($lockedModel->model_type ?? ''), ['', 'chat'], true)
+                || ! $this->readiness->canAttempt($lockedModel)) {
                 throw ValidationException::withMessages(['ai_model_id' => 'knowledge_fact_generation_model_unavailable']);
             }
             $existingCount = $locked->facts()->where('is_enabled', true)->count();
@@ -62,11 +76,16 @@ class KnowledgeFactGenerationCoordinator
             $generationLimit = $mode === 'supplement' ? max(0, $targetCount - $existingCount) : $targetCount;
             $run = $locked->generationRuns()->create([
                 'mode' => $mode, 'target_count' => $targetCount, 'source_hash' => $servingSourceHash,
-                'base_working_version' => $locked->working_version, 'status' => 'queued', 'ai_model_id' => $model->id,
+                'base_working_version' => $locked->working_version, 'status' => 'queued', 'ai_model_id' => $lockedModel->id,
                 'created_by_admin_id' => $admin->id, 'request_key' => $requestKey, 'active_key' => $this->activeKey($locked->id),
                 'result_json' => ['candidates' => [], 'conflicts' => [], 'batches' => []],
                 'batch_meta_json' => ['generation_limit' => $generationLimit, 'existing_count' => $existingCount],
             ]);
+            $run->forceFill([
+                ...$identity,
+                'execution_attempt' => 1,
+                'retryable_failure' => true,
+            ])->save();
             $locked->forceFill(['workflow_status' => 'generating'])->save();
 
             return $run;
@@ -115,6 +134,7 @@ class KnowledgeFactGenerationCoordinator
                 fn ($query) => $query->whereNull('generation_key'),
             )
             ->select(['id', 'knowledge_base_id', 'content_hash'])
+            ->orderBy('id')
             ->get();
         $evidence = $chunks->map(fn ($chunk) => [
             'evidence_key' => 'chunk:'.$chunk->id.':'.substr((string) $chunk->content_hash, 0, 12),
@@ -130,29 +150,125 @@ class KnowledgeFactGenerationCoordinator
         $jobCount = min(8, max(1, (int) ceil($generationLimit / $batchSize)));
         $groups = array_chunk($evidence, max(1, (int) ceil(count($evidence) / $jobCount)));
         $jobs = [];
+        $claims = [];
         foreach (array_slice($groups, 0, $jobCount) as $index => $group) {
+            $sequence = $index + 1;
             $hash = hash('sha256', json_encode($group, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
-            $jobs[] = new GenerateKnowledgeFactBatchJob($run->id, $index + 1, $hash, $group);
+            $claims[(string) $sequence] = [
+                'input_hash' => $hash,
+                'status' => 'queued',
+                'dispatch_token' => (string) Str::uuid7(),
+                'execution_attempt' => (int) $run->execution_attempt,
+                'attempt_count' => 0,
+            ];
+        }
+        $finalizerToken = (string) Str::uuid7();
+        $registered = DB::transaction(function () use ($run, $claims, $finalizerToken): ?KnowledgeFactGenerationRun {
+            $locked = KnowledgeFactGenerationRun::query()->whereKey($run->id)->lockForUpdate()->first();
+            if (! $locked instanceof KnowledgeFactGenerationRun
+                || ! $locked->isActive()
+                || $locked->cancel_requested_at !== null
+                || $locked->job_batch_id !== null
+                || (array) $locked->batch_claims_json !== []) {
+                return null;
+            }
+            $locked->forceFill([
+                'batch_claims_json' => $claims,
+                'finalizer_lease_token' => $finalizerToken,
+                'finalizer_lease_expires_at' => null,
+            ])->save();
+
+            return $locked;
+        }, 3);
+        if (! $registered instanceof KnowledgeFactGenerationRun) {
+            return;
+        }
+        foreach (array_slice($groups, 0, $jobCount) as $index => $group) {
+            $sequence = $index + 1;
+            $claim = $claims[(string) $sequence];
+            $job = new GenerateKnowledgeFactBatchJob(
+                $run->id,
+                $sequence,
+                (string) $claim['input_hash'],
+                $group,
+                (int) $run->execution_attempt,
+                (string) $claim['dispatch_token'],
+            );
+            $job->afterCommit();
+            $jobs[] = $job;
         }
         $runId = $run->id;
-        $batch = Bus::batch($jobs)->name("knowledge-facts:{$runId}")->allowFailures()->finally(static function (Batch $batch) use ($runId): void {
-            FinalizeKnowledgeFactGenerationJob::dispatch($runId)->onQueue('knowledge');
+        $executionAttempt = (int) $run->execution_attempt;
+        $batch = Bus::batch($jobs)->name("knowledge-facts:{$runId}")->allowFailures()->finally(static function (Batch $batch) use ($runId, $executionAttempt, $finalizerToken): void {
+            app(KnowledgeFactGenerationFinalizerDispatcher::class)->dispatch(
+                $runId,
+                $executionAttempt,
+                $finalizerToken,
+            );
         })->onQueue('knowledge')->dispatch();
-        KnowledgeFactGenerationRun::query()->whereKey($runId)->whereIn('status', ['queued', 'running'])->update(['job_batch_id' => $batch->id, 'updated_at' => now()]);
+        KnowledgeFactGenerationRun::query()
+            ->whereKey($runId)
+            ->whereIn('status', ['queued', 'running'])
+            ->where('execution_attempt', $executionAttempt)
+            ->where('finalizer_lease_token', $finalizerToken)
+            ->update(['job_batch_id' => $batch->id, 'updated_at' => now()]);
     }
 
     /** @param list<array<string,string>> $evidence */
-    public function processBatch(int $runId, int $sequence, string $inputHash, array $evidence): void
-    {
-        $run = KnowledgeFactGenerationRun::query()->with(['aiModel', 'library.knowledgeBase'])->findOrFail($runId);
-        $batch = data_get($run->result_json, 'batches.'.$sequence);
-        if (! $run->isActive() || $run->cancel_requested_at !== null
-            || (is_array($batch) && ($batch['input_hash'] ?? null) === $inputHash && ($batch['status'] ?? null) === 'completed')) {
+    public function processBatch(
+        int $runId,
+        int $sequence,
+        string $inputHash,
+        array $evidence,
+        ?int $executionAttempt = null,
+        ?string $claimToken = null,
+    ): void {
+        if ($executionAttempt === null || $claimToken === null || $claimToken === '') {
             return;
         }
+        $context = $this->claimBatch(
+            $runId,
+            $sequence,
+            $inputHash,
+            $executionAttempt,
+            $claimToken,
+        );
+        if (! $context instanceof KnowledgeFactGenerationExecutionContext) {
+            return;
+        }
+        $this->processClaimedBatch($context, $evidence);
+    }
+
+    public function claimBatch(
+        int $runId,
+        int $sequence,
+        string $inputHash,
+        int $executionAttempt,
+        string $claimToken,
+        ?string $newLeaseToken = null,
+    ): ?KnowledgeFactGenerationExecutionContext {
+        return $this->executionGuard->claimBatch(
+            $runId,
+            $sequence,
+            $inputHash,
+            $executionAttempt,
+            $claimToken,
+            $newLeaseToken,
+        );
+    }
+
+    /** @param list<array<string,string>> $evidence */
+    public function processClaimedBatch(
+        KnowledgeFactGenerationExecutionContext $context,
+        array $evidence,
+    ): void {
+        $runId = $context->runId;
+        $sequence = $context->batchSequence;
+        $inputHash = $context->inputHash;
+        $run = KnowledgeFactGenerationRun::query()->with(['library.knowledgeBase'])->findOrFail($runId);
         if (! hash_equals((string) $run->source_hash, $run->library->knowledgeBase->servingChunkSourceHash())
             || (int) $run->base_working_version !== (int) $run->library->working_version) {
-            $this->markObsolete($runId);
+            $this->markObsolete($context);
 
             return;
         }
@@ -169,7 +285,7 @@ class KnowledgeFactGenerationCoordinator
         foreach ($evidence as $descriptor) {
             $chunk = $chunks->get((int) $descriptor['chunk_id']);
             if (! $chunk || ! hash_equals((string) $descriptor['content_hash'], (string) $chunk->content_hash)) {
-                $this->markObsolete($runId);
+                $this->markObsolete($context);
 
                 return;
             }
@@ -181,48 +297,269 @@ class KnowledgeFactGenerationCoordinator
             ];
         }
         $generationLimit = (int) data_get($run->batch_meta_json, 'generation_limit', $run->target_count);
-        $facts = $this->generator->generate($run->aiModel, $hydratedEvidence, min((int) config('geoflow.knowledge_fact_generation_batch_size', 25), $generationLimit));
+        $candidates = $this->executionGuard->resolveCandidates($context);
+        $facts = null;
+        $resolvedModel = null;
+        $usageRequestId = (string) Str::uuid();
+        foreach ($candidates as $candidateIndex => $candidate) {
+            $currentModel = $this->executionGuard->registerCandidate($context, $candidate);
+            $this->modelRateLimiter->reserve($currentModel);
+            try {
+                $persistedModel = null;
+                $facts = $this->generator->generate(
+                    $currentModel,
+                    $hydratedEvidence,
+                    min((int) config('geoflow.knowledge_fact_generation_batch_size', 25), $generationLimit),
+                    $context,
+                    function (array $generatedFacts, AiModel $providerModel) use ($run, $context, $sequence, $inputHash, &$persistedModel): array {
+                        $persistedModel = $providerModel;
+
+                        return $this->persistBatchResult(
+                            $run,
+                            $context,
+                            $sequence,
+                            $inputHash,
+                            $generatedFacts,
+                            $providerModel,
+                        );
+                    },
+                    $usageRequestId,
+                    'candidate-'.($candidateIndex + 1).'-batch-'.$context->batchAttempt,
+                );
+                $resolvedModel = $persistedModel ?? $currentModel;
+
+                break;
+            } catch (Throwable $exception) {
+                if ($exception instanceof AiModelAccessException) {
+                    throw $exception;
+                }
+                $hasNextCandidate = $candidateIndex < $candidates->count() - 1;
+                $retryable = $exception instanceof KnowledgeFactAiGenerationException
+                    ? $exception->retryable
+                    : $this->failoverDecider->shouldFailover($exception);
+                if ($retryable && $hasNextCandidate) {
+                    continue;
+                }
+                if (! $retryable) {
+                    throw PermanentAiProviderException::fromProviderFailure($exception);
+                }
+
+                throw $exception;
+            }
+        }
+        if (! is_array($facts) || ! $resolvedModel instanceof AiModel) {
+            throw new \RuntimeException('knowledge_fact_generation_model_unavailable');
+        }
+    }
+
+    /**
+     * @param  list<array<string,mixed>>  $facts
+     * @return list<array<string,mixed>>
+     */
+    private function persistBatchResult(
+        KnowledgeFactGenerationRun $run,
+        KnowledgeFactGenerationExecutionContext $context,
+        int $sequence,
+        string $inputHash,
+        array $facts,
+        AiModel $resolvedModel,
+    ): array {
         $existingKeys = $run->library->facts()->where('is_enabled', true)->pluck('stable_key')->all();
         if ($run->mode === 'supplement') {
             $facts = array_values(array_filter($facts, fn (array $fact): bool => ! in_array($fact['stable_key'], $existingKeys, true)));
         } elseif ($run->mode === 'refresh_stale') {
             $facts = array_values(array_filter($facts, fn (array $fact): bool => in_array($fact['stable_key'], $existingKeys, true)));
         }
-        DB::transaction(function () use ($runId, $sequence, $inputHash, $facts): void {
-            $locked = KnowledgeFactGenerationRun::query()->whereKey($runId)->lockForUpdate()->firstOrFail();
-            if (! $locked->isActive() || $locked->cancel_requested_at !== null) {
-                return;
-            }
-            $result = (array) $locked->result_json;
-            $batches = (array) ($result['batches'] ?? []);
-            if (isset($batches[(string) $sequence]) && data_get($batches, $sequence.'.input_hash') === $inputHash) {
-                return;
-            }
-            $result['candidates'] = array_slice(array_merge((array) ($result['candidates'] ?? []), $facts), 0, 200);
-            $result['batches'][(string) $sequence] = ['input_hash' => $inputHash, 'status' => 'completed', 'candidate_count' => count($facts)];
-            $locked->forceFill(['result_json' => $result, 'result_hash' => hash('sha256', json_encode($result, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE))])->save();
-        }, 3);
+
+        $admin = $this->executionGuard->assertCurrent($context, $resolvedModel);
+        $locked = KnowledgeFactGenerationRun::query()->whereKey($run->getKey())->lockForUpdate()->firstOrFail();
+        if (! $locked->isActive() || $locked->cancel_requested_at !== null) {
+            throw AiModelAccessException::configAccessRevoked($admin);
+        }
+        $result = (array) $locked->result_json;
+        $result['candidates'] = array_slice(array_merge((array) ($result['candidates'] ?? []), $facts), 0, 200);
+        $source = (int) $resolvedModel->owner_admin_id === (int) $admin->getKey()
+            ? 'personal'
+            : 'shared';
+        $result['batches'][(string) $sequence] = [
+            'input_hash' => $inputHash,
+            'status' => 'completed',
+            'candidate_count' => count($facts),
+            'resolved_ai_model_id' => (int) $resolvedModel->getKey(),
+            'resolved_model_source' => $source,
+        ];
+        $claims = (array) $locked->batch_claims_json;
+        $claim = (array) ($claims[(string) $sequence] ?? []);
+        $claim['status'] = 'completed';
+        $claim['candidate_count'] = count($facts);
+        $claim['resolved_ai_model_id'] = (int) $resolvedModel->getKey();
+        $claim['resolved_model_source'] = $source;
+        $claim['lease_token'] = null;
+        $claim['lease_expires_at'] = null;
+        $claims[(string) $sequence] = $claim;
+        $updates = [
+            'result_json' => $result,
+            'batch_claims_json' => $claims,
+            'result_hash' => hash('sha256', json_encode($result, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)),
+        ];
+        if ($locked->resolved_ai_model_id === null) {
+            $updates += [
+                'resolved_ai_model_id' => (int) $resolvedModel->getKey(),
+                'resolved_model_source' => $source,
+                'model_resolved_at' => now(),
+            ];
+        }
+        $locked->forceFill($updates)->save();
+
+        return $facts;
     }
 
-    public function recordBatchFailure(int $runId, int $sequence, string $inputHash, ?Throwable $exception): void
-    {
-        DB::transaction(function () use ($runId, $sequence, $inputHash, $exception): void {
+    public function releaseBatchForRetry(
+        KnowledgeFactGenerationExecutionContext $context,
+        bool $refundAttempt = false,
+    ): void {
+        $this->executionGuard->releaseBatchForRetry($context, $refundAttempt);
+    }
+
+    public function recordBatchFailure(
+        int $runId,
+        int $sequence,
+        string $inputHash,
+        ?Throwable $exception,
+        ?int $executionAttempt = null,
+        ?string $claimToken = null,
+        bool $retryable = true,
+        ?string $batchLeaseToken = null,
+        ?int $batchAttempt = null,
+    ): void {
+        DB::transaction(function () use ($runId, $sequence, $inputHash, $exception, $executionAttempt, $claimToken, $retryable, $batchLeaseToken, $batchAttempt): void {
             $run = KnowledgeFactGenerationRun::query()->whereKey($runId)->lockForUpdate()->first();
-            if (! $run || ! $run->isActive()) {
+            if (! $run || ! $run->isActive() || $executionAttempt === null || $claimToken === null
+                || $batchAttempt === null || $batchAttempt < 0
+                || (int) $run->execution_attempt !== $executionAttempt) {
+                return;
+            }
+            $claims = (array) $run->batch_claims_json;
+            $claim = (array) ($claims[(string) $sequence] ?? []);
+            if (($claim['input_hash'] ?? null) !== $inputHash
+                || (int) ($claim['execution_attempt'] ?? 0) !== $executionAttempt
+                || (int) ($claim['attempt_count'] ?? 0) !== $batchAttempt
+                || (string) ($claim['dispatch_token'] ?? '') === ''
+                || $claimToken === ''
+                || ! hash_equals((string) $claim['dispatch_token'], $claimToken)) {
+                return;
+            }
+            if ($batchLeaseToken !== null) {
+                if (($claim['status'] ?? null) !== 'running'
+                    || (string) ($claim['lease_token'] ?? '') === ''
+                    || ! hash_equals((string) $claim['lease_token'], $batchLeaseToken)) {
+                    return;
+                }
+            } elseif (($claim['status'] ?? null) !== 'queued') {
                 return;
             }
             $result = (array) $run->result_json;
             $result['batches'][(string) $sequence] = ['input_hash' => $inputHash, 'status' => 'failed'];
-            $run->forceFill(['result_json' => $result, 'error_code' => 'batch_failed', 'error_message' => $exception === null ? 'batch_failed' : 'batch_failed:'.$exception::class])->save();
-        });
+            $claim['status'] = 'failed';
+            $claim['lease_token'] = null;
+            $claim['lease_expires_at'] = null;
+            $claim['dispatch_token'] = null;
+            $claims[(string) $sequence] = $claim;
+            $errorCode = match (true) {
+                $exception instanceof AiModelAccessException => $exception->getErrorCode(),
+                $exception instanceof PermanentAiProviderException => $exception->getErrorCode(),
+                default => 'knowledge_fact_generation_batch_failed',
+            };
+            $updates = [
+                'result_json' => $result,
+                'batch_claims_json' => $claims,
+                'error_code' => $errorCode,
+                'error_message' => $this->errorSanitizer->sanitize($errorCode, 'knowledge_fact_generation_batch_failed'),
+                'retryable_failure' => $retryable,
+            ];
+            if (! $retryable) {
+                $updates += [
+                    'status' => KnowledgeFactGenerationRun::STATUS_FAILED,
+                    'active_key' => null,
+                    'failed_at' => now(),
+                ];
+            }
+            $run->forceFill($updates)->save();
+            if (! $retryable) {
+                $run->library()->update(['workflow_status' => 'failed']);
+            }
+        }, 3);
     }
 
-    public function finalize(int $runId): void
-    {
-        DB::transaction(function () use ($runId): void {
+    public function finalize(
+        int $runId,
+        ?int $executionAttempt = null,
+        ?string $leaseToken = null,
+    ): void {
+        try {
+            $this->finalizeTransaction($runId, $executionAttempt, $leaseToken);
+        } catch (Throwable) {
+            throw new KnowledgeFactFinalizationException;
+        }
+    }
+
+    private function finalizeTransaction(
+        int $runId,
+        ?int $executionAttempt,
+        ?string $leaseToken,
+    ): void {
+        DB::transaction(function () use ($runId, $executionAttempt, $leaseToken): void {
             $run = KnowledgeFactGenerationRun::query()->whereKey($runId)->lockForUpdate()->firstOrFail();
+            if (! $run->isActive()
+                || $executionAttempt === null
+                || $leaseToken === null
+                || $leaseToken === ''
+                || (int) $run->execution_attempt !== $executionAttempt
+                || (string) $run->finalizer_lease_token === ''
+                || ! hash_equals((string) $run->finalizer_lease_token, $leaseToken)) {
+                return;
+            }
+            $claims = (array) $run->batch_claims_json;
+            if (collect($claims)->contains(
+                static fn (mixed $claim): bool => in_array(
+                    (string) data_get($claim, 'status'),
+                    ['queued', 'running'],
+                    true,
+                ),
+            )) {
+                throw new \RuntimeException('knowledge_fact_generation_batches_incomplete');
+            }
+            $run->forceFill([
+                'finalizer_lease_expires_at' => now()->addSeconds(60),
+            ])->save();
             $library = KnowledgeFactLibrary::query()->whereKey($run->library_id)->lockForUpdate()->firstOrFail();
-            if (! $run->isActive()) {
+            try {
+                $this->executionGuard->assertFrozenIdentityCurrent($run);
+                $resolvedModelIds = collect($claims)
+                    ->where('status', 'completed')
+                    ->pluck('resolved_ai_model_id')
+                    ->filter(static fn (mixed $modelId): bool => (int) $modelId > 0)
+                    ->map(static fn (mixed $modelId): int => (int) $modelId)
+                    ->unique();
+                if ($resolvedModelIds->isEmpty()) {
+                    $resolvedModelIds = collect([(int) $run->requested_ai_model_id]);
+                }
+                foreach ($resolvedModelIds as $modelId) {
+                    $this->executionGuard->assertFrozenIdentityCurrent($run, $modelId);
+                }
+            } catch (AiModelAccessException $exception) {
+                $run->forceFill([
+                    'status' => KnowledgeFactGenerationRun::STATUS_FAILED,
+                    'active_key' => null,
+                    'error_code' => $exception->getErrorCode(),
+                    'error_message' => $exception->getErrorCode(),
+                    'retryable_failure' => false,
+                    'finalizer_lease_token' => null,
+                    'finalizer_lease_expires_at' => null,
+                    'failed_at' => now(),
+                ])->save();
+                $library->forceFill(['workflow_status' => 'failed'])->save();
+
                 return;
             }
             if ($run->cancel_requested_at !== null) {
@@ -288,7 +625,17 @@ class KnowledgeFactGenerationCoordinator
             $result['conflicts'] = $conflicts;
             $failedBatches = count(array_filter((array) ($result['batches'] ?? []), fn ($batch) => data_get($batch, 'status') === 'failed'));
             $status = $created === 0 && $conflicts === [] ? 'failed' : (($created < $generationLimit || $conflicts !== [] || $failedBatches > 0) ? 'partial' : 'completed');
-            $run->forceFill(['status' => $status, 'active_key' => null, 'result_json' => $result, $status === 'failed' ? 'failed_at' : 'completed_at' => now()])->save();
+            $retryableFailure = $status === KnowledgeFactGenerationRun::STATUS_FAILED
+                && $failedBatches > 0;
+            $run->forceFill([
+                'status' => $status,
+                'active_key' => null,
+                'result_json' => $result,
+                'retryable_failure' => $retryableFailure,
+                'finalizer_lease_token' => null,
+                'finalizer_lease_expires_at' => null,
+                $status === 'failed' ? 'failed_at' : 'completed_at' => now(),
+            ])->save();
             if ($created > 0) {
                 $library->increment('working_version');
             }
@@ -334,9 +681,38 @@ class KnowledgeFactGenerationCoordinator
         }, 3);
     }
 
-    public function markFinalizeFailure(int $runId, ?Throwable $exception = null): void
-    {
-        $this->failRun($runId, 'knowledge_fact_generation_finalize_failed', $exception);
+    public function markFinalizeFailure(
+        int $runId,
+        ?Throwable $exception = null,
+        ?int $executionAttempt = null,
+        ?string $leaseToken = null,
+    ): void {
+        if ($executionAttempt === null || $leaseToken === null || $leaseToken === '') {
+            return;
+        }
+        DB::transaction(function () use ($runId, $executionAttempt, $leaseToken): void {
+            $run = KnowledgeFactGenerationRun::query()->whereKey($runId)->lockForUpdate()->first();
+            if (! $run instanceof KnowledgeFactGenerationRun
+                || ! $run->isActive()
+                || (int) $run->execution_attempt !== $executionAttempt
+                || (string) $run->finalizer_lease_token === ''
+                || ! hash_equals((string) $run->finalizer_lease_token, $leaseToken)) {
+                return;
+            }
+            $library = KnowledgeFactLibrary::query()->whereKey($run->library_id)->lockForUpdate()->firstOrFail();
+            $run->forceFill([
+                'status' => KnowledgeFactGenerationRun::STATUS_FAILED,
+                'active_key' => null,
+                'error_code' => 'knowledge_fact_generation_finalize_failed',
+                'error_message' => $this->errorSanitizer->sanitize(
+                    'knowledge_fact_generation_finalize_failed',
+                ),
+                'retryable_failure' => true,
+                'finalizer_lease_expires_at' => null,
+                'failed_at' => now(),
+            ])->save();
+            $library->forceFill(['workflow_status' => 'failed'])->save();
+        }, 3);
     }
 
     private function failRun(int $runId, string $code, ?Throwable $exception = null): void
@@ -355,15 +731,25 @@ class KnowledgeFactGenerationCoordinator
         }, 3);
     }
 
-    private function markObsolete(int $runId): void
+    private function markObsolete(KnowledgeFactGenerationExecutionContext $context): void
     {
-        DB::transaction(function () use ($runId): void {
-            $run = KnowledgeFactGenerationRun::query()->whereKey($runId)->lockForUpdate()->firstOrFail();
+        DB::transaction(function () use ($context): void {
+            try {
+                $this->executionGuard->assertCurrent($context);
+            } catch (AiModelAccessException) {
+                return;
+            }
+            $run = KnowledgeFactGenerationRun::query()->whereKey($context->runId)->lockForUpdate()->firstOrFail();
             if (! $run->isActive()) {
                 return;
             }
             $library = KnowledgeFactLibrary::query()->whereKey($run->library_id)->lockForUpdate()->firstOrFail();
-            $run->forceFill(['status' => 'obsolete', 'active_key' => null, 'completed_at' => now()])->save();
+            $run->forceFill([
+                'status' => 'obsolete',
+                'active_key' => null,
+                'retryable_failure' => false,
+                'completed_at' => now(),
+            ])->save();
             $library->forceFill(['workflow_status' => 'review_required'])->save();
         }, 3);
     }
@@ -373,14 +759,24 @@ class KnowledgeFactGenerationCoordinator
         DB::transaction(function () use ($runId): void {
             $run = KnowledgeFactGenerationRun::query()->whereKey($runId)->lockForUpdate()->firstOrFail();
             $library = KnowledgeFactLibrary::query()->whereKey($run->library_id)->lockForUpdate()->firstOrFail();
-            $run->forceFill(['status' => 'completed', 'active_key' => null, 'completed_at' => now()])->save();
+            $run->forceFill([
+                'status' => 'completed',
+                'active_key' => null,
+                'retryable_failure' => false,
+                'completed_at' => now(),
+            ])->save();
             $library->forceFill(['workflow_status' => 'idle'])->save();
         }, 3);
     }
 
     private function markCancelled(KnowledgeFactGenerationRun $run, KnowledgeFactLibrary $library): void
     {
-        $run->forceFill(['status' => 'cancelled', 'active_key' => null, 'cancelled_at' => now()])->save();
+        $run->forceFill([
+            'status' => 'cancelled',
+            'active_key' => null,
+            'retryable_failure' => false,
+            'cancelled_at' => now(),
+        ])->save();
         $library->forceFill(['workflow_status' => 'idle'])->save();
     }
 

@@ -3584,7 +3584,9 @@ class AdminDistributionPageTest extends TestCase
 
     public function test_task_creation_persists_selected_distribution_channels(): void
     {
+        $admin = $this->admin();
         $fixtures = $this->taskFixtures();
+        $fixtures['ai_model']->forceFill(['owner_admin_id' => $admin->id])->save();
         $channelOne = DistributionChannel::query()->create([
             'name' => '官网主站',
             'domain' => 'example.com',
@@ -3600,7 +3602,7 @@ class AdminDistributionPageTest extends TestCase
             'status' => 'active',
         ]);
 
-        $this->actingAs($this->admin(), 'admin')
+        $this->actingAs($admin, 'admin')
             ->post(route('admin.tasks.store'), [
                 'task_name' => '分发任务',
                 'title_library_id' => $fixtures['title_library']->id,

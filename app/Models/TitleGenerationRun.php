@@ -19,6 +19,19 @@ class TitleGenerationRun extends Model
 
     public const STATUS_CANCELLED = 'cancelled';
 
+    protected $hidden = [
+        'dispatch_token',
+        'lease_token',
+        'model_access_admin_id',
+        'model_access_admin_role',
+        'ai_config_access_version',
+        'requested_ai_model_id',
+        'resolved_ai_model_id',
+        'resolved_model_source',
+        'resolver_policy_version',
+        'custom_prompt',
+    ];
+
     protected $fillable = [
         'title_library_id',
         'keyword_library_id',
@@ -70,6 +83,7 @@ class TitleGenerationRun extends Model
         'model_request_count' => 0,
         'batch_attempt_count' => 0,
         'manual_retry_count' => 0,
+        'retryable_failure' => true,
         'locale' => 'zh_CN',
     ];
 
@@ -80,6 +94,11 @@ class TitleGenerationRun extends Model
             'keyword_library_id' => 'integer',
             'ai_model_id' => 'integer',
             'created_by_admin_id' => 'integer',
+            'model_access_admin_id' => 'integer',
+            'ai_config_access_version' => 'integer',
+            'requested_ai_model_id' => 'integer',
+            'resolved_ai_model_id' => 'integer',
+            'resolver_policy_version' => 'integer',
             'requested_count' => 'integer',
             'batch_size' => 'integer',
             'batch_sequence' => 'integer',
@@ -94,9 +113,11 @@ class TitleGenerationRun extends Model
             'model_request_count' => 'integer',
             'batch_attempt_count' => 'integer',
             'manual_retry_count' => 'integer',
+            'retryable_failure' => 'boolean',
             'keyword_snapshot' => 'array',
             'available_at' => 'datetime',
             'lease_expires_at' => 'datetime',
+            'model_resolved_at' => 'datetime',
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
             'failed_at' => 'datetime',
@@ -124,6 +145,21 @@ class TitleGenerationRun extends Model
         return $this->belongsTo(Admin::class, 'created_by_admin_id');
     }
 
+    public function modelAccessAdmin(): BelongsTo
+    {
+        return $this->belongsTo(Admin::class, 'model_access_admin_id');
+    }
+
+    public function requestedAiModel(): BelongsTo
+    {
+        return $this->belongsTo(AiModel::class, 'requested_ai_model_id');
+    }
+
+    public function resolvedAiModel(): BelongsTo
+    {
+        return $this->belongsTo(AiModel::class, 'resolved_ai_model_id');
+    }
+
     public function isActive(): bool
     {
         return in_array($this->status, [self::STATUS_QUEUED, self::STATUS_RUNNING], true);
@@ -133,6 +169,7 @@ class TitleGenerationRun extends Model
     {
         return in_array($this->status, [self::STATUS_PARTIAL, self::STATUS_FAILED, self::STATUS_CANCELLED], true)
             && $this->ai_model_id !== null
+            && (bool) $this->retryable_failure
             && (string) $this->failure_code !== 'request_budget_exhausted'
             && (int) $this->manual_retry_count < (int) config('geoflow.title_ai_max_manual_retries', 3);
     }

@@ -15,18 +15,26 @@ class FinalizeKnowledgeFactGenerationJob implements ShouldQueue
 
     public int $timeout = 30;
 
-    public function __construct(public readonly int $runId)
-    {
+    public function __construct(
+        public readonly int $runId,
+        public readonly int $executionAttempt = 1,
+        public readonly string $leaseToken = '',
+    ) {
         $this->onQueue('knowledge');
     }
 
     public function handle(KnowledgeFactGenerationCoordinator $coordinator): void
     {
-        $coordinator->finalize($this->runId);
+        $coordinator->finalize($this->runId, $this->executionAttempt, $this->leaseToken);
     }
 
     public function failed(?Throwable $exception = null): void
     {
-        app(KnowledgeFactGenerationCoordinator::class)->markFinalizeFailure($this->runId, $exception);
+        app(KnowledgeFactGenerationCoordinator::class)->markFinalizeFailure(
+            $this->runId,
+            $exception,
+            $this->executionAttempt,
+            $this->leaseToken,
+        );
     }
 }

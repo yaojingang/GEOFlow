@@ -3,18 +3,30 @@
 namespace App\Services\GeoFlow;
 
 use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Data\Ai\SystemAiIdentity;
+use App\Exceptions\AiModelAccessException;
+use App\Exceptions\PermanentAiProviderException;
+use App\Exceptions\RecoverableEnterpriseKnowledgeModuleException;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\EnterpriseKnowledgeProject;
 use App\Models\EnterpriseKnowledgeRevision;
 use App\Models\KnowledgeBase;
+use App\Services\Admin\AdminAiModelAccessResolver;
+use App\Services\Admin\AiModelUsageAttempt;
+use App\Services\Admin\AiModelUsageAttemptFactory;
+use App\Services\AiWorkspace\AiModelInvocationLock;
+use App\Support\GeoFlow\AiExecutionErrorSanitizer;
+use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
+use Laravel\Ai\Exceptions\AiException;
+use Laravel\Ai\Exceptions\FailoverableException;
 use Throwable;
 
 final class EnterpriseKnowledgeDraftService
@@ -74,20 +86,41 @@ final class EnterpriseKnowledgeDraftService
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly KnowledgeChunkSyncCoordinator $chunkSyncCoordinator,
         private readonly AiUsageQuotaService $usageQuota,
+        private readonly AdminAiModelAccessResolver $modelAccessResolver,
+        private readonly EnterpriseKnowledgeAiExecutionGuard $executionGuard,
+        private readonly AiModelFailoverDecider $failoverDecider,
+        private readonly AiExecutionErrorSanitizer $errorSanitizer,
+        private readonly AiModelInvocationLock $invocationLocks,
+        private readonly AiModelUsageAttemptFactory $usageAttempts,
     ) {}
+
+    public function assertAnalysisModelReady(Admin $admin): AiModel
+    {
+        $model = $this->modelAccessResolver->resolveCandidates($admin, 'chat')->first();
+        if (! $model instanceof AiModel) {
+            throw new \RuntimeException(__('admin.url_import.error.ai_model_required'));
+        }
+
+        $this->prepareAiRuntime($model);
+
+        return $model;
+    }
 
     /** @param array<string,mixed> $data */
     public function createWorkspaceDraft(array $data, Admin $admin): EnterpriseKnowledgeProject
     {
-        return DB::transaction(function () use ($data, $admin): EnterpriseKnowledgeProject {
+        $model = $this->assertAnalysisModelReady($admin);
+
+        return DB::transaction(function () use ($data, $admin, $model): EnterpriseKnowledgeProject {
             $content = trim((string) ($data['content'] ?? ''));
-            $project = EnterpriseKnowledgeProject::query()->create([
+            $identity = $this->executionGuard->snapshotForCreation($admin, $model);
+            $project = EnterpriseKnowledgeProject::query()->create(array_merge([
                 'name' => trim((string) ($data['name'] ?? '')),
                 'description' => trim((string) ($data['description'] ?? '')),
                 'status' => 'draft',
                 'draft_content' => $content,
                 'created_by_admin_id' => (int) $admin->id,
-            ]);
+            ], $identity));
             EnterpriseKnowledgeRevision::query()->create([
                 'enterprise_knowledge_project_id' => (int) $project->id,
                 'content' => $content,
@@ -102,20 +135,67 @@ final class EnterpriseKnowledgeDraftService
     }
 
     /**
-     * @return array{content:string,source:string,model_id:?int,error:?string}
+     * @return array{content:string,source:string,model_id:?int,error:?string,usage_delivery?:EnterpriseKnowledgeDraftUsageDelivery|null}
      */
-    public function generateDraft(EnterpriseKnowledgeProject $project): array
-    {
+    public function generateDraft(
+        EnterpriseKnowledgeProject $project,
+        ?EnterpriseKnowledgeExecutionFence $executionFence = null,
+    ): array {
+        $executionFence ??= EnterpriseKnowledgeExecutionFence::fromProject($project);
         $sourceBlocks = $this->sourceBlocks($project);
         $sourceText = $this->buildSourceText($project, $sourceBlocks);
         $sourceFacts = $this->sourceCoverageFacts($sourceText);
         $fallback = $this->buildFallbackDraft($project, $sourceText, $sourceBlocks);
         $fallback['content'] = $this->ensureSourceCoverage((string) $fallback['content'], $sourceFacts);
 
-        foreach ($this->resolveAnalysisModels() as $model) {
+        foreach ($this->executionGuard->resolveCandidates($project, $executionFence)->values() as $candidateIndex => $model) {
+            $delivery = null;
             try {
-                $runtime = $this->prepareAiRuntime($model);
-                $content = $this->generateAiDraftContent($project, $sourceText, $sourceBlocks, $sourceFacts, $runtime);
+                $invocationLock = $this->invocationLocks->acquireForInvocation(
+                    (int) $model->getKey(),
+                    (count(self::DRAFT_MODULES) + 1) * MarkdownContentWriterAgent::PROVIDER_TIMEOUT_SECONDS + 60,
+                );
+                $currentModel = AiModel::query()->find((int) $model->getKey());
+                if (! $currentModel instanceof AiModel) {
+                    $this->invocationLocks->release($invocationLock);
+
+                    throw AiModelAccessException::modelUnavailable(
+                        $this->executionGuard->assertCurrent($project, null, $executionFence),
+                        $model,
+                    );
+                }
+
+                try {
+                    $executionAdmin = $this->executionGuard->assertCurrent($project, $currentModel, $executionFence);
+                    $delivery = new EnterpriseKnowledgeDraftUsageDelivery(
+                        project: $project,
+                        executionFence: $executionFence,
+                        model: $currentModel,
+                        candidateOrdinal: $candidateIndex + 1,
+                        usageQuota: $this->usageQuota,
+                        usageAttempts: $this->usageAttempts,
+                        invocationLocks: $this->invocationLocks,
+                        invocationLock: $invocationLock,
+                    );
+                } catch (Throwable $exception) {
+                    $this->invocationLocks->release($invocationLock);
+
+                    throw $exception;
+                }
+                try {
+                    $runtime = $this->prepareAiRuntime($currentModel);
+                } catch (Throwable) {
+                    throw AiModelAccessException::modelUnavailable($executionAdmin, $currentModel);
+                }
+                $content = $this->generateAiDraftContent(
+                    $project,
+                    $sourceText,
+                    $sourceBlocks,
+                    $sourceFacts,
+                    $runtime,
+                    $delivery,
+                    $executionFence,
+                );
                 if ($content === '') {
                     throw new \RuntimeException(__('admin.enterprise_knowledge.error.ai_empty'));
                 }
@@ -133,14 +213,34 @@ final class EnterpriseKnowledgeDraftService
                     ]));
                 }
 
+                $this->executionGuard->recordResolvedModel($project, $currentModel, $executionFence);
+
                 return [
                     'content' => $content,
                     'source' => 'ai',
-                    'model_id' => (int) $model->id,
+                    'model_id' => (int) $currentModel->id,
                     'error' => null,
+                    'usage_delivery' => $delivery,
                 ];
+            } catch (AiModelAccessException|PermanentAiProviderException $exception) {
+                if ($delivery instanceof EnterpriseKnowledgeDraftUsageDelivery) {
+                    $this->finalizeFailedDelivery($delivery, $project, $executionFence, $exception);
+                }
+
+                throw $exception;
             } catch (Throwable $exception) {
-                $fallback['error'] = OpenAiRuntimeProvider::normalizeApiException($exception, (string) $model->api_url);
+                $delivery?->discarded($this->safeFailureCode($exception));
+                if ($this->isPermanentAiFailure($exception)) {
+                    throw PermanentAiProviderException::fromProviderFailure($exception);
+                }
+
+                $fallback['error'] = $this->errorSanitizer->sanitize(
+                    OpenAiRuntimeProvider::normalizeApiException($exception, (string) $model->api_url),
+                    'enterprise_knowledge_generation_failed',
+                );
+                if (! $this->failoverDecider->shouldFailover($exception)) {
+                    return $fallback;
+                }
             }
         }
 
@@ -280,7 +380,11 @@ final class EnterpriseKnowledgeDraftService
 
         $chunkError = null;
         try {
-            $this->chunkSyncCoordinator->request((int) $knowledgeBase->id, force: true);
+            $this->chunkSyncCoordinator->request(
+                (int) $knowledgeBase->id,
+                SystemAiIdentity::knowledgeIndex(),
+                force: true,
+            );
         } catch (Throwable $exception) {
             report($exception);
             $chunkError = $exception->getMessage();
@@ -322,18 +426,43 @@ PROMPT;
         string $sourceText,
         array $sourceBlocks,
         array $sourceFacts,
-        array $runtime
+        array $runtime,
+        EnterpriseKnowledgeDraftUsageDelivery $delivery,
+        EnterpriseKnowledgeExecutionFence $executionFence,
     ): string {
         if ($this->shouldUseModularDraft($sourceText, $sourceBlocks)) {
             try {
-                return $this->generateModularAiDraft($project, $sourceBlocks, $sourceFacts, $runtime);
-            } catch (Throwable) {
-                // Fall back to the original single-pass request for providers that do
-                // not follow section-scoped instructions reliably.
+                return $this->generateModularAiDraft(
+                    $project,
+                    $sourceBlocks,
+                    $sourceFacts,
+                    $runtime,
+                    $delivery,
+                    $executionFence,
+                );
+            } catch (AiModelAccessException|PermanentAiProviderException $exception) {
+                throw $exception;
+            } catch (Throwable $exception) {
+                if ($this->isPermanentAiFailure($exception)) {
+                    throw PermanentAiProviderException::fromProviderFailure($exception);
+                }
+                if (! $exception instanceof RecoverableEnterpriseKnowledgeModuleException
+                    && ! $this->failoverDecider->shouldFailover($exception)) {
+                    throw $exception;
+                }
+
+                $delivery->discardPending('modular_superseded');
             }
         }
 
-        return $this->generateSingleAiDraft($project, $sourceText, $sourceBlocks, $runtime);
+        return $this->generateSingleAiDraft(
+            $project,
+            $sourceText,
+            $sourceBlocks,
+            $runtime,
+            $delivery,
+            $executionFence,
+        );
     }
 
     /**
@@ -344,7 +473,9 @@ PROMPT;
         EnterpriseKnowledgeProject $project,
         string $sourceText,
         array $sourceBlocks,
-        array $runtime
+        array $runtime,
+        EnterpriseKnowledgeDraftUsageDelivery $delivery,
+        EnterpriseKnowledgeExecutionFence $executionFence,
     ): string {
         $agent = new MarkdownContentWriterAgent($this->buildSystemPrompt(), [], [], 6000);
 
@@ -352,6 +483,10 @@ PROMPT;
             $agent,
             $this->buildUserPrompt($project, $sourceText, $sourceBlocks),
             $runtime,
+            $project,
+            $delivery,
+            'single',
+            $executionFence,
         );
     }
 
@@ -364,7 +499,9 @@ PROMPT;
         EnterpriseKnowledgeProject $project,
         array $sourceBlocks,
         array $sourceFacts,
-        array $runtime
+        array $runtime,
+        EnterpriseKnowledgeDraftUsageDelivery $delivery,
+        EnterpriseKnowledgeExecutionFence $executionFence,
     ): string {
         $sections = [];
         foreach (self::DRAFT_MODULES as $module) {
@@ -373,20 +510,28 @@ PROMPT;
                 $agent,
                 $this->buildModuleUserPrompt($project, $sourceBlocks, $sourceFacts, $module),
                 $runtime,
+                $project,
+                $delivery,
+                (string) $module['key'],
+                $executionFence,
             );
             $noiseResidues = $this->draftNoiseResidues($moduleContent);
             if ($noiseResidues !== []) {
-                throw new \RuntimeException(__('admin.enterprise_knowledge.error.ai_noise', [
-                    'items' => implode('、', $noiseResidues),
-                ]));
+                throw RecoverableEnterpriseKnowledgeModuleException::invalidOutput(
+                    __('admin.enterprise_knowledge.error.ai_noise', [
+                        'items' => implode('、', $noiseResidues),
+                    ]),
+                );
             }
 
             foreach ($module['sections'] as $section) {
                 $body = $this->extractMarkdownSectionBody($moduleContent, $section);
                 if ($body === '') {
-                    throw new \RuntimeException(__('admin.enterprise_knowledge.error.ai_incomplete', [
-                        'sections' => $section,
-                    ]));
+                    throw RecoverableEnterpriseKnowledgeModuleException::invalidOutput(
+                        __('admin.enterprise_knowledge.error.ai_incomplete', [
+                            'sections' => $section,
+                        ]),
+                    );
                 }
                 $sections[$section] = $body;
             }
@@ -396,14 +541,23 @@ PROMPT;
         foreach (self::REQUIRED_SECTIONS as $section) {
             $body = trim((string) ($sections[$section] ?? ''));
             if ($body === '') {
-                throw new \RuntimeException(__('admin.enterprise_knowledge.error.ai_incomplete', [
-                    'sections' => $section,
-                ]));
+                throw RecoverableEnterpriseKnowledgeModuleException::invalidOutput(
+                    __('admin.enterprise_knowledge.error.ai_incomplete', [
+                        'sections' => $section,
+                    ]),
+                );
             }
             $parts[] = '## '.$section."\n".$body;
         }
 
         return trim(implode("\n\n", $parts));
+    }
+
+    private function isPermanentAiFailure(Throwable $exception): bool
+    {
+        return $this->failoverDecider->isPermanentProviderFailure($exception)
+            || $exception instanceof InvalidArgumentException
+            || ($exception instanceof AiException && ! $exception instanceof FailoverableException);
     }
 
     private function responseText(mixed $response): string
@@ -1157,23 +1311,6 @@ MARKDOWN;
     }
 
     /**
-     * @return Collection<int, AiModel>
-     */
-    private function resolveAnalysisModels(): Collection
-    {
-        return AiModel::query()
-            ->where('status', 'active')
-            ->where(function ($query): void {
-                $query->whereNull('model_type')
-                    ->orWhere('model_type', '')
-                    ->orWhere('model_type', 'chat');
-            })
-            ->orderBy('failover_priority')
-            ->orderBy('id')
-            ->get();
-    }
-
-    /**
      * @return array{provider:string,model_id:string,base_url:string,model:AiModel}
      */
     private function prepareAiRuntime(AiModel $model): array
@@ -1204,32 +1341,80 @@ MARKDOWN;
     /**
      * @param  array{provider:string,model_id:string,base_url:string,model:AiModel}  $runtime
      */
-    private function promptWithQuota(MarkdownContentWriterAgent $agent, string $prompt, array $runtime): string
-    {
+    private function promptWithQuota(
+        MarkdownContentWriterAgent $agent,
+        string $prompt,
+        array $runtime,
+        EnterpriseKnowledgeProject $project,
+        EnterpriseKnowledgeDraftUsageDelivery $delivery,
+        string $stage,
+        EnterpriseKnowledgeExecutionFence $executionFence,
+    ): string {
+        $this->executionGuard->heartbeat($project, $runtime['model'], $executionFence);
         $reservation = $this->usageQuota->reserveModel($runtime['model']);
         if ($reservation === null) {
             throw new \RuntimeException('AI model has reached its daily usage limit.');
         }
 
+        $usageAttempt = null;
+        $providerReturned = false;
         try {
+            $this->executionGuard->assertCurrent($project, $runtime['model'], $executionFence);
+            $usageAttempt = $delivery->begin($stage, $prompt);
             $response = $agent->prompt(
                 $prompt,
                 [],
                 (string) $runtime['provider'],
                 (string) $runtime['model_id'],
             );
+            $providerReturned = true;
+            $delivery->providerReturned($usageAttempt, $reservation, $response->usage ?? null);
             $content = trim(OpenAiRuntimeProvider::normalizeGeneratedText($this->responseText($response)));
+            $this->executionGuard->assertCurrent($project, $runtime['model'], $executionFence);
             if ($content === '') {
                 throw new \RuntimeException(__('admin.enterprise_knowledge.error.ai_empty'));
             }
         } catch (Throwable $exception) {
-            $this->usageQuota->releaseModel($reservation);
+            if ($usageAttempt instanceof AiModelUsageAttempt) {
+                if ($providerReturned) {
+                    // The pending attempt is finalized by the candidate or job boundary.
+                } else {
+                    $delivery->providerFailed($usageAttempt, $reservation, $this->safeFailureCode($exception));
+                }
+            } else {
+                $this->usageQuota->releaseModel($reservation);
+            }
 
             throw $exception;
         }
 
-        $this->usageQuota->recordModelSuccess($reservation);
-
         return $content;
+    }
+
+    private function finalizeFailedDelivery(
+        EnterpriseKnowledgeDraftUsageDelivery $delivery,
+        EnterpriseKnowledgeProject $project,
+        EnterpriseKnowledgeExecutionFence $executionFence,
+        Throwable $exception,
+    ): void {
+        if ($exception instanceof AiModelAccessException
+            && $this->executionGuard->claimedExecutionIsCurrent($project, $executionFence)) {
+            $delivery->revoked($exception->getErrorCode());
+
+            return;
+        }
+
+        $delivery->discarded($this->safeFailureCode($exception));
+    }
+
+    private function safeFailureCode(Throwable $exception): string
+    {
+        if ($exception instanceof AiModelAccessException) {
+            return $exception->getErrorCode();
+        }
+
+        $class = strtolower(class_basename($exception));
+
+        return preg_replace('/[^a-z0-9_]+/', '_', $class) ?: 'enterprise_knowledge_generation_failed';
     }
 }

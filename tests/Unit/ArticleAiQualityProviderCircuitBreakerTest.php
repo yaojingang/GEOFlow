@@ -50,6 +50,27 @@ class ArticleAiQualityProviderCircuitBreakerTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public function test_a_circuit_opened_by_permanent_authentication_failures_is_not_retryable(): void
+    {
+        config()->set('geoflow.ai_quality_circuit_sample_size', 2);
+        $breaker = new ArticleAiQualityProviderCircuitBreaker;
+        $model = $this->model();
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $breaker->recordFailure(
+                $model,
+                new ArticleAiQualityRuntimeException('provider_authentication_failed'),
+            );
+        }
+
+        try {
+            $breaker->beforeRequest($model);
+            $this->fail('Expected the authentication circuit to remain closed to automatic failover.');
+        } catch (ArticleAiQualityRuntimeException $exception) {
+            $this->assertSame('provider_circuit_open', $exception->safeCode());
+            $this->assertFalse($exception->retryable());
+        }
+    }
+
     private function model(): AiModel
     {
         return new AiModel([

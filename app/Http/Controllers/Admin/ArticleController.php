@@ -19,6 +19,7 @@ use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Services\GeoFlow\AiQualityAuditService;
 use App\Services\GeoFlow\AiQualityRetrievalReadinessService;
 use App\Services\GeoFlow\ArticleAiOptimizationCoordinator;
@@ -80,6 +81,7 @@ class ArticleController extends Controller
         private readonly AiQualityRetrievalReadinessService $aiQualityRetrievalReadinessService,
         private readonly AiQualityAuditService $aiQualityAuditService,
         private readonly ArticleGeoFlowService $articleGeoFlowService,
+        private readonly AdminAiModelAccessResolver $adminAiModelAccessResolver,
     ) {}
 
     /**
@@ -458,7 +460,7 @@ class ArticleController extends Controller
             'riskScan' => null,
             'aiQualityCheck' => null,
             'aiQualityHistory' => collect(),
-            'formOptions' => $this->loadFormOptions(true),
+            'formOptions' => $this->loadFormOptions(true, $request->user('admin')),
             'canCreateManualPublication' => $this->canCreateManualPublication($request),
         ]);
     }
@@ -1318,10 +1320,10 @@ class ArticleController extends Controller
      *     title_libraries: array<int, array{id: int, name: string, count: int}>,
      *     knowledge_bases: array<int, array{id: int, name: string}>,
      *     content_prompts: array<int, array{id: int, name: string}>,
-     *     ai_models: array<int, array{id: int, name: string, model_id: string}>
+     *     ai_models: array<int, array{id: int, name: string}>
      * }
      */
-    private function loadFormOptions(bool $includeAssistantOptions): array
+    private function loadFormOptions(bool $includeAssistantOptions, ?Admin $actor = null): array
     {
         $categories = [];
         $authors = $this->loadAuthorOptions();
@@ -1402,21 +1404,18 @@ class ArticleController extends Controller
         }
 
         try {
-            $aiModels = AiModel::query()
-                ->select(['id', 'name', 'model_id', 'failover_priority'])
-                ->where('status', 'active')
+            $aiModels = $this->adminAiModelAccessResolver
+                ->usableQuery($actor)
                 ->where(function ($query): void {
                     $query->whereNull('model_type')
                         ->orWhere('model_type', '')
                         ->orWhere('model_type', 'chat');
                 })
-                ->orderBy('failover_priority')
                 ->orderBy('name')
                 ->get()
                 ->map(fn (AiModel $model): array => [
                     'id' => (int) $model->id,
                     'name' => (string) $model->name,
-                    'model_id' => (string) ($model->model_id ?? ''),
                 ])
                 ->all();
         } catch (QueryException) {
