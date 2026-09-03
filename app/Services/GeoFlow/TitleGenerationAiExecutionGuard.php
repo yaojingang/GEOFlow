@@ -146,6 +146,24 @@ final class TitleGenerationAiExecutionGuard
         return $admin;
     }
 
+    public function claimedExecutionIsCurrent(TitleGenerationExecutionContext $context): bool
+    {
+        $run = TitleGenerationRun::query()->whereKey($context->runId)->first();
+
+        return $run instanceof TitleGenerationRun
+            && $run->status === TitleGenerationRun::STATUS_RUNNING
+            && (int) $run->batch_sequence === $context->batchSequence
+            && trim((string) $run->lease_token) !== ''
+            && hash_equals($context->leaseToken(), (string) $run->lease_token)
+            && $run->lease_expires_at !== null
+            && ! $run->lease_expires_at->isPast()
+            && (int) $run->model_access_admin_id === $context->modelAccessAdminId
+            && (string) $run->model_access_admin_role === $context->modelAccessAdminRole
+            && (int) $run->ai_config_access_version === $context->aiConfigAccessVersion
+            && (int) $run->requested_ai_model_id === $context->requestedModelId
+            && (int) $run->resolver_policy_version === $context->resolverPolicyVersion;
+    }
+
     /** @return Collection<int,AiModel> */
     public function resolveCandidates(TitleGenerationExecutionContext $context): Collection
     {
@@ -165,34 +183,6 @@ final class TitleGenerationAiExecutionGuard
 
         return $candidates
             ->reject(static fn (AiModel $model): bool => (int) $model->getKey() === $context->requestedModelId)
-            ->prepend($requested)
-            ->values();
-    }
-
-    /** @return Collection<int,AiModel> */
-    public function resolveLegacyCandidates(Admin|int $actor, int $requestedModelId): Collection
-    {
-        $adminId = $actor instanceof Admin ? (int) $actor->getKey() : $actor;
-        $admin = Admin::query()->whereKey($adminId)->active()->first();
-        if (! $admin instanceof Admin) {
-            throw AiModelAccessException::executionAdminInactiveForId($adminId);
-        }
-
-        $candidates = $this->modelAccessResolver->resolveCandidates($admin, 'chat');
-        $requested = $candidates->first(
-            static fn (AiModel $model): bool => (int) $model->getKey() === $requestedModelId,
-        );
-        if (! $requested instanceof AiModel) {
-            $storedRequested = AiModel::query()->find($requestedModelId);
-            if ($storedRequested instanceof AiModel) {
-                throw AiModelAccessException::modelNotAccessible($admin, $storedRequested);
-            }
-
-            throw AiModelAccessException::modelUnavailable($admin);
-        }
-
-        return $candidates
-            ->reject(static fn (AiModel $model): bool => (int) $model->getKey() === $requestedModelId)
             ->prepend($requested)
             ->values();
     }

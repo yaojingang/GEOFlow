@@ -10,6 +10,7 @@ final readonly class TitleGenerationExecutionContext
     private function __construct(
         public int $runId,
         public int $batchSequence,
+        public int $batchAttemptCount,
         public int $modelAccessAdminId,
         public string $modelAccessAdminRole,
         public int $aiConfigAccessVersion,
@@ -19,6 +20,7 @@ final readonly class TitleGenerationExecutionContext
     ) {
         if ($this->runId <= 0
             || $this->batchSequence < 0
+            || $this->batchAttemptCount <= 0
             || $this->modelAccessAdminId <= 0
             || ! in_array($this->modelAccessAdminRole, ['admin', 'super_admin'], true)
             || $this->aiConfigAccessVersion <= 0
@@ -34,6 +36,7 @@ final readonly class TitleGenerationExecutionContext
         return new self(
             runId: (int) $run->getKey(),
             batchSequence: (int) $run->batch_sequence,
+            batchAttemptCount: (int) $run->batch_attempt_count,
             modelAccessAdminId: (int) $run->model_access_admin_id,
             modelAccessAdminRole: (string) $run->model_access_admin_role,
             aiConfigAccessVersion: (int) $run->ai_config_access_version,
@@ -61,7 +64,7 @@ final readonly class TitleGenerationExecutionContext
             'source_type' => 'title_generation_run',
             'source_id' => $this->runId,
             'resolver_policy_version' => $this->resolverPolicyVersion,
-            'request_id' => 'title-generation-run:'.$this->runId.':'.$this->batchSequence,
+            'request_id' => $this->leaseToken,
         ];
     }
 }

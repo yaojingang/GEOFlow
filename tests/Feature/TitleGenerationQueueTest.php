@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Data\Ai\AiExecutionContext;
 use App\Exceptions\TitleGenerationException;
 use App\Jobs\ProcessTitleGenerationBatchJob;
 use App\Jobs\ResumeTitleGenerationRunJob;
@@ -333,7 +334,7 @@ class TitleGenerationQueueTest extends TestCase
         ])->save();
 
         try {
-            (new TitleGenerationCoordinator(Mockery::mock(TitleAiGenerationService::class)))->retry($retryRun);
+            (new TitleGenerationCoordinator(Mockery::mock(TitleAiGenerationService::class)))->retry($retryRun, $admin);
             $this->fail('Expected the retry capacity limit to reject this task.');
         } catch (TitleGenerationException $exception) {
             $this->assertSame('title_generation_capacity_exceeded', $exception->reason);
@@ -449,7 +450,7 @@ class TitleGenerationQueueTest extends TestCase
     public function test_retry_preserves_saved_progress_and_queues_the_current_batch(): void
     {
         Queue::fake();
-        [, $keywordLibrary, $library, $aiModel] = $this->createFixtures();
+        [$admin, $keywordLibrary, $library, $aiModel] = $this->createFixtures();
         $run = $this->createRun($library, $keywordLibrary, $aiModel, 25);
         $run->forceFill([
             'status' => TitleGenerationRun::STATUS_PARTIAL,
@@ -464,7 +465,7 @@ class TitleGenerationQueueTest extends TestCase
         ])->save();
         $service = Mockery::mock(TitleAiGenerationService::class);
 
-        $retried = (new TitleGenerationCoordinator($service))->retry($run);
+        $retried = (new TitleGenerationCoordinator($service))->retry($run, $admin);
 
         $this->assertSame(TitleGenerationRun::STATUS_QUEUED, $retried->status);
         $this->assertSame(12, (int) $retried->saved_count);
@@ -644,7 +645,7 @@ class TitleGenerationQueueTest extends TestCase
     {
         Queue::fake();
         config()->set('geoflow.title_ai_max_manual_retries', 1);
-        [, $keywordLibrary, $library, $aiModel] = $this->createFixtures();
+        [$admin, $keywordLibrary, $library, $aiModel] = $this->createFixtures();
         $run = $this->createRun($library, $keywordLibrary, $aiModel, 5);
         $run->forceFill([
             'status' => TitleGenerationRun::STATUS_FAILED,
@@ -653,7 +654,7 @@ class TitleGenerationQueueTest extends TestCase
         ])->save();
         $coordinator = new TitleGenerationCoordinator(Mockery::mock(TitleAiGenerationService::class));
 
-        $coordinator->retry($run);
+        $coordinator->retry($run, $admin);
         $run->forceFill([
             'status' => TitleGenerationRun::STATUS_FAILED,
             'active_key' => null,
@@ -662,7 +663,7 @@ class TitleGenerationQueueTest extends TestCase
         ])->save();
 
         $this->expectException(TitleGenerationException::class);
-        $coordinator->retry($run->fresh());
+        $coordinator->retry($run->fresh(), $admin);
     }
 
     public function test_an_active_run_prevents_its_ai_model_from_being_changed_or_deleted(): void
@@ -738,7 +739,7 @@ class TitleGenerationQueueTest extends TestCase
     public function test_cancelling_an_active_run_invalidates_its_in_flight_lease(): void
     {
         Queue::fake();
-        [, $keywordLibrary, $library, $aiModel] = $this->createFixtures();
+        [$admin, $keywordLibrary, $library, $aiModel] = $this->createFixtures();
         $run = $this->createRun($library, $keywordLibrary, $aiModel, 5);
         $run->forceFill([
             'status' => TitleGenerationRun::STATUS_RUNNING,
@@ -750,7 +751,7 @@ class TitleGenerationQueueTest extends TestCase
         $service->shouldNotReceive('generateTitles');
         $coordinator = new TitleGenerationCoordinator($service);
 
-        $coordinator->cancel($run);
+        $coordinator->cancel($run, $admin);
         $coordinator->processBatch((int) $run->id, 0, 'active-lease');
 
         $run->refresh();
@@ -761,7 +762,7 @@ class TitleGenerationQueueTest extends TestCase
         $this->assertTrue($run->isRetryable());
         $this->assertDatabaseCount('titles', 0);
 
-        $coordinator->retry($run);
+        $coordinator->retry($run, $admin);
         $run->refresh();
         $this->assertSame(TitleGenerationRun::STATUS_QUEUED, $run->status);
         $this->assertNull($run->cancelled_at);
@@ -823,7 +824,7 @@ class TitleGenerationQueueTest extends TestCase
         ]);
         $service = Mockery::mock(TitleAiGenerationService::class);
 
-        (new TitleGenerationCoordinator($service))->retry($oldRun);
+        (new TitleGenerationCoordinator($service))->retry($oldRun, $admin);
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.title-libraries.detail', ['libraryId' => $library->id]))
@@ -937,6 +938,7 @@ class TitleGenerationQueueTest extends TestCase
             'display_name' => 'Title Generation Admin',
             'role' => 'admin',
             'status' => 'active',
+            'ai_config_access_version' => 1,
         ]);
         $keywordLibrary = KeywordLibrary::query()->create([
             'name' => 'GEO 关键词库',
@@ -997,11 +999,16 @@ class TitleGenerationQueueTest extends TestCase
         AiModel $aiModel,
         int $requestedCount,
     ): TitleGenerationRun {
-        return TitleGenerationRun::query()->create([
+        return TitleGenerationRun::query()->forceCreate([
             'title_library_id' => $library->id,
             'keyword_library_id' => $keywordLibrary->id,
             'ai_model_id' => $aiModel->id,
             'created_by_admin_id' => $aiModel->owner_admin_id,
+            'model_access_admin_id' => $aiModel->owner_admin_id,
+            'model_access_admin_role' => 'admin',
+            'ai_config_access_version' => 1,
+            'requested_ai_model_id' => $aiModel->id,
+            'resolver_policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
             'status' => TitleGenerationRun::STATUS_QUEUED,
             'active_key' => 'title-library:'.$library->id,
             'requested_count' => $requestedCount,

@@ -181,15 +181,7 @@ final class TitleGenerationCoordinator
                     (int) $lockedRun->requested_ai_model_id,
                 );
             } else {
-                if ($this->executionGuard()->identityMalformed($lockedRun)
-                    || $this->executionGuard()->identityRequired()
-                    || (int) ($lockedRun->created_by_admin_id ?? 0) <= 0) {
-                    throw new TitleGenerationException('ai_config_access_revoked');
-                }
-                $this->executionGuard()->resolveLegacyCandidates(
-                    (int) $lockedRun->created_by_admin_id,
-                    (int) $lockedRun->ai_model_id,
-                );
+                throw new TitleGenerationException('ai_config_access_revoked');
             }
 
             if (TitleGenerationRun::query()
@@ -295,15 +287,8 @@ final class TitleGenerationCoordinator
         }
 
         $batchSize = min((int) $run->batch_size, $remainingCount, $requestBudgetRemaining);
-        $executionContext = $this->executionGuard()->identityComplete($run)
-            ? $this->executionGuard()->contextFromClaimedRun($run)
-            : null;
-        $candidates = $executionContext instanceof TitleGenerationExecutionContext
-            ? $this->executionGuard()->resolveCandidates($executionContext)
-            : $this->executionGuard()->resolveLegacyCandidates(
-                (int) $run->created_by_admin_id,
-                (int) $run->ai_model_id,
-            );
+        $executionContext = $this->executionGuard()->contextFromClaimedRun($run);
+        $candidates = $this->executionGuard()->resolveCandidates($executionContext);
         if ($candidates->isEmpty()) {
             throw new RuntimeException('title_generation_ai_model_unavailable');
         }
@@ -330,6 +315,8 @@ final class TitleGenerationCoordinator
                     $batchSize,
                     (string) $run->title_style,
                     $this->buildBatchPrompt($run),
+                    $executionContext,
+                    $candidateIndex + 1,
                 );
                 if ($result->succeeded()) {
                     $resolvedModel = $candidate;
@@ -345,6 +332,18 @@ final class TitleGenerationCoordinator
                     break;
                 }
             }
+        } catch (AiModelAccessException $exception) {
+            if ($result?->usageDelivery instanceof TitleGenerationUsageDelivery) {
+                if ($this->executionGuard()->claimedExecutionIsCurrent($executionContext)) {
+                    $result->usageDelivery->revoked($exception->getErrorCode());
+                } else {
+                    $result->usageDelivery->discarded('title_generation_batch_claim_lost');
+
+                    return;
+                }
+            }
+
+            throw $exception;
         } finally {
             app()->setLocale($previousLocale);
         }
@@ -379,20 +378,42 @@ final class TitleGenerationCoordinator
             throw new RuntimeException('title_generation_model_failed:'.($result->failureCode ?? 'unknown'));
         }
 
-        $rawTitles = array_slice($result->titles, 0, $batchSize);
-        [$validTitles, $invalidCount] = $this->normalizeTitles($rawTitles);
-        $nextRun = $this->persistBatch(
-            $runId,
-            $batchSequence,
-            $leaseToken,
-            $keywords,
-            $batchSize,
-            count($rawTitles),
-            $validTitles,
-            $invalidCount,
-            $executionContext,
-            $resolvedModel,
-        );
+        try {
+            $rawTitles = array_slice($result->titles, 0, $batchSize);
+            [$validTitles, $invalidCount] = $this->normalizeTitles($rawTitles);
+            $nextRun = $this->persistBatch(
+                $runId,
+                $batchSequence,
+                $leaseToken,
+                $keywords,
+                $batchSize,
+                count($rawTitles),
+                $validTitles,
+                $invalidCount,
+                $executionContext,
+                $resolvedModel,
+            );
+            if (! $nextRun instanceof TitleGenerationRun) {
+                $result->usageDelivery?->discarded('title_generation_batch_claim_lost');
+
+                return;
+            }
+            $result->usageDelivery?->succeeded();
+        } catch (AiModelAccessException $exception) {
+            if ($this->executionGuard()->claimedExecutionIsCurrent($executionContext)) {
+                $result->usageDelivery?->revoked($exception->getErrorCode());
+
+                throw $exception;
+            }
+
+            $result->usageDelivery?->discarded('title_generation_batch_claim_lost');
+
+            return;
+        } catch (Throwable $exception) {
+            $result->usageDelivery?->discarded('title_generation_batch_persistence_failed');
+
+            throw $exception;
+        }
 
         if ($nextRun?->status === TitleGenerationRun::STATUS_QUEUED) {
             try {
@@ -491,11 +512,7 @@ final class TitleGenerationCoordinator
                     return null;
                 }
 
-                if ($this->executionGuard()->identityMalformed($lockedRun)
-                    || ($this->executionGuard()->identityRequired()
-                        && ! $this->executionGuard()->identityComplete($lockedRun))
-                    || (! $this->executionGuard()->identityComplete($lockedRun)
-                        && (int) ($lockedRun->created_by_admin_id ?? 0) <= 0)) {
+                if (! $this->executionGuard()->identityComplete($lockedRun)) {
                     $lockedRun->forceFill([
                         'status' => (int) $lockedRun->saved_count > 0
                             ? TitleGenerationRun::STATUS_PARTIAL
@@ -585,15 +602,9 @@ final class TitleGenerationCoordinator
 
             try {
                 if (! $this->executionGuard()->identityComplete($lockedRun)) {
-                    if ($this->executionGuard()->identityMalformed($lockedRun)
-                        || $this->executionGuard()->identityRequired()
-                        || (int) ($lockedRun->created_by_admin_id ?? 0) <= 0) {
-                        throw AiModelAccessException::configAccessRevokedForAdminId(
-                            (int) ($lockedRun->model_access_admin_id ?? 0),
-                        );
-                    }
-
-                    return $lockedRun;
+                    throw AiModelAccessException::configAccessRevokedForAdminId(
+                        (int) ($lockedRun->model_access_admin_id ?? 0),
+                    );
                 }
                 $this->executionGuard()->assertFrozenIdentityCurrent(
                     $lockedRun,
@@ -658,11 +669,7 @@ final class TitleGenerationCoordinator
                 return null;
             }
 
-            if ($this->executionGuard()->identityMalformed($run)
-                || ($this->executionGuard()->identityRequired()
-                    && ! $this->executionGuard()->identityComplete($run))
-                || (! $this->executionGuard()->identityComplete($run)
-                    && (int) ($run->created_by_admin_id ?? 0) <= 0)) {
+            if (! $this->executionGuard()->identityComplete($run)) {
                 $run->forceFill([
                     'status' => (int) $run->saved_count > 0
                         ? TitleGenerationRun::STATUS_PARTIAL

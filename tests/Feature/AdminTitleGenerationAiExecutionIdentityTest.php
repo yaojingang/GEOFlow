@@ -182,7 +182,7 @@ final class AdminTitleGenerationAiExecutionIdentityTest extends TestCase
         $this->assertDatabaseCount('titles', 0);
     }
 
-    public function test_default_shadow_mode_rejects_peer_model_on_a_legacy_owned_run(): void
+    public function test_default_shadow_mode_rejects_a_legacy_owned_run_without_frozen_identity(): void
     {
         Queue::fake();
         [$admin, $keywordLibrary, $titleLibrary] = $this->fixtures();
@@ -217,7 +217,7 @@ final class AdminTitleGenerationAiExecutionIdentityTest extends TestCase
 
         $run->refresh();
         $this->assertSame(TitleGenerationRun::STATUS_FAILED, $run->status);
-        $this->assertSame('ai_model_not_accessible', $run->error_code);
+        $this->assertSame('ai_config_access_revoked', $run->error_code);
         $this->assertFalse((bool) $run->retryable_failure);
     }
 
