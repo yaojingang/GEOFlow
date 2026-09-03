@@ -71,7 +71,6 @@ final class AdminAiAccessShadowRecorder
                 'execution_admin_id' => (int) $admin->getKey(),
                 'capability' => $normalizedCapability,
                 'exception_class' => $exception::class,
-                'error' => $exception->getMessage(),
             ]);
         }
     }
