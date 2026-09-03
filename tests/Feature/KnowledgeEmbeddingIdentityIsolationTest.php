@@ -58,11 +58,12 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
             ['setting_key' => 'default_embedding_model_id'],
             ['setting_value' => (string) $systemModel->id],
         );
-        $knowledgeBase = $this->knowledgeBase();
+        $content = '系统索引只使用系统绑定的 Embedding 模型。';
+        $knowledgeBase = $this->knowledgeBase(['content' => $content]);
 
         app(KnowledgeChunkSyncService::class)->sync(
             (int) $knowledgeBase->id,
-            '系统索引只使用系统绑定的 Embedding 模型。',
+            $content,
             SystemAiIdentity::knowledgeIndex(),
             true,
         );
@@ -605,7 +606,8 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
             ['setting_key' => 'default_embedding_model_id'],
             ['setting_value' => (string) $systemModel->id],
         );
-        $knowledgeBase = $this->knowledgeBase();
+        $content = '撤销系统绑定后不可发布索引。';
+        $knowledgeBase = $this->knowledgeBase(['content' => $content]);
         Http::fake([
             'https://system.test/v1/embeddings' => function () {
                 SiteSetting::query()
@@ -620,7 +622,7 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         try {
             app(KnowledgeChunkSyncService::class)->sync(
                 (int) $knowledgeBase->id,
-                '撤销系统绑定后不可发布索引。',
+                $content,
                 SystemAiIdentity::knowledgeIndex(),
                 true,
             );
@@ -726,6 +728,131 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
             Http::assertNothingSent();
             $this->assertDatabaseCount('ai_model_usage_events', 0);
         }
+    }
+
+    public function test_embedding_revoked_by_the_final_preflight_creates_no_usage_event_or_provider_call(): void
+    {
+        Queue::fake();
+        Http::fake();
+        $superAdmin = $this->admin('preflight-system-owner', 'super_admin');
+        $systemModel = $this->model($superAdmin, 'system-key', [
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            'api_url' => 'https://system.test',
+        ]);
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'default_embedding_model_id'],
+            ['setting_value' => (string) $systemModel->id],
+        );
+        $knowledgeBase = $this->knowledgeBase(['content' => '最后准入复核撤权时不记录虚构外呼。']);
+        $coordinator = app(KnowledgeChunkSyncCoordinator::class);
+        $this->assertTrue($coordinator->request((int) $knowledgeBase->id, SystemAiIdentity::knowledgeIndex(), true));
+        $token = (string) $knowledgeBase->fresh()->chunk_sync_token;
+        $service = app(KnowledgeChunkSyncService::class);
+        $service->prepareStagingSync(
+            (int) $knowledgeBase->id,
+            (string) $knowledgeBase->content,
+            $token,
+            SystemAiIdentity::knowledgeIndex(),
+        );
+
+        $revoked = false;
+        AiModel::updated(function (AiModel $model) use ($systemModel, &$revoked): void {
+            if ($revoked || (int) $model->getKey() !== (int) $systemModel->getKey() || ! $model->wasChanged('used_today')) {
+                return;
+            }
+            $revoked = true;
+            SiteSetting::query()
+                ->where('setting_key', 'default_embedding_model_id')
+                ->update(['setting_value' => '0']);
+        });
+
+        try {
+            $service->embedStagingBatch(
+                (int) $knowledgeBase->id,
+                $token,
+                0,
+                SystemAiIdentity::knowledgeIndex(),
+                true,
+            );
+            $this->fail('Expected the final preflight to reject the revoked system binding.');
+        } catch (AiModelAccessException) {
+            Http::assertNothingSent();
+            $this->assertDatabaseCount('ai_model_usage_events', 0);
+            $this->assertSame(0, (int) $systemModel->fresh()->used_today);
+        }
+    }
+
+    public function test_content_drift_blocks_old_embedding_and_finalize_without_claiming_the_new_source(): void
+    {
+        Queue::fake();
+        Http::fake([
+            'https://system.test/v1/embeddings' => Http::response([
+                'data' => [['embedding' => [0.1, 0.2, 0.3]]],
+            ]),
+        ]);
+        $superAdmin = $this->admin('source-drift-owner', 'super_admin');
+        $systemModel = $this->model($superAdmin, 'system-key', [
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            'api_url' => 'https://system.test',
+        ]);
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'default_embedding_model_id'],
+            ['setting_value' => (string) $systemModel->id],
+        );
+        $oldContent = '旧正文对应的同步任务。';
+        $newContent = '新正文保存后，旧任务不得发布。';
+        $oldServingSourceHash = hash('sha256', '上一个已成功正文。');
+        $knowledgeBase = $this->knowledgeBase([
+            'content' => $oldContent,
+            'chunk_serving_generation' => 'serving-v1',
+            'chunk_serving_source_hash' => $oldServingSourceHash,
+        ]);
+        KnowledgeChunk::query()->create([
+            'knowledge_base_id' => $knowledgeBase->id,
+            'generation_key' => 'serving-v1',
+            'chunk_index' => 0,
+            'content' => '上一个已成功切片。',
+            'content_hash' => hash('sha256', '上一个已成功切片。'),
+            'token_count' => 8,
+            'embedding_json' => '[]',
+        ]);
+        $coordinator = app(KnowledgeChunkSyncCoordinator::class);
+        $this->assertTrue($coordinator->request((int) $knowledgeBase->id, SystemAiIdentity::knowledgeIndex(), true));
+        $token = (string) $knowledgeBase->fresh()->chunk_sync_token;
+        $service = app(KnowledgeChunkSyncService::class);
+        $service->prepareStagingSync(
+            (int) $knowledgeBase->id,
+            $oldContent,
+            $token,
+            SystemAiIdentity::knowledgeIndex(),
+        );
+        $knowledgeBase->forceFill(['content' => $newContent])->save();
+
+        try {
+            $service->embedStagingBatch(
+                (int) $knowledgeBase->id,
+                $token,
+                0,
+                SystemAiIdentity::knowledgeIndex(),
+                true,
+            );
+            $this->fail('Expected the old source to fail before embedding.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('knowledge_sync_source_stale', $exception->getMessage());
+            Http::assertNothingSent();
+            $this->assertDatabaseCount('ai_model_usage_events', 0);
+        }
+
+        $this->assertFalse($service->finalizeStagingSync(
+            (int) $knowledgeBase->id,
+            $token,
+            SystemAiIdentity::knowledgeIndex(),
+        ));
+        $knowledgeBase->refresh();
+        $this->assertSame('serving-v1', (string) $knowledgeBase->chunk_serving_generation);
+        $this->assertSame($oldServingSourceHash, (string) $knowledgeBase->chunk_serving_source_hash);
+        $this->assertNotSame(hash('sha256', $newContent), (string) $knowledgeBase->chunk_serving_source_hash);
+        $this->assertSame(0, KnowledgeChunk::query()->where('generation_key', $token)->count());
     }
 
     public function test_embedding_redelivery_uses_a_distinct_call_key_for_each_real_provider_invocation(): void

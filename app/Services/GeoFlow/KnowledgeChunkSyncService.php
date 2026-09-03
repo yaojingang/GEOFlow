@@ -160,14 +160,20 @@ class KnowledgeChunkSyncService
         int $dispatchOrdinal = 1,
     ): int {
         $identity->assertCanBuildKnowledgeIndex();
-        $this->ensurePipelineProfile($knowledgeBaseId, $syncToken, $identity);
+        $expectedSourceHash = hash('sha256', $content);
         KnowledgeBase::query()
             ->whereKey($knowledgeBaseId)
             ->where('chunk_sync_token', $syncToken)
+            ->whereIn('chunk_sync_status', ['pending', 'processing'])
+            ->where('content', $content)
             ->where(static function ($query): void {
                 $query->whereNull('chunk_source_hash')->orWhere('chunk_source_hash', '');
             })
-            ->update(['chunk_source_hash' => hash('sha256', $content)]);
+            ->update(['chunk_source_hash' => $expectedSourceHash]);
+        if (! $this->knowledgeSyncSourceIsCurrent($knowledgeBaseId, $syncToken, $expectedSourceHash)) {
+            return 0;
+        }
+        $this->ensurePipelineProfile($knowledgeBaseId, $syncToken, $identity);
         if (strlen($content) > self::MAX_CONTENT_BYTES) {
             throw new \RuntimeException(__('admin.knowledge_bases.error.content_too_large'));
         }
@@ -193,22 +199,22 @@ class KnowledgeChunkSyncService
             $persisted = DB::transaction(function () use (
                 $knowledgeBaseId,
                 $syncToken,
-                $content,
                 $plannedChunks,
                 $knowledgeMetadata,
                 $now,
                 $identity,
                 $semanticUsage,
                 $semanticStrategy,
+                $expectedSourceHash,
             ): bool {
                 $knowledgeBase = KnowledgeBase::query()
                     ->whereKey($knowledgeBaseId)
                     ->lockForUpdate()
-                    ->first(['id', 'chunk_sync_token', 'chunk_sync_status', 'chunk_source_hash']);
+                    ->first(['id', 'content', 'chunk_sync_token', 'chunk_sync_status', 'chunk_source_hash']);
                 if (! $knowledgeBase
                     || ! hash_equals((string) $knowledgeBase->chunk_sync_token, $syncToken)
                     || ! in_array((string) $knowledgeBase->chunk_sync_status, ['pending', 'processing'], true)
-                    || ! hash_equals((string) $knowledgeBase->chunk_source_hash, hash('sha256', $content))
+                    || ! $this->knowledgeBaseMatchesSyncSource($knowledgeBase, $expectedSourceHash)
                     || ($semanticStrategy !== null && ! hash_equals($semanticStrategy, $this->resolveChunkStrategy()))) {
                     return false;
                 }
@@ -409,10 +415,11 @@ class KnowledgeChunkSyncService
                 $knowledgeBase = KnowledgeBase::query()
                     ->whereKey($knowledgeBaseId)
                     ->lockForUpdate()
-                    ->first(['id', 'chunk_sync_token', 'chunk_sync_status']);
+                    ->first(['id', 'content', 'chunk_sync_token', 'chunk_sync_status', 'chunk_source_hash']);
                 if (! $knowledgeBase
                     || ! hash_equals((string) $knowledgeBase->chunk_sync_token, $syncToken)
-                    || ! in_array((string) $knowledgeBase->chunk_sync_status, ['pending', 'processing'], true)) {
+                    || ! in_array((string) $knowledgeBase->chunk_sync_status, ['pending', 'processing'], true)
+                    || ! $this->knowledgeBaseMatchesSyncSource($knowledgeBase)) {
                     return false;
                 }
                 $this->assertFrozenSystemEmbeddingPipelineCurrent($knowledgeBaseId, $syncToken, $identity);
@@ -491,7 +498,10 @@ class KnowledgeChunkSyncService
                 ->whereKey($knowledgeBaseId)
                 ->lockForUpdate()
                 ->first();
-            if (! $knowledgeBase || ! hash_equals((string) $knowledgeBase->chunk_sync_token, $syncToken)) {
+            if (! $knowledgeBase
+                || ! hash_equals((string) $knowledgeBase->chunk_sync_token, $syncToken)
+                || ! in_array((string) $knowledgeBase->chunk_sync_status, ['pending', 'processing'], true)
+                || ! $this->knowledgeBaseMatchesSyncSource($knowledgeBase)) {
                 DB::table('knowledge_chunk_sync_rows')
                     ->where('knowledge_base_id', $knowledgeBaseId)
                     ->where('sync_token', $syncToken)
@@ -859,6 +869,7 @@ class KnowledgeChunkSyncService
         $semanticChunks = $this->buildSemanticChunks(
             $knowledgeBaseId,
             $blocks,
+            hash('sha256', $content),
             $identity,
             $syncToken,
             $executionToken,
@@ -1228,6 +1239,7 @@ class KnowledgeChunkSyncService
     private function buildSemanticChunks(
         int $knowledgeBaseId,
         array $blocks,
+        string $expectedSourceHash,
         SystemAiIdentity $identity,
         string $syncToken,
         string $executionToken,
@@ -1266,6 +1278,11 @@ class KnowledgeChunkSyncService
                     MarkdownContentWriterAgent::PROVIDER_TIMEOUT_SECONDS + 60,
                 );
                 $currentModel = $this->systemModelAccessResolver->assertSemanticChunkingCurrent($identity, $model);
+                $this->assertKnowledgeSyncSourceCurrent(
+                    $knowledgeBaseId,
+                    $syncToken,
+                    $expectedSourceHash,
+                );
                 $currentProviderUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) ($currentModel->api_url ?? ''));
                 $currentApiKey = $this->decryptApiKey((string) ($currentModel->getRawOriginal('api_key') ?? ''));
                 $currentModelId = trim((string) ($currentModel->model_id ?? ''));
@@ -1280,6 +1297,8 @@ class KnowledgeChunkSyncService
 
                     continue;
                 }
+                $currentModel = $this->systemModelAccessResolver->assertSemanticChunkingCurrent($identity, $currentModel);
+                $this->assertKnowledgeSyncSourceCurrent($knowledgeBaseId, $syncToken, $expectedSourceHash);
                 $session = new KnowledgeIndexAiUsageSession(
                     modelId: (int) $currentModel->getKey(),
                     ownerAdminId: (int) $currentModel->owner_admin_id,
@@ -1321,6 +1340,7 @@ class KnowledgeChunkSyncService
                 $providerReturned = true;
                 $session->providerReturned($providerAttempt, $response->usage ?? null);
                 $this->systemModelAccessResolver->assertSemanticChunkingCurrent($identity, $model);
+                $this->assertKnowledgeSyncSourceCurrent($knowledgeBaseId, $syncToken, $expectedSourceHash);
                 $content = OpenAiRuntimeProvider::normalizeGeneratedText((string) ($response->text ?? ''));
                 $plan = $this->decodeSemanticChunkPlan($content);
                 $chunks = $this->chunksFromSemanticPlan($blocks, $plan);
@@ -1887,12 +1907,17 @@ class KnowledgeChunkSyncService
         }
         $knowledgeBase = $query->first([
             'id',
+            'content',
+            'chunk_source_hash',
             'chunk_sync_embedding_profile_version',
             'chunk_sync_embedding_model_id',
             'chunk_sync_embedding_config_revision',
         ]);
-        if (! $knowledgeBase
-            || (int) $knowledgeBase->chunk_sync_embedding_profile_version !== $this->embeddingFingerprint->profileVersion()
+        if (! $knowledgeBase || ! $this->knowledgeBaseMatchesSyncSource($knowledgeBase)) {
+            throw new \RuntimeException('knowledge_sync_source_stale');
+        }
+
+        if ((int) $knowledgeBase->chunk_sync_embedding_profile_version !== $this->embeddingFingerprint->profileVersion()
             || trim((string) $knowledgeBase->chunk_sync_embedding_config_revision) === '') {
             throw PermanentAiProviderException::fromProviderFailure(
                 new \RuntimeException('knowledge_embedding_pipeline_profile_missing'),
@@ -2013,14 +2038,13 @@ class KnowledgeChunkSyncService
             $pendingChunks = $chunks;
             $batchSize = $this->embeddingBatchSize();
             $providerOrdinal = 0;
+            $currentMetadata = $embeddingMetadata;
             while ($pendingChunks !== []) {
                 $batch = array_slice($pendingChunks, 0, $batchSize, true);
 
                 try {
                     if ($knowledgeBaseId !== null && $syncToken !== null) {
-                        if (! $this->knowledgeSyncTokenIsCurrent($knowledgeBaseId, $syncToken)) {
-                            throw new \RuntimeException('knowledge_embedding_staging_stale');
-                        }
+                        $this->assertKnowledgeSyncSourceCurrent($knowledgeBaseId, $syncToken);
                         try {
                             $currentMetadata = $this->resolveFrozenSystemEmbeddingMetadata(
                                 $knowledgeBaseId,
@@ -2178,6 +2202,17 @@ class KnowledgeChunkSyncService
         $providerAttempt = null;
         $providerResult = null;
         try {
+            $currentModel = $this->systemModelAccessResolver->assertEmbeddingCurrent($identity, $model);
+            if (! hash_equals(
+                (string) ($embeddingMetadata['config_revision'] ?? ''),
+                $this->embeddingFingerprint->configurationRevision($currentModel),
+            )) {
+                throw AiModelAccessException::configAccessRevokedForAdminId((int) $currentModel->owner_admin_id);
+            }
+            if ($knowledgeBaseId !== null && $syncToken !== null) {
+                $this->assertKnowledgeSyncSourceCurrent($knowledgeBaseId, $syncToken);
+                $this->assertFrozenSystemEmbeddingPipelineCurrent($knowledgeBaseId, $syncToken, $identity);
+            }
             $providerAttempt = $usageSession->begin(
                 $this->usageAttempts->beginForSystem(
                     model: $model,
@@ -2198,7 +2233,6 @@ class KnowledgeChunkSyncService
                 ),
                 $reservation,
             );
-            $this->systemModelAccessResolver->assertEmbeddingCurrent($identity, $model);
             $providerResult = $this->requestEmbeddingVectors(
                 $batchInputs,
                 $embeddingMetadata,
@@ -2208,9 +2242,7 @@ class KnowledgeChunkSyncService
             $embeddings = $providerResult->embeddings;
             $this->systemModelAccessResolver->assertEmbeddingCurrent($identity, $model);
             if ($knowledgeBaseId !== null && $syncToken !== null) {
-                if (! $this->knowledgeSyncTokenIsCurrent($knowledgeBaseId, $syncToken)) {
-                    throw new \RuntimeException('knowledge_embedding_staging_stale');
-                }
+                $this->assertKnowledgeSyncSourceCurrent($knowledgeBaseId, $syncToken);
                 $this->assertFrozenSystemEmbeddingPipelineCurrent($knowledgeBaseId, $syncToken, $identity);
             }
 
@@ -2262,13 +2294,42 @@ class KnowledgeChunkSyncService
         return $results;
     }
 
-    private function knowledgeSyncTokenIsCurrent(int $knowledgeBaseId, string $syncToken): bool
-    {
-        return KnowledgeBase::query()
+    private function knowledgeSyncSourceIsCurrent(
+        int $knowledgeBaseId,
+        string $syncToken,
+        ?string $expectedSourceHash = null,
+    ): bool {
+        $knowledgeBase = KnowledgeBase::query()
             ->whereKey($knowledgeBaseId)
             ->where('chunk_sync_token', $syncToken)
             ->whereIn('chunk_sync_status', ['pending', 'processing'])
-            ->exists();
+            ->first(['content', 'chunk_source_hash']);
+
+        return $knowledgeBase instanceof KnowledgeBase
+            && $this->knowledgeBaseMatchesSyncSource($knowledgeBase, $expectedSourceHash);
+    }
+
+    private function assertKnowledgeSyncSourceCurrent(
+        int $knowledgeBaseId,
+        string $syncToken,
+        ?string $expectedSourceHash = null,
+    ): void {
+        if (! $this->knowledgeSyncSourceIsCurrent($knowledgeBaseId, $syncToken, $expectedSourceHash)) {
+            throw new \RuntimeException('knowledge_sync_source_stale');
+        }
+    }
+
+    private function knowledgeBaseMatchesSyncSource(
+        KnowledgeBase $knowledgeBase,
+        ?string $expectedSourceHash = null,
+    ): bool {
+        $frozenSourceHash = trim((string) $knowledgeBase->chunk_source_hash);
+        if ($frozenSourceHash === ''
+            || ($expectedSourceHash !== null && ! hash_equals($frozenSourceHash, $expectedSourceHash))) {
+            return false;
+        }
+
+        return hash_equals($frozenSourceHash, hash('sha256', (string) $knowledgeBase->content));
     }
 
     private function isEmbeddingBatchSizeError(string $message): bool

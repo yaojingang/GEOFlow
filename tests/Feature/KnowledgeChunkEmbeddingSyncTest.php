@@ -13,6 +13,7 @@ use App\Models\SiteSetting;
 use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\GeoFlow\KnowledgeChunkSyncService;
 use App\Services\GeoFlow\KnowledgeEmbeddingModelFingerprint;
+use App\Services\GeoFlow\SystemAiModelAccessResolver;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -367,6 +368,61 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
 
         $this->assertSame('semantic_fallback', (string) $knowledgeBase->chunks()->firstOrFail()->chunk_strategy);
         $this->assertSame(AiModelUsageEvent::STATUS_FAILED, AiModelUsageEvent::query()->sole()->status);
+    }
+
+    public function test_stale_semantic_prepare_stops_before_provider_and_usage_capture(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response([
+                'choices' => [[
+                    'message' => ['content' => '{"chunks":[]}'],
+                ]],
+            ]),
+        ]);
+        $model = $this->createChatModel();
+        SiteSetting::query()->create(['setting_key' => 'knowledge_chunk_strategy', 'setting_value' => 'semantic_llm']);
+        SiteSetting::query()->create(['setting_key' => 'knowledge_chunking_model_id', 'setting_value' => (string) $model->id]);
+        $content = "# 平台定位\n\nGEOFlow 负责内容工程后台。\n\n## 分发能力\n\n旧 token 不得调用语义规划模型。";
+        $currentToken = '9cb1ef40-b81e-48a1-a101-bb2b3141fe20';
+        $rotatedToken = '50dfda20-ffeb-43f8-b025-843c433b465f';
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '过期语义切片知识库',
+            'content' => $content,
+            'file_type' => 'markdown',
+            'chunk_sync_status' => 'processing',
+            'chunk_sync_token' => $currentToken,
+            'chunk_source_hash' => hash('sha256', $content),
+        ]);
+        $this->assertSame('semantic_llm', SiteSetting::query()->where('setting_key', 'knowledge_chunk_strategy')->value('setting_value'));
+        $this->assertSame($model->id, app(SystemAiModelAccessResolver::class)
+            ->resolveSemanticChunking(SystemAiIdentity::knowledgeIndex())?->id);
+        $rotated = false;
+        AiModel::updated(function (AiModel $updatedModel) use ($knowledgeBase, $model, $rotatedToken, &$rotated): void {
+            if ($rotated || (int) $updatedModel->getKey() !== (int) $model->getKey() || ! $updatedModel->wasChanged('used_today')) {
+                return;
+            }
+
+            $rotated = true;
+            KnowledgeBase::query()->whereKey($knowledgeBase->id)->update([
+                'chunk_sync_token' => $rotatedToken,
+            ]);
+        });
+
+        $count = app(KnowledgeChunkSyncService::class)->prepareStagingSync(
+            (int) $knowledgeBase->id,
+            $content,
+            $currentToken,
+            SystemAiIdentity::knowledgeIndex(),
+        );
+
+        $this->assertSame(0, $count);
+        $this->assertTrue($rotated);
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
+        $this->assertDatabaseMissing('knowledge_chunk_sync_rows', [
+            'knowledge_base_id' => $knowledgeBase->id,
+            'sync_token' => $currentToken,
+        ]);
     }
 
     public function test_semantic_chunking_discards_usage_and_releases_lock_when_staging_rolls_back(): void
@@ -1091,6 +1147,11 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
 
     private function syncKnowledge(int $knowledgeBaseId, string $content, bool $requireRealEmbedding = false): int
     {
+        KnowledgeBase::query()->whereKey($knowledgeBaseId)->update([
+            'content' => $content,
+            'character_count' => mb_strlen($content, 'UTF-8'),
+        ]);
+
         return app(KnowledgeChunkSyncService::class)->sync(
             $knowledgeBaseId,
             $content,

@@ -181,13 +181,20 @@ class KnowledgeChunkSyncCoordinator
 
     public function isCurrent(int $knowledgeBaseId, string $syncToken): bool
     {
-        return KnowledgeBase::query()
+        $knowledgeBase = KnowledgeBase::query()
             ->whereKey($knowledgeBaseId)
             ->where('chunk_sync_token', $syncToken)
             ->whereIn('chunk_sync_status', ['pending', 'processing'])
             ->where('chunk_sync_embedding_profile_version', $this->embeddingFingerprint->profileVersion())
             ->whereNotNull('chunk_sync_embedding_config_revision')
-            ->exists();
+            ->first(['content', 'chunk_source_hash']);
+
+        return $knowledgeBase instanceof KnowledgeBase
+            && trim((string) $knowledgeBase->chunk_source_hash) !== ''
+            && hash_equals(
+                (string) $knowledgeBase->chunk_source_hash,
+                hash('sha256', (string) $knowledgeBase->content),
+            );
     }
 
     public function markFailed(int $knowledgeBaseId, string $syncToken, string $message): void
