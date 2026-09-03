@@ -531,6 +531,36 @@ final class AdminUrlImportAiExecutionIdentityTest extends TestCase
         );
     }
 
+    public function test_post_commit_refresh_failure_keeps_the_durable_preview_usage_succeeded(): void
+    {
+        $admin = $this->admin('url-post-commit-refresh-admin');
+        $model = $this->model($admin, 'url-post-commit-refresh-model');
+        $job = $this->executionJob($admin, $model, 'https://source.test/post-commit-refresh');
+        $requestedModels = [];
+        $this->fakeSuccessfulImport('https://source.test/post-commit-refresh', $requestedModels);
+        $refreshFailed = false;
+        UrlImportJob::retrieved(static function (UrlImportJob $retrieved) use (&$refreshFailed): void {
+            if (! $refreshFailed && (string) $retrieved->status === 'completed') {
+                $refreshFailed = true;
+
+                throw new \RuntimeException('simulated post-commit refresh failure');
+            }
+        });
+
+        $processed = app(UrlImportProcessingService::class)->process($job);
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertTrue($refreshFailed);
+        $this->assertSame('completed', $processed->status);
+        $this->assertNotSame('', (string) $processed->result_json);
+        $this->assertCount(4, $events);
+        $this->assertSame(
+            array_fill(0, 4, AiModelUsageEvent::STATUS_SUCCEEDED),
+            $events->pluck('status')->all(),
+        );
+        $this->assertSame(array_fill(0, 4, null), $events->pluck('error_code')->all());
+    }
+
     public function test_cancelled_lease_discards_returned_results_without_marking_an_access_revocation(): void
     {
         $admin = $this->admin('url-ledger-cancel-admin');

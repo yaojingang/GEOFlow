@@ -1520,8 +1520,6 @@ PROMPT;
             ])->save();
             $this->executionBoundaryHook->beforePreviewCommit($lockedJob);
         });
-
-        $job->refresh();
     }
 
     private function markFailed(
