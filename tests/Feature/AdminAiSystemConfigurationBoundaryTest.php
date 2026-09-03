@@ -185,6 +185,7 @@ class AdminAiSystemConfigurationBoundaryTest extends TestCase
             ->assertJsonPath('error_code', 'ai_model_unavailable');
 
         $this->assertSame(0, (int) $arkModel->fresh()->used_today);
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
         AdminHelpAssistant::assertNeverPrompted();
     }
 

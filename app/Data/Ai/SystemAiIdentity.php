@@ -17,6 +17,11 @@ final readonly class SystemAiIdentity implements JsonSerializable
 
     public static function forVisibilityCollection(): self
     {
+        return self::visibilityCollection();
+    }
+
+    public static function visibilityCollection(): self
+    {
         return new self(self::VISIBILITY_COLLECTION);
     }
 
@@ -43,6 +48,13 @@ final readonly class SystemAiIdentity implements JsonSerializable
     {
         if (! hash_equals(self::KNOWLEDGE_INDEX, $this->purpose)) {
             throw new LogicException('The system identity purpose cannot build a knowledge index.');
+        }
+    }
+
+    public function assertCanCollectVisibility(): void
+    {
+        if (! hash_equals(self::VISIBILITY_COLLECTION, $this->purpose)) {
+            throw new LogicException('The system identity purpose cannot collect AI visibility.');
         }
     }
 

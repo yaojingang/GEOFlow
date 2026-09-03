@@ -20,6 +20,7 @@ final class AiVisibilityCollectionService
      */
     public function collect(SystemAiIdentity $identity, string $keyword): array
     {
+        $identity->assertCanCollectVisibility();
         $keyword = trim($keyword);
         if ($keyword === '') {
             throw new RuntimeException('AI 可见性关键词为空');
@@ -29,6 +30,7 @@ final class AiVisibilityCollectionService
         $deepSeek = $this->configuration->deepSeekModel($identity);
         if ($provider instanceof AiSourceProvider && $deepSeek instanceof AiModel) {
             return $this->visibility->runDoubaoSearchThenDeepSeekAnalysis(
+                $identity,
                 $provider,
                 $deepSeek,
                 $keyword,
@@ -38,7 +40,7 @@ final class AiVisibilityCollectionService
         $ark = $this->configuration->arkModel($identity);
         if ($ark instanceof AiModel) {
             return [
-                'ark_run' => $this->visibility->runDoubaoArkResponses($ark, $keyword),
+                'ark_run' => $this->visibility->runDoubaoArkResponses($identity, $ark, $keyword),
             ];
         }
 
@@ -51,6 +53,7 @@ final class AiVisibilityCollectionService
         if ($deepSeek instanceof AiModel) {
             return [
                 'analysis_run' => $this->visibility->runDeepSeekAnalysis(
+                    $identity,
                     $deepSeek,
                     $keyword,
                     sprintf('请分析关键词「%s」的 GEO/AI 可见性，并给出可执行建议。', $keyword),

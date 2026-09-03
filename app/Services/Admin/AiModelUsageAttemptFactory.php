@@ -90,6 +90,37 @@ final readonly class AiModelUsageAttemptFactory
         ]);
     }
 
+    public function beginForVisibilityCollection(
+        AiModel $model,
+        SystemAiIdentity $identity,
+        string $requestId,
+        string $requestPayload,
+        string $callKey,
+        string $operation,
+        string $businessSource,
+        ?string $sourceType = null,
+        int|string|null $sourceId = null,
+    ): AiModelUsageAttempt {
+        $identity->assertCanCollectVisibility();
+        $snapshot = AiModelUsageAccessSnapshot::capture(
+            model: $model,
+            executionAdmin: null,
+            executionScope: AiModelUsageEvent::EXECUTION_SCOPE_SYSTEM,
+            modelSource: AiModelUsageEvent::MODEL_SOURCE_SYSTEM,
+            aiConfigAccessVersion: 0,
+            requestId: $requestId,
+            requestPayloadDigest: hash('sha256', $requestPayload),
+        );
+
+        return new AiModelUsageAttempt($snapshot, $this->recorder, [
+            'call_key' => $callKey,
+            'operation' => $operation,
+            'business_source' => $businessSource,
+            'source_type' => $sourceType,
+            'source_id' => $sourceId,
+        ]);
+    }
+
     public function sourceFor(AiModel $model, int $executionAdminId): string
     {
         return (int) $model->owner_admin_id === $executionAdminId

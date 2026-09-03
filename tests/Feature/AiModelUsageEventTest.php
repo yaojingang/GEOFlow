@@ -78,6 +78,41 @@ class AiModelUsageEventTest extends TestCase
         }
     }
 
+    public function test_visibility_collection_attempt_requires_the_collection_identity(): void
+    {
+        $owner = $this->admin('visibility-system-owner', 'super_admin');
+        $model = $this->model($owner, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+        $factory = app(AiModelUsageAttemptFactory::class);
+
+        try {
+            $factory->beginForVisibilityCollection(
+                model: $model,
+                identity: SystemAiIdentity::forVisibilityAnalytics(),
+                requestId: $factory->requestId(),
+                requestPayload: 'payload',
+                callKey: 'ark.p1',
+                operation: 'ai_visibility.collect.ark',
+                businessSource: 'ai_visibility_collection',
+            );
+            $this->fail('Visibility analytics cannot record collection attempts.');
+        } catch (LogicException) {
+            $this->assertDatabaseCount('ai_model_usage_events', 0);
+        }
+
+        $attempt = $factory->beginForVisibilityCollection(
+            model: $model,
+            identity: SystemAiIdentity::visibilityCollection(),
+            requestId: $factory->requestId(),
+            requestPayload: 'payload',
+            callKey: 'deepseek.p1',
+            operation: 'ai_visibility.collect.deepseek',
+            businessSource: 'ai_visibility_collection',
+        );
+        $attempt->succeeded();
+
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_SYSTEM, AiModelUsageEvent::query()->sole()->model_source);
+    }
+
     public function test_production_attempt_records_one_terminal_event_with_normalized_tokens_and_frozen_shared_attribution(): void
     {
         $owner = $this->admin('owner', 'super_admin');
