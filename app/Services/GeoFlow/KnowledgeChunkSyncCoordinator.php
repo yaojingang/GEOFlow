@@ -168,6 +168,8 @@ class KnowledgeChunkSyncCoordinator
                 $token,
                 $identity->purpose(),
                 (bool) $sync['require_real_embedding'],
+                (string) Str::uuid(),
+                1,
             )
                 ->onQueue('knowledge')
                 ->afterCommit();

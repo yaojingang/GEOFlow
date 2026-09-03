@@ -19,6 +19,7 @@ use App\Models\SiteSetting;
 use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Services\Admin\AiModelUsageAttempt;
 use App\Services\Admin\AiModelUsageAttemptFactory;
+use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use App\Support\GeoFlow\AiModelFailoverDecider;
@@ -69,6 +70,7 @@ class KnowledgeChunkSyncService
         private readonly AiExecutionErrorSanitizer $errorSanitizer,
         private readonly AiModelFailoverDecider $failoverDecider,
         private readonly AiModelUsageAttemptFactory $usageAttempts,
+        private readonly AiModelInvocationLock $invocationLocks,
     ) {}
 
     /**
@@ -100,8 +102,15 @@ class KnowledgeChunkSyncService
         ]);
 
         try {
-            $chunkCount = $this->prepareStagingSync($knowledgeBaseId, $content, $syncToken, $identity);
+            $chunkCount = $this->prepareStagingSync(
+                $knowledgeBaseId,
+                $content,
+                $syncToken,
+                $identity,
+                $this->usageAttempts->requestId(),
+            );
             $afterRowId = 0;
+            $dispatchOrdinal = 1;
             while (true) {
                 $batch = $this->embedStagingBatch(
                     $knowledgeBaseId,
@@ -109,6 +118,9 @@ class KnowledgeChunkSyncService
                     $afterRowId,
                     $identity,
                     $requireRealEmbedding,
+                    $this->usageAttempts->requestId(),
+                    1,
+                    $dispatchOrdinal++,
                 );
                 if ($batch === null || $batch['done']) {
                     break;
@@ -143,82 +155,152 @@ class KnowledgeChunkSyncService
         string $content,
         string $syncToken,
         SystemAiIdentity $identity,
+        ?string $executionToken = null,
+        int $executionAttempt = 1,
+        int $dispatchOrdinal = 1,
     ): int {
         $identity->assertCanBuildKnowledgeIndex();
         $this->ensurePipelineProfile($knowledgeBaseId, $syncToken, $identity);
+        KnowledgeBase::query()
+            ->whereKey($knowledgeBaseId)
+            ->where('chunk_sync_token', $syncToken)
+            ->where(static function ($query): void {
+                $query->whereNull('chunk_source_hash')->orWhere('chunk_source_hash', '');
+            })
+            ->update(['chunk_source_hash' => hash('sha256', $content)]);
         if (strlen($content) > self::MAX_CONTENT_BYTES) {
             throw new \RuntimeException(__('admin.knowledge_bases.error.content_too_large'));
         }
 
-        $plannedChunks = $this->planChunks($knowledgeBaseId, $content, $identity);
+        $executionToken = $this->normalizeKnowledgeIndexExecutionToken($executionToken);
+        $semanticUsage = null;
+        $semanticStrategy = null;
+        $plannedChunks = $this->planChunks(
+            $knowledgeBaseId,
+            $content,
+            $identity,
+            $syncToken,
+            $executionToken,
+            $executionAttempt,
+            $dispatchOrdinal,
+            $semanticUsage,
+            $semanticStrategy,
+        );
         $knowledgeMetadata = $this->resolveKnowledgeBaseMetadata($knowledgeBaseId);
         $now = now();
 
-        DB::transaction(function () use (
-            $knowledgeBaseId,
-            $syncToken,
-            $plannedChunks,
-            $knowledgeMetadata,
-            $now,
-        ): void {
-            DB::table('knowledge_chunk_sync_rows')
-                ->where('knowledge_base_id', $knowledgeBaseId)
-                ->where('sync_token', $syncToken)
-                ->delete();
-
-            $rows = [];
-            foreach ($plannedChunks as $index => $chunk) {
-                $chunkContent = (string) ($chunk['content'] ?? '');
-                $fallbackVector = $this->buildFallbackVector($chunkContent, 256);
-                $rows[] = [
-                    'knowledge_base_id' => $knowledgeBaseId,
-                    'sync_token' => $syncToken,
-                    'chunk_index' => $index,
-                    'content' => $chunkContent,
-                    'content_hash' => hash('sha256', $chunkContent),
-                    'chunk_title' => mb_substr((string) ($chunk['title'] ?? ''), 0, 255, 'UTF-8'),
-                    'section_path' => mb_substr((string) ($chunk['section_path'] ?? ''), 0, 500, 'UTF-8'),
-                    'chunk_strategy' => mb_substr((string) ($chunk['strategy'] ?? 'structured_rule'), 0, 50, 'UTF-8'),
-                    'metadata_json' => json_encode(
-                        $this->mergeChunkMetadata($chunk['metadata'] ?? [], $knowledgeMetadata),
-                        JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION
-                    ),
-                    'source_hash' => hash('sha256', (string) ($chunk['section_path'] ?? '').'|'.$chunkContent),
-                    'token_count' => $this->estimateTokenCount($chunkContent),
-                    'embedding_json' => json_encode(
-                        $fallbackVector,
-                        JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION
-                    ) ?: '[]',
-                    'embedding_model_id' => null,
-                    'embedding_dimensions' => 0,
-                    'embedding_provider' => '',
-                    'embedding_fingerprint' => '',
-                    'embedding_profile_version' => null,
-                    'embedding_profile_digest' => null,
-                    'embedding_config_revision' => null,
-                    'embedding_vector' => null,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-
-                if (count($rows) >= 50) {
-                    DB::table('knowledge_chunk_sync_rows')->insert($rows);
-                    $rows = [];
+        try {
+            $persisted = DB::transaction(function () use (
+                $knowledgeBaseId,
+                $syncToken,
+                $content,
+                $plannedChunks,
+                $knowledgeMetadata,
+                $now,
+                $identity,
+                $semanticUsage,
+                $semanticStrategy,
+            ): bool {
+                $knowledgeBase = KnowledgeBase::query()
+                    ->whereKey($knowledgeBaseId)
+                    ->lockForUpdate()
+                    ->first(['id', 'chunk_sync_token', 'chunk_sync_status', 'chunk_source_hash']);
+                if (! $knowledgeBase
+                    || ! hash_equals((string) $knowledgeBase->chunk_sync_token, $syncToken)
+                    || ! in_array((string) $knowledgeBase->chunk_sync_status, ['pending', 'processing'], true)
+                    || ! hash_equals((string) $knowledgeBase->chunk_source_hash, hash('sha256', $content))
+                    || ($semanticStrategy !== null && ! hash_equals($semanticStrategy, $this->resolveChunkStrategy()))) {
+                    return false;
                 }
-            }
+                if ($semanticUsage instanceof KnowledgeIndexAiUsageSession) {
+                    $snapshot = new AiModel;
+                    $snapshot->setAttribute($snapshot->getKeyName(), $semanticUsage->modelId);
+                    $currentModel = $this->systemModelAccessResolver->assertSemanticChunkingCurrent($identity, $snapshot);
+                    if (! hash_equals(
+                        $semanticUsage->configurationRevision,
+                        $this->embeddingFingerprint->configurationRevision($currentModel),
+                    )) {
+                        throw AiModelAccessException::configAccessRevokedForAdminId($semanticUsage->ownerAdminId);
+                    }
+                }
 
-            if ($rows !== []) {
-                DB::table('knowledge_chunk_sync_rows')->insert($rows);
-            }
+                DB::table('knowledge_chunk_sync_rows')
+                    ->where('knowledge_base_id', $knowledgeBaseId)
+                    ->where('sync_token', $syncToken)
+                    ->delete();
 
-            KnowledgeBase::query()
-                ->whereKey($knowledgeBaseId)
-                ->where('chunk_sync_token', $syncToken)
-                ->update([
-                    'chunk_sync_status' => 'processing',
-                    'updated_at' => $now,
-                ]);
-        });
+                $rows = [];
+                foreach ($plannedChunks as $index => $chunk) {
+                    $chunkContent = (string) ($chunk['content'] ?? '');
+                    $fallbackVector = $this->buildFallbackVector($chunkContent, 256);
+                    $rows[] = [
+                        'knowledge_base_id' => $knowledgeBaseId,
+                        'sync_token' => $syncToken,
+                        'chunk_index' => $index,
+                        'content' => $chunkContent,
+                        'content_hash' => hash('sha256', $chunkContent),
+                        'chunk_title' => mb_substr((string) ($chunk['title'] ?? ''), 0, 255, 'UTF-8'),
+                        'section_path' => mb_substr((string) ($chunk['section_path'] ?? ''), 0, 500, 'UTF-8'),
+                        'chunk_strategy' => mb_substr((string) ($chunk['strategy'] ?? 'structured_rule'), 0, 50, 'UTF-8'),
+                        'metadata_json' => json_encode(
+                            $this->mergeChunkMetadata($chunk['metadata'] ?? [], $knowledgeMetadata),
+                            JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION
+                        ),
+                        'source_hash' => hash('sha256', (string) ($chunk['section_path'] ?? '').'|'.$chunkContent),
+                        'token_count' => $this->estimateTokenCount($chunkContent),
+                        'embedding_json' => json_encode(
+                            $fallbackVector,
+                            JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION
+                        ) ?: '[]',
+                        'embedding_model_id' => null,
+                        'embedding_dimensions' => 0,
+                        'embedding_provider' => '',
+                        'embedding_fingerprint' => '',
+                        'embedding_profile_version' => null,
+                        'embedding_profile_digest' => null,
+                        'embedding_config_revision' => null,
+                        'embedding_vector' => null,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+
+                    if (count($rows) >= 50) {
+                        DB::table('knowledge_chunk_sync_rows')->insert($rows);
+                        $rows = [];
+                    }
+                }
+
+                if ($rows !== []) {
+                    DB::table('knowledge_chunk_sync_rows')->insert($rows);
+                }
+
+                KnowledgeBase::query()
+                    ->whereKey($knowledgeBaseId)
+                    ->where('chunk_sync_token', $syncToken)
+                    ->update([
+                        'chunk_sync_status' => 'processing',
+                        'updated_at' => $now,
+                    ]);
+
+                return true;
+            });
+        } catch (AiModelAccessException $exception) {
+            $semanticUsage?->revoked($exception->getErrorCode());
+
+            throw $exception;
+        } catch (Throwable $exception) {
+            $semanticUsage?->discarded('knowledge_semantic_staging_failed');
+
+            throw $exception;
+        }
+
+        if (! $persisted) {
+            $semanticUsage?->discarded('knowledge_semantic_staging_stale');
+
+            return 0;
+        }
+
+        $semanticUsage?->succeeded();
 
         return count($plannedChunks);
     }
@@ -232,6 +314,9 @@ class KnowledgeChunkSyncService
         int $afterRowId,
         SystemAiIdentity $identity,
         bool $requireRealEmbedding = false,
+        ?string $executionToken = null,
+        int $executionAttempt = 1,
+        int $dispatchOrdinal = 1,
     ): ?array {
         $identity->assertCanBuildKnowledgeIndex();
         $batchLimit = max(1, min(32, (int) config('geoflow.knowledge_embedding_job_size', 32)));
@@ -257,6 +342,8 @@ class KnowledgeChunkSyncService
             $syncToken,
             $identity,
         );
+        $executionToken = $this->normalizeKnowledgeIndexExecutionToken($executionToken);
+        $embeddingUsage = null;
         $generatedEmbeddings = $this->generateEmbeddingsForChunks(
             $chunks,
             $embeddingMetadata,
@@ -265,6 +352,10 @@ class KnowledgeChunkSyncService
             $this->resolveEmbeddingDocumentTitle($knowledgeBaseId),
             $knowledgeBaseId,
             $syncToken,
+            $executionToken,
+            $executionAttempt,
+            $dispatchOrdinal,
+            $embeddingUsage,
         );
 
         if ($requireRealEmbedding && count($generatedEmbeddings) !== count($chunks)) {
@@ -313,30 +404,63 @@ class KnowledgeChunkSyncService
             }
         }
 
-        DB::transaction(function () use ($knowledgeBaseId, $syncToken, $identity, $generatedEmbeddings): void {
-            $this->assertFrozenSystemEmbeddingPipelineCurrent($knowledgeBaseId, $syncToken, $identity, true);
-            foreach ($generatedEmbeddings as $rowId => $embedding) {
-                DB::table('knowledge_chunk_sync_rows')
-                    ->where('id', (int) $rowId)
-                    ->where('knowledge_base_id', $knowledgeBaseId)
-                    ->where('sync_token', $syncToken)
-                    ->update([
-                        'embedding_json' => json_encode(
-                            $embedding['vector'] ?? [],
-                            JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION
-                        ) ?: '[]',
-                        'embedding_model_id' => (int) ($embedding['model_id'] ?? 0),
-                        'embedding_dimensions' => (int) ($embedding['dimensions'] ?? 0),
-                        'embedding_provider' => (string) ($embedding['provider'] ?? ''),
-                        'embedding_fingerprint' => (string) ($embedding['fingerprint'] ?? ''),
-                        'embedding_profile_version' => (int) ($embedding['profile_version'] ?? 0),
-                        'embedding_profile_digest' => (string) ($embedding['profile_digest'] ?? ''),
-                        'embedding_config_revision' => (string) ($embedding['config_revision'] ?? ''),
-                        'embedding_vector' => $embedding['vector_literal'] ?? null,
-                        'updated_at' => now(),
-                    ]);
-            }
-        });
+        try {
+            $persisted = DB::transaction(function () use ($knowledgeBaseId, $syncToken, $identity, $generatedEmbeddings): bool {
+                $knowledgeBase = KnowledgeBase::query()
+                    ->whereKey($knowledgeBaseId)
+                    ->lockForUpdate()
+                    ->first(['id', 'chunk_sync_token', 'chunk_sync_status']);
+                if (! $knowledgeBase
+                    || ! hash_equals((string) $knowledgeBase->chunk_sync_token, $syncToken)
+                    || ! in_array((string) $knowledgeBase->chunk_sync_status, ['pending', 'processing'], true)) {
+                    return false;
+                }
+                $this->assertFrozenSystemEmbeddingPipelineCurrent($knowledgeBaseId, $syncToken, $identity);
+                foreach ($generatedEmbeddings as $rowId => $embedding) {
+                    $updated = DB::table('knowledge_chunk_sync_rows')
+                        ->where('id', (int) $rowId)
+                        ->where('knowledge_base_id', $knowledgeBaseId)
+                        ->where('sync_token', $syncToken)
+                        ->update([
+                            'embedding_json' => json_encode(
+                                $embedding['vector'] ?? [],
+                                JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION
+                            ) ?: '[]',
+                            'embedding_model_id' => (int) ($embedding['model_id'] ?? 0),
+                            'embedding_dimensions' => (int) ($embedding['dimensions'] ?? 0),
+                            'embedding_provider' => (string) ($embedding['provider'] ?? ''),
+                            'embedding_fingerprint' => (string) ($embedding['fingerprint'] ?? ''),
+                            'embedding_profile_version' => (int) ($embedding['profile_version'] ?? 0),
+                            'embedding_profile_digest' => (string) ($embedding['profile_digest'] ?? ''),
+                            'embedding_config_revision' => (string) ($embedding['config_revision'] ?? ''),
+                            'embedding_vector' => $embedding['vector_literal'] ?? null,
+                            'updated_at' => now(),
+                        ]);
+                    if ($updated !== 1) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+        } catch (AiModelAccessException|PermanentAiProviderException $exception) {
+            $errorCode = $exception instanceof AiModelAccessException
+                ? $exception->getErrorCode()
+                : 'knowledge_embedding_configuration_revoked';
+            $embeddingUsage?->revoked($errorCode);
+
+            throw $exception;
+        } catch (Throwable $exception) {
+            $embeddingUsage?->discarded('knowledge_embedding_staging_failed');
+
+            throw $exception;
+        }
+        if (! $persisted) {
+            $embeddingUsage?->discarded('knowledge_embedding_staging_stale');
+
+            return null;
+        }
+        $embeddingUsage?->succeeded();
         KnowledgeBase::query()
             ->whereKey($knowledgeBaseId)
             ->where('chunk_sync_token', $syncToken)
@@ -701,6 +825,12 @@ class KnowledgeChunkSyncService
         int $knowledgeBaseId,
         string $content,
         SystemAiIdentity $identity,
+        string $syncToken,
+        string $executionToken,
+        int $executionAttempt,
+        int $dispatchOrdinal,
+        ?KnowledgeIndexAiUsageSession &$usageSession,
+        ?string &$semanticStrategy,
     ): array {
         $blocks = $this->expandOversizedBlocks($this->splitStructuredBlocks($content));
         if ($blocks === []) {
@@ -725,7 +855,17 @@ class KnowledgeChunkSyncService
                 : $this->buildStructuredRuleChunks($blocks, 'semantic_fallback');
         }
 
-        $semanticChunks = $this->buildSemanticChunks($knowledgeBaseId, $blocks, $identity);
+        $semanticStrategy = $strategy;
+        $semanticChunks = $this->buildSemanticChunks(
+            $knowledgeBaseId,
+            $blocks,
+            $identity,
+            $syncToken,
+            $executionToken,
+            $executionAttempt,
+            $dispatchOrdinal,
+            $usageSession,
+        );
 
         if ($semanticChunks !== []) {
             return $semanticChunks;
@@ -1089,6 +1229,11 @@ class KnowledgeChunkSyncService
         int $knowledgeBaseId,
         array $blocks,
         SystemAiIdentity $identity,
+        string $syncToken,
+        string $executionToken,
+        int $executionAttempt,
+        int $dispatchOrdinal,
+        ?KnowledgeIndexAiUsageSession &$usageSession,
     ): array {
         $models = $this->resolveSemanticChunkingModels($identity);
         if ($models === []) {
@@ -1110,28 +1255,78 @@ class KnowledgeChunkSyncService
                 continue;
             }
 
-            $reservation = $this->usageQuota->reserveModel($model);
-            if ($reservation === null) {
-                continue;
-            }
-
+            $session = null;
+            $lock = null;
+            $reservation = null;
+            $providerAttempt = null;
+            $providerReturned = false;
             try {
-                $this->systemModelAccessResolver->assertSemanticChunkingCurrent($identity, $model);
-                $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, $modelId);
-                $providerName = OpenAiRuntimeProvider::registerProvider('knowledge_chunking', $driver, $providerUrl, $apiKey);
+                $lock = $this->invocationLocks->acquireForInvocation(
+                    (int) $model->getKey(),
+                    MarkdownContentWriterAgent::PROVIDER_TIMEOUT_SECONDS + 60,
+                );
+                $currentModel = $this->systemModelAccessResolver->assertSemanticChunkingCurrent($identity, $model);
+                $currentProviderUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) ($currentModel->api_url ?? ''));
+                $currentApiKey = $this->decryptApiKey((string) ($currentModel->getRawOriginal('api_key') ?? ''));
+                $currentModelId = trim((string) ($currentModel->model_id ?? ''));
+                if ($currentProviderUrl === '' || $currentApiKey === '' || $currentModelId === '') {
+                    $this->invocationLocks->release($lock);
+
+                    continue;
+                }
+                $reservation = $this->usageQuota->reserveModel($currentModel);
+                if ($reservation === null) {
+                    $this->invocationLocks->release($lock);
+
+                    continue;
+                }
+                $session = new KnowledgeIndexAiUsageSession(
+                    modelId: (int) $currentModel->getKey(),
+                    ownerAdminId: (int) $currentModel->owner_admin_id,
+                    configurationRevision: $this->embeddingFingerprint->configurationRevision($currentModel),
+                    quota: $this->usageQuota,
+                    invocationLocks: $this->invocationLocks,
+                    lock: $lock,
+                );
+                $driver = OpenAiRuntimeProvider::resolveChatDriver($currentProviderUrl, $currentModelId);
+                $providerName = OpenAiRuntimeProvider::registerProvider('knowledge_chunking', $driver, $currentProviderUrl, $currentApiKey);
                 $agent = new MarkdownContentWriterAgent($this->semanticChunkingSystemPrompt());
+                $prompt = $this->semanticChunkingUserPrompt($knowledgeBaseId, $blocks);
+                $providerAttempt = $session->begin(
+                    $this->usageAttempts->beginForSystem(
+                        model: $currentModel,
+                        identity: $identity,
+                        requestId: $syncToken,
+                        requestPayload: $prompt,
+                        callKey: $this->knowledgeIndexCallKey(
+                            'semantic',
+                            $executionToken,
+                            $executionAttempt,
+                            $dispatchOrdinal,
+                            1,
+                        ),
+                        operation: 'knowledge.semantic_chunking',
+                        businessSource: 'knowledge_index',
+                        sourceType: KnowledgeBase::class,
+                        sourceId: $knowledgeBaseId,
+                    ),
+                    $reservation,
+                );
                 $response = $agent->prompt(
-                    $this->semanticChunkingUserPrompt($knowledgeBaseId, $blocks),
+                    $prompt,
                     [],
                     $providerName,
-                    $modelId
+                    $currentModelId
                 );
+                $providerReturned = true;
+                $session->providerReturned($providerAttempt, $response->usage ?? null);
                 $this->systemModelAccessResolver->assertSemanticChunkingCurrent($identity, $model);
                 $content = OpenAiRuntimeProvider::normalizeGeneratedText((string) ($response->text ?? ''));
                 $plan = $this->decodeSemanticChunkPlan($content);
                 $chunks = $this->chunksFromSemanticPlan($blocks, $plan);
                 if ($chunks === []) {
-                    $this->usageQuota->releaseModel($reservation);
+                    $session->providerDiscarded($providerAttempt, 'knowledge_semantic_plan_invalid');
+                    $session->discarded('knowledge_semantic_plan_invalid');
                     Log::info('geoflow.knowledge_semantic_chunking_invalid_response', [
                         'knowledge_base_id' => $knowledgeBaseId,
                         'semantic_model_id' => (int) $model->id,
@@ -1142,15 +1337,35 @@ class KnowledgeChunkSyncService
                     continue;
                 }
 
-                $this->usageQuota->recordModelSuccess($reservation);
+                $usageSession = $session;
 
                 return $chunks;
             } catch (AiModelAccessException $exception) {
-                $this->usageQuota->releaseModel($reservation);
+                if ($providerAttempt === null && $reservation !== null) {
+                    $this->usageQuota->releaseModel($reservation);
+                }
+                $session?->revoked($exception->getErrorCode());
+                if (! $session instanceof KnowledgeIndexAiUsageSession) {
+                    $this->invocationLocks->release($lock);
+                }
 
                 throw $exception;
             } catch (Throwable $exception) {
-                $this->usageQuota->releaseModel($reservation);
+                if ($providerAttempt === null && $reservation !== null) {
+                    $this->usageQuota->releaseModel($reservation);
+                }
+                if ($session instanceof KnowledgeIndexAiUsageSession) {
+                    if ($providerAttempt === null) {
+                        $session->discarded('knowledge_semantic_preflight_failed');
+                    } elseif ($providerReturned) {
+                        $session->providerDiscarded($providerAttempt, 'knowledge_semantic_result_invalid');
+                    } else {
+                        $session->providerFailed($providerAttempt, 'knowledge_semantic_provider_failed');
+                    }
+                    $session->discarded('knowledge_semantic_provider_failed');
+                } else {
+                    $this->invocationLocks->release($lock);
+                }
                 Log::info('geoflow.knowledge_semantic_chunking_failed', [
                     'knowledge_base_id' => $knowledgeBaseId,
                     'semantic_model_id' => (int) $model->id,
@@ -1161,6 +1376,32 @@ class KnowledgeChunkSyncService
         }
 
         return [];
+    }
+
+    private function normalizeKnowledgeIndexExecutionToken(?string $executionToken): string
+    {
+        $executionToken = trim((string) $executionToken);
+
+        return Str::isUuid($executionToken) || Str::isUlid($executionToken)
+            ? $executionToken
+            : $this->usageAttempts->requestId();
+    }
+
+    private function knowledgeIndexCallKey(
+        string $phase,
+        string $executionToken,
+        int $executionAttempt,
+        int $dispatchOrdinal,
+        int $providerOrdinal,
+    ): string {
+        return sprintf(
+            '%s.e-%s.d-%d.a-%d.p-%d',
+            $phase,
+            $executionToken,
+            max(1, $dispatchOrdinal),
+            max(1, $executionAttempt),
+            max(1, $providerOrdinal),
+        );
     }
 
     /**
@@ -1724,6 +1965,10 @@ class KnowledgeChunkSyncService
         ?string $documentTitle = null,
         ?int $knowledgeBaseId = null,
         ?string $syncToken = null,
+        ?string $executionToken = null,
+        int $executionAttempt = 1,
+        int $dispatchOrdinal = 1,
+        ?KnowledgeIndexAiUsageSession &$usageSession = null,
     ): array {
         if ($chunks === []) {
             return [];
@@ -1737,17 +1982,62 @@ class KnowledgeChunkSyncService
         }
 
         $canStoreEmbeddingVector = $this->canStoreEmbeddingVector();
+        $session = null;
         try {
+            $modelId = (int) ($embeddingMetadata['model_id'] ?? 0);
+            $lock = $this->invocationLocks->acquireForInvocation($modelId, 240);
+            try {
+                $snapshot = new AiModel;
+                $snapshot->setAttribute($snapshot->getKeyName(), $modelId);
+                $currentModel = $this->systemModelAccessResolver->assertEmbeddingCurrent($identity, $snapshot);
+                if (! hash_equals(
+                    (string) ($embeddingMetadata['config_revision'] ?? ''),
+                    $this->embeddingFingerprint->configurationRevision($currentModel),
+                )) {
+                    throw AiModelAccessException::configAccessRevokedForAdminId((int) $currentModel->owner_admin_id);
+                }
+                $session = new KnowledgeIndexAiUsageSession(
+                    modelId: $modelId,
+                    ownerAdminId: (int) $currentModel->owner_admin_id,
+                    configurationRevision: (string) $embeddingMetadata['config_revision'],
+                    quota: $this->usageQuota,
+                    invocationLocks: $this->invocationLocks,
+                    lock: $lock,
+                );
+            } catch (Throwable $exception) {
+                $this->invocationLocks->release($lock);
+
+                throw $exception;
+            }
             $results = [];
             $pendingChunks = $chunks;
             $batchSize = $this->embeddingBatchSize();
+            $providerOrdinal = 0;
             while ($pendingChunks !== []) {
                 $batch = array_slice($pendingChunks, 0, $batchSize, true);
 
                 try {
-                    $currentMetadata = $knowledgeBaseId !== null && $syncToken !== null
-                        ? $this->resolveFrozenSystemEmbeddingMetadata($knowledgeBaseId, $syncToken, $identity)
-                        : $embeddingMetadata;
+                    if ($knowledgeBaseId !== null && $syncToken !== null) {
+                        if (! $this->knowledgeSyncTokenIsCurrent($knowledgeBaseId, $syncToken)) {
+                            throw new \RuntimeException('knowledge_embedding_staging_stale');
+                        }
+                        try {
+                            $currentMetadata = $this->resolveFrozenSystemEmbeddingMetadata(
+                                $knowledgeBaseId,
+                                $syncToken,
+                                $identity,
+                            );
+                        } catch (AiModelAccessException|PermanentAiProviderException $exception) {
+                            $errorCode = $exception instanceof AiModelAccessException
+                                ? $exception->getErrorCode()
+                                : 'knowledge_embedding_configuration_revoked';
+                            $session->revoked($errorCode);
+
+                            throw $exception;
+                        }
+                    } else {
+                        $currentMetadata = $embeddingMetadata;
+                    }
                     if ($currentMetadata === null) {
                         throw PermanentAiProviderException::fromProviderFailure(
                             new \RuntimeException('knowledge_embedding_model_unavailable'),
@@ -1765,6 +2055,12 @@ class KnowledgeChunkSyncService
                         $providerName,
                         $canStoreEmbeddingVector,
                         $identity,
+                        $session,
+                        $syncToken ?? $this->usageAttempts->requestId(),
+                        $executionToken ?? $this->usageAttempts->requestId(),
+                        $executionAttempt,
+                        $dispatchOrdinal,
+                        ++$providerOrdinal,
                         $documentTitle,
                         $knowledgeBaseId,
                         $syncToken,
@@ -1810,10 +2106,22 @@ class KnowledgeChunkSyncService
                 }
             }
 
-            return count($results) === count($chunks) ? $results : [];
+            if (count($results) !== count($chunks)) {
+                $session->discarded('knowledge_embedding_result_incomplete');
+
+                return [];
+            }
+
+            $usageSession = $session;
+
+            return $results;
         } catch (AiModelAccessException|PermanentAiProviderException $exception) {
+            $exception instanceof AiModelAccessException
+                ? $session?->revoked($exception->getErrorCode())
+                : $session?->discarded('knowledge_embedding_pipeline_failed');
             throw $exception;
         } catch (Throwable $exception) {
+            $session?->discarded('knowledge_embedding_result_not_committed');
             $message = $this->errorSanitizer->sanitize(
                 OpenAiRuntimeProvider::normalizeApiException(
                     $exception,
@@ -1847,6 +2155,12 @@ class KnowledgeChunkSyncService
         string $providerName,
         bool $canStoreEmbeddingVector,
         SystemAiIdentity $identity,
+        KnowledgeIndexAiUsageSession $usageSession,
+        string $requestId,
+        string $executionToken,
+        int $executionAttempt,
+        int $dispatchOrdinal,
+        int $providerOrdinal,
         ?string $documentTitle = null,
         ?int $knowledgeBaseId = null,
         ?string $syncToken = null,
@@ -1861,15 +2175,42 @@ class KnowledgeChunkSyncService
 
         $batchKeys = array_keys($batch);
         $batchInputs = $this->formatEmbeddingDocumentInputs(array_values($batch), $embeddingMetadata, $documentTitle);
+        $providerAttempt = null;
+        $providerResult = null;
         try {
+            $providerAttempt = $usageSession->begin(
+                $this->usageAttempts->beginForSystem(
+                    model: $model,
+                    identity: $identity,
+                    requestId: $requestId,
+                    requestPayload: implode("\n", $batchInputs),
+                    callKey: $this->knowledgeIndexCallKey(
+                        'embedding',
+                        $executionToken,
+                        $executionAttempt,
+                        $dispatchOrdinal,
+                        $providerOrdinal,
+                    ),
+                    operation: 'knowledge.embedding_batch',
+                    businessSource: 'knowledge_index',
+                    sourceType: KnowledgeBase::class,
+                    sourceId: $knowledgeBaseId,
+                ),
+                $reservation,
+            );
             $this->systemModelAccessResolver->assertEmbeddingCurrent($identity, $model);
-            $embeddings = $this->requestEmbeddingVectors(
+            $providerResult = $this->requestEmbeddingVectors(
                 $batchInputs,
                 $embeddingMetadata,
                 $providerName,
-            )->embeddings;
+            );
+            $usageSession->providerReturned($providerAttempt, $providerResult->usage);
+            $embeddings = $providerResult->embeddings;
             $this->systemModelAccessResolver->assertEmbeddingCurrent($identity, $model);
             if ($knowledgeBaseId !== null && $syncToken !== null) {
+                if (! $this->knowledgeSyncTokenIsCurrent($knowledgeBaseId, $syncToken)) {
+                    throw new \RuntimeException('knowledge_embedding_staging_stale');
+                }
                 $this->assertFrozenSystemEmbeddingPipelineCurrent($knowledgeBaseId, $syncToken, $identity);
             }
 
@@ -1896,15 +2237,38 @@ class KnowledgeChunkSyncService
                         : null,
                 ];
             }
+        } catch (AiModelAccessException|PermanentAiProviderException $exception) {
+            if ($providerAttempt === null) {
+                $this->usageQuota->releaseModel($reservation);
+            }
+            $errorCode = $exception instanceof AiModelAccessException
+                ? $exception->getErrorCode()
+                : 'knowledge_embedding_configuration_revoked';
+            $usageSession->revoked($errorCode);
+
+            throw $exception;
         } catch (Throwable $exception) {
-            $this->usageQuota->releaseModel($reservation);
+            if ($providerAttempt === null) {
+                $this->usageQuota->releaseModel($reservation);
+            } elseif ($providerResult instanceof KnowledgeEmbeddingProviderResult) {
+                $usageSession->providerDiscarded($providerAttempt, 'knowledge_embedding_result_invalid');
+            } else {
+                $usageSession->providerFailed($providerAttempt, 'knowledge_embedding_provider_failed');
+            }
 
             throw $exception;
         }
 
-        $this->usageQuota->recordModelSuccess($reservation);
-
         return $results;
+    }
+
+    private function knowledgeSyncTokenIsCurrent(int $knowledgeBaseId, string $syncToken): bool
+    {
+        return KnowledgeBase::query()
+            ->whereKey($knowledgeBaseId)
+            ->where('chunk_sync_token', $syncToken)
+            ->whereIn('chunk_sync_status', ['pending', 'processing'])
+            ->exists();
     }
 
     private function isEmbeddingBatchSizeError(string $message): bool

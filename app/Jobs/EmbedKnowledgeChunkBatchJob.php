@@ -9,6 +9,7 @@ use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use App\Services\GeoFlow\KnowledgeChunkSyncService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Str;
 use Throwable;
 
 class EmbedKnowledgeChunkBatchJob implements ShouldQueue
@@ -25,6 +26,8 @@ class EmbedKnowledgeChunkBatchJob implements ShouldQueue
         public readonly int $afterRowId = 0,
         public readonly string $systemPurpose = '',
         public readonly bool $requireRealEmbedding = false,
+        public readonly string $executionToken = '',
+        public readonly int $dispatchOrdinal = 1,
     ) {}
 
     public function tags(): array
@@ -50,6 +53,9 @@ class EmbedKnowledgeChunkBatchJob implements ShouldQueue
                 $this->afterRowId,
                 $identity,
                 $this->requireRealEmbedding,
+                $this->executionToken(),
+                $this->queueAttempt(),
+                $this->dispatchOrdinal(),
             );
         } catch (AiModelAccessException|PermanentAiProviderException $exception) {
             $coordinator->markFailed($this->knowledgeBaseId, $this->syncToken, $exception->getMessage());
@@ -73,6 +79,8 @@ class EmbedKnowledgeChunkBatchJob implements ShouldQueue
             $result['last_id'],
             $this->systemPurpose,
             $this->requireRealEmbedding,
+            (string) Str::uuid(),
+            $this->dispatchOrdinal() + 1,
         )->onQueue('knowledge');
     }
 
@@ -83,5 +91,22 @@ class EmbedKnowledgeChunkBatchJob implements ShouldQueue
             $this->syncToken,
             $exception?->getMessage() ?: 'Knowledge embedding failed.',
         );
+    }
+
+    private function queueAttempt(): int
+    {
+        return $this->job === null ? 1 : max(1, $this->attempts());
+    }
+
+    private function executionToken(): string
+    {
+        return isset($this->executionToken) && $this->executionToken !== ''
+            ? $this->executionToken
+            : (string) Str::uuid();
+    }
+
+    private function dispatchOrdinal(): int
+    {
+        return isset($this->dispatchOrdinal) ? max(1, $this->dispatchOrdinal) : 1;
     }
 }

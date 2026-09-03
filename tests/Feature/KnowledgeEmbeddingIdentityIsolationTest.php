@@ -40,6 +40,7 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         Http::fake([
             'https://system.test/v1/embeddings' => Http::response([
                 'data' => [['embedding' => [0.1, 0.2, 0.3]]],
+                'usage' => ['prompt_tokens' => 9, 'total_tokens' => 9],
             ]),
         ]);
 
@@ -77,6 +78,13 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         );
         Http::assertSentCount(1);
         Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer system-key'));
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $event->status);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_SYSTEM, $event->model_source);
+        $this->assertSame(9, $event->input_tokens);
+        $this->assertSame($knowledgeBase->id, (int) $event->source_id);
+        $this->assertTrue(Str::isUuid((string) $event->request_id));
+        $this->assertLessThanOrEqual(100, strlen((string) $event->call_key));
     }
 
     public function test_realtime_query_uses_personal_before_shared_and_never_calls_peer_or_system_models(): void
@@ -375,6 +383,8 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
             $serialized = serialize($job);
 
             return $job->systemPurpose === 'knowledge_index'
+                && Str::isUuid($job->executionToken)
+                && $job->dispatchOrdinal === 1
                 && ! str_contains($serialized, 'api_key')
                 && ! str_contains($serialized, 'system-key')
                 && ! str_contains($serialized, 'https://');
@@ -617,6 +627,258 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         } finally {
             $this->assertSame('failed', (string) $knowledgeBase->fresh()->chunk_sync_status);
             $this->assertSame(0, $knowledgeBase->chunks()->count());
+            $this->assertSame(
+                AiModelUsageEvent::STATUS_REVOKED,
+                AiModelUsageEvent::query()->sole()->status,
+            );
+        }
+    }
+
+    public function test_stale_sync_token_discards_returned_embedding_without_publishing_it(): void
+    {
+        Queue::fake();
+        $superAdmin = $this->admin('stale-system-owner', 'super_admin');
+        $systemModel = $this->model($superAdmin, 'system-key', [
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            'api_url' => 'https://system.test',
+        ]);
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'default_embedding_model_id'],
+            ['setting_value' => (string) $systemModel->id],
+        );
+        $knowledgeBase = $this->knowledgeBase(['content' => '旧同步结果不可写入新的 staging。']);
+        $coordinator = app(KnowledgeChunkSyncCoordinator::class);
+        $this->assertTrue($coordinator->request((int) $knowledgeBase->id, SystemAiIdentity::knowledgeIndex(), true));
+        $token = (string) $knowledgeBase->fresh()->chunk_sync_token;
+        $service = app(KnowledgeChunkSyncService::class);
+        $service->prepareStagingSync(
+            (int) $knowledgeBase->id,
+            (string) $knowledgeBase->content,
+            $token,
+            SystemAiIdentity::knowledgeIndex(),
+        );
+        Http::fake([
+            'https://system.test/v1/embeddings' => function () use ($knowledgeBase) {
+                KnowledgeBase::query()->whereKey($knowledgeBase->id)->update([
+                    'chunk_sync_token' => (string) Str::uuid(),
+                ]);
+
+                return Http::response(['data' => [['embedding' => [0.1, 0.2, 0.3]]]]);
+            },
+        ]);
+
+        try {
+            $service->embedStagingBatch(
+                (int) $knowledgeBase->id,
+                $token,
+                0,
+                SystemAiIdentity::knowledgeIndex(),
+                true,
+            );
+            $this->fail('Expected the stale sync attempt to stop before staging persistence.');
+        } catch (\RuntimeException) {
+            $event = AiModelUsageEvent::query()->sole();
+            $this->assertSame(AiModelUsageEvent::STATUS_DISCARDED, $event->status);
+            $this->assertNull(DB::table('knowledge_chunk_sync_rows')
+                ->where('sync_token', $token)
+                ->value('embedding_model_id'));
+        }
+    }
+
+    public function test_exhausted_system_embedding_quota_fails_before_provider_without_a_usage_event(): void
+    {
+        Queue::fake();
+        Http::fake();
+        $superAdmin = $this->admin('quota-system-owner', 'super_admin');
+        $systemModel = $this->model($superAdmin, 'system-key', [
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            'api_url' => 'https://system.test',
+            'daily_limit' => 1,
+            'used_today' => 1,
+            'usage_date' => now()->toDateString(),
+        ]);
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'default_embedding_model_id'],
+            ['setting_value' => (string) $systemModel->id],
+        );
+        $knowledgeBase = $this->knowledgeBase(['content' => '额度耗尽时不创建虚构账本。']);
+        $coordinator = app(KnowledgeChunkSyncCoordinator::class);
+        $this->assertTrue($coordinator->request((int) $knowledgeBase->id, SystemAiIdentity::knowledgeIndex(), true));
+        $token = (string) $knowledgeBase->fresh()->chunk_sync_token;
+        $service = app(KnowledgeChunkSyncService::class);
+        $service->prepareStagingSync(
+            (int) $knowledgeBase->id,
+            (string) $knowledgeBase->content,
+            $token,
+            SystemAiIdentity::knowledgeIndex(),
+        );
+
+        try {
+            $service->embedStagingBatch(
+                (int) $knowledgeBase->id,
+                $token,
+                0,
+                SystemAiIdentity::knowledgeIndex(),
+                true,
+            );
+            $this->fail('Expected exhausted system quota to stop the embedding call.');
+        } catch (\RuntimeException) {
+            Http::assertNothingSent();
+            $this->assertDatabaseCount('ai_model_usage_events', 0);
+        }
+    }
+
+    public function test_embedding_redelivery_uses_a_distinct_call_key_for_each_real_provider_invocation(): void
+    {
+        Queue::fake();
+        Http::fake([
+            'https://system.test/v1/embeddings' => Http::response([
+                'data' => [['embedding' => [0.1, 0.2, 0.3]]],
+            ]),
+        ]);
+        $superAdmin = $this->admin('redelivery-system-owner', 'super_admin');
+        $systemModel = $this->model($superAdmin, 'system-key', [
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            'api_url' => 'https://system.test',
+        ]);
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'default_embedding_model_id'],
+            ['setting_value' => (string) $systemModel->id],
+        );
+        $knowledgeBase = $this->knowledgeBase(['content' => '重复投递产生独立且可追踪的真实调用。']);
+        $coordinator = app(KnowledgeChunkSyncCoordinator::class);
+        $this->assertTrue($coordinator->request((int) $knowledgeBase->id, SystemAiIdentity::knowledgeIndex(), true));
+        $token = (string) $knowledgeBase->fresh()->chunk_sync_token;
+        $service = app(KnowledgeChunkSyncService::class);
+        $service->prepareStagingSync(
+            (int) $knowledgeBase->id,
+            (string) $knowledgeBase->content,
+            $token,
+            SystemAiIdentity::knowledgeIndex(),
+        );
+
+        foreach ([(string) Str::uuid(), (string) Str::uuid()] as $executionToken) {
+            $service->embedStagingBatch(
+                (int) $knowledgeBase->id,
+                $token,
+                0,
+                SystemAiIdentity::knowledgeIndex(),
+                true,
+                $executionToken,
+                1,
+                1,
+            );
+        }
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertCount(2, $events);
+        $this->assertCount(2, $events->pluck('call_key')->unique());
+        $this->assertTrue($events->every(
+            static fn (AiModelUsageEvent $event): bool => $event->status === AiModelUsageEvent::STATUS_SUCCEEDED
+                && strlen((string) $event->call_key) <= 100,
+        ));
+        Http::assertSentCount(2);
+    }
+
+    public function test_embedding_discards_usage_when_staging_transaction_rolls_back(): void
+    {
+        Queue::fake();
+        Http::fake([
+            'https://system.test/v1/embeddings' => Http::response([
+                'data' => [['embedding' => [0.1, 0.2, 0.3]]],
+            ]),
+        ]);
+        $superAdmin = $this->admin('rollback-system-owner', 'super_admin');
+        $systemModel = $this->model($superAdmin, 'system-key', [
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            'api_url' => 'https://system.test',
+        ]);
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'default_embedding_model_id'],
+            ['setting_value' => (string) $systemModel->id],
+        );
+        $knowledgeBase = $this->knowledgeBase(['content' => 'Embedding staging 回滚。']);
+        $coordinator = app(KnowledgeChunkSyncCoordinator::class);
+        $this->assertTrue($coordinator->request((int) $knowledgeBase->id, SystemAiIdentity::knowledgeIndex(), true));
+        $token = (string) $knowledgeBase->fresh()->chunk_sync_token;
+        $service = app(KnowledgeChunkSyncService::class);
+        $service->prepareStagingSync(
+            (int) $knowledgeBase->id,
+            (string) $knowledgeBase->content,
+            $token,
+            SystemAiIdentity::knowledgeIndex(),
+        );
+        DB::listen(static function ($query): void {
+            $sql = strtolower((string) $query->sql);
+            if (str_contains($sql, 'update') && str_contains($sql, 'knowledge_chunk_sync_rows')) {
+                throw new \RuntimeException('forced_embedding_staging_rollback');
+            }
+        });
+
+        try {
+            $service->embedStagingBatch(
+                (int) $knowledgeBase->id,
+                $token,
+                0,
+                SystemAiIdentity::knowledgeIndex(),
+                true,
+            );
+            $this->fail('Expected the staging transaction to roll back.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('forced_embedding_staging_rollback', $exception->getMessage());
+            $this->assertSame(AiModelUsageEvent::STATUS_DISCARDED, AiModelUsageEvent::query()->sole()->status);
+            $this->assertNull(DB::table('knowledge_chunk_sync_rows')
+                ->where('sync_token', $token)
+                ->value('embedding_model_id'));
+        }
+    }
+
+    public function test_system_index_telemetry_failure_does_not_change_embedding_persistence(): void
+    {
+        Queue::fake();
+        Http::fake([
+            'https://system.test/v1/embeddings' => Http::response([
+                'data' => [['embedding' => [0.1, 0.2, 0.3]]],
+            ]),
+        ]);
+        $superAdmin = $this->admin('telemetry-system-owner', 'super_admin');
+        $systemModel = $this->model($superAdmin, 'system-key', [
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+            'api_url' => 'https://system.test',
+        ]);
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'default_embedding_model_id'],
+            ['setting_value' => (string) $systemModel->id],
+        );
+        $knowledgeBase = $this->knowledgeBase(['content' => '账本故障不阻断 staging。']);
+        $coordinator = app(KnowledgeChunkSyncCoordinator::class);
+        $this->assertTrue($coordinator->request((int) $knowledgeBase->id, SystemAiIdentity::knowledgeIndex(), true));
+        $token = (string) $knowledgeBase->fresh()->chunk_sync_token;
+        $service = app(KnowledgeChunkSyncService::class);
+        $service->prepareStagingSync(
+            (int) $knowledgeBase->id,
+            (string) $knowledgeBase->content,
+            $token,
+            SystemAiIdentity::knowledgeIndex(),
+        );
+        Schema::drop('ai_model_usage_events');
+
+        try {
+            $result = $service->embedStagingBatch(
+                (int) $knowledgeBase->id,
+                $token,
+                0,
+                SystemAiIdentity::knowledgeIndex(),
+                true,
+            );
+
+            $this->assertTrue((bool) ($result['done'] ?? false));
+            $this->assertSame($systemModel->id, (int) DB::table('knowledge_chunk_sync_rows')
+                ->where('sync_token', $token)
+                ->value('embedding_model_id'));
+        } finally {
+            $migration = require database_path('migrations/2026_09_01_223149_create_ai_model_usage_events_table.php');
+            $migration->up();
         }
     }
 

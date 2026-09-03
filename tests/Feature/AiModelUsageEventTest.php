@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Data\Ai\SystemAiIdentity;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiModelUsageEvent;
@@ -24,6 +25,58 @@ use Tests\TestCase;
 class AiModelUsageEventTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_system_attempt_requires_knowledge_index_identity_and_records_system_attribution(): void
+    {
+        $owner = $this->admin('system-owner', 'super_admin');
+        $model = $this->model($owner, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+        $factory = app(AiModelUsageAttemptFactory::class);
+        $requestId = $factory->requestId();
+
+        $attempt = $factory->beginForSystem(
+            model: $model,
+            identity: SystemAiIdentity::knowledgeIndex(),
+            requestId: $requestId,
+            requestPayload: 'sensitive knowledge input',
+            callKey: 'semantic.execution-1.attempt-1.provider-1',
+            operation: 'knowledge.semantic_chunking',
+            businessSource: 'knowledge_index',
+            sourceType: 'knowledge_base',
+            sourceId: 17,
+        );
+        $attempt->succeeded(['prompt_tokens' => 4, 'completion_tokens' => 2]);
+
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame($requestId, $event->request_id);
+        $this->assertSame($owner->id, $event->config_owner_admin_id);
+        $this->assertNull($event->execution_admin_id);
+        $this->assertSame(0, $event->ai_config_access_version);
+        $this->assertSame(AiModelUsageEvent::EXECUTION_SCOPE_SYSTEM, $event->execution_scope);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_SYSTEM, $event->model_source);
+        $this->assertSame(hash('sha256', 'sensitive knowledge input'), $event->request_payload_digest);
+    }
+
+    public function test_system_attempt_rejects_a_non_knowledge_identity_before_creating_an_event(): void
+    {
+        $owner = $this->admin('wrong-purpose-owner', 'super_admin');
+        $model = $this->model($owner, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+        $factory = app(AiModelUsageAttemptFactory::class);
+
+        try {
+            $factory->beginForSystem(
+                model: $model,
+                identity: SystemAiIdentity::forVisibilityCollection(),
+                requestId: $factory->requestId(),
+                requestPayload: 'payload',
+                callKey: 'semantic.invalid-purpose',
+                operation: 'knowledge.semantic_chunking',
+                businessSource: 'knowledge_index',
+            );
+            $this->fail('Expected the unrelated system identity to be rejected.');
+        } catch (LogicException) {
+            $this->assertDatabaseCount('ai_model_usage_events', 0);
+        }
+    }
 
     public function test_production_attempt_records_one_terminal_event_with_normalized_tokens_and_frozen_shared_attribution(): void
     {

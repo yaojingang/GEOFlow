@@ -3,15 +3,19 @@
 namespace Tests\Feature;
 
 use App\Data\Ai\SystemAiIdentity;
+use App\Exceptions\AiModelAccessException;
 use App\Exceptions\PermanentAiProviderException;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\KnowledgeBase;
 use App\Models\SiteSetting;
+use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\GeoFlow\KnowledgeChunkSyncService;
 use App\Services\GeoFlow\KnowledgeEmbeddingModelFingerprint;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -55,6 +59,13 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
         $model->refresh();
         $this->assertSame(1, (int) $model->used_today);
         $this->assertSame(1, (int) $model->total_used);
+
+        $usageEvent = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $usageEvent->status);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_SYSTEM, $usageEvent->model_source);
+        $this->assertSame(AiModelUsageEvent::EXECUTION_SCOPE_SYSTEM, $usageEvent->execution_scope);
+        $this->assertNull($usageEvent->execution_admin_id);
+        $this->assertSame($model->owner_admin_id, $usageEvent->config_owner_admin_id);
 
         Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/embeddings'
             && $request['model'] === 'test-embedding-model'
@@ -238,6 +249,10 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
         $this->assertSame('semantic_llm', (string) $firstChunk->getAttribute('chunk_strategy'));
         $this->assertSame('平台定位', (string) $firstChunk->getAttribute('chunk_title'));
         $this->assertSame([0, 1], json_decode((string) $firstChunk->getAttribute('metadata_json'), true)['block_indexes'] ?? []);
+        $usageEvent = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $usageEvent->status);
+        $this->assertSame('knowledge.semantic_chunking', $usageEvent->operation);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_SYSTEM, $usageEvent->model_source);
         Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/chat/completions'
             && $request->hasHeader('Authorization', 'Bearer test-api-key'));
     }
@@ -283,7 +298,113 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
         $this->assertStringContainsString('# 总览', $chunks[0]);
         $this->assertStringContainsString('## 细节', $chunks[1]);
         $this->assertSame('semantic_fallback', (string) $firstChunk->getAttribute('chunk_strategy'));
+        $this->assertSame(
+            AiModelUsageEvent::STATUS_DISCARDED,
+            AiModelUsageEvent::query()->sole()->status,
+        );
         Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.test/v1/chat/completions');
+    }
+
+    public function test_semantic_chunking_records_revoked_when_binding_changes_after_provider_return(): void
+    {
+        $model = $this->createChatModel();
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunk_strategy',
+            'setting_value' => 'semantic_llm',
+        ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunking_model_id',
+            'setting_value' => (string) $model->id,
+        ]);
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => function () {
+                SiteSetting::query()
+                    ->where('setting_key', 'knowledge_chunking_model_id')
+                    ->update(['setting_value' => '0']);
+
+                return Http::response([
+                    'choices' => [[
+                        'message' => ['content' => json_encode([
+                            'chunks' => [['title' => '总览', 'block_indexes' => [0, 1]]],
+                        ], JSON_UNESCAPED_UNICODE)],
+                    ]],
+                ]);
+            },
+        ]);
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '语义撤权知识库',
+            'content' => '',
+            'file_type' => 'markdown',
+        ]);
+
+        try {
+            $this->syncKnowledge((int) $knowledgeBase->id, "# 总览\n\n撤权后的规划不可写入 staging。");
+            $this->fail('Expected the revoked semantic model binding to stop persistence.');
+        } catch (AiModelAccessException) {
+            $event = AiModelUsageEvent::query()->sole();
+            $this->assertSame(AiModelUsageEvent::STATUS_REVOKED, $event->status);
+            $this->assertSame(0, DB::table('knowledge_chunk_sync_rows')->count());
+        }
+    }
+
+    public function test_semantic_chunking_records_failed_when_provider_request_fails(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response([
+                'error' => ['message' => 'temporarily unavailable'],
+            ], 503),
+        ]);
+        $model = $this->createChatModel();
+        SiteSetting::query()->create(['setting_key' => 'knowledge_chunk_strategy', 'setting_value' => 'semantic_llm']);
+        SiteSetting::query()->create(['setting_key' => 'knowledge_chunking_model_id', 'setting_value' => (string) $model->id]);
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '语义失败知识库',
+            'content' => '',
+            'file_type' => 'markdown',
+        ]);
+
+        $this->syncKnowledge((int) $knowledgeBase->id, "# 总览\n\n服务失败时使用规则切片。");
+
+        $this->assertSame('semantic_fallback', (string) $knowledgeBase->chunks()->firstOrFail()->chunk_strategy);
+        $this->assertSame(AiModelUsageEvent::STATUS_FAILED, AiModelUsageEvent::query()->sole()->status);
+    }
+
+    public function test_semantic_chunking_discards_usage_and_releases_lock_when_staging_rolls_back(): void
+    {
+        Http::fake([
+            'https://ai.test/v1/chat/completions' => Http::response([
+                'choices' => [[
+                    'message' => ['content' => json_encode([
+                        'chunks' => [['title' => '总览', 'block_indexes' => [0, 1]]],
+                    ], JSON_UNESCAPED_UNICODE)],
+                ]],
+            ]),
+        ]);
+        $model = $this->createChatModel();
+        SiteSetting::query()->create(['setting_key' => 'knowledge_chunk_strategy', 'setting_value' => 'semantic_llm']);
+        SiteSetting::query()->create(['setting_key' => 'knowledge_chunking_model_id', 'setting_value' => (string) $model->id]);
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '语义回滚知识库',
+            'content' => '',
+            'file_type' => 'markdown',
+        ]);
+        DB::listen(static function ($query): void {
+            $sql = strtolower((string) $query->sql);
+            if (str_contains($sql, 'insert into') && str_contains($sql, 'knowledge_chunk_sync_rows')) {
+                throw new \RuntimeException('forced_semantic_staging_rollback');
+            }
+        });
+
+        try {
+            $this->syncKnowledge((int) $knowledgeBase->id, "# 总览\n\n事务回滚不可记成功。");
+            $this->fail('Expected staging persistence to fail.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('forced_semantic_staging_rollback', $exception->getMessage());
+            $this->assertSame(AiModelUsageEvent::STATUS_DISCARDED, AiModelUsageEvent::query()->sole()->status);
+            $lock = app(AiModelInvocationLock::class)->acquireForMutation((int) $model->id);
+            $this->assertNotNull($lock);
+            app(AiModelInvocationLock::class)->release($lock);
+        }
     }
 
     public function test_semantic_chunking_falls_back_when_plan_reorders_blocks(): void
@@ -841,6 +962,13 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
         $model->refresh();
         $this->assertSame(3, (int) $model->used_today);
         $this->assertSame(3, (int) $model->total_used);
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertCount(3, $events);
+        $this->assertCount(1, $events->pluck('request_id')->unique());
+        $this->assertCount(3, $events->pluck('call_key')->unique());
+        $this->assertTrue($events->every(
+            static fn (AiModelUsageEvent $event): bool => $event->status === AiModelUsageEvent::STATUS_SUCCEEDED,
+        ));
     }
 
     public function test_sync_treats_provider_batch_parameter_rejection_as_permanent(): void
@@ -889,6 +1017,10 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             $this->assertSame('failed', (string) $knowledgeBase->fresh()->chunk_sync_status);
             $this->assertSame(0, $knowledgeBase->chunks()->count());
             $this->assertSame(0, (int) $model->fresh()->used_today);
+            $this->assertSame(
+                AiModelUsageEvent::STATUS_FAILED,
+                AiModelUsageEvent::query()->sole()->status,
+            );
         }
     }
 

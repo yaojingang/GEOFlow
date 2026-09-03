@@ -11,6 +11,7 @@ use App\Services\GeoFlow\KnowledgeChunkSyncService;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Str;
 use Throwable;
 
 class PrepareKnowledgeChunkSyncJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
@@ -28,6 +29,8 @@ class PrepareKnowledgeChunkSyncJob implements ShouldBeUniqueUntilProcessing, Sho
         public readonly string $syncToken,
         public readonly string $systemPurpose,
         public readonly bool $requireRealEmbedding = false,
+        public readonly string $executionToken = '',
+        public readonly int $dispatchOrdinal = 1,
     ) {}
 
     public function uniqueId(): string
@@ -62,6 +65,9 @@ class PrepareKnowledgeChunkSyncJob implements ShouldBeUniqueUntilProcessing, Sho
                 (string) $knowledgeBase->content,
                 $this->syncToken,
                 $identity,
+                $this->executionToken(),
+                $this->queueAttempt(),
+                $this->dispatchOrdinal(),
             );
         } catch (AiModelAccessException|PermanentAiProviderException $exception) {
             $coordinator->markFailed($this->knowledgeBaseId, $this->syncToken, $exception->getMessage());
@@ -81,6 +87,8 @@ class PrepareKnowledgeChunkSyncJob implements ShouldBeUniqueUntilProcessing, Sho
             0,
             $this->systemPurpose,
             $this->requireRealEmbedding,
+            (string) Str::uuid(),
+            1,
         )->onQueue('knowledge');
     }
 
@@ -91,5 +99,22 @@ class PrepareKnowledgeChunkSyncJob implements ShouldBeUniqueUntilProcessing, Sho
             $this->syncToken,
             $exception?->getMessage() ?: 'Knowledge chunk preparation failed.',
         );
+    }
+
+    private function queueAttempt(): int
+    {
+        return $this->job === null ? 1 : max(1, $this->attempts());
+    }
+
+    private function executionToken(): string
+    {
+        return isset($this->executionToken) && $this->executionToken !== ''
+            ? $this->executionToken
+            : (string) Str::uuid();
+    }
+
+    private function dispatchOrdinal(): int
+    {
+        return isset($this->dispatchOrdinal) ? max(1, $this->dispatchOrdinal) : 1;
     }
 }
