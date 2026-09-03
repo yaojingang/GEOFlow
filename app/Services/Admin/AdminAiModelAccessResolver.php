@@ -137,7 +137,7 @@ final class AdminAiModelAccessResolver
         return $this->usableQuery($actor);
     }
 
-    public function assertUsable(Admin $actor, AiModel $model): void
+    public function assertUsable(Admin $actor, AiModel $model): AiModel
     {
         $actor = $this->activeActor($actor);
         $currentModel = AiModel::query()->find($model->getKey());
@@ -147,6 +147,8 @@ final class AdminAiModelAccessResolver
         }
 
         $this->assertLockedUsable($actor, $currentModel);
+
+        return $currentModel;
     }
 
     /**

@@ -12,6 +12,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -35,9 +36,18 @@ class KnowledgeRetrievalService
         int $limit = 5,
         int $maxChars = 3200,
         Admin|AiExecutionContext|null $identity = null,
+        ?string $retrievalRequestId = null,
     ): string {
+        $retrievalRequestId ??= (string) Str::uuid();
+
         return $this->composeEvidenceContext(
-            $this->retrieveEvidence($knowledgeBaseId, $query, max($limit * 4, 16), identity: $identity),
+            $this->retrieveEvidence(
+                $knowledgeBaseId,
+                $query,
+                max($limit * 4, 16),
+                identity: $identity,
+                retrievalRequestId: $retrievalRequestId,
+            ),
             $limit,
             $maxChars
         );
@@ -52,8 +62,16 @@ class KnowledgeRetrievalService
         int $limit = 5,
         int $maxChars = 3200,
         Admin|AiExecutionContext|null $identity = null,
+        ?string $retrievalRequestId = null,
     ): string {
-        return $this->retrieveContextBundleFromMany($knowledgeBaseIds, $query, $limit, $maxChars, $identity)['context'];
+        return $this->retrieveContextBundleFromMany(
+            $knowledgeBaseIds,
+            $query,
+            $limit,
+            $maxChars,
+            $identity,
+            $retrievalRequestId,
+        )['context'];
     }
 
     /**
@@ -66,13 +84,16 @@ class KnowledgeRetrievalService
         int $limit = 5,
         int $maxChars = 3200,
         Admin|AiExecutionContext|null $identity = null,
+        ?string $retrievalRequestId = null,
     ): array {
+        $retrievalRequestId ??= (string) Str::uuid();
         $evidence = $this->boundedEvidenceForContext(
             $this->retrieveEvidenceFromMany(
                 $knowledgeBaseIds,
                 $query,
                 max($limit * 4, 16),
                 identity: $identity,
+                retrievalRequestId: $retrievalRequestId,
             ),
             $limit,
             $maxChars,
@@ -195,7 +216,9 @@ class KnowledgeRetrievalService
         bool $allowRemoteEmbedding = true,
         array $servingGenerations = [],
         Admin|AiExecutionContext|null $identity = null,
+        ?string $retrievalRequestId = null,
     ): array {
+        $retrievalRequestId ??= (string) Str::uuid();
         $knowledgeBaseIds = collect($knowledgeBaseIds)
             ->map(static fn ($id): int => (int) $id)
             ->filter(static fn (int $id): bool => $id > 0)
@@ -216,6 +239,8 @@ class KnowledgeRetrievalService
                 $allowRemoteEmbedding,
                 $servingGenerations[$knowledgeBaseIds[0]] ?? null,
                 $identity,
+                $retrievalRequestId,
+                1,
             );
         }
 
@@ -230,6 +255,8 @@ class KnowledgeRetrievalService
                 $allowRemoteEmbedding,
                 $servingGenerations[$knowledgeBaseId] ?? null,
                 $identity,
+                $retrievalRequestId,
+                $order + 1,
             ) as $candidate) {
                 $candidate['knowledge_base_rank'] = $order;
                 $merged[] = $candidate;
@@ -265,7 +292,10 @@ class KnowledgeRetrievalService
         bool $allowRemoteEmbedding = true,
         ?string $expectedServingGeneration = null,
         Admin|AiExecutionContext|null $identity = null,
+        ?string $retrievalRequestId = null,
+        int $queryOrdinal = 1,
     ): array {
+        $retrievalRequestId ??= (string) Str::uuid();
         /** @var KnowledgeBase|null $knowledgeBase */
         $knowledgeBase = KnowledgeBase::query()
             ->whereKey($knowledgeBaseId)
@@ -286,7 +316,13 @@ class KnowledgeRetrievalService
             && $servingProfileCompatible
             && $this->knowledgeBaseHasRealEmbeddingRows($knowledgeBase, $servingGeneration);
         $embeddingResult = $hasRealEmbeddingRows
-            ? $this->knowledgeChunkSyncService->generateCompatibleQueryEmbedding($query, $knowledgeBase, $identity)
+            ? $this->knowledgeChunkSyncService->generateCompatibleQueryEmbedding(
+                $query,
+                $knowledgeBase,
+                $identity,
+                $retrievalRequestId,
+                $queryOrdinal,
+            )
             : KnowledgeQueryEmbeddingResult::incompatible(
                 $allowRemoteEmbedding && trim($query) !== '' && ! $servingProfileCompatible
                     ? 'index_embedding_profile_incompatible'

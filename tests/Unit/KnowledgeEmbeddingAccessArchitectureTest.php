@@ -27,5 +27,15 @@ final class KnowledgeEmbeddingAccessArchitectureTest extends TestCase
         $this->assertStringContainsString('SystemAiModelAccessResolver', $syncService);
         $this->assertStringContainsString('AdminAiModelAccessResolver', $syncService);
         $this->assertStringContainsString('AiExecutionAccessGuard', $syncService);
+        $this->assertStringContainsString('AiModelUsageAttemptFactory', $syncService);
+        $this->assertStringContainsString('usageAttempts->beginForAdmin(', $syncService);
+        $this->assertStringContainsString('requestPayload: $query', $syncService);
+        $this->assertStringContainsString('usageAttempt->succeeded(', $syncService);
+        $this->assertStringContainsString('usageAttempt?->revoked(', $syncService);
+        $this->assertGreaterThanOrEqual(2, substr_count($syncService, 'embeddingFingerprint->configurationRevision('));
+
+        $retrieval = (string) file_get_contents(app_path('Services/GeoFlow/KnowledgeRetrievalService.php'));
+        $this->assertStringContainsString('$retrievalRequestId ??= (string) Str::uuid()', $retrieval);
+        $this->assertStringContainsString('$order + 1', $retrieval);
     }
 }

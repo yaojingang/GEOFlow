@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Data\Ai\AiExecutionContext;
 use App\Data\Ai\SystemAiIdentity;
 use App\Exceptions\AiModelAccessException;
 use App\Exceptions\PermanentAiProviderException;
@@ -9,9 +10,13 @@ use App\Jobs\EmbedKnowledgeChunkBatchJob;
 use App\Jobs\PrepareKnowledgeChunkSyncJob;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
 use App\Models\SiteSetting;
+use App\Models\Task;
+use App\Models\TaskRun;
+use App\Services\GeoFlow\AiExecutionContextFactory;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use App\Services\GeoFlow\KnowledgeChunkSyncService;
 use App\Services\GeoFlow\KnowledgeEmbeddingModelFingerprint;
@@ -22,6 +27,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -78,6 +84,7 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         Http::fake([
             'https://personal.test/v1/embeddings' => Http::response([
                 'data' => [['embedding' => [0.3, 0.2, 0.1]]],
+                'usage' => ['prompt_tokens' => 7, 'total_tokens' => 7],
             ]),
             '*' => Http::response(['message' => 'unexpected'], 500),
         ]);
@@ -107,6 +114,27 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         $this->assertSame('personal', $bundle['retrieval_meta']['embedding_model_source']);
         Http::assertSentCount(1);
         Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer personal-key'));
+
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $event->status);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_PERSONAL, $event->model_source);
+        $this->assertSame(AiModelUsageEvent::EXECUTION_SCOPE_INTERACTIVE_ADMIN, $event->execution_scope);
+        $this->assertSame($consumer->id, $event->config_owner_admin_id);
+        $this->assertSame($consumer->id, $event->execution_admin_id);
+        $this->assertSame($personal->id, $event->ai_model_id);
+        $this->assertSame('knowledge.query_embedding', $event->operation);
+        $this->assertSame('knowledge_retrieval', $event->business_source);
+        $this->assertSame(KnowledgeBase::class, $event->source_type);
+        $this->assertSame((string) $knowledgeBase->id, $event->source_id);
+        $this->assertSame(7, $event->input_tokens);
+        $this->assertSame(7, $event->total_tokens);
+        $this->assertTrue(Str::isUuid((string) $event->request_id));
+        $this->assertSame(hash('sha256', 'GEOFlow 检索身份'), $event->request_payload_digest);
+        $this->assertMatchesRegularExpression('/\Aquery-1\.kb-\d+\.candidate-1\.provider-1\z/', (string) $event->call_key);
+        $serialized = json_encode($event->getAttributes(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        $this->assertStringNotContainsString('GEOFlow 检索身份', $serialized);
+        $this->assertStringNotContainsString('personal-key', $serialized);
+        $this->assertStringNotContainsString('https://personal.test', $serialized);
     }
 
     public function test_missing_or_incompatible_admin_embedding_identity_falls_back_to_keywords_without_global_model_call(): void
@@ -131,6 +159,7 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         $this->assertSame('missing_execution_identity', $bundle['retrieval_meta']['reason']);
         $this->assertStringContainsString('关键词降级', $bundle['context']);
         Http::assertNothingSent();
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
     }
 
     public function test_realtime_query_uses_a_compatible_shared_model_after_the_personal_pool_is_incompatible(): void
@@ -163,6 +192,11 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         $this->assertSame('shared', $result->modelSource);
         Http::assertSentCount(1);
         Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer shared-key'));
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $event->status);
+        $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_SHARED, $event->model_source);
+        $this->assertSame($provider->id, $event->config_owner_admin_id);
+        $this->assertSame($consumer->id, $event->execution_admin_id);
     }
 
     public function test_realtime_query_preserves_provider_path_case(): void
@@ -211,6 +245,19 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         $this->assertSame($shared->id, $result->modelId);
         $this->assertSame('shared', $result->modelSource);
         Http::assertSentCount(2);
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame(
+            [AiModelUsageEvent::STATUS_FAILED, AiModelUsageEvent::STATUS_SUCCEEDED],
+            $events->pluck('status')->all(),
+        );
+        $this->assertSame(
+            [AiModelUsageEvent::MODEL_SOURCE_PERSONAL, AiModelUsageEvent::MODEL_SOURCE_SHARED],
+            $events->pluck('model_source')->all(),
+        );
+        $this->assertSame($provider->id, $events[1]->config_owner_admin_id);
+        $this->assertSame($consumer->id, $events[1]->execution_admin_id);
+        $this->assertSame($events[0]->request_id, $events[1]->request_id);
     }
 
     #[DataProvider('permanentProviderStatusProvider')]
@@ -236,6 +283,7 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         $this->assertSame('compatible_embedding_unavailable', $result->reason);
         Http::assertSentCount(1);
         Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer personal-key'));
+        $this->assertSame(AiModelUsageEvent::STATUS_FAILED, AiModelUsageEvent::query()->sole()->status);
     }
 
     /** @return array<string,array{int}> */
@@ -285,6 +333,7 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         $this->assertFalse($result->successful());
         $this->assertSame('embedding_model_configuration_invalid', $result->reason);
         Http::assertNothingSent();
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
     }
 
     public function test_personal_embedding_dimension_mismatch_does_not_call_the_shared_model(): void
@@ -309,6 +358,7 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         $this->assertSame('embedding_dimensions_mismatch', $result->reason);
         Http::assertSentCount(1);
         Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer personal-key'));
+        $this->assertSame(AiModelUsageEvent::STATUS_DISCARDED, AiModelUsageEvent::query()->sole()->status);
     }
 
     public function test_index_job_payload_contains_only_pipeline_identifiers_and_system_purpose(): void
@@ -376,6 +426,7 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         }
 
         Http::assertSentCount(1);
+        $this->assertSame(AiModelUsageEvent::STATUS_REVOKED, AiModelUsageEvent::query()->sole()->status);
     }
 
     public function test_peer_and_system_models_are_excluded_even_when_their_index_fingerprint_matches(): void
@@ -400,6 +451,137 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         $this->assertSame('keyword_fallback', $bundle['retrieval_meta']['embedding_mode']);
         $this->assertSame('no_accessible_embedding_model', $bundle['retrieval_meta']['reason']);
         Http::assertNothingSent();
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
+    }
+
+    public function test_realtime_query_discards_a_provider_result_when_model_configuration_changes_after_the_call(): void
+    {
+        $consumer = $this->admin('configuration-race-consumer', 'admin');
+        $personal = $this->model($consumer, 'personal-key', ['api_url' => 'https://personal.test']);
+        $knowledgeBase = $this->indexedKnowledgeBase($personal, [0.3, 0.2, 0.1]);
+        Http::fake([
+            'https://personal.test/v1/embeddings' => function () use ($personal) {
+                $personal->forceFill([
+                    'api_url' => 'https://changed.test',
+                    'api_key' => app(ApiKeyCrypto::class)->encrypt('changed-key'),
+                    'model_id' => 'changed-embedding',
+                ])->save();
+
+                return Http::response(['data' => [['embedding' => [0.3, 0.2, 0.1]]]]);
+            },
+        ]);
+
+        $result = app(KnowledgeChunkSyncService::class)->generateCompatibleQueryEmbedding(
+            '配置竞态',
+            $knowledgeBase,
+            $consumer,
+        );
+
+        $this->assertFalse($result->successful());
+        $this->assertSame('embedding_model_configuration_changed', $result->reason);
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_DISCARDED, $event->status);
+        $this->assertSame('embedding_model_configuration_changed', $event->error_code);
+    }
+
+    public function test_multi_base_retrieval_uses_one_request_id_and_distinct_query_ordinals(): void
+    {
+        Http::fake([
+            'https://personal.test/v1/embeddings' => Http::response([
+                'data' => [['embedding' => [0.3, 0.2, 0.1]]],
+            ]),
+        ]);
+        $consumer = $this->admin('multi-base-consumer', 'admin');
+        $personal = $this->model($consumer, 'personal-key', ['api_url' => 'https://personal.test']);
+        $first = $this->indexedKnowledgeBase($personal, [0.3, 0.2, 0.1]);
+        $second = $this->indexedKnowledgeBase($personal, [0.3, 0.2, 0.1]);
+
+        app(KnowledgeRetrievalService::class)->retrieveContextBundleFromMany(
+            [(int) $first->id, (int) $second->id],
+            '多知识库检索',
+            identity: $consumer,
+        );
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertCount(2, $events);
+        $this->assertSame($events[0]->request_id, $events[1]->request_id);
+        $this->assertSame('query-1.kb-'.$first->id.'.candidate-1.provider-1', $events[0]->call_key);
+        $this->assertSame('query-2.kb-'.$second->id.'.candidate-1.provider-1', $events[1]->call_key);
+    }
+
+    public function test_each_top_level_retrieval_uses_a_new_request_id_for_real_redelivery_calls(): void
+    {
+        Http::fake([
+            'https://personal.test/v1/embeddings' => Http::response([
+                'data' => [['embedding' => [0.3, 0.2, 0.1]]],
+            ]),
+        ]);
+        $consumer = $this->admin('redelivery-consumer', 'admin');
+        $personal = $this->model($consumer, 'personal-key', ['api_url' => 'https://personal.test']);
+        $knowledgeBase = $this->indexedKnowledgeBase($personal, [0.3, 0.2, 0.1]);
+        $retrieval = app(KnowledgeRetrievalService::class);
+
+        $retrieval->retrieveEvidence((int) $knowledgeBase->id, '重复执行', identity: $consumer);
+        $retrieval->retrieveEvidence((int) $knowledgeBase->id, '重复执行', identity: $consumer);
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertCount(2, $events);
+        $this->assertNotSame($events[0]->request_id, $events[1]->request_id);
+        $this->assertSame($events[0]->call_key, $events[1]->call_key);
+        Http::assertSentCount(2);
+    }
+
+    public function test_persisted_execution_identity_attributes_query_embedding_usage_to_the_task_admin(): void
+    {
+        Http::fake([
+            'https://personal.test/v1/embeddings' => Http::response([
+                'data' => [['embedding' => [0.3, 0.2, 0.1]]],
+            ]),
+        ]);
+        $consumer = $this->admin('persisted-query-consumer', 'admin');
+        $personal = $this->model($consumer, 'personal-key', ['api_url' => 'https://personal.test']);
+        $knowledgeBase = $this->indexedKnowledgeBase($personal, [0.3, 0.2, 0.1]);
+        $context = $this->executionContext($consumer, $personal);
+
+        $bundle = app(KnowledgeRetrievalService::class)->retrieveContextBundleFromMany(
+            [(int) $knowledgeBase->id],
+            '持久化执行身份',
+            identity: $context,
+        );
+
+        $this->assertSame('compatible_vector', $bundle['retrieval_meta']['embedding_mode']);
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::EXECUTION_SCOPE_PERSISTED_ADMIN, $event->execution_scope);
+        $this->assertSame($consumer->id, $event->execution_admin_id);
+        $this->assertSame($context->aiConfigAccessVersion, $event->ai_config_access_version);
+        $this->assertTrue(Str::isUuid((string) $event->request_id));
+    }
+
+    public function test_usage_telemetry_failure_does_not_change_retrieval_success(): void
+    {
+        Http::fake([
+            'https://personal.test/v1/embeddings' => Http::response([
+                'data' => [['embedding' => [0.3, 0.2, 0.1]]],
+            ]),
+        ]);
+        $consumer = $this->admin('telemetry-failure-consumer', 'admin');
+        $personal = $this->model($consumer, 'personal-key', ['api_url' => 'https://personal.test']);
+        $knowledgeBase = $this->indexedKnowledgeBase($personal, [0.3, 0.2, 0.1]);
+        Schema::drop('ai_model_usage_events');
+
+        try {
+            $bundle = app(KnowledgeRetrievalService::class)->retrieveContextBundleFromMany(
+                [(int) $knowledgeBase->id],
+                '账本不可用仍完成检索',
+                identity: $consumer,
+            );
+
+            $this->assertSame('compatible_vector', $bundle['retrieval_meta']['embedding_mode']);
+            Http::assertSentCount(1);
+        } finally {
+            $migration = require database_path('migrations/2026_09_01_223149_create_ai_model_usage_events_table.php');
+            $migration->up();
+        }
     }
 
     public function test_system_binding_revoked_during_embedding_does_not_publish_the_index_generation(): void
@@ -843,6 +1025,36 @@ final class KnowledgeEmbeddingIdentityIsolationTest extends TestCase
         ]);
 
         return $knowledgeBase;
+    }
+
+    private function executionContext(Admin $admin, AiModel $model): AiExecutionContext
+    {
+        $task = Task::query()->create([
+            'name' => 'Knowledge query execution '.$admin->id,
+            'ai_model_id' => $model->id,
+            'status' => 'active',
+            'schedule_enabled' => 1,
+        ]);
+        $task->forceFill([
+            'model_access_admin_id' => $admin->id,
+            'model_access_admin_role' => $admin->isSuperAdmin() ? 'super_admin' : 'admin',
+            'model_access_policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
+        ])->save();
+        $run = TaskRun::query()->create([
+            'task_id' => $task->id,
+            'status' => 'running',
+            'started_at' => now(),
+        ]);
+        $run->forceFill([
+            'model_access_admin_id' => $admin->id,
+            'model_access_admin_role' => $admin->isSuperAdmin() ? 'super_admin' : 'admin',
+            'ai_config_access_version' => (int) $admin->ai_config_access_version,
+            'requested_ai_model_id' => null,
+            'resolver_policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
+            'execution_lease_token' => (string) Str::uuid(),
+        ])->save();
+
+        return app(AiExecutionContextFactory::class)->fromTaskRun($run);
     }
 
     private function admin(string $username, string $role, array $overrides = []): Admin
