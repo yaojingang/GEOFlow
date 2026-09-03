@@ -29,6 +29,9 @@
 3. 通过 API 回读实际状态；将标签规则集 ID 写入 `GEOFLOW_TAG_RULESET_ID` 后执行：
 
 ```bash
+set -euo pipefail
+: "${GEOFLOW_TAG_RULESET_ID:?set the protected release tag ruleset ID}"
+
 gh api repos/yaojingang/GEOFlow/immutable-releases | jq -e '.enabled == true'
 gh api "repos/yaojingang/GEOFlow/rulesets/$GEOFLOW_TAG_RULESET_ID" | jq -e '
   .target == "tag"
@@ -48,6 +51,8 @@ gh api "repos/yaojingang/GEOFlow/rulesets/$GEOFLOW_TAG_RULESET_ID" | jq -e '
 2. 确认 `origin/main` 没有发布范围外的新提交，记录最终 SHA：
 
 ```bash
+set -euo pipefail
+
 git fetch origin --prune --tags
 export GEOFLOW_RELEASE_SHA="$(git rev-parse origin/main)"
 git show --no-patch --format=fuller "$GEOFLOW_RELEASE_SHA"
@@ -62,6 +67,8 @@ git show "$GEOFLOW_RELEASE_SHA:version.json" | jq -e '.version == "3.0.0" and .t
 从 `yaojingang/geoflow-updater` 的 `main` 分支触发候选工作流，输入 Core 最终 SHA：
 
 ```bash
+set -euo pipefail
+
 gh workflow run release-candidate.yml --repo yaojingang/geoflow-updater --ref main -f updater_version=0.3.0 -f geoflow_ref="$GEOFLOW_RELEASE_SHA" -f geoflow_version=3.0.0 -f release_sequence=2
 ```
 
@@ -74,6 +81,8 @@ gh workflow run release-candidate.yml --repo yaojingang/geoflow-updater --ref ma
 从 Core 最终 SHA 生成临时发布目录和三个固定资产：
 
 ```bash
+set -euo pipefail
+
 export GEOFLOW_RELEASE_DIR="$(mktemp -d /tmp/geoflow-v3-release.XXXXXX)"
 git archive --format=zip --prefix='GEOFlow-3.0.0/' --output="$GEOFLOW_RELEASE_DIR/GEOFlow-v3.0.0.zip" "$GEOFLOW_RELEASE_SHA"
 git show "$GEOFLOW_RELEASE_SHA:version.json" > "$GEOFLOW_RELEASE_DIR/version.json"
@@ -83,6 +92,8 @@ git show "$GEOFLOW_RELEASE_SHA:version.json" > "$GEOFLOW_RELEASE_DIR/version.jso
 在任何公开标签出现前，检查 ZIP 根目录、必需文件、噪声文件、校验和及 `version.json`：
 
 ```bash
+set -euo pipefail
+
 unzip -l "$GEOFLOW_RELEASE_DIR/GEOFlow-v3.0.0.zip"
 (cd "$GEOFLOW_RELEASE_DIR" && shasum -a 256 -c GEOFlow-v3.0.0.zip.sha256)
 jq -e '.version == "3.0.0" and .tag == "v3.0.0" and .archive_url == "https://github.com/yaojingang/GEOFlow/releases/download/v3.0.0/GEOFlow-v3.0.0.zip"' "$GEOFLOW_RELEASE_DIR/version.json"
@@ -117,6 +128,8 @@ gh release create v3.0.0 --repo yaojingang/GEOFlow --verify-tag --draft --title 
 通过 GitHub 重新下载 Draft Release 的资产，验证服务端保存结果：
 
 ```bash
+set -euo pipefail
+
 export GEOFLOW_VERIFY_DIR="$(mktemp -d /tmp/geoflow-v3-verify.XXXXXX)"
 gh release view v3.0.0 --repo yaojingang/GEOFlow --json tagName,isDraft,isPrerelease,assets,targetCommitish
 gh release download v3.0.0 --repo yaojingang/GEOFlow --dir "$GEOFLOW_VERIFY_DIR"
@@ -131,12 +144,28 @@ cmp "$GEOFLOW_VERIFY_DIR/version.json" "$GEOFLOW_RELEASE_DIR/version.json"
 所有证据完成后，把 Draft Release 设为公开 Latest：
 
 ```bash
+set -euo pipefail
+: "${GEOFLOW_TAG_RULESET_ID:?set the protected release tag ruleset ID}"
+
+gh api repos/yaojingang/GEOFlow/immutable-releases | jq -e '.enabled == true'
+gh api "repos/yaojingang/GEOFlow/rulesets/$GEOFLOW_TAG_RULESET_ID" | jq -e '
+  .target == "tag"
+  and .enforcement == "active"
+  and ((.conditions.ref_name.include | index("refs/tags/v*")) != null)
+  and (([.rules[].type] | index("creation")) != null)
+  and (([.rules[].type] | index("update")) != null)
+  and (([.rules[].type] | index("deletion")) != null)
+'
+test "$(git ls-remote origin 'refs/tags/v3.0.0^{}' | awk '{print $1}')" = "$GEOFLOW_RELEASE_SHA"
+
 gh release edit v3.0.0 --repo yaojingang/GEOFlow --draft=false --latest
 ```
 
 公开后立即回读稳定通道：
 
 ```bash
+set -euo pipefail
+
 gh release view v3.0.0 --repo yaojingang/GEOFlow --json tagName,isDraft,isPrerelease,publishedAt,assets,url
 curl -fsSL https://github.com/yaojingang/GEOFlow/releases/latest/download/version.json | jq -e '.version == "3.0.0" and .tag == "v3.0.0"'
 gh release verify v3.0.0 --repo yaojingang/GEOFlow
@@ -148,6 +177,8 @@ gh release verify-asset v3.0.0 "$GEOFLOW_VERIFY_DIR/version.json" --repo yaojing
 Core Release 和三个资产确认公开可读后，使用此前通过真实宿主演练的候选 run ID 与证据摘要触发 Updater 发布工作流：
 
 ```bash
+set -euo pipefail
+
 gh workflow run release.yml --repo yaojingang/geoflow-updater --ref main -f updater_version=0.3.0 -f geoflow_ref="$GEOFLOW_RELEASE_SHA" -f geoflow_version=3.0.0 -f release_sequence=2 -f candidate_run_id="$GEOFLOW_CANDIDATE_RUN_ID" -f phase_c_evidence_sha256="$GEOFLOW_PHASE_C_EVIDENCE_SHA256" -f superadmin_risk_waiver=false
 ```
 

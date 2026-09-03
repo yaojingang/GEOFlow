@@ -103,5 +103,8 @@ class SecurityReleaseMetadataTest extends TestCase
         foreach (['GEOFlow Updater v0.3.0', 'AGPL-3.0-only', 'Admin UI V3'] as $requiredText) {
             $this->assertStringContainsString($requiredText, $notes);
         }
+        $this->assertGreaterThanOrEqual(8, substr_count($runbook, 'set -euo pipefail'));
+        $this->assertGreaterThanOrEqual(2, substr_count($runbook, '.enabled == true'));
+        $this->assertGreaterThanOrEqual(2, substr_count($runbook, 'index("creation")'));
     }
 }
