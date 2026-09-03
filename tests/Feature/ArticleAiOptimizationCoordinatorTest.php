@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Ai\Agents\ArticleOptimizationJsonRefinerAgent;
+use App\Ai\Agents\ArticleOptimizationRefinerAgent;
 use App\Contracts\ArticleAiOptimizationRefiner;
 use App\Exceptions\ApiException;
 use App\Jobs\ProcessArticleAiOptimizationJob;
@@ -9,6 +11,7 @@ use App\Jobs\ProcessArticleAiQualityJob;
 use App\Jobs\ReconcileArticleAiOptimizationJob;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\Article;
 use App\Models\ArticleAiOptimizationRun;
 use App\Models\ArticleAiOptimizationStep;
@@ -21,6 +24,7 @@ use App\Models\Prompt;
 use App\Models\Task;
 use App\Services\GeoFlow\ArticleAiOptimizationCoordinator;
 use App\Services\GeoFlow\ArticleAiOptimizationException;
+use App\Services\GeoFlow\ArticleAiOptimizationExecutionBoundaryHook;
 use App\Services\GeoFlow\ArticleAiOptimizationReconciliationService;
 use App\Services\GeoFlow\ArticleAiQualityInspectionService;
 use App\Services\GeoFlow\ArticleAiQualityPolicyResolver;
@@ -30,6 +34,7 @@ use App\Services\GeoFlow\ArticleAiQualityVersionPolicy;
 use App\Services\GeoFlow\ArticleGeoFlowService;
 use App\Services\GeoFlow\ArticleRiskScanner;
 use App\Services\GeoFlow\TaskLifecycleService;
+use App\Support\GeoFlow\ApiKeyCrypto;
 use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
@@ -491,6 +496,378 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
             'evaluation_mode' => 'primary',
         ]);
         $this->assertSame($qualityCheckCountAfterRollback, ArticleAiQualityCheck::query()->count());
+    }
+
+    public function test_production_optimization_structured_fallback_records_each_provider_invocation_after_candidate_commit(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        Queue::fake();
+        [$article, $model] = $this->qualityArticle();
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('optimization-ledger-secret'),
+            'model_type' => 'chat',
+        ])->save();
+        ArticleOptimizationRefinerAgent::fake(static function (): never {
+            throw new \RuntimeException('structured output unsupported');
+        })->preventStrayPrompts();
+        ArticleOptimizationJsonRefinerAgent::fake([
+            $this->optimizationAgentResult('有助于改善体验'),
+        ])->preventStrayPrompts();
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        $run = $coordinator->start(
+            $article,
+            'excellent_80',
+            $model,
+            ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            dispatch: false,
+        );
+
+        $coordinator->process((int) $run->id);
+
+        $step = ArticleAiOptimizationStep::query()->where('run_id', $run->id)->sole();
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_EVALUATING, $run->fresh()->status);
+        $this->assertCount(2, $events);
+        $this->assertSame([$step->request_key, $step->request_key], $events->pluck('request_id')->all());
+        $this->assertSame(
+            [AiModelUsageEvent::STATUS_FAILED, AiModelUsageEvent::STATUS_SUCCEEDED],
+            $events->pluck('status')->all(),
+        );
+        $this->assertSame([ArticleAiOptimizationStep::class, ArticleAiOptimizationStep::class], $events->pluck('source_type')->all());
+        $this->assertSame([(string) $step->id, (string) $step->id], $events->pluck('source_id')->all());
+        $this->assertSame(['article_ai_optimization.refine', 'article_ai_optimization.refine'], $events->pluck('operation')->all());
+        $this->assertSame(['article_ai_optimization', 'article_ai_optimization'], $events->pluck('business_source')->all());
+        $this->assertStringContainsString('p1.structured', $events[0]->call_key);
+        $this->assertStringContainsString('p2.json_fallback', $events[1]->call_key);
+        $this->assertLessThanOrEqual(100, strlen((string) $events[0]->call_key));
+        $this->assertLessThanOrEqual(100, strlen((string) $events[1]->call_key));
+        $serialized = $events->toJson();
+        $this->assertStringNotContainsString('optimization-ledger-secret', $serialized);
+        $this->assertStringNotContainsString('https://example.test', $serialized);
+        $this->assertStringNotContainsString('有助于改善体验', $serialized);
+    }
+
+    public function test_production_optimization_discards_returned_invalid_json_before_business_retry(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        Queue::fake();
+        [$article, $model] = $this->qualityArticle();
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('optimization-invalid-secret'),
+            'model_type' => 'chat',
+        ])->save();
+        ArticleOptimizationRefinerAgent::fake(static function (): never {
+            throw new \RuntimeException('structured output unsupported');
+        })->preventStrayPrompts();
+        $jsonCalls = 0;
+        ArticleOptimizationJsonRefinerAgent::fake(function () use (&$jsonCalls): array|string {
+            $jsonCalls++;
+
+            return $jsonCalls === 1
+                ? 'invalid-json'
+                : $this->optimizationAgentResult('有助于改善体验');
+        })->preventStrayPrompts();
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        $run = $coordinator->start(
+            $article,
+            'excellent_80',
+            $model,
+            ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            dispatch: false,
+        );
+
+        $coordinator->process((int) $run->id);
+        $coordinator->process((int) $run->id);
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_EVALUATING, $run->fresh()->status);
+        $this->assertSame(
+            [
+                AiModelUsageEvent::STATUS_FAILED,
+                AiModelUsageEvent::STATUS_DISCARDED,
+                AiModelUsageEvent::STATUS_FAILED,
+                AiModelUsageEvent::STATUS_SUCCEEDED,
+            ],
+            $events->pluck('status')->all(),
+        );
+        $this->assertSame('article_ai_optimization_invalid_model_output', $events[1]->error_code);
+        $this->assertStringContainsString('p2.json_fallback', $events[1]->call_key);
+        $this->assertNotSame($events[1]->request_id, $events[3]->request_id);
+    }
+
+    public function test_production_optimization_records_personal_failure_and_shared_success_separately(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        Queue::fake();
+        [$article, $personal, $source] = $this->qualityArticle();
+        $executor = Admin::query()->findOrFail((int) $personal->owner_admin_id);
+        $provider = Admin::query()->create([
+            'username' => 'optimization-ledger-provider',
+            'password' => 'password',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        $executor->forceFill(['shared_ai_config_owner_id' => $provider->id])->save();
+        $personal->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('optimization-personal-secret'),
+            'model_type' => 'chat',
+            'failover_priority' => 0,
+        ])->save();
+        $shared = $this->optimizationModel($provider, 'optimization-ledger-shared', 1);
+        $shared->forceFill(['api_key' => app(ApiKeyCrypto::class)->encrypt('optimization-shared-secret')])->save();
+        $article->task()->update(['model_selection_mode' => 'smart_failover']);
+        $this->refreshQualityCheck($article, $source);
+        $providerCalls = 0;
+        ArticleOptimizationRefinerAgent::fake(function () use (&$providerCalls): array {
+            $providerCalls++;
+            if ($providerCalls === 1) {
+                throw new ConnectionException('temporary optimization connection failure');
+            }
+
+            return $this->optimizationAgentResult('有助于改善体验');
+        })->preventStrayPrompts();
+        ArticleOptimizationJsonRefinerAgent::fake()->preventStrayPrompts();
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        $run = $coordinator->start(
+            $article->fresh(),
+            'excellent_80',
+            $personal,
+            ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            dispatch: false,
+        );
+
+        $coordinator->process((int) $run->id);
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame(2, $providerCalls);
+        $this->assertSame([$personal->id, $shared->id], $events->pluck('ai_model_id')->all());
+        $this->assertSame(['personal', 'shared'], $events->pluck('model_source')->all());
+        $this->assertSame([$executor->id, $provider->id], $events->pluck('config_owner_admin_id')->all());
+        $this->assertSame([$executor->id, $executor->id], $events->pluck('execution_admin_id')->all());
+        $this->assertSame(
+            [AiModelUsageEvent::STATUS_FAILED, AiModelUsageEvent::STATUS_SUCCEEDED],
+            $events->pluck('status')->all(),
+        );
+        $this->assertStringContainsString('.c1.', $events[0]->call_key);
+        $this->assertStringContainsString('.c2.', $events[1]->call_key);
+    }
+
+    public function test_production_optimization_marks_returned_result_revoked_before_candidate_commit(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        Queue::fake();
+        [$article, $model] = $this->qualityArticle();
+        $executor = Admin::query()->findOrFail((int) $model->owner_admin_id);
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('optimization-revoked-secret'),
+            'model_type' => 'chat',
+        ])->save();
+        ArticleOptimizationRefinerAgent::fake(function () use ($executor): array {
+            Admin::query()->whereKey($executor->id)->increment('ai_config_access_version');
+
+            return $this->optimizationAgentResult('有助于改善体验');
+        })->preventStrayPrompts();
+        ArticleOptimizationJsonRefinerAgent::fake()->preventStrayPrompts();
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        $run = $coordinator->start(
+            $article,
+            'excellent_80',
+            $model,
+            ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            dispatch: false,
+        );
+
+        $coordinator->process((int) $run->id);
+
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_REVOKED, $event->status);
+        $this->assertSame('ai_config_access_revoked', $event->error_code);
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_FAILED, $run->fresh()->status);
+        $this->assertNull(ArticleAiOptimizationStep::query()->where('run_id', $run->id)->value('output_check_id'));
+    }
+
+    public function test_production_optimization_discards_returned_result_when_the_step_claim_is_cancelled(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        Queue::fake();
+        [$article, $model] = $this->qualityArticle();
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('optimization-cancelled-secret'),
+            'model_type' => 'chat',
+        ])->save();
+        ArticleOptimizationRefinerAgent::fake([$this->optimizationAgentResult('有助于改善体验')])->preventStrayPrompts();
+        ArticleOptimizationJsonRefinerAgent::fake()->preventStrayPrompts();
+        $this->app->instance(
+            ArticleAiOptimizationExecutionBoundaryHook::class,
+            new class extends ArticleAiOptimizationExecutionBoundaryHook
+            {
+                public function beforeCandidateCommit(
+                    ArticleAiOptimizationRun $run,
+                    ArticleAiOptimizationStep $step,
+                    AiModel $model,
+                ): void {
+                    ArticleAiOptimizationRun::query()->whereKey($run->id)->update([
+                        'status' => ArticleAiOptimizationRun::STATUS_CANCELLED,
+                        'lease_owner' => null,
+                        'lease_expires_at' => null,
+                    ]);
+                }
+            },
+        );
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        $run = $coordinator->start(
+            $article,
+            'excellent_80',
+            $model,
+            ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            dispatch: false,
+        );
+
+        try {
+            $coordinator->process((int) $run->id);
+            $this->fail('Expected the cancelled claim to reject the provider result.');
+        } catch (ArticleAiOptimizationException $exception) {
+            $this->assertSame('article_ai_optimization_run_stale', $exception->errorCode());
+        }
+
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_DISCARDED, $event->status);
+        $this->assertSame('article_ai_optimization_run_stale', $event->error_code);
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_CANCELLED, $run->fresh()->status);
+        $this->assertNull(ArticleAiOptimizationStep::query()->where('run_id', $run->id)->value('output_check_id'));
+    }
+
+    public function test_production_optimization_worker_retry_uses_a_new_attempt_call_key_on_the_same_step(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        Queue::fake();
+        [$article, $model] = $this->qualityArticle();
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('optimization-retry-secret'),
+            'model_type' => 'chat',
+        ])->save();
+        $providerCalls = 0;
+        ArticleOptimizationRefinerAgent::fake(function () use (&$providerCalls): array {
+            $providerCalls++;
+            if ($providerCalls === 1) {
+                throw new ConnectionException('temporary optimization connection failure');
+            }
+
+            return $this->optimizationAgentResult('有助于改善体验');
+        })->preventStrayPrompts();
+        ArticleOptimizationJsonRefinerAgent::fake()->preventStrayPrompts();
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        $run = $coordinator->start(
+            $article,
+            'excellent_80',
+            $model,
+            ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            dispatch: false,
+        );
+
+        try {
+            $coordinator->process((int) $run->id, 'stable-worker-owner');
+            $this->fail('Expected the first provider attempt to be retryable.');
+        } catch (ArticleAiOptimizationException $exception) {
+            $this->assertSame('article_ai_optimization_provider_error', $exception->errorCode());
+        }
+        $coordinator->process((int) $run->id, 'stable-worker-owner');
+
+        $step = ArticleAiOptimizationStep::query()->where('run_id', $run->id)->sole();
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame(2, $providerCalls);
+        $this->assertSame([$step->request_key, $step->request_key], $events->pluck('request_id')->all());
+        $this->assertSame(
+            [AiModelUsageEvent::STATUS_FAILED, AiModelUsageEvent::STATUS_SUCCEEDED],
+            $events->pluck('status')->all(),
+        );
+        $this->assertStringContainsString('.a1.', $events[0]->call_key);
+        $this->assertStringContainsString('.a2.', $events[1]->call_key);
+        $this->assertNotSame($events[0]->call_key, $events[1]->call_key);
+        $this->assertSame(2, data_get($step->fresh()->execution_meta, 'refine_attempt'));
+    }
+
+    public function test_production_optimization_fails_closed_without_execution_identity_before_provider(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', false);
+        config()->set('geoflow.admin_ai_access.revocation_enforce_enabled', false);
+        Queue::fake();
+        [$article, $model] = $this->qualityArticle();
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('optimization-missing-identity-secret'),
+            'model_type' => 'chat',
+        ])->save();
+        ArticleOptimizationRefinerAgent::fake([$this->optimizationAgentResult('有助于改善体验')])->preventStrayPrompts();
+        ArticleOptimizationJsonRefinerAgent::fake()->preventStrayPrompts();
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        $run = $coordinator->start(
+            $article,
+            'excellent_80',
+            $model,
+            ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            dispatch: false,
+        );
+        $executionMeta = (array) $run->execution_meta;
+        unset(
+            $executionMeta['model_access_admin_id'],
+            $executionMeta['model_access_admin_role'],
+            $executionMeta['ai_config_access_version'],
+            $executionMeta['resolver_policy_version'],
+        );
+        $run->forceFill(['execution_meta' => $executionMeta])->save();
+
+        $coordinator->process((int) $run->id);
+
+        ArticleOptimizationRefinerAgent::assertNeverPrompted();
+        ArticleOptimizationJsonRefinerAgent::assertNeverPrompted();
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_FAILED, $run->fresh()->status);
+        $this->assertSame('ai_config_access_revoked', $run->fresh()->error_code);
+    }
+
+    public function test_production_optimization_with_backfilled_execution_identity_records_usage(): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        Queue::fake();
+        [$article, $model] = $this->qualityArticle();
+        $executor = Admin::query()->findOrFail((int) $model->owner_admin_id);
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('optimization-backfilled-secret'),
+            'model_type' => 'chat',
+        ])->save();
+        ArticleOptimizationRefinerAgent::fake([$this->optimizationAgentResult('有助于改善体验')])->preventStrayPrompts();
+        ArticleOptimizationJsonRefinerAgent::fake()->preventStrayPrompts();
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        $run = $coordinator->start(
+            $article,
+            'excellent_80',
+            $model,
+            ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
+            dispatch: false,
+        );
+        $executionMeta = (array) $run->execution_meta;
+        unset(
+            $executionMeta['model_access_admin_id'],
+            $executionMeta['model_access_admin_role'],
+            $executionMeta['ai_config_access_version'],
+            $executionMeta['resolver_policy_version'],
+        );
+        $run->forceFill(['execution_meta' => $executionMeta])->save();
+        $run->forceFill(['execution_meta' => array_replace($executionMeta, [
+            'model_access_admin_id' => (int) $executor->id,
+            'model_access_admin_role' => 'admin',
+            'ai_config_access_version' => (int) $executor->ai_config_access_version,
+            'resolver_policy_version' => 1,
+        ])])->save();
+
+        $coordinator->process((int) $run->id);
+
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $event->status);
+        $this->assertSame((int) $executor->id, $event->execution_admin_id);
+        $this->assertSame((int) $executor->id, $event->config_owner_admin_id);
+        $this->assertSame((int) $executor->ai_config_access_version, $event->ai_config_access_version);
     }
 
     #[DataProvider('resolvedEvidenceGapIssueCodes')]
@@ -2570,6 +2947,29 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
         );
 
         return [$article, $model, $check];
+    }
+
+    /** @return array<string,mixed> */
+    private function optimizationAgentResult(string $replacement): array
+    {
+        return [
+            'base_article_hash' => app(ArticleRiskScanner::class)->contentHash([
+                'title' => '产品说明',
+                'excerpt' => '产品摘要',
+                'content' => '开场说明。保证100%有效，请结合实际情况使用。',
+                'keywords' => '产品,说明',
+                'meta_description' => '产品说明摘要',
+            ]),
+            'strategy' => 'excellent_80',
+            'operations' => [[
+                'field' => 'content',
+                'replacement' => $replacement,
+                'issue_codes' => ['ad_absolute_claim'],
+                'root_cause_keys' => ['ad_absolute_claim:content:5'],
+                'evidence_keys' => [],
+                'reason' => '收敛绝对化承诺',
+            ]],
+        ];
     }
 
     private function optimizationModel(
