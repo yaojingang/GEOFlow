@@ -4,7 +4,9 @@ This document tracks user-facing updates in the public repository. For future Gi
 
 ## 2026-09-03
 
-### Administrator AI model isolation and sharing
+### v3.0.0
+
+#### Administrator AI model isolation and sharing
 
 - AI model configurations now have explicit owners and access scopes; standard administrators can manage personal models or use user-content models shared by a designated super administrator, with personal models preferred before shared fallbacks.
 - New standard administrators start with independent configuration, while explicit backfill commands cover historical administrators and models; disabling sharing, deactivating an account, changing a role, or archiving a model increments the access version and blocks later provider calls and stale result persistence.
@@ -14,9 +16,7 @@ This document tracks user-facing updates in the public repository. For future Gi
 - Manual enqueue and active-task updates validate both the operator and frozen execution identity. Shared models support concurrent calls while configuration mutations remain exclusive, the usage ledger writes immutable pre-call starts and reconciles missing outcomes, and historical backfill covers every asynchronous AI lifecycle.
 - Upgraded `league/commonmark` to 2.10.0 with compatible Nette dependency updates to address the latest Markdown parsing security advisories.
 
-## 2026-08-31
-
-### Three-layer AI quality retrieval and governed atomic facts
+#### Three-layer AI quality retrieval and governed atomic facts
 
 - Added atomic-first, chunk, and broad-knowledge retrieval modes. Task settings and standalone article editing now share readiness checks, default priority, inheritance, and override rules, with atomic-first selected when every source is ready.
 - Added readiness projections, serving generations, per-check source ledgers, and immutable execution snapshots. Checks retain requested and effective modes, strategy versions, source hashes, and audit data, while knowledge, model, prompt, article, and rollout changes selectively expire affected results and schedule reconciliation.
@@ -24,15 +24,13 @@ This document tracks user-facing updates in the public repository. For future Gi
 - Hardened high-risk knowledge review, broad-evidence budgets, prompt-injection quarantine, cross-token API idempotency, concurrent policy-version checks, distribution guard snapshots, and deletion protection for referenced knowledge bases.
 - Expanded knowledge-base navigation, the atomic-fact workbench, AI model diagnostics, and six-language admin copy, with a legacy backfill command, Docker queue configuration, Laravel and JavaScript regressions, and benchmark reports.
 
-## 2026-08-30
-
-### License and contribution governance
+#### License and contribution governance
 
 - New GEOFlow versions and repository revisions from this change onward use the GNU Affero General Public License v3.0 only. Versions previously released under Apache-2.0 retain their original license.
 - Separate commercial terms are available from the copyright holder for proprietary modifications, white-label or OEM distribution, proprietary product integration, and other uses that cannot comply with AGPL-3.0.
 - Added a Contributor License Agreement, contribution guide, and pull request declaration. Contributors retain copyright while granting the project the sublicensing rights needed to use accepted contributions in both AGPL and commercial or proprietary versions.
 
-### Product and experience updates
+#### Product and experience updates
 
 - Added an end-to-end article AI quality optimization workflow. Administrators can target pass, 80-point excellent, or 90-point excellent results, then review iterative candidate edits, rescored outcomes, change history, apply, cancel, rollback, and reconciliation states.
 - Improved AI quality reliability and explainability across long-form inspection, evidence positioning, result validation, scoring, invalidation, dedicated queues, health checks, quota control, versioned prompts, and task-level optimization policy.
@@ -40,9 +38,7 @@ This document tracks user-facing updates in the public repository. For future Gi
 - Refined Admin UI V3 with collapsible quality results, clearer page identity, and a shared footer on every admin page for the version, changelog, license, copyright, author X profile, GitHub repository, and help links, including short-page and mobile layouts.
 - Extended API v1 and the GEOFlow CLI with article AI optimization operations, and added Docker timeout, retry, health check, queue, and worker configuration for quality inspection and optimization workloads.
 
-## 2026-08-29
-
-### Main branch updates
+#### Article, Update Center, and admin experience updates
 
 - Hardened article trash and data integrity:
   - Permanent article deletion now retains view logs and safely nulls `view_logs.article_id`, with PostgreSQL online constraint replacement plus SQLite and other supported database paths.
@@ -50,6 +46,7 @@ This document tracks user-facing updates in the public repository. For future Gi
   - Author lists and the materials API now count trashed articles consistently and keep referenced authors protected.
 - Improved the System Update Center:
   - New-version notices show the version, release type, release date, summary, and official GitHub Release destination.
+  - Stable update checks now read `version.json` from the latest published Release and follow only official GitHub release-asset redirects, so development versions on `main` no longer announce an update early.
   - Release links stay within the official GEOFlow repository and are generated from validated tags, preventing remote metadata from redirecting administrators elsewhere.
   - Manual knowledge sync steps now explain their purpose, current status, and copyable command. Super administrators can open the Update Center directly from the top-bar update icon.
 - Refined Admin UI V3 page identity:
@@ -57,9 +54,7 @@ This document tracks user-facing updates in the public repository. For future Gi
   - Analytics metrics now share consistent height, numeric alignment, and density. AI help carousel controls use tighter spacing.
   - The welcome page now presents the GEOFlow 3.0 positioning, core capabilities, use cases, and four-step onboarding path.
 
-## 2026-08-28
-
-### v3.0.0
+#### Core capabilities
 
 - Upgraded AI Workspace system knowledge and illustrated answers:
   - Added an official admin guide with more than 10,000 Chinese characters across 15 sections, covering feature logic, design principles, workflows, highlights, troubleshooting, and trusted in-app destinations.
@@ -131,6 +126,7 @@ This document tracks user-facing updates in the public repository. For future Gi
 - Component compatibility and release gates:
   - GEOFlow is `3.0.0`, the bundled CLI is `0.2.0`, and the Chrome operations assistant is `0.1.0`.
   - The independent updater must use a signed release authorization bound to the final GEOFlow `3.0.0` commit and app/web image digests. The release gate requires real amd64 and arm64 host rehearsals, with the exact compatible updater version recorded in the GitHub Release.
+  - The published Release includes the Core ZIP, its SHA-256 file, and a standalone `version.json` asset, followed by a readback of the Latest metadata version and tag.
 
 ## 2026-08-09
 

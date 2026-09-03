@@ -12,10 +12,10 @@ class SecurityReleaseMetadataTest extends TestCase
         $payload = $manifest['payload'];
 
         $this->assertSame('3.0.0', $manifest['version']);
-        $this->assertSame('2026-08-28', $manifest['release_date']);
+        $this->assertSame('2026-09-03', $manifest['release_date']);
         $this->assertSame('major', $manifest['release_type']);
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/archive/refs/tags/v3.0.0.zip',
+            'https://github.com/yaojingang/GEOFlow/releases/download/v3.0.0/GEOFlow-v3.0.0.zip',
             $manifest['archive_url'],
         );
         $this->assertSame(
@@ -62,8 +62,8 @@ class SecurityReleaseMetadataTest extends TestCase
         $this->assertStringContainsString('v2.1.0', $zh);
         $this->assertStringContainsString('在线主题编辑能力已在 v2.1.1 中关闭', $zh);
         $this->assertStringContainsString('live theme editing is disabled in v2.1.1', strtolower($en));
-        $this->assertStringNotContainsString('v3.0.0 已发布', $zh);
-        $this->assertStringNotContainsString('v3.0.0 has been released', strtolower($en));
+        $this->assertStringContainsString("## 2026-09-03\n\n### v3.0.0", $zh);
+        $this->assertStringContainsString("## 2026-09-03\n\n### v3.0.0", $en);
     }
 
     public function test_environment_examples_do_not_lock_the_application_version(): void
@@ -73,5 +73,27 @@ class SecurityReleaseMetadataTest extends TestCase
 
         $this->assertStringNotContainsString('GEOFLOW_APP_VERSION=', $envExample);
         $this->assertStringNotContainsString('GEOFLOW_APP_VERSION=', $productionExample);
+    }
+
+    public function test_v300_release_runbook_requires_the_stable_metadata_asset_and_signed_updater_gate(): void
+    {
+        $runbook = (string) file_get_contents(base_path('docs/deployment/GEOFLOW_V3_RELEASE.md'));
+        $notes = (string) file_get_contents(base_path('docs/deployment/GEOFLOW_V3_RELEASE_NOTES.md'));
+
+        foreach ([
+            'GEOFlow-v3.0.0.zip',
+            'GEOFlow-v3.0.0.zip.sha256',
+            'releases/latest/download/version.json',
+            'release_sequence=2',
+            'linux/amd64',
+            'linux/arm64',
+            '--draft',
+            '--latest',
+        ] as $requiredText) {
+            $this->assertStringContainsString($requiredText, $runbook);
+        }
+        foreach (['GEOFlow Updater v0.3.0', 'AGPL-3.0-only', 'Admin UI V3'] as $requiredText) {
+            $this->assertStringContainsString($requiredText, $notes);
+        }
     }
 }

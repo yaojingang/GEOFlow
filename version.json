@@ -1,14 +1,14 @@
 {
   "version": "3.0.0",
   "tag": "v3.0.0",
-  "release_date": "2026-08-28",
+  "release_date": "2026-09-03",
   "release_type": "major",
-  "archive_url": "https://github.com/yaojingang/GEOFlow/archive/refs/tags/v3.0.0.zip",
+  "archive_url": "https://github.com/yaojingang/GEOFlow/releases/download/v3.0.0/GEOFlow-v3.0.0.zip",
   "payload": {
     "title_zh": "GEOFlow v3.0.0",
     "title_en": "GEOFlow v3.0.0",
-    "summary_zh": "GEOFlow 3.0.0 发布统一的 Admin UI V3、系统知识与图文帮助助手、文章 AI 质检、托管渠道站点、Chrome 运营助手、PWA 和独立更新工具，并升级标题生成、任务、API、CLI 与部署安全。",
-    "summary_en": "GEOFlow 3.0.0 ships the unified Admin UI V3, system knowledge with illustrated admin help, article AI quality inspection, hosted channel sites, the Chrome operations assistant, PWA support, and the independent updater, with upgraded title generation, tasks, API, CLI, and deployment safeguards.",
+    "summary_zh": "GEOFlow 3.0.0 发布统一的 Admin UI V3、管理员 AI 模型隔离与共享、系统知识图文帮助、三层 AI 质检与原子事实、自动优化、托管站点、Chrome 运营助手、PWA、API、CLI 和独立更新工具，并采用 AGPL-3.0-only。",
+    "summary_en": "GEOFlow 3.0.0 ships the unified Admin UI V3, administrator AI model isolation and sharing, illustrated system help, three-layer AI quality retrieval with governed atomic facts, automatic optimization, hosted sites, the Chrome operations assistant, PWA support, API, CLI, and the independent updater under AGPL-3.0-only.",
     "upgrade_tip_zh": "升级前备份数据库、.env、上传目录和 storage，停机排空旧进程后执行 php artisan migrate --force；重新构建前端，并重启应用、queue worker、调度器与 Reverb。独立更新工具需安装发布说明兼容矩阵中明确绑定 GEOFlow v3.0.0 最终提交与镜像摘要的签名版本，后续网站更新、完整备份和回滚由该工具执行。托管站点完成泛 DNS、通配符 TLS、可信代理与 Nginx 配置后再启用；从早期 2.x 版本升级时继续运行 php artisan geoflow:managed-images:readiness 与 php artisan geoflow:security-audit，Chrome 运营助手也需同步更新扩展。",
     "upgrade_tip_en": "Back up the database, .env, uploads, and storage, drain old processes, and run php artisan migrate --force. Rebuild frontend assets, then restart the application, queue workers, scheduler, and Reverb. Install the signed updater version listed in the release compatibility matrix and explicitly bound to the final GEOFlow v3.0.0 commit and image digests; subsequent website updates, full backups, and rollbacks run through that updater. Enable hosted sites after wildcard DNS, wildcard TLS, trusted proxy, and Nginx settings are ready. Upgrades from early 2.x releases must also run php artisan geoflow:managed-images:readiness and php artisan geoflow:security-audit, and Chrome operations users must update the extension.",
     "release_url": "https://github.com/yaojingang/GEOFlow/releases/tag/v3.0.0",

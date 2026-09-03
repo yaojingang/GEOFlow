@@ -35,3 +35,5 @@ sudo geoflow-updater authorization-uri --instance primary
 ## 真实宿主演练
 
 先由 GEOFlow Updater 的 `release-candidate.yml` 生成独立签名候选包，再使用同一候选包完成 linux/amd64 与 linux/arm64 演练。发布工作流只接受受保护环境中的完整证据 JSON，并复用候选包的二进制、TUF 目标和镜像摘要。任何待填、失败、身份不匹配或缺少审批的项目都会阻止发布。操作清单见 updater 仓库 `docs/phase-c-staging-rehearsal.md`。
+
+GEOFlow 3.0 的 Core 标签、Release 资产、稳定元数据和 Updater 发布顺序见 [`GEOFLOW_V3_RELEASE.md`](GEOFLOW_V3_RELEASE.md)。

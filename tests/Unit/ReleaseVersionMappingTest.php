@@ -31,6 +31,18 @@ class ReleaseVersionMappingTest extends TestCase
         );
     }
 
+    public function test_default_update_metadata_uses_the_latest_published_release_asset(): void
+    {
+        $this->assertSame(
+            'https://github.com/yaojingang/GEOFlow/releases/latest/download/version.json',
+            config('geoflow.update_metadata_url'),
+        );
+        $this->assertStringNotContainsString(
+            '/main/version.json',
+            (string) config('geoflow.update_metadata_url'),
+        );
+    }
+
     public function test_release_metadata_is_derived_from_the_manifest_tag(): void
     {
         $manifest = json_decode(
@@ -47,7 +59,7 @@ class ReleaseVersionMappingTest extends TestCase
 
         $this->assertSame("v{$version}", $tag);
         $this->assertSame(
-            "https://github.com/yaojingang/GEOFlow/archive/refs/tags/{$tag}.zip",
+            "https://github.com/yaojingang/GEOFlow/releases/download/{$tag}/GEOFlow-{$tag}.zip",
             $manifest['archive_url'],
         );
         $this->assertSame(

@@ -13,6 +13,8 @@ class AdminUpdateMetadataService
 {
     private const GITHUB_REPOSITORY_URL = 'https://github.com/yaojingang/GEOFlow';
 
+    private const OFFICIAL_RELEASE_METADATA_URL = self::GITHUB_REPOSITORY_URL.'/releases/latest/download/version.json';
+
     public function __construct(
         private readonly SafeOutboundHttpClient $safeHttp,
         private readonly Factory $http,
@@ -161,6 +163,7 @@ class AdminUpdateMetadataService
 
         return Cache::remember($this->cacheKey($url), $ttl, function () use ($url): array {
             $checkedAt = now()->toDateTimeString();
+            $officialReleaseSource = $url === self::OFFICIAL_RELEASE_METADATA_URL;
 
             try {
                 $request = $this->http->timeout(5)->connectTimeout(3)->acceptJson();
@@ -168,6 +171,9 @@ class AdminUpdateMetadataService
                     $request,
                     $url,
                     (int) config('geoflow.outbound_metadata_max_bytes', 1024 * 1024),
+                    $officialReleaseSource ? 2 : 0,
+                    [],
+                    $officialReleaseSource ? $this->validateOfficialReleaseRedirect(...) : null,
                 );
             } catch (\Throwable) {
                 return [
@@ -202,6 +208,24 @@ class AdminUpdateMetadataService
     private function cacheKey(string $url): string
     {
         return 'geoflow:update_metadata:'.sha1($url);
+    }
+
+    private function validateOfficialReleaseRedirect(string $url): void
+    {
+        $parts = parse_url($url);
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        $port = (int) ($parts['port'] ?? 443);
+        if (($parts['scheme'] ?? null) !== 'https'
+            || $port !== 443
+            || isset($parts['user'])
+            || isset($parts['pass'])
+            || ! in_array($host, [
+                'github.com',
+                'objects.githubusercontent.com',
+                'release-assets.githubusercontent.com',
+            ], true)) {
+            throw new \RuntimeException('Release metadata redirect left the official GitHub release service.');
+        }
     }
 
     /** @param array<string, mixed> $state */

@@ -55,6 +55,84 @@ class AdminHeaderNotificationTest extends TestCase
             ->assertSee('测试更新摘要');
     }
 
+    public function test_official_release_metadata_follows_the_github_release_asset_redirects(): void
+    {
+        Cache::flush();
+        $metadataUrl = 'https://github.com/yaojingang/GEOFlow/releases/latest/download/version.json';
+        $taggedAssetUrl = 'https://github.com/yaojingang/GEOFlow/releases/download/v3.0.0/version.json';
+        $releaseAssetUrl = 'https://release-assets.githubusercontent.com/github-production-release-asset/version.json';
+        config([
+            'geoflow.app_version' => '2.3.0',
+            'geoflow.update_check_enabled' => true,
+            'geoflow.update_metadata_url' => $metadataUrl,
+            'geoflow.update_metadata_cache_ttl_seconds' => 86400,
+        ]);
+        Http::preventStrayRequests();
+        Http::fake([
+            $metadataUrl => Http::response('', 302, ['Location' => $taggedAssetUrl]),
+            $taggedAssetUrl => Http::response('', 302, ['Location' => $releaseAssetUrl]),
+            $releaseAssetUrl => Http::response([
+                'version' => '3.0.0',
+                'tag' => 'v3.0.0',
+                'payload' => [
+                    'summary_zh' => 'GEOFlow 3.0 正式版。',
+                ],
+            ]),
+        ]);
+
+        $state = app(AdminUpdateMetadataService::class)->fetchState();
+
+        $this->assertSame('available', $state['status']);
+        $this->assertSame('3.0.0', $state['latest_version']);
+        $this->assertTrue($state['is_update_available']);
+        Http::assertSentCount(3);
+    }
+
+    public function test_official_release_metadata_rejects_redirects_outside_github_release_assets(): void
+    {
+        Cache::flush();
+        $metadataUrl = 'https://github.com/yaojingang/GEOFlow/releases/latest/download/version.json';
+        config([
+            'geoflow.app_version' => '2.3.0',
+            'geoflow.update_check_enabled' => true,
+            'geoflow.update_metadata_url' => $metadataUrl,
+            'geoflow.update_metadata_cache_ttl_seconds' => 86400,
+        ]);
+        Http::preventStrayRequests();
+        Http::fake([
+            $metadataUrl => Http::response('', 302, [
+                'Location' => 'https://downloads.example.test/version.json',
+            ]),
+        ]);
+
+        $state = app(AdminUpdateMetadataService::class)->fetchState();
+
+        $this->assertSame('error', $state['status']);
+        $this->assertFalse($state['is_update_available']);
+        Http::assertSentCount(1);
+    }
+
+    public function test_missing_release_metadata_asset_does_not_advertise_an_update(): void
+    {
+        Cache::flush();
+        $metadataUrl = 'https://github.com/yaojingang/GEOFlow/releases/latest/download/version.json';
+        config([
+            'geoflow.app_version' => '2.3.0',
+            'geoflow.update_check_enabled' => true,
+            'geoflow.update_metadata_url' => $metadataUrl,
+            'geoflow.update_metadata_cache_ttl_seconds' => 86400,
+        ]);
+        Http::preventStrayRequests();
+        Http::fake([
+            $metadataUrl => Http::response(['message' => 'Not Found'], 404),
+        ]);
+
+        $state = app(AdminUpdateMetadataService::class)->fetchState();
+
+        $this->assertSame('error', $state['status']);
+        $this->assertFalse($state['is_update_available']);
+    }
+
     public function test_release_link_falls_back_to_the_official_tag_page_when_remote_metadata_is_unsafe(): void
     {
         Cache::flush();
