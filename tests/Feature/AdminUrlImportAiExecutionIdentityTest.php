@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Exceptions\AiModelAccessException;
 use App\Exceptions\PermanentAiProviderException;
+use App\Jobs\ProcessUrlImportJob;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\AiModelUsageEvent;
 use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\TitleLibrary;
@@ -14,6 +16,7 @@ use App\Services\Admin\AdminAiDependencyInspector;
 use App\Services\Admin\AdminAiModelMutationService;
 use App\Services\AiWorkspace\AiCapabilityExecutor;
 use App\Services\GeoFlow\UrlImportAiExecutionGuard;
+use App\Services\GeoFlow\UrlImportExecutionBoundaryHook;
 use App\Services\GeoFlow\UrlImportProcessingService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
@@ -21,6 +24,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class AdminUrlImportAiExecutionIdentityTest extends TestCase
@@ -116,11 +120,47 @@ final class AdminUrlImportAiExecutionIdentityTest extends TestCase
             ->assertFailed();
 
         Http::assertNothingSent();
+        $this->assertDatabaseCount((new AiModelUsageEvent)->getTable(), 0);
         $job->refresh();
         $this->assertSame('failed', $job->status);
         $this->assertSame(AiModelAccessException::AI_CONFIG_ACCESS_REVOKED, $job->error_code);
         $this->assertFalse($job->retryable_failure);
         $this->assertSame('', (string) $job->result_json);
+    }
+
+    public function test_a_historical_job_with_backfilled_identity_records_each_provider_call(): void
+    {
+        $admin = $this->admin('legacy-url-backfilled-operator', ['role' => 'super_admin']);
+        $model = $this->model($admin, 'legacy-url-backfilled-model');
+        $job = UrlImportJob::query()->create([
+            'url' => 'https://source.test/legacy-backfilled',
+            'normalized_url' => 'https://source.test/legacy-backfilled',
+            'source_domain' => 'source.test',
+            'page_title' => '',
+            'status' => 'queued',
+            'current_step' => 'queued',
+            'progress_percent' => 0,
+            'options_json' => '{}',
+            'result_json' => '',
+            'error_message' => '',
+            'created_by' => $admin->username,
+        ]);
+        DB::transaction(function () use ($admin, $job, $model): void {
+            $job->forceFill(app(UrlImportAiExecutionGuard::class)->snapshotForCreation($admin, $model))->save();
+        });
+        $requestedModels = [];
+        $this->fakeSuccessfulImport('https://source.test/legacy-backfilled', $requestedModels);
+
+        $processed = app(UrlImportProcessingService::class)->process($job->fresh());
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame('completed', $processed->status, (string) $processed->error_message);
+        $this->assertCount(4, $events);
+        $this->assertSame(
+            array_fill(0, 4, AiModelUsageEvent::STATUS_SUCCEEDED),
+            $events->pluck('status')->all(),
+        );
+        $this->assertSame([$admin->id], $events->pluck('execution_admin_id')->unique()->values()->all());
     }
 
     public function test_processing_uses_personal_model_before_shared_and_excludes_peer_and_system_models(): void
@@ -183,6 +223,132 @@ final class AdminUrlImportAiExecutionIdentityTest extends TestCase
         );
         $this->assertSame((int) $shared->id, (int) $processed->resolved_ai_model_id);
         $this->assertSame('shared', $processed->resolved_model_source);
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertCount(7, $events);
+        $this->assertSame(
+            [
+                AiModelUsageEvent::STATUS_FAILED,
+                AiModelUsageEvent::STATUS_FAILED,
+                AiModelUsageEvent::STATUS_FAILED,
+                AiModelUsageEvent::STATUS_SUCCEEDED,
+                AiModelUsageEvent::STATUS_SUCCEEDED,
+                AiModelUsageEvent::STATUS_SUCCEEDED,
+                AiModelUsageEvent::STATUS_SUCCEEDED,
+            ],
+            $events->pluck('status')->all(),
+        );
+        $this->assertSame([$personal->id], $events->take(3)->pluck('ai_model_id')->unique()->values()->all());
+        $this->assertSame(['personal'], $events->take(3)->pluck('model_source')->unique()->values()->all());
+        $this->assertSame([$shared->id], $events->skip(3)->pluck('ai_model_id')->unique()->values()->all());
+        $this->assertSame(['shared'], $events->skip(3)->pluck('model_source')->unique()->values()->all());
+        $this->assertSame([$admin->id], $events->pluck('execution_admin_id')->unique()->values()->all());
+        $this->assertSame([$admin->id, $provider->id], $events->pluck('config_owner_admin_id')->unique()->values()->all());
+    }
+
+    public function test_url_import_records_each_successful_analysis_stage_after_preview_commit(): void
+    {
+        $admin = $this->admin('url-ledger-success-admin');
+        $model = $this->model($admin, 'url-ledger-success-model');
+        $job = $this->executionJob($admin, $model, 'https://source.test/ledger-success');
+        $requestedModels = [];
+        $this->fakeSuccessfulImport('https://source.test/ledger-success', $requestedModels);
+
+        $processed = app(UrlImportProcessingService::class)->process($job);
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame('completed', $processed->status, (string) $processed->error_message);
+        $this->assertCount(4, $events);
+        $this->assertSame(
+            ['clean', 'knowledge', 'keywords', 'titles'],
+            $events->map(static fn (AiModelUsageEvent $event): string => (string) Str::of($event->call_key)->between('.s', '.p'))->all(),
+        );
+        $this->assertSame(
+            array_fill(0, 4, AiModelUsageEvent::STATUS_SUCCEEDED),
+            $events->pluck('status')->all(),
+        );
+        $this->assertCount(1, $events->pluck('request_id')->unique());
+        $this->assertTrue(Str::isUuid((string) $events->first()->request_id));
+        $this->assertSame([$model->id], $events->pluck('ai_model_id')->unique()->values()->all());
+        $this->assertSame([$admin->id], $events->pluck('execution_admin_id')->unique()->values()->all());
+        $this->assertSame([$admin->id], $events->pluck('config_owner_admin_id')->unique()->values()->all());
+        $this->assertSame(['personal'], $events->pluck('model_source')->unique()->values()->all());
+        $this->assertSame([(int) $admin->ai_config_access_version], $events->pluck('ai_config_access_version')->unique()->values()->all());
+        $this->assertSame(['url_import.analysis'], $events->pluck('operation')->unique()->values()->all());
+        $this->assertSame(['url_import'], $events->pluck('business_source')->unique()->values()->all());
+        $this->assertSame([UrlImportJob::class], $events->pluck('source_type')->unique()->values()->all());
+        $this->assertSame([(string) $job->id], $events->pluck('source_id')->unique()->values()->all());
+        $this->assertSame(1, (int) $processed->execution_attempt);
+        $this->assertTrue($events->every(static fn (AiModelUsageEvent $event): bool => strlen((string) $event->call_key) <= 100));
+        $serialized = $events->toJson();
+        $this->assertStringNotContainsString('url-import-secret', $serialized);
+        $this->assertStringNotContainsString('source.test/ledger-success', $serialized);
+        $this->assertStringNotContainsString('Identity-safe import content', $serialized);
+    }
+
+    public function test_late_stage_validation_failure_discards_the_first_try_before_repeating_all_stages(): void
+    {
+        $admin = $this->admin('url-ledger-retry-admin');
+        $model = $this->model($admin, 'url-ledger-retry-model');
+        $job = $this->executionJob($admin, $model, 'https://source.test/ledger-retry');
+        $successfulPayloads = [
+            [
+                'clean_title' => 'URL retry source',
+                'clean_summary' => 'Retry-safe import.',
+                'clean_text' => 'Retry-safe import content.',
+                'core_business' => [],
+                'entities' => [],
+                'facts' => ['Retry-safe import content.'],
+                'noise_removed' => [],
+            ],
+            [
+                'summary' => 'Retry-safe import.',
+                'library_name' => 'Retry import',
+                'knowledge_markdown' => "# Retry import\n\nRetry-safe import content.",
+            ],
+            ['keywords' => ['重试采集']],
+            ['titles' => ['重试安全的 URL 导入']],
+        ];
+        $providerCall = 0;
+        Http::fake(function ($request) use (&$providerCall, $successfulPayloads) {
+            if ($request->url() === 'https://source.test/ledger-retry') {
+                return Http::response('<html><body><main>Retry-safe import content.</main></body></html>');
+            }
+
+            $indexWithinTry = $providerCall % 4;
+            $providerCall++;
+            $content = $providerCall === 4
+                ? ''
+                : json_encode($successfulPayloads[$indexWithinTry], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+
+            return Http::response(['choices' => [['message' => ['content' => $content]]]]);
+        });
+
+        $processed = app(UrlImportProcessingService::class)->process($job);
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame('completed', $processed->status, (string) $processed->error_message);
+        $this->assertSame(8, $providerCall);
+        $this->assertSame(
+            [
+                AiModelUsageEvent::STATUS_DISCARDED,
+                AiModelUsageEvent::STATUS_DISCARDED,
+                AiModelUsageEvent::STATUS_DISCARDED,
+                AiModelUsageEvent::STATUS_DISCARDED,
+                AiModelUsageEvent::STATUS_SUCCEEDED,
+                AiModelUsageEvent::STATUS_SUCCEEDED,
+                AiModelUsageEvent::STATUS_SUCCEEDED,
+                AiModelUsageEvent::STATUS_SUCCEEDED,
+            ],
+            $events->pluck('status')->all(),
+        );
+        $invalidTitle = $events->first(
+            static fn (AiModelUsageEvent $event): bool => str_contains((string) $event->call_key, '.t1.stitles.'),
+        );
+        $this->assertInstanceOf(AiModelUsageEvent::class, $invalidTitle);
+        $this->assertSame('url_import_invalid_model_output', $invalidTitle->error_code);
+        $this->assertTrue($events->take(4)->every(static fn (AiModelUsageEvent $event): bool => str_contains((string) $event->call_key, '.t1.')));
+        $this->assertTrue($events->skip(4)->every(static fn (AiModelUsageEvent $event): bool => str_contains((string) $event->call_key, '.t2.')));
+        $this->assertCount(1, $events->pluck('request_id')->unique());
     }
 
     public function test_permanent_provider_failure_never_retries_or_uses_shared_fallback(): void
@@ -212,6 +378,9 @@ final class AdminUrlImportAiExecutionIdentityTest extends TestCase
         $this->assertFalse($processed->retryable_failure);
         $this->assertSame(['url-permanent-personal'], $requestedModels);
         $this->assertSame('', (string) $processed->result_json);
+        $providerEvent = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_FAILED, $providerEvent->status);
+        $this->assertSame($personal->id, $providerEvent->ai_model_id);
 
         Http::fake();
         $this->artisan('geoflow:process-url-import', ['jobId' => $job->id])
@@ -243,6 +412,7 @@ final class AdminUrlImportAiExecutionIdentityTest extends TestCase
         $this->assertSame(AiModelAccessException::AI_MODEL_UNAVAILABLE, $processed->error_code);
         $this->assertFalse($processed->retryable_failure);
         Http::assertSentCount(1);
+        $this->assertDatabaseCount((new AiModelUsageEvent)->getTable(), 0);
     }
 
     public function test_web_run_refuses_a_permanently_failed_job_without_external_requests(): void
@@ -314,6 +484,161 @@ final class AdminUrlImportAiExecutionIdentityTest extends TestCase
         $this->assertSame('', (string) $processed->result_json);
         $this->assertNull($processed->resolved_ai_model_id);
         $this->assertSame(['url-revoked-model'], array_values(array_unique($requestedModels)));
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertCount(4, $events);
+        $this->assertSame(
+            array_fill(0, 4, AiModelUsageEvent::STATUS_REVOKED),
+            $events->pluck('status')->all(),
+        );
+        $this->assertSame(
+            array_fill(0, 4, AiModelAccessException::AI_CONFIG_ACCESS_REVOKED),
+            $events->pluck('error_code')->all(),
+        );
+    }
+
+    public function test_preview_transaction_rollback_discards_all_returned_provider_results(): void
+    {
+        $admin = $this->admin('url-preview-rollback-admin');
+        $model = $this->model($admin, 'url-preview-rollback-model');
+        $job = $this->executionJob($admin, $model, 'https://source.test/preview-rollback');
+        $requestedModels = [];
+        $this->fakeSuccessfulImport('https://source.test/preview-rollback', $requestedModels);
+        $this->app->instance(
+            UrlImportExecutionBoundaryHook::class,
+            new class extends UrlImportExecutionBoundaryHook
+            {
+                public function beforePreviewCommit(UrlImportJob $job): void
+                {
+                    throw new \RuntimeException('preview transaction rejected');
+                }
+            },
+        );
+
+        $processed = app(UrlImportProcessingService::class)->process($job);
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame('failed', $processed->status);
+        $this->assertSame('', (string) $processed->result_json);
+        $this->assertSame($model->id, $processed->resolved_ai_model_id);
+        $this->assertCount(4, $events);
+        $this->assertSame(
+            array_fill(0, 4, AiModelUsageEvent::STATUS_DISCARDED),
+            $events->pluck('status')->all(),
+        );
+        $this->assertSame(
+            array_fill(0, 4, 'url_import_result_not_committed'),
+            $events->pluck('error_code')->all(),
+        );
+    }
+
+    public function test_cancelled_lease_discards_returned_results_without_marking_an_access_revocation(): void
+    {
+        $admin = $this->admin('url-ledger-cancel-admin');
+        $model = $this->model($admin, 'url-ledger-cancel-model');
+        $job = $this->executionJob($admin, $model, 'https://source.test/ledger-cancel');
+        $requestedModels = [];
+        $this->fakeSuccessfulImport(
+            'https://source.test/ledger-cancel',
+            $requestedModels,
+            afterAiResponse: function (int $responseIndex) use ($job): void {
+                if ($responseIndex !== 4) {
+                    return;
+                }
+                UrlImportJob::query()->whereKey($job->id)->update([
+                    'status' => 'failed',
+                    'retryable_failure' => false,
+                    'execution_lease_token' => null,
+                    'lease_expires_at' => null,
+                ]);
+            },
+        );
+
+        $processed = app(UrlImportProcessingService::class)->process($job);
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame('failed', $processed->status);
+        $this->assertFalse($processed->retryable_failure);
+        $this->assertSame('', (string) $processed->result_json);
+        $this->assertCount(4, $events);
+        $this->assertSame(
+            array_fill(0, 4, AiModelUsageEvent::STATUS_DISCARDED),
+            $events->pluck('status')->all(),
+        );
+        $this->assertSame(
+            array_fill(0, 4, 'url_import_execution_invalidated'),
+            $events->pluck('error_code')->all(),
+        );
+    }
+
+    public function test_worker_retry_uses_a_new_claim_request_and_persistent_attempt_ordinal(): void
+    {
+        $admin = $this->admin('url-ledger-worker-retry-admin');
+        $model = $this->model($admin, 'url-ledger-worker-retry-model');
+        $job = $this->executionJob($admin, $model, 'https://source.test/ledger-worker-retry');
+        $providerEnabled = false;
+        $successIndex = 0;
+        $successfulPayloads = [
+            [
+                'clean_title' => 'Worker retry source',
+                'clean_summary' => 'Worker retry import.',
+                'clean_text' => 'Worker retry import content.',
+                'core_business' => [],
+                'entities' => [],
+                'facts' => ['Worker retry import content.'],
+                'noise_removed' => [],
+            ],
+            [
+                'summary' => 'Worker retry import.',
+                'library_name' => 'Worker retry import',
+                'knowledge_markdown' => "# Worker retry import\n\nWorker retry import content.",
+            ],
+            ['keywords' => ['任务重试']],
+            ['titles' => ['任务重试后的 URL 导入']],
+        ];
+        Http::fake(function ($request) use (&$providerEnabled, &$successIndex, $successfulPayloads) {
+            if ($request->url() === 'https://source.test/ledger-worker-retry') {
+                return Http::response('<html><body><main>Worker retry import content.</main></body></html>');
+            }
+            if (! $providerEnabled) {
+                return Http::response(['error' => ['message' => 'temporary provider failure']], 503);
+            }
+            $payload = $successfulPayloads[$successIndex] ?? end($successfulPayloads);
+            $successIndex++;
+
+            return Http::response([
+                'choices' => [['message' => ['content' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]]],
+            ]);
+        });
+        $processing = app(UrlImportProcessingService::class);
+
+        (new ProcessUrlImportJob((int) $job->id))->handle($processing);
+        $first = $job->fresh();
+        $this->assertSame('failed', $first->status);
+        $this->assertTrue($first->retryable_failure);
+        $providerEnabled = true;
+        (new ProcessUrlImportJob((int) $job->id))->handle($processing);
+        $completed = $job->fresh();
+
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertSame('completed', $completed->status, (string) $completed->error_message);
+        $this->assertSame(2, (int) $completed->execution_attempt);
+        $this->assertCount(7, $events);
+        $this->assertCount(2, $events->pluck('request_id')->unique());
+        $this->assertCount(7, $events->pluck('call_key')->unique());
+        $this->assertSame(
+            [
+                AiModelUsageEvent::STATUS_FAILED,
+                AiModelUsageEvent::STATUS_FAILED,
+                AiModelUsageEvent::STATUS_FAILED,
+                AiModelUsageEvent::STATUS_SUCCEEDED,
+                AiModelUsageEvent::STATUS_SUCCEEDED,
+                AiModelUsageEvent::STATUS_SUCCEEDED,
+                AiModelUsageEvent::STATUS_SUCCEEDED,
+            ],
+            $events->pluck('status')->all(),
+        );
+        $this->assertTrue($events->take(3)->every(static fn (AiModelUsageEvent $event): bool => str_starts_with((string) $event->call_key, 'a1.')));
+        $this->assertTrue($events->skip(3)->every(static fn (AiModelUsageEvent $event): bool => str_starts_with((string) $event->call_key, 'a2.')));
     }
 
     public function test_inactive_shared_owner_blocks_processing_before_any_external_request(): void
@@ -614,6 +939,23 @@ final class AdminUrlImportAiExecutionIdentityTest extends TestCase
             ]));
         } finally {
             if (! Schema::hasColumn('url_import_jobs', 'model_access_admin_id')) {
+                $migration->up();
+            }
+        }
+    }
+
+    public function test_url_import_execution_attempt_migration_is_reversible(): void
+    {
+        $migration = require database_path('migrations/2026_09_03_010000_add_execution_attempt_to_url_import_jobs_table.php');
+
+        try {
+            $migration->down();
+            $this->assertFalse(Schema::hasColumn('url_import_jobs', 'execution_attempt'));
+
+            $migration->up();
+            $this->assertTrue(Schema::hasColumn('url_import_jobs', 'execution_attempt'));
+        } finally {
+            if (! Schema::hasColumn('url_import_jobs', 'execution_attempt')) {
                 $migration->up();
             }
         }

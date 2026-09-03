@@ -12,6 +12,7 @@ class UrlImportJob extends Model
 
     protected $attributes = [
         'retryable_failure' => true,
+        'execution_attempt' => 0,
     ];
 
     protected $hidden = [
@@ -43,6 +44,7 @@ class UrlImportJob extends Model
         'resolved_model_source',
         'model_resolved_at',
         'execution_lease_token',
+        'execution_attempt',
         'lease_expires_at',
         'started_at',
         'finished_at',
@@ -59,6 +61,7 @@ class UrlImportJob extends Model
             'resolver_policy_version' => 'integer',
             'resolved_ai_model_id' => 'integer',
             'model_resolved_at' => 'datetime',
+            'execution_attempt' => 'integer',
             'lease_expires_at' => 'datetime',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',

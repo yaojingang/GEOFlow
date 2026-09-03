@@ -9,12 +9,14 @@ class AiModelProviderUsageSession
     /** @var array<int,array{attempt:AiModelUsageAttempt,usage:mixed}> */
     private array $pending = [];
 
-    /** @param Closure(string):AiModelUsageAttempt $attemptFactory */
+    /** @param Closure(string, ?string=): AiModelUsageAttempt $attemptFactory */
     public function __construct(private readonly Closure $attemptFactory) {}
 
-    public function begin(string $mode): AiModelUsageAttempt
+    public function begin(string $mode, ?string $requestPayload = null): AiModelUsageAttempt
     {
-        return ($this->attemptFactory)($mode);
+        return $requestPayload === null
+            ? ($this->attemptFactory)($mode)
+            : ($this->attemptFactory)($mode, $requestPayload);
     }
 
     public function providerFailed(AiModelUsageAttempt $attempt, string $errorCode = 'ai_provider_request_failed'): void
