@@ -94,6 +94,11 @@ class SecurityReleaseMetadataTest extends TestCase
             'index("creation")',
             'set -euo pipefail',
             'GEOFLOW_RELEASE_SIGNER_FINGERPRINT',
+            'GEOFLOW_RELEASE_ACCESS_EVIDENCE_SHA256',
+            'collaborators?affiliation=direct',
+            'default_workflow_permissions == "read"',
+            'all(.[][]; .read_only == true)',
+            'contents:[[:space:]]*write',
             'git verify-tag --raw v3.0.0',
             'GEOFLOW_REMOTE_TAG_COMMIT',
             'GEOFLOW_FINAL_VERIFY_DIR',
@@ -108,5 +113,7 @@ class SecurityReleaseMetadataTest extends TestCase
         $this->assertGreaterThanOrEqual(8, substr_count($runbook, 'set -euo pipefail'));
         $this->assertGreaterThanOrEqual(2, substr_count($runbook, '.enabled == true'));
         $this->assertGreaterThanOrEqual(2, substr_count($runbook, 'index("creation")'));
+        $this->assertGreaterThanOrEqual(3, substr_count($runbook, 'GEOFLOW_RELEASE_ACCESS_EVIDENCE_SHA256'));
+        $this->assertGreaterThanOrEqual(3, substr_count($runbook, 'collaborators?affiliation=direct'));
     }
 }

@@ -26,11 +26,14 @@
 
 1. 在仓库 Settings 的 Releases 匹配项中启用 Immutable Releases。该能力会在 Release 公开时锁定标签与资产，并为 Release 生成可验证的 attestation。
 2. 创建 Active 状态的 tag ruleset，目标包含 `refs/tags/v*`，启用 Restrict creations、Restrict updates 与 Restrict deletions。bypass actor 只保留受控发布身份，日常写权限不能创建或抢占版本标签。
-3. 通过 API 回读实际状态；将标签规则集 ID 写入 `GEOFLOW_TAG_RULESET_ID` 后执行：
+3. 指定 `yaojingang` 为本次受控发布身份。从创建 Draft Release 到公开后 attestation 验证完成期间，其他协作者、GitHub Apps、Deploy Keys、PAT 和自动化凭据均不得拥有该仓库的 `Contents:write`。将私密权限清点与独立复核证据的 SHA-256 写入 `GEOFLOW_RELEASE_ACCESS_EVIDENCE_SHA256`。
+4. 通过 API 回读实际状态；将标签规则集 ID 写入 `GEOFLOW_TAG_RULESET_ID` 后执行：
 
 ```bash
 set -euo pipefail
 : "${GEOFLOW_TAG_RULESET_ID:?set the protected release tag ruleset ID}"
+: "${GEOFLOW_RELEASE_ACCESS_EVIDENCE_SHA256:?set the approved release access evidence SHA-256}"
+[[ "$GEOFLOW_RELEASE_ACCESS_EVIDENCE_SHA256" =~ ^[a-f0-9]{64}$ ]]
 
 gh api repos/yaojingang/GEOFlow/immutable-releases | jq -e '.enabled == true'
 gh api "repos/yaojingang/GEOFlow/rulesets/$GEOFLOW_TAG_RULESET_ID" | jq -e '
@@ -41,9 +44,14 @@ gh api "repos/yaojingang/GEOFlow/rulesets/$GEOFLOW_TAG_RULESET_ID" | jq -e '
   and (([.rules[].type] | index("update")) != null)
   and (([.rules[].type] | index("deletion")) != null)
 '
+gh api 'repos/yaojingang/GEOFlow/collaborators?affiliation=direct&per_page=100' --paginate | jq -se '
+  all(.[][]; .login == "yaojingang" or (((.permissions.admin // false) == false) and ((.permissions.push // false) == false)))
+'
+gh api repos/yaojingang/GEOFlow/keys --paginate | jq -se 'all(.[][]; .read_only == true)'
+gh api repos/yaojingang/GEOFlow/actions/permissions/workflow | jq -e '.default_workflow_permissions == "read"'
 ```
 
-任一检查失败时停止发布。Immutable Releases 只保护启用后公开的 Release，现有历史 Release 不会自动获得该保护。
+权限证据必须覆盖 API 无法完整枚举的 GitHub App 安装授权、OAuth/PAT 所有者、仓库与环境密钥，以及计划发布窗口内的其他自动化。任一检查失败时停止发布。Immutable Releases 只保护启用后公开的 Release，现有历史 Release 不会自动获得该保护。
 
 ## 一、固定 Core 候选提交
 
@@ -106,9 +114,17 @@ jq -e '.version == "3.0.0" and .tag == "v3.0.0" and .archive_url == "https://git
 ```bash
 set -euo pipefail
 : "${GEOFLOW_RELEASE_SIGNER_FINGERPRINT:?set the trusted release GPG fingerprint}"
+: "${GEOFLOW_RELEASE_ACCESS_EVIDENCE_SHA256:?set the approved release access evidence SHA-256}"
+[[ "$GEOFLOW_RELEASE_ACCESS_EVIDENCE_SHA256" =~ ^[a-f0-9]{64}$ ]]
 
 git fetch origin --prune --tags
 test "$(git rev-parse origin/main)" = "$GEOFLOW_RELEASE_SHA"
+! git grep -nE 'contents:[[:space:]]*write' "$GEOFLOW_RELEASE_SHA" -- .github/workflows
+gh api 'repos/yaojingang/GEOFlow/collaborators?affiliation=direct&per_page=100' --paginate | jq -se '
+  all(.[][]; .login == "yaojingang" or (((.permissions.admin // false) == false) and ((.permissions.push // false) == false)))
+'
+gh api repos/yaojingang/GEOFlow/keys --paginate | jq -se 'all(.[][]; .read_only == true)'
+gh api repos/yaojingang/GEOFlow/actions/permissions/workflow | jq -e '.default_workflow_permissions == "read"'
 git tag -s v3.0.0 "$GEOFLOW_RELEASE_SHA" -m "GEOFlow v3.0.0"
 git verify-tag --raw v3.0.0 2>&1 | grep -F "[GNUPG:] VALIDSIG $GEOFLOW_RELEASE_SIGNER_FINGERPRINT "
 git push origin refs/tags/v3.0.0
@@ -153,6 +169,8 @@ cmp "$GEOFLOW_VERIFY_DIR/version.json" "$GEOFLOW_RELEASE_DIR/version.json"
 ```bash
 set -euo pipefail
 : "${GEOFLOW_TAG_RULESET_ID:?set the protected release tag ruleset ID}"
+: "${GEOFLOW_RELEASE_ACCESS_EVIDENCE_SHA256:?set the approved release access evidence SHA-256}"
+[[ "$GEOFLOW_RELEASE_ACCESS_EVIDENCE_SHA256" =~ ^[a-f0-9]{64}$ ]]
 
 gh api repos/yaojingang/GEOFlow/immutable-releases | jq -e '.enabled == true'
 gh api "repos/yaojingang/GEOFlow/rulesets/$GEOFLOW_TAG_RULESET_ID" | jq -e '
@@ -163,6 +181,12 @@ gh api "repos/yaojingang/GEOFlow/rulesets/$GEOFLOW_TAG_RULESET_ID" | jq -e '
   and (([.rules[].type] | index("update")) != null)
   and (([.rules[].type] | index("deletion")) != null)
 '
+gh api 'repos/yaojingang/GEOFlow/collaborators?affiliation=direct&per_page=100' --paginate | jq -se '
+  all(.[][]; .login == "yaojingang" or (((.permissions.admin // false) == false) and ((.permissions.push // false) == false)))
+'
+gh api repos/yaojingang/GEOFlow/keys --paginate | jq -se 'all(.[][]; .read_only == true)'
+gh api repos/yaojingang/GEOFlow/actions/permissions/workflow | jq -e '.default_workflow_permissions == "read"'
+! git grep -nE 'contents:[[:space:]]*write' "$GEOFLOW_RELEASE_SHA" -- .github/workflows
 test "$(git ls-remote origin 'refs/tags/v3.0.0^{}' | awk '{print $1}')" = "$GEOFLOW_RELEASE_SHA"
 
 export GEOFLOW_FINAL_VERIFY_DIR="$(mktemp -d /tmp/geoflow-v3-final-verify.XXXXXX)"
@@ -192,6 +216,8 @@ gh release verify-asset v3.0.0 "$GEOFLOW_FINAL_VERIFY_DIR/GEOFlow-v3.0.0.zip" --
 gh release verify-asset v3.0.0 "$GEOFLOW_FINAL_VERIFY_DIR/GEOFlow-v3.0.0.zip.sha256" --repo yaojingang/GEOFlow
 gh release verify-asset v3.0.0 "$GEOFLOW_FINAL_VERIFY_DIR/version.json" --repo yaojingang/GEOFlow
 ```
+
+以上验证全部通过后结束独占发布窗口；需要恢复的协作者或应用权限按清点记录逐项恢复。
 
 Core Release 和三个资产确认公开可读后，使用此前通过真实宿主演练的候选 run ID 与证据摘要触发 Updater 发布工作流：
 
