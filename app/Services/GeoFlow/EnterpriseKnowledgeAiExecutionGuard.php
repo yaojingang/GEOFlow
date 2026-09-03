@@ -78,6 +78,7 @@ final class EnterpriseKnowledgeAiExecutionGuard
             $lockedProject->forceFill([
                 'status' => 'processing',
                 'execution_lease_token' => $claimLeaseToken,
+                'execution_attempt' => (int) $lockedProject->execution_attempt + 1,
                 'lease_expires_at' => now()->addSeconds(self::EXECUTION_LEASE_SECONDS),
                 'error_code' => null,
                 'error_message' => null,
@@ -109,6 +110,25 @@ final class EnterpriseKnowledgeAiExecutionGuard
         }
 
         return $this->assertIdentityCurrent($currentProject, $model);
+    }
+
+    public function claimedExecutionIsCurrent(EnterpriseKnowledgeProject $project): bool
+    {
+        $currentProject = EnterpriseKnowledgeProject::query()->whereKey($project->getKey())->first();
+        $expectedLease = trim((string) ($project->execution_lease_token ?? ''));
+
+        return $expectedLease !== ''
+            && $currentProject instanceof EnterpriseKnowledgeProject
+            && (string) $currentProject->status === 'processing'
+            && hash_equals($expectedLease, trim((string) $currentProject->execution_lease_token))
+            && $currentProject->lease_expires_at !== null
+            && ! $currentProject->lease_expires_at->isPast()
+            && (int) $currentProject->execution_attempt === (int) $project->execution_attempt
+            && (int) $currentProject->model_access_admin_id === (int) $project->model_access_admin_id
+            && (string) $currentProject->model_access_admin_role === (string) $project->model_access_admin_role
+            && (int) $currentProject->ai_config_access_version === (int) $project->ai_config_access_version
+            && (int) $currentProject->requested_ai_model_id === (int) $project->requested_ai_model_id
+            && (int) $currentProject->resolver_policy_version === (int) $project->resolver_policy_version;
     }
 
     /** @return Collection<int, AiModel> */

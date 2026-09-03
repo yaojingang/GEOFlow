@@ -8,6 +8,7 @@ use App\Models\EnterpriseKnowledgeProject;
 use App\Models\EnterpriseKnowledgeRevision;
 use App\Services\GeoFlow\EnterpriseKnowledgeAiExecutionGuard;
 use App\Services\GeoFlow\EnterpriseKnowledgeDraftService;
+use App\Services\GeoFlow\EnterpriseKnowledgeDraftUsageDelivery;
 use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -66,6 +67,7 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
             return;
         }
         $this->claimedExecutionLeaseToken = trim((string) $project->execution_lease_token);
+        $usageDelivery = null;
 
         try {
             $executionGuard->assertCurrent($project, $project->requested_ai_model_id);
@@ -75,6 +77,9 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
 
             $freshProject = $project->fresh(['sources']) ?? $project;
             $draft = $draftService->generateDraft($freshProject);
+            $usageDelivery = ($draft['usage_delivery'] ?? null) instanceof EnterpriseKnowledgeDraftUsageDelivery
+                ? $draft['usage_delivery']
+                : null;
             $project->refresh();
             $content = trim((string) $draft['content']);
 
@@ -82,7 +87,16 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
             $validationItems = $draftService->validateDraft($content);
             $this->updateProgress($project, 'writing', 92, __('admin.enterprise_knowledge.progress_message.writing'));
             $this->persistDraft($project, $content, $validationItems, $draft, $executionGuard);
+            $usageDelivery?->succeeded();
         } catch (AiModelAccessException|PermanentAiProviderException $exception) {
+            if ($usageDelivery instanceof EnterpriseKnowledgeDraftUsageDelivery) {
+                if ($exception instanceof AiModelAccessException
+                    && $executionGuard->claimedExecutionIsCurrent($project)) {
+                    $usageDelivery->revoked($exception->getErrorCode());
+                } else {
+                    $usageDelivery->discarded($this->safeUsageFailureCode($exception));
+                }
+            }
             $this->markFailed(
                 $project,
                 $exception,
@@ -91,6 +105,7 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
                 $this->claimedExecutionLeaseToken,
             );
         } catch (Throwable $exception) {
+            $usageDelivery?->discarded($this->safeUsageFailureCode($exception));
             $this->markFailed(
                 $project,
                 $exception,
@@ -155,7 +170,7 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
 
     /**
      * @param  list<array{level:string,message:string,section:string}>  $validationItems
-     * @param  array{content:string,source:string,model_id:?int,error:?string}  $draft
+     * @param  array{content:string,source:string,model_id:?int,error:?string,usage_delivery?:EnterpriseKnowledgeDraftUsageDelivery|null}  $draft
      */
     private function persistDraft(
         EnterpriseKnowledgeProject $project,
@@ -199,8 +214,17 @@ final class GenerateEnterpriseKnowledgeDraftJob implements ShouldQueue
                 'content_hash' => hash('sha256', $content),
             ]);
         }, 3);
+    }
 
-        $project->refresh();
+    private function safeUsageFailureCode(Throwable $exception): string
+    {
+        if ($exception instanceof AiModelAccessException) {
+            return $exception->getErrorCode();
+        }
+
+        $class = strtolower(class_basename($exception));
+
+        return preg_replace('/[^a-z0-9_]+/', '_', $class) ?: 'enterprise_knowledge_generation_failed';
     }
 
     private function markFailed(

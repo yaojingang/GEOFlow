@@ -10,6 +10,7 @@ class EnterpriseKnowledgeProject extends Model
 {
     protected $attributes = [
         'retryable_failure' => true,
+        'execution_attempt' => 0,
     ];
 
     protected $hidden = [
@@ -40,6 +41,7 @@ class EnterpriseKnowledgeProject extends Model
         'resolved_model_source',
         'model_resolved_at',
         'execution_lease_token',
+        'execution_attempt',
         'lease_expires_at',
     ];
 
@@ -55,6 +57,7 @@ class EnterpriseKnowledgeProject extends Model
             'requested_ai_model_id' => 'integer',
             'resolver_policy_version' => 'integer',
             'resolved_ai_model_id' => 'integer',
+            'execution_attempt' => 'integer',
             'model_resolved_at' => 'datetime',
             'lease_expires_at' => 'datetime',
         ];
