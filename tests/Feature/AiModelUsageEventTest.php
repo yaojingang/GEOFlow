@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Data\Ai\SystemAiIdentity;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\AiModelUsageAttemptStart;
 use App\Models\AiModelUsageEvent;
 use App\Models\Task;
 use App\Services\Admin\AiModelUsageAccessSnapshot;
@@ -25,6 +26,58 @@ use Tests\TestCase;
 class AiModelUsageEventTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_provider_attempt_start_is_durable_and_stale_missing_outcomes_are_reconciled(): void
+    {
+        $owner = $this->admin('durable-start-owner', 'super_admin');
+        $model = $this->model($owner, AiModel::ACCESS_SCOPE_SYSTEM_ONLY);
+        $factory = app(AiModelUsageAttemptFactory::class);
+        $requestId = $factory->requestId();
+        $attempt = $factory->beginForSystem(
+            model: $model,
+            identity: SystemAiIdentity::knowledgeIndex(),
+            requestId: $requestId,
+            requestPayload: 'durable provider payload',
+            callKey: 'durable.p1',
+            operation: 'knowledge.semantic_chunking',
+            businessSource: 'knowledge_index',
+        );
+
+        $start = AiModelUsageAttemptStart::query()->sole();
+        $this->assertSame($requestId, $start->request_id);
+        $this->assertSame(hash('sha256', 'durable provider payload'), $start->request_payload_digest);
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
+
+        $attempt->succeeded(['prompt_tokens' => 2, 'completion_tokens' => 1]);
+        $this->assertDatabaseHas('ai_model_usage_events', [
+            'request_id' => $requestId,
+            'call_key' => 'durable.p1',
+            'status' => AiModelUsageEvent::STATUS_SUCCEEDED,
+        ]);
+
+        $this->travelTo(now()->subMinutes(10));
+        $staleRequestId = $factory->requestId();
+        $factory->beginForSystem(
+            model: $model,
+            identity: SystemAiIdentity::knowledgeIndex(),
+            requestId: $staleRequestId,
+            requestPayload: 'stale provider payload',
+            callKey: 'stale.p1',
+            operation: 'knowledge.semantic_chunking',
+            businessSource: 'knowledge_index',
+        );
+        $this->travelBack();
+
+        $this->artisan('geoflow:reconcile-ai-usage-attempts', ['--older-than' => 300])
+            ->expectsOutput('Stale AI usage attempts reconciled: 1')
+            ->assertSuccessful();
+        $this->assertDatabaseHas('ai_model_usage_events', [
+            'request_id' => $staleRequestId,
+            'call_key' => 'stale.p1',
+            'status' => AiModelUsageEvent::STATUS_FAILED,
+            'error_code' => 'ai_usage_outcome_missing',
+        ]);
+    }
 
     public function test_system_attempt_requires_knowledge_index_identity_and_records_system_attribution(): void
     {

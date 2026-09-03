@@ -143,6 +143,11 @@ Schedule::command('geoflow:recover-knowledge-fact-generations')
     ->onOneServer()
     ->withoutOverlapping(10);
 
+Schedule::command('geoflow:reconcile-ai-usage-attempts --older-than=900')
+    ->everyFiveMinutes()
+    ->onOneServer()
+    ->withoutOverlapping(10);
+
 Schedule::command('geoflow:reconcile-ai-quality')
     ->everyMinute()
     ->onOneServer()

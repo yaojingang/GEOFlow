@@ -3,29 +3,48 @@
 namespace App\Services\AiWorkspace;
 
 use Illuminate\Contracts\Cache\Lock;
-use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 
 final class AiModelInvocationLock
 {
+    private const INVOCATION_SLOTS = 32;
+
     public function acquireForInvocation(int $modelId, ?int $leaseSeconds = null): Lock
     {
-        $lock = $this->lock($modelId, $leaseSeconds);
+        $deadline = microtime(true) + 5;
+        $start = random_int(0, self::INVOCATION_SLOTS - 1);
 
-        try {
-            $lock->block(5);
-        } catch (LockTimeoutException) {
-            throw new AiWorkspaceModelUnavailableException('AI 模型配置正在更新，请稍后重试。');
-        }
+        do {
+            for ($offset = 0; $offset < self::INVOCATION_SLOTS; $offset++) {
+                $slot = ($start + $offset) % self::INVOCATION_SLOTS;
+                $lock = $this->lock($modelId, $leaseSeconds, $slot);
+                if ($lock->get()) {
+                    return $lock;
+                }
+            }
 
-        return $lock;
+            usleep(50_000);
+        } while (microtime(true) < $deadline);
+
+        throw new AiWorkspaceModelUnavailableException('AI 模型配置正在更新，请稍后重试。');
     }
 
     public function acquireForMutation(int $modelId): ?Lock
     {
-        $lock = $this->lock($modelId);
+        $locks = [];
+        for ($slot = 0; $slot < self::INVOCATION_SLOTS; $slot++) {
+            $lock = $this->lock($modelId, null, $slot);
+            if (! $lock->get()) {
+                foreach (array_reverse($locks) as $acquired) {
+                    $acquired->release();
+                }
 
-        return $lock->get() ? $lock : null;
+                return null;
+            }
+            $locks[] = $lock;
+        }
+
+        return new AiModelMutationLock($locks);
     }
 
     public function release(?Lock $lock): void
@@ -33,7 +52,7 @@ final class AiModelInvocationLock
         $lock?->release();
     }
 
-    private function lock(int $modelId, ?int $leaseSeconds = null): Lock
+    private function lock(int $modelId, ?int $leaseSeconds, int $slot): Lock
     {
         $store = app()->environment('testing')
             ? (string) config('cache.default')
@@ -46,6 +65,6 @@ final class AiModelInvocationLock
             )
             : max(120, $leaseSeconds);
 
-        return Cache::store($store)->lock('geoflow:ai-model-invocation:'.$modelId, $seconds);
+        return Cache::store($store)->lock('geoflow:ai-model-invocation:'.$modelId.':'.$slot, $seconds);
     }
 }

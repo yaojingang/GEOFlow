@@ -17,6 +17,7 @@ final class AdminAiAccessBackfillService
     public function __construct(
         private readonly SystemAiModelReferenceInspector $referenceInspector,
         private readonly HistoricalTaskExecutionIdentityBackfillService $taskIdentityBackfill,
+        private readonly HistoricalAiLifecycleIdentityBackfillService $lifecycleIdentityBackfill,
     ) {}
 
     /** @return array<string, mixed> */
@@ -175,6 +176,7 @@ final class AdminAiAccessBackfillService
                     }
                 });
             $taskIdentityResult = $this->taskIdentityBackfill->applyPlan($plan);
+            $lifecycleIdentityResult = $this->lifecycleIdentityBackfill->applyPlan($plan);
             $remainingIdentityCounts = $this->taskIdentityBackfill->remainingIdentityCounts();
             $migrationState->forceFill([
                 'value' => [
@@ -192,6 +194,7 @@ final class AdminAiAccessBackfillService
                 'access_versions_normalized' => $versionsNormalized,
                 'system_models_marked' => $systemModelsMarked,
                 ...$taskIdentityResult,
+                ...$lifecycleIdentityResult,
                 ...$remainingIdentityCounts,
             ];
         }, 3);
@@ -257,6 +260,7 @@ final class AdminAiAccessBackfillService
             $taskMaxId,
             $taskRunMaxId,
         );
+        $lifecycleIdentity = $this->lifecycleIdentityBackfill->buildPlan($owner, $createdBefore);
 
         return [
             'legacy_owner_id' => (int) $owner->getKey(),
@@ -264,6 +268,7 @@ final class AdminAiAccessBackfillService
             'admin_max_id' => $adminMaxId,
             'model_max_id' => $modelMaxId,
             ...$taskIdentity,
+            ...$lifecycleIdentity,
             'unowned_models' => $this->historicalModels($createdBefore, $modelMaxId)
                 ->whereNull('owner_admin_id')
                 ->count(),

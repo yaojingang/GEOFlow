@@ -10,8 +10,12 @@ use App\Models\ArticleAiOptimizationRun;
 use App\Models\ArticleAiQualityCheck;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\EnterpriseKnowledgeProject;
 use App\Models\SiteSetting;
 use App\Models\Task;
+use App\Models\UrlImportJob;
+use App\Services\Admin\AdminAiAccessBackfillService;
+use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Foundation\MaintenanceMode as MaintenanceModeContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -107,6 +111,71 @@ class BackfillAdminAiAccessCommandTest extends TestCase
             ->expectsOutput('Access versions normalized: 0')
             ->expectsOutput('System-only models marked: 0')
             ->assertSuccessful();
+    }
+
+    public function test_apply_backfills_non_task_execution_identities_and_freezes_unattributed_active_work(): void
+    {
+        $legacyOwner = $this->admin('legacy-owner', 'super_admin', '2026-08-01 00:00:00');
+        $creator = $this->admin('known-creator', 'admin', '2026-08-01 00:00:00', [
+            'ai_config_access_version' => 7,
+        ]);
+        $model = $this->model($creator, 'known-creator-model', 'chat');
+        $project = EnterpriseKnowledgeProject::query()->create([
+            'name' => 'Historical enterprise draft',
+            'status' => 'queued',
+            'ai_model_id' => $model->id,
+            'created_by_admin_id' => $creator->id,
+            'created_at' => '2026-08-15 00:00:00',
+            'updated_at' => '2026-08-15 00:00:00',
+        ]);
+        $project->forceFill([
+            'created_at' => '2026-08-15 00:00:00',
+            'updated_at' => '2026-08-15 00:00:00',
+        ])->saveQuietly();
+        $job = UrlImportJob::query()->create([
+            'url' => 'https://historical.example.test',
+            'normalized_url' => 'https://historical.example.test/',
+            'status' => 'queued',
+            'created_by' => 'missing-creator',
+            'created_at' => '2026-08-15 00:00:00',
+            'updated_at' => '2026-08-15 00:00:00',
+        ]);
+        $job->forceFill([
+            'created_at' => '2026-08-15 00:00:00',
+            'updated_at' => '2026-08-15 00:00:00',
+        ])->saveQuietly();
+
+        $preview = app(AdminAiAccessBackfillService::class)->preview(
+            $legacyOwner->id,
+            CarbonImmutable::parse('2026-09-01T00:00:00+08:00'),
+            null,
+            null,
+        );
+        $this->assertSame(1, $preview['lifecycle_identities_recovered_from_creators']);
+        $this->assertSame(1, $preview['lifecycle_identities_mapped_to_legacy_owner']);
+
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            '--apply' => true,
+            '--maintenance-confirmed' => true,
+            '--legacy-owner' => $legacyOwner->id,
+            '--created-before' => '2026-09-01T00:00:00+08:00',
+        ])
+            ->expectsOutput('Lifecycle identities recovered from creators: 1')
+            ->expectsOutput('Lifecycle identities mapped to legacy owner: 1')
+            ->expectsOutput('Unattributed active lifecycle records frozen: 1')
+            ->assertSuccessful();
+
+        $project->refresh();
+        $this->assertSame($creator->id, $project->model_access_admin_id);
+        $this->assertSame('admin', $project->model_access_admin_role);
+        $this->assertSame(7, $project->ai_config_access_version);
+        $this->assertSame($model->id, $project->requested_ai_model_id);
+
+        $job->refresh();
+        $this->assertSame($legacyOwner->id, $job->model_access_admin_id);
+        $this->assertSame('failed', $job->status);
+        $this->assertFalse((bool) $job->retryable_failure);
+        $this->assertSame('ai_historical_identity_unresolved', $job->error_code);
     }
 
     public function test_owner_selection_fails_safely_for_multiple_missing_inactive_and_non_super_admins(): void
@@ -541,6 +610,29 @@ class BackfillAdminAiAccessCommandTest extends TestCase
             $this->assertSame(AiModel::ACCESS_SCOPE_SYSTEM_ONLY, $terminalModel->fresh()->access_scope);
             $this->assertSame(AiModel::ACCESS_SCOPE_SYSTEM_ONLY, $embeddingModel->fresh()->access_scope);
         }
+    }
+
+    public function test_active_optimization_quality_candidate_ids_remain_user_content(): void
+    {
+        $legacyOwner = $this->admin('legacy-owner', 'super_admin', '2026-08-01 00:00:00');
+        $qualityCandidate = $this->model(null, 'active-quality-candidate', 'chat');
+        SiteSetting::query()->create([
+            'setting_key' => 'knowledge_chunking_model_id',
+            'setting_value' => (string) $qualityCandidate->id,
+        ]);
+        $this->optimizationRun(
+            $this->article(),
+            ArticleAiOptimizationRun::STATUS_QUEUED,
+            ['quality_model_candidate_ids' => [$qualityCandidate->id]],
+        );
+
+        $this->artisan('geoflow:backfill-admin-ai-access', [
+            '--legacy-owner' => $legacyOwner->id,
+            '--created-before' => '2026-09-01T00:00:00+08:00',
+        ])
+            ->expectsOutput('System-only models to mark: 0')
+            ->expectsOutput('System/user-content conflicts: 1')
+            ->assertSuccessful();
     }
 
     public function test_structured_json_findings_are_stable_and_never_echo_raw_values(): void

@@ -123,7 +123,7 @@ class TaskLifecycleService
         bool $canManageHostedTask,
         Admin $viewer,
     ): array {
-        return $this->enqueueTask($taskId, $jobType, $payload, $canManageHostedTask);
+        return $this->enqueueTask($taskId, $jobType, $payload, $canManageHostedTask, $viewer);
     }
 
     /** @return array{items:list<array<string,mixed>>} */
@@ -506,19 +506,6 @@ class TaskLifecycleService
             if ($executionAdminId > 0 && $executionAdminId !== (int) ($accessAdmin?->getKey() ?? 0)) {
                 $this->assertSelectedModelsUsable($this->accessAdmin($executionAdminId), $changedModels);
             }
-            $effectiveAiQualityEnabledForAccess = array_key_exists('ai_quality_enabled', $normalized)
-                ? (bool) $normalized['ai_quality_enabled']
-                : (bool) $current->ai_quality_enabled;
-            $effectiveAutoOptimizationEnabledForAccess = $effectiveAiQualityEnabledForAccess
-                && (array_key_exists('ai_quality_auto_optimize_enabled', $normalized)
-                    ? (bool) $normalized['ai_quality_auto_optimize_enabled']
-                    : (bool) $current->ai_quality_auto_optimize_enabled);
-            $mustRevalidateExecutionModels = ($status === 'active' && (string) $current->status !== 'active')
-                || (! (bool) $current->ai_quality_enabled && $effectiveAiQualityEnabledForAccess)
-                || (! (bool) $current->ai_quality_auto_optimize_enabled && $effectiveAutoOptimizationEnabledForAccess);
-            if ($mustRevalidateExecutionModels) {
-                $this->activationGuard()->assertCanActivate($current, $accessAdmin, $normalized);
-            }
             if ($qualityConfigurationRequested
                 && $expectedQualityVersion !== null
                 && $this->taskConfigurationVersion($current) !== $expectedQualityVersion) {
@@ -528,6 +515,19 @@ class TaskLifecycleService
                 ]);
             }
             $effectiveStatus = $status ?? (string) $current->status;
+            $effectiveAiQualityEnabledForAccess = array_key_exists('ai_quality_enabled', $normalized)
+                ? (bool) $normalized['ai_quality_enabled']
+                : (bool) $current->ai_quality_enabled;
+            $effectiveAutoOptimizationEnabledForAccess = $effectiveAiQualityEnabledForAccess
+                && (array_key_exists('ai_quality_auto_optimize_enabled', $normalized)
+                    ? (bool) $normalized['ai_quality_auto_optimize_enabled']
+                    : (bool) $current->ai_quality_auto_optimize_enabled);
+            $mustRevalidateExecutionModels = $effectiveStatus === 'active'
+                || (! (bool) $current->ai_quality_enabled && $effectiveAiQualityEnabledForAccess)
+                || (! (bool) $current->ai_quality_auto_optimize_enabled && $effectiveAutoOptimizationEnabledForAccess);
+            if ($mustRevalidateExecutionModels) {
+                $this->activationGuard()->assertCanActivate($current, $accessAdmin, $normalized);
+            }
             if ($effectiveStatus === 'active') {
                 $effectiveTitleLibraryId = array_key_exists('title_library_id', $normalized)
                     ? (int) ($normalized['title_library_id'] ?? 0)
@@ -1066,8 +1066,9 @@ class TaskLifecycleService
         string $jobType = 'generate_article',
         array $payload = [],
         bool $canManageHostedTask = false,
+        Admin|int|null $operator = null,
     ): array {
-        $jobId = DB::transaction(function () use ($taskId, $jobType, $payload, $canManageHostedTask): ?int {
+        $jobId = DB::transaction(function () use ($taskId, $jobType, $payload, $canManageHostedTask, $operator): ?int {
             $task = Task::query()
                 ->whereKey($taskId)
                 ->lockForUpdate()
@@ -1079,6 +1080,12 @@ class TaskLifecycleService
                     'is_loop',
                     'status',
                     'schedule_enabled',
+                    'ai_model_id',
+                    'ai_quality_enabled',
+                    'ai_quality_model_id',
+                    'model_access_admin_id',
+                    'model_access_admin_role',
+                    'model_access_policy_version',
                 ]);
             if (! $task) {
                 throw new ApiException('task_not_found', '任务不存在', 404);
@@ -1089,6 +1096,7 @@ class TaskLifecycleService
                 throw new ApiException('task_not_active', '任务未启用，无法入队', 409);
             }
 
+            $this->activationGuard()->assertCanActivate($task, $operator);
             $this->taskTitleReadinessService->assertCanActivate(
                 $this->taskTitleReadinessService->inspectTask($task),
                 409,

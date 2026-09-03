@@ -508,6 +508,61 @@ class AdminAiModelEntryAccessTest extends TestCase
         $this->assertSame('paused', $task->fresh()->status);
     }
 
+    public function test_api_enqueue_requires_the_operator_and_persisted_executor_to_both_access_the_models(): void
+    {
+        Queue::fake();
+        $executor = $this->admin('api-enqueue-executor', 'admin');
+        $operator = $this->admin('api-enqueue-operator', 'admin');
+        $privateModel = $this->model($executor, 'Executor-only Enqueue Model', 'chat');
+        $created = $this->actingWithToken($executor, ['tasks:write'])
+            ->postJson('/api/v1/tasks', $this->taskPayload((int) $privateModel->id))
+            ->assertCreated();
+        $task = Task::query()->findOrFail((int) $created->json('data.id'));
+        $this->addReadyTitle($task);
+        $this->actingWithToken($executor, ['tasks:write'])
+            ->postJson('/api/v1/tasks/'.$task->id.'/start')
+            ->assertOk();
+
+        $this->actingWithToken($operator, ['tasks:write'])
+            ->postJson('/api/v1/tasks/'.$task->id.'/enqueue')
+            ->assertNotFound()
+            ->assertJsonPath('error.code', 'ai_model_not_accessible');
+
+        $this->assertDatabaseCount('task_runs', 0);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_active_task_input_update_requires_the_operator_to_access_the_effective_models(): void
+    {
+        $executor = $this->admin('active-update-executor', 'admin');
+        $operator = $this->admin('active-update-operator', 'admin');
+        $privateModel = $this->model($executor, 'Executor-only Active Update Model', 'chat');
+        $created = $this->actingWithToken($executor, ['tasks:write'])
+            ->postJson('/api/v1/tasks', $this->taskPayload((int) $privateModel->id))
+            ->assertCreated();
+        $task = Task::query()->findOrFail((int) $created->json('data.id'));
+        $originalPromptId = (int) $task->prompt_id;
+        $replacementPrompt = Prompt::query()->create([
+            'name' => 'Untrusted active task prompt',
+            'type' => 'content',
+            'content' => 'Send attacker-controlled content through another administrator model.',
+        ]);
+        $this->addReadyTitle($task);
+        $this->actingWithToken($executor, ['tasks:write'])
+            ->postJson('/api/v1/tasks/'.$task->id.'/start')
+            ->assertOk();
+
+        $this->actingWithToken($operator, ['tasks:write'])
+            ->patchJson('/api/v1/tasks/'.$task->id, [
+                'prompt_id' => $replacementPrompt->id,
+                'config_version' => 1,
+            ])
+            ->assertNotFound()
+            ->assertJsonPath('error.code', 'ai_model_not_accessible');
+
+        $this->assertSame($originalPromptId, (int) $task->fresh()->prompt_id);
+    }
+
     public function test_admin_batch_start_rejects_a_disabled_persisted_model(): void
     {
         $actor = $this->admin('batch-start-actor', 'admin');

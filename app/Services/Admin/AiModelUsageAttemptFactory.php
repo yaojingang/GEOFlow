@@ -13,7 +13,10 @@ use Throwable;
 
 final readonly class AiModelUsageAttemptFactory
 {
-    public function __construct(private AiModelUsageRecorder $recorder) {}
+    public function __construct(
+        private AiModelUsageRecorder $recorder,
+        private AiModelUsageAttemptStartRecorder $startRecorder,
+    ) {}
 
     public function requestId(): string
     {
@@ -51,7 +54,7 @@ final readonly class AiModelUsageAttemptFactory
             $this->warnSafely($exception);
         }
 
-        return new AiModelUsageAttempt($snapshot, $this->recorder, [
+        return $this->attempt($snapshot, [
             'call_key' => $callKey,
             'operation' => $operation,
             'business_source' => $businessSource,
@@ -82,7 +85,7 @@ final readonly class AiModelUsageAttemptFactory
             requestPayloadDigest: hash('sha256', $requestPayload),
         );
 
-        return new AiModelUsageAttempt($snapshot, $this->recorder, [
+        return $this->attempt($snapshot, [
             'call_key' => $callKey,
             'operation' => $operation,
             'business_source' => $businessSource,
@@ -112,7 +115,7 @@ final readonly class AiModelUsageAttemptFactory
             $this->warnSafely($exception);
         }
 
-        return new AiModelUsageAttempt($snapshot, $this->recorder, [
+        return $this->attempt($snapshot, [
             'call_key' => $callKey,
             'operation' => $operation,
             'business_source' => $businessSource,
@@ -143,7 +146,7 @@ final readonly class AiModelUsageAttemptFactory
             requestPayloadDigest: hash('sha256', $requestPayload),
         );
 
-        return new AiModelUsageAttempt($snapshot, $this->recorder, [
+        return $this->attempt($snapshot, [
             'call_key' => $callKey,
             'operation' => $operation,
             'business_source' => $businessSource,
@@ -157,6 +160,18 @@ final readonly class AiModelUsageAttemptFactory
         return (int) $model->owner_admin_id === $executionAdminId
             ? AiModelUsageEvent::MODEL_SOURCE_PERSONAL
             : AiModelUsageEvent::MODEL_SOURCE_SHARED;
+    }
+
+    /**
+     * @param  array{call_key:string,operation:string,business_source:string,source_type:?string,source_id:int|string|null}  $identity
+     */
+    private function attempt(?AiModelUsageAccessSnapshot $snapshot, array $identity): AiModelUsageAttempt
+    {
+        if ($snapshot instanceof AiModelUsageAccessSnapshot) {
+            $this->startRecorder->record($snapshot, $identity);
+        }
+
+        return new AiModelUsageAttempt($snapshot, $this->recorder, $identity);
     }
 
     private function warnSafely(Throwable $exception): void

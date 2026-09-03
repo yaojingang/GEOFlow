@@ -74,6 +74,25 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
         $locks->release($invocationLock);
     }
 
+    public function test_same_shared_model_allows_parallel_invocations_while_mutation_remains_exclusive(): void
+    {
+        $locks = app(AiModelInvocationLock::class);
+        $firstInvocation = $locks->acquireForInvocation(999_992);
+        $secondInvocation = $locks->acquireForInvocation(999_992);
+
+        try {
+            $this->assertNotSame($firstInvocation->owner(), $secondInvocation->owner());
+            $this->assertNull($locks->acquireForMutation(999_992));
+        } finally {
+            $locks->release($secondInvocation);
+            $locks->release($firstInvocation);
+        }
+
+        $mutation = $locks->acquireForMutation(999_992);
+        $this->assertNotNull($mutation);
+        $locks->release($mutation);
+    }
+
     public function test_worker_invocation_lock_remains_held_during_post_provider_persistence(): void
     {
         Http::fake([

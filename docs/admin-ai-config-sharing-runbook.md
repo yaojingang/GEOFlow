@@ -38,6 +38,7 @@ php artisan geoflow:backfill-admin-ai-access \
 - `System/user-content conflicts` 已人工分类。
 - `Invalid system bindings` 为 0。
 - `Execution identity blocking conflicts` 为 0。
+- `Lifecycle identities mapped to legacy owner` 中的活动记录均已确认可以冻结并人工恢复。
 - 预检输出不含未知管理员或未知模型。
 
 ```bash
@@ -54,6 +55,8 @@ php artisan geoflow:backfill-admin-ai-access \
 ```
 
 重复执行同一组参数应显示 0 项新增变更。参数变化会触发冲突保护，需要重新制定并记录迁移批次。
+
+回填同时覆盖任务、URL 导入、企业知识、标题生成、AI Workspace 和 Knowledge Fact。能够从创建者恢复的记录保存原执行管理员；无法可靠恢复的活动或可重试记录映射到 legacy 超级管理员并以 `ai_historical_identity_unresolved` 永久冻结，等待人工确认后重新创建。
 
 ## 二、Shadow 观察
 
@@ -74,6 +77,12 @@ php artisan geoflow:admin-ai-shadow-report --hours=72 --json
 - 页面、接口、日志、异常和队列载荷中没有 API Key。
 
 Shadow 表只保存管理员 ID、模型 ID、能力类型、差异类型和计数，不保存 API 地址、模型供应商标识、Prompt 或密钥。
+
+每次真实供应商外呼会先写入不可变的用量起始记录。调度器每五分钟执行以下对账，超过 15 分钟仍没有终态的调用会追加 `ai_usage_outcome_missing` 失败事件：
+
+```bash
+php artisan geoflow:reconcile-ai-usage-attempts --older-than=900
+```
 
 ## 三、开启强制边界
 

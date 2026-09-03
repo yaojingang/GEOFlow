@@ -76,6 +76,7 @@ final class AiModelReferenceCatalog
             'paths' => [
                 ['path' => 'optimization_model_id', 'many' => false],
                 ['path' => 'optimization_model_ids', 'many' => true],
+                ['path' => 'quality_model_candidate_ids', 'many' => true],
                 ['path' => 'quality_policy_snapshot.model_id', 'many' => false],
             ],
             'status_column' => 'status',

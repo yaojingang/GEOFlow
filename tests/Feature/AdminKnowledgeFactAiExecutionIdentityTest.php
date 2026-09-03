@@ -14,6 +14,7 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeFact;
 use App\Models\KnowledgeFactGenerationRun;
 use App\Models\KnowledgeFactLibrary;
+use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactGenerationAiExecutionGuard;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactGenerationCoordinator;
 use App\Support\GeoFlow\ApiKeyCrypto;
@@ -23,7 +24,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response as ClientResponse;
 use Illuminate\Support\Facades\Bus;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Ai\Exceptions\InsufficientCreditsException;
@@ -622,12 +622,10 @@ class AdminKnowledgeFactAiExecutionIdentityTest extends TestCase
         $contenderAcquired = null;
         $rotatedKey = app(ApiKeyCrypto::class)->encrypt('rotated-secret');
         KnowledgeFactGeneratorAgent::fake(function () use (&$contenderAcquired, $model, $chunk, $rotatedKey): array {
-            $contender = Cache::store((string) config('cache.default'))
-                ->lock('geoflow:ai-model-invocation:'.$model->id, 120);
-            $contenderAcquired = $contender->get();
-            if ($contenderAcquired) {
-                $contender->release();
-            }
+            $locks = app(AiModelInvocationLock::class);
+            $contender = $locks->acquireForMutation((int) $model->id);
+            $contenderAcquired = $contender !== null;
+            $locks->release($contender);
             AiModel::query()->whereKey($model->id)->update(['api_key' => $rotatedKey]);
 
             return ['facts' => [$this->validFact($chunk)]];

@@ -123,6 +123,12 @@ final class BackfillAdminAiAccessCommand extends Command
         $this->line('Legacy-inferred active runs frozen: '.$result['legacy_inferred_active_runs_to_freeze']);
         $this->line('Manual execution identity findings: '.$result['manual_execution_identity_finding_count']);
         $this->line('Execution identity blocking conflicts: '.$result['execution_identity_blocking_conflict_count']);
+        $this->line('Lifecycle identities recovered from creators: '.$result['lifecycle_identities_recovered_from_creators']);
+        $this->line('Lifecycle identities mapped to legacy owner: '.$result['lifecycle_identities_mapped_to_legacy_owner']);
+        $this->line('Unattributed active lifecycle records frozen: '.$result['unattributed_active_lifecycle_records_to_freeze']);
+        if ($apply) {
+            $this->line('Lifecycle identity records updated: '.$result['lifecycle_identity_records_updated']);
+        }
 
         foreach ($result['conflict_model_ids'] as $modelId) {
             $this->line('Conflict model ID: '.$modelId);

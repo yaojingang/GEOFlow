@@ -2,6 +2,18 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-09-03
+
+### Administrator AI model isolation and sharing
+
+- AI model configurations now have explicit owners and access scopes; standard administrators can manage personal models or use user-content models shared by a designated super administrator, with personal models preferred before shared fallbacks.
+- New standard administrators start with independent configuration, while explicit backfill commands cover historical administrators and models; disabling sharing, deactivating an account, changing a role, or archiving a model increments the access version and blocks later provider calls and stale result persistence.
+- Content generation, title generation, article optimization and inspection, Knowledge Fact AI generation, Enterprise Knowledge, URL imports, AI Workspace, API, CLI, queues, and recovery jobs now carry explicit execution identities, while model usage is attributed to the configuration owner, executing administrator, and business source.
+- AI search providers, system collection, global Embedding, knowledge chunking, and index configuration are restricted to super administrators; real-time vector queries for standard administrators use compatible personal or shared models and fall back to keyword retrieval when no compatible model is available.
+- Shared-model pages and APIs expose sanitized metadata only, while key access, configuration changes, connection tests, and deletion remain with the configuration owner; Shadow comparison reports, access-surface architecture gates, and a staged rollout runbook are included.
+- Manual enqueue and active-task updates validate both the operator and frozen execution identity. Shared models support concurrent calls while configuration mutations remain exclusive, the usage ledger writes immutable pre-call starts and reconciles missing outcomes, and historical backfill covers every asynchronous AI lifecycle.
+- Upgraded `league/commonmark` to 2.10.0 with compatible Nette dependency updates to address the latest Markdown parsing security advisories.
+
 ## 2026-08-31
 
 ### Three-layer AI quality retrieval and governed atomic facts
