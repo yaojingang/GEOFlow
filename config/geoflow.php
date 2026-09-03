@@ -7,7 +7,7 @@
  */
 $adminBasePath = trim((string) env('ADMIN_BASE_PATH', 'geo_admin'), '/');
 $adminBasePath = $adminBasePath !== '' ? $adminBasePath : 'geo_admin';
-$defaultUpdateMetadataUrl = 'https://raw.githubusercontent.com/yaojingang/GEOFlow/main/version.json';
+$defaultUpdateMetadataUrl = 'https://github.com/yaojingang/GEOFlow/releases/latest/download/version.json';
 $updateMetadataUrl = trim((string) env('GEOFLOW_UPDATE_METADATA_URL', $defaultUpdateMetadataUrl));
 $updateMetadataUrl = $updateMetadataUrl !== '' ? $updateMetadataUrl : $defaultUpdateMetadataUrl;
 $telemetryEndpoint = trim((string) env('GEOFLOW_TELEMETRY_ENDPOINT', ''));
@@ -156,7 +156,7 @@ return [
     'telemetry_enabled' => filter_var(env('GEOFLOW_TELEMETRY_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
     'telemetry_endpoint' => $telemetryEndpoint,
     'telemetry_interval_seconds' => max(3600, (int) env('GEOFLOW_TELEMETRY_INTERVAL_SECONDS', 86400)),
-    // GitHub version.json 地址；默认每天检查一次，可通过 GEOFLOW_UPDATE_CHECK_ENABLED=false 关闭
+    // GitHub 最新正式 Release 的 version.json 资产；默认每天检查一次，可通过 GEOFLOW_UPDATE_CHECK_ENABLED=false 关闭
     'update_check_enabled' => filter_var(env('GEOFLOW_UPDATE_CHECK_ENABLED', env('APP_ENV') !== 'testing'), FILTER_VALIDATE_BOOLEAN),
     'update_metadata_url' => $updateMetadataUrl,
     'update_metadata_cache_ttl_seconds' => (int) env('GEOFLOW_UPDATE_METADATA_CACHE_TTL', 86400),
