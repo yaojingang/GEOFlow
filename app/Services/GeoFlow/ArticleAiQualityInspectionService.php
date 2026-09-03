@@ -962,7 +962,7 @@ class ArticleAiQualityInspectionService
         $modes = [];
         $modelAttempts = [];
         $segmentRuns = is_array($executionMeta['segment_runs'] ?? null) ? $executionMeta['segment_runs'] : [];
-        $modelCandidates = $this->policyResolver->modelCandidates($policy);
+        $modelCandidates = null;
         $segments = $this->segmenter->segment((string) ($inspectionSnapshot['content'] ?? ''));
 
         foreach ($segments as $segmentData) {
@@ -991,6 +991,11 @@ class ArticleAiQualityInspectionService
 
                 throw $exception;
             }
+
+            if ($this->providerExecutionIdentityMissing($aiExecutionSnapshot)) {
+                return $this->markStale($check, AiModelAccessException::AI_CONFIG_ACCESS_REVOKED);
+            }
+            $modelCandidates ??= $this->policyResolver->modelCandidates($policy);
 
             if (! $this->startSegment($checkId, (int) $segment->id)) {
                 return $this->latestCheck($checkId);
@@ -1722,6 +1727,10 @@ class ArticleAiQualityInspectionService
             'segment_count' => 1,
             'segment_start_offset' => 0,
         ]);
+
+        if ($this->providerExecutionIdentityMissing($aiExecutionSnapshot)) {
+            return $this->markStale($check, AiModelAccessException::AI_CONFIG_ACCESS_REVOKED);
+        }
 
         $candidateIds = array_values(array_filter(array_map(
             'intval',
@@ -3857,6 +3866,13 @@ class ArticleAiQualityInspectionService
                 sourceId: $sourceId,
             );
         });
+    }
+
+    /** @param array<string,mixed>|null $aiExecutionSnapshot */
+    private function providerExecutionIdentityMissing(?array $aiExecutionSnapshot): bool
+    {
+        return $aiExecutionSnapshot === null
+            && $this->reviewer instanceof ProviderAttemptAwareArticleAiQualityReviewer;
     }
 
     private function safeErrorCode(Throwable $exception): string

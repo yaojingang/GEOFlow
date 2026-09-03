@@ -1371,40 +1371,26 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         );
     }
 
-    public function test_enforced_worker_marks_a_historical_check_without_execution_identity_stale_before_outbound_work(): void
+    public function test_full_quality_fails_closed_without_execution_identity_when_enforcement_flags_are_disabled(): void
     {
         $article = $this->createQualityFixture('historical-missing-execution-identity', needReview: true);
-        $reviewer = new class implements ArticleAiQualityReviewer
-        {
-            public int $calls = 0;
-
-            public function review(AiModel $model, string $instructions): array
-            {
-                $this->calls++;
-
-                return [
-                    'result' => [
-                        'summary' => '历史任务不应使用全局模型执行。',
-                        'promotion_context' => 'informational',
-                        'knowledge_coverage' => 'sufficient',
-                        'issues' => [],
-                        'uncertainties' => [],
-                    ],
-                    'model' => ['id' => (int) $model->id],
-                    'mode' => 'structured',
-                ];
-            }
-        };
-        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        ArticleQualityReviewerAgent::fake([$this->passingV2QualityResult()])->preventStrayPrompts();
+        LegacyArticleQualityReviewerAgent::fake([$this->passingV2QualityResult()])->preventStrayPrompts();
         $service = app(ArticleAiQualityInspectionService::class);
         $check = $service->createOrReuse($article->fresh(), dispatch: false);
-        config()->set('geoflow.admin_ai_access.access_enforce_enabled', true);
+        config()->set('geoflow.admin_ai_access.shadow_enabled', true);
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', false);
+        config()->set('geoflow.admin_ai_access.revocation_enforce_enabled', false);
+
+        $this->assertNull(data_get($check->execution_meta, 'ai_execution'));
 
         $processed = $service->process($check);
 
         $this->assertSame('stale', $processed->status);
         $this->assertSame('ai_config_access_revoked', $processed->error_code);
-        $this->assertSame(0, $reviewer->calls);
+        ArticleQualityReviewerAgent::assertNeverPrompted();
+        LegacyArticleQualityReviewerAgent::assertNeverPrompted();
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
     }
 
     public function test_enforced_worker_never_rebuilds_global_candidates_when_the_frozen_candidate_list_is_empty(): void
@@ -1651,22 +1637,23 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         yield 'shared provider revoked' => ['shared_revoked', 'ai_model_not_accessible'];
     }
 
-    public function test_enforced_sampled_fallback_marks_a_legacy_check_without_execution_identity_stale(): void
+    public function test_sampled_quality_fails_closed_without_execution_identity_when_enforcement_flags_are_disabled(): void
     {
+        $executionAdmin = $this->qualityAdmin('sampled-missing-execution-identity', 'super_admin');
         $article = $this->createQualityFixture('sampled-missing-execution-identity', needReview: true);
-        $article->task->forceFill(['ai_quality_timeout_sampling_enabled' => true])->save();
-        $reviewer = new class implements ArticleAiQualityReviewer
-        {
-            public int $calls = 0;
-
-            public function review(AiModel $model, string $instructions): array
-            {
-                $this->calls++;
-
-                throw new UnexpectedValueException('Legacy sampled check must fail before outbound work.');
-            }
-        };
-        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        $article->task->aiModel->forceFill([
+            'owner_admin_id' => $executionAdmin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'model_type' => 'chat',
+        ])->save();
+        $article->task->forceFill([
+            'ai_quality_timeout_sampling_enabled' => true,
+            'model_access_admin_id' => $executionAdmin->id,
+            'model_access_admin_role' => 'super_admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+        ArticleQualityReviewerAgent::fake([$this->passingV2QualityResult()])->preventStrayPrompts();
+        LegacyArticleQualityReviewerAgent::fake([$this->passingV2QualityResult()])->preventStrayPrompts();
         $service = app(ArticleAiQualityInspectionService::class);
         $check = $service->createOrReuse($article->fresh(), dispatch: false);
         $this->assertTrue($service->tryStartSampledFallback(
@@ -1674,13 +1661,79 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
             new ArticleAiQualityRuntimeException('provider_timeout', true),
             dispatch: false,
         ));
-        config()->set('geoflow.admin_ai_access.revocation_enforce_enabled', true);
+        $executionMeta = (array) $check->fresh()->execution_meta;
+        unset($executionMeta['ai_execution']);
+        $check->forceFill(['execution_meta' => $executionMeta])->save();
+        config()->set('geoflow.admin_ai_access.shadow_enabled', true);
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', false);
+        config()->set('geoflow.admin_ai_access.revocation_enforce_enabled', false);
+
+        $this->assertNull(data_get($check->execution_meta, 'ai_execution'));
 
         $processed = $service->process($check->fresh());
 
         $this->assertSame('stale', $processed->status);
         $this->assertSame('ai_config_access_revoked', $processed->error_code);
-        $this->assertSame(0, $reviewer->calls);
+        ArticleQualityReviewerAgent::assertNeverPrompted();
+        LegacyArticleQualityReviewerAgent::assertNeverPrompted();
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
+    }
+
+    public function test_historical_quality_check_with_a_backfilled_legacy_identity_executes_and_records_usage(): void
+    {
+        $this->setQualityRollout(execution: 100);
+        config()->set('geoflow.admin_ai_access.shadow_enabled', true);
+        config()->set('geoflow.admin_ai_access.access_enforce_enabled', false);
+        config()->set('geoflow.admin_ai_access.revocation_enforce_enabled', false);
+        $legacyAdmin = $this->qualityAdmin('quality-backfilled-legacy', 'super_admin');
+        $article = $this->createQualityFixture('backfilled-legacy-identity', needReview: true);
+        $task = $article->task;
+        $model = $task->aiModel;
+        $model->forceFill([
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('quality-backfilled-secret'),
+            'owner_admin_id' => $legacyAdmin->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_USER_CONTENT,
+            'model_type' => 'chat',
+        ])->save();
+        ArticleQualityReviewerAgent::fake([$this->passingV2QualityResult()])->preventStrayPrompts();
+        LegacyArticleQualityReviewerAgent::fake([$this->passingV2QualityResult()])->preventStrayPrompts();
+        $service = app(ArticleAiQualityInspectionService::class);
+        $task->forceFill([
+            'model_access_admin_id' => null,
+            'model_access_admin_role' => null,
+            'model_access_policy_version' => null,
+        ])->save();
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+        $this->assertNull(data_get($check->execution_meta, 'ai_execution'));
+
+        $task->forceFill([
+            'model_access_admin_id' => $legacyAdmin->id,
+            'model_access_admin_role' => 'super_admin',
+            'model_access_policy_version' => 1,
+        ])->save();
+        $executionMeta = (array) $check->execution_meta;
+        $executionMeta['model_candidate_ids'] = [(int) $model->id];
+        $executionMeta['ai_execution'] = [
+            'model_access_admin_id' => (int) $legacyAdmin->id,
+            'model_access_admin_role' => 'super_admin',
+            'ai_config_access_version' => (int) $legacyAdmin->ai_config_access_version,
+            'resolver_policy_version' => 1,
+            'requested_model_id' => (int) $model->id,
+            'source_type' => 'task',
+            'source_id' => (int) $task->id,
+            'model_candidate_ids' => [(int) $model->id],
+        ];
+        $check->forceFill(['execution_meta' => $executionMeta])->save();
+
+        $completed = $service->process($check->fresh());
+
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame('completed', $completed->status);
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $event->status);
+        $this->assertSame($legacyAdmin->id, $event->execution_admin_id);
+        $this->assertSame($legacyAdmin->id, $event->config_owner_admin_id);
+        $this->assertSame((int) $legacyAdmin->ai_config_access_version, $event->ai_config_access_version);
+        $this->assertSame((int) $model->id, $event->ai_model_id);
     }
 
     public function test_permanent_quality_provider_rejection_does_not_switch_candidates(): void
