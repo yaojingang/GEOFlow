@@ -91,7 +91,11 @@ class SecurityReleaseMetadataTest extends TestCase
             '--latest',
             'immutable-releases',
             'refs/tags/v*',
-            'git verify-tag v3.0.0',
+            'index("creation")',
+            'set -euo pipefail',
+            'GEOFLOW_RELEASE_SIGNER_FINGERPRINT',
+            'git verify-tag --raw v3.0.0',
+            'GEOFLOW_REMOTE_TAG_COMMIT',
             'gh release verify-asset v3.0.0',
         ] as $requiredText) {
             $this->assertStringContainsString($requiredText, $runbook);

@@ -25,7 +25,7 @@
 以下保护必须在创建 `v3.0.0` 标签前生效：
 
 1. 在仓库 Settings 的 Releases 匹配项中启用 Immutable Releases。该能力会在 Release 公开时锁定标签与资产，并为 Release 生成可验证的 attestation。
-2. 创建 Active 状态的 tag ruleset，目标包含 `refs/tags/v*`，启用 Restrict updates 与 Restrict deletions，并清点所有 bypass actor。
+2. 创建 Active 状态的 tag ruleset，目标包含 `refs/tags/v*`，启用 Restrict creations、Restrict updates 与 Restrict deletions。bypass actor 只保留受控发布身份，日常写权限不能创建或抢占版本标签。
 3. 通过 API 回读实际状态；将标签规则集 ID 写入 `GEOFLOW_TAG_RULESET_ID` 后执行：
 
 ```bash
@@ -34,6 +34,7 @@ gh api "repos/yaojingang/GEOFlow/rulesets/$GEOFLOW_TAG_RULESET_ID" | jq -e '
   .target == "tag"
   and .enforcement == "active"
   and ((.conditions.ref_name.include | index("refs/tags/v*")) != null)
+  and (([.rules[].type] | index("creation")) != null)
   and (([.rules[].type] | index("update")) != null)
   and (([.rules[].type] | index("deletion")) != null)
 '
@@ -92,11 +93,20 @@ jq -e '.version == "3.0.0" and .tag == "v3.0.0" and .archive_url == "https://git
 本地资产验证完成后，重新确认 `origin/main` 仍指向冻结 SHA，再创建签名标签并立即创建 Draft Release：
 
 ```bash
+set -euo pipefail
+: "${GEOFLOW_RELEASE_SIGNER_FINGERPRINT:?set the trusted release GPG fingerprint}"
+
 git fetch origin --prune --tags
 test "$(git rev-parse origin/main)" = "$GEOFLOW_RELEASE_SHA"
 git tag -s v3.0.0 "$GEOFLOW_RELEASE_SHA" -m "GEOFlow v3.0.0"
-git verify-tag v3.0.0
+git verify-tag --raw v3.0.0 2>&1 | grep -F "[GNUPG:] VALIDSIG $GEOFLOW_RELEASE_SIGNER_FINGERPRINT "
 git push origin refs/tags/v3.0.0
+
+GEOFLOW_REMOTE_TAG_OBJECT="$(git ls-remote origin refs/tags/v3.0.0 | awk '{print $1}')"
+GEOFLOW_REMOTE_TAG_COMMIT="$(git ls-remote origin 'refs/tags/v3.0.0^{}' | awk '{print $1}')"
+test "$GEOFLOW_REMOTE_TAG_OBJECT" = "$(git rev-parse 'v3.0.0^{tag}')"
+test "$GEOFLOW_REMOTE_TAG_COMMIT" = "$GEOFLOW_RELEASE_SHA"
+
 gh release create v3.0.0 --repo yaojingang/GEOFlow --verify-tag --draft --title 'GEOFlow v3.0.0' --notes-file docs/deployment/GEOFLOW_V3_RELEASE_NOTES.md "$GEOFLOW_RELEASE_DIR/GEOFlow-v3.0.0.zip" "$GEOFLOW_RELEASE_DIR/GEOFlow-v3.0.0.zip.sha256" "$GEOFLOW_RELEASE_DIR/version.json"
 ```
 
