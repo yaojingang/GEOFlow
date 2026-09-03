@@ -89,6 +89,10 @@ class SecurityReleaseMetadataTest extends TestCase
             'linux/arm64',
             '--draft',
             '--latest',
+            'immutable-releases',
+            'refs/tags/v*',
+            'git verify-tag v3.0.0',
+            'gh release verify-asset v3.0.0',
         ] as $requiredText) {
             $this->assertStringContainsString($requiredText, $runbook);
         }

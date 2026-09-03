@@ -16,8 +16,30 @@
 | Core 最终提交 | 发布 PR 合并后记录的 40 位提交 SHA |
 | 稳定元数据 | GitHub Release 资产 `version.json` |
 | Core 资产 | `GEOFlow-v3.0.0.zip`、`GEOFlow-v3.0.0.zip.sha256`、`version.json` |
+| 发布完整性 | GitHub Immutable Releases、`v*` 标签规则、签名标签和 Release attestation |
 
 `main/version.json` 描述当前源码。已安装版本的稳定更新检查读取 `https://github.com/yaojingang/GEOFlow/releases/latest/download/version.json`，因此每个正式 Release 都必须上传独立的 `version.json` 资产，并将正式版本标记为 Latest。
+
+## 零、启用发布完整性保护
+
+以下保护必须在创建 `v3.0.0` 标签前生效：
+
+1. 在仓库 Settings 的 Releases 匹配项中启用 Immutable Releases。该能力会在 Release 公开时锁定标签与资产，并为 Release 生成可验证的 attestation。
+2. 创建 Active 状态的 tag ruleset，目标包含 `refs/tags/v*`，启用 Restrict updates 与 Restrict deletions，并清点所有 bypass actor。
+3. 通过 API 回读实际状态；将标签规则集 ID 写入 `GEOFLOW_TAG_RULESET_ID` 后执行：
+
+```bash
+gh api repos/yaojingang/GEOFlow/immutable-releases | jq -e '.enabled == true'
+gh api "repos/yaojingang/GEOFlow/rulesets/$GEOFLOW_TAG_RULESET_ID" | jq -e '
+  .target == "tag"
+  and .enforcement == "active"
+  and ((.conditions.ref_name.include | index("refs/tags/v*")) != null)
+  and (([.rules[].type] | index("update")) != null)
+  and (([.rules[].type] | index("deletion")) != null)
+'
+```
+
+任一检查失败时停止发布。Immutable Releases 只保护启用后公开的 Release，现有历史 Release 不会自动获得该保护。
 
 ## 一、固定 Core 候选提交
 
@@ -67,12 +89,13 @@ jq -e '.version == "3.0.0" and .tag == "v3.0.0" and .archive_url == "https://git
 
 ## 四、创建 Core 标签与 Draft Release
 
-本地资产验证完成后，重新确认 `origin/main` 仍指向冻结 SHA，再创建附注标签并立即创建 Draft Release。仓库启用签名标签时将 `git tag -a` 替换为 `git tag -s`。
+本地资产验证完成后，重新确认 `origin/main` 仍指向冻结 SHA，再创建签名标签并立即创建 Draft Release：
 
 ```bash
 git fetch origin --prune --tags
 test "$(git rev-parse origin/main)" = "$GEOFLOW_RELEASE_SHA"
-git tag -a v3.0.0 "$GEOFLOW_RELEASE_SHA" -m "GEOFlow v3.0.0"
+git tag -s v3.0.0 "$GEOFLOW_RELEASE_SHA" -m "GEOFlow v3.0.0"
+git verify-tag v3.0.0
 git push origin refs/tags/v3.0.0
 gh release create v3.0.0 --repo yaojingang/GEOFlow --verify-tag --draft --title 'GEOFlow v3.0.0' --notes-file docs/deployment/GEOFLOW_V3_RELEASE_NOTES.md "$GEOFLOW_RELEASE_DIR/GEOFlow-v3.0.0.zip" "$GEOFLOW_RELEASE_DIR/GEOFlow-v3.0.0.zip.sha256" "$GEOFLOW_RELEASE_DIR/version.json"
 ```
@@ -106,6 +129,10 @@ gh release edit v3.0.0 --repo yaojingang/GEOFlow --draft=false --latest
 ```bash
 gh release view v3.0.0 --repo yaojingang/GEOFlow --json tagName,isDraft,isPrerelease,publishedAt,assets,url
 curl -fsSL https://github.com/yaojingang/GEOFlow/releases/latest/download/version.json | jq -e '.version == "3.0.0" and .tag == "v3.0.0"'
+gh release verify v3.0.0 --repo yaojingang/GEOFlow
+gh release verify-asset v3.0.0 "$GEOFLOW_VERIFY_DIR/GEOFlow-v3.0.0.zip" --repo yaojingang/GEOFlow
+gh release verify-asset v3.0.0 "$GEOFLOW_VERIFY_DIR/GEOFlow-v3.0.0.zip.sha256" --repo yaojingang/GEOFlow
+gh release verify-asset v3.0.0 "$GEOFLOW_VERIFY_DIR/version.json" --repo yaojingang/GEOFlow
 ```
 
 Core Release 和三个资产确认公开可读后，使用此前通过真实宿主演练的候选 run ID 与证据摘要触发 Updater 发布工作流：
