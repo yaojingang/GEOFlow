@@ -27,19 +27,19 @@ class UnixSocketAgentClient implements AgentClient
     }
 
     /** @return array<string, mixed> */
-    public function startUpdate(string $authorizationCode): array
+    public function startUpdate(#[\SensitiveParameter] string $authorizationCode): array
     {
         return $this->startOperation('updates', 'update', $authorizationCode);
     }
 
     /** @return array<string, mixed> */
-    public function startBackup(string $authorizationCode): array
+    public function startBackup(#[\SensitiveParameter] string $authorizationCode): array
     {
         return $this->startOperation('backups', 'backup', $authorizationCode);
     }
 
     /** @return array<string, mixed> */
-    public function startRollback(string $recoveryPointId, string $authorizationCode): array
+    public function startRollback(string $recoveryPointId, #[\SensitiveParameter] string $authorizationCode): array
     {
         if (preg_match('/\A[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}\z/', $recoveryPointId) !== 1) {
             throw new RuntimeException('Updater recovery point identifier is invalid.');
@@ -103,7 +103,7 @@ class UnixSocketAgentClient implements AgentClient
     }
 
     /** @return array<string, mixed> */
-    private function startOperation(string $endpoint, string $kind, ?string $authorizationCode = null): array
+    private function startOperation(string $endpoint, string $kind, #[\SensitiveParameter] ?string $authorizationCode = null): array
     {
         if ($authorizationCode !== null) {
             $this->validateAuthorizationCode($authorizationCode);
@@ -206,7 +206,7 @@ class UnixSocketAgentClient implements AgentClient
      * @param  array<string, mixed>|null  $payload
      * @return array{0: int, 1: array<string, mixed>}
      */
-    private function instanceRequest(string $method, string $endpoint, ?array $payload = null, ?string $authorizationCode = null): array
+    private function instanceRequest(string $method, string $endpoint, ?array $payload = null, #[\SensitiveParameter] ?string $authorizationCode = null): array
     {
         $socketPath = (string) config('geoflow.updater_socket');
         $tokenPath = (string) config('geoflow.updater_control_token_file');
@@ -269,7 +269,7 @@ class UnixSocketAgentClient implements AgentClient
     }
 
     /** @return array{0: int, 1: string} */
-    private function request(string $socketPath, string $method, string $path, string $token, string $body, ?string $authorizationCode): array
+    private function request(string $socketPath, string $method, string $path, #[\SensitiveParameter] string $token, string $body, #[\SensitiveParameter] ?string $authorizationCode): array
     {
         $socketInfo = @lstat($socketPath);
         if (! is_array($socketInfo) || (($socketInfo['mode'] ?? 0) & 0170000) !== 0140000) {
@@ -344,7 +344,7 @@ class UnixSocketAgentClient implements AgentClient
         return [(int) $matches[1], $responseBody];
     }
 
-    private function validateAuthorizationCode(string $authorizationCode): void
+    private function validateAuthorizationCode(#[\SensitiveParameter] string $authorizationCode): void
     {
         if (preg_match('/\A[0-9]{6}\z/', $authorizationCode) !== 1) {
             throw new RuntimeException('Updater mutation authorization code is invalid.');
