@@ -8,7 +8,7 @@
 |---|---|
 | Core 版本 | `3.0.0` |
 | Core 标签 | `v3.0.0` |
-| 目标发布日期 | `2026-09-04`；延期时先通过 PR 同步修改 `version.json` 与中英文更新日志 |
+| 目标发布日期 | `2026-09-05`；延期时先通过 PR 同步修改 `version.json` 与中英文更新日志 |
 | GEOFlow Updater | `v0.3.0` |
 | 更新序列 | `2`，严格大于当前公开序列 `1` |
 | 内置 CLI | `0.2.0` |
@@ -64,7 +64,7 @@ set -euo pipefail
 git fetch origin --prune --tags
 export GEOFLOW_RELEASE_SHA="$(git rev-parse origin/main)"
 git show --no-patch --format=fuller "$GEOFLOW_RELEASE_SHA"
-git show "$GEOFLOW_RELEASE_SHA:version.json" | jq -e '.version == "3.0.0" and .tag == "v3.0.0" and .release_date == "2026-09-04"'
+git show "$GEOFLOW_RELEASE_SHA:version.json" | jq -e '.version == "3.0.0" and .tag == "v3.0.0" and .release_date == "2026-09-05"'
 ```
 
 3. 在该 SHA 上完成 `composer validate --strict`、Pint、生产构建、PHP 与 JavaScript 全量测试、Composer 与 npm 安全审计，以及 `sh bin/git/check-open-source-release.sh`。
