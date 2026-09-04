@@ -2,7 +2,7 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
-## 2026-09-03
+## 2026-09-04
 
 ### v3.0.0
 
