@@ -216,10 +216,26 @@ Leia o [guia de contribuição](../../CONTRIBUTING.md) antes de enviar alteraç�
 
 A versão atual do GEOFlow é publicada sob a [GNU Affero General Public License v3.0](../../LICENSE). Versões publicadas anteriormente sob Apache-2.0 mantêm a licença original; o texto histórico está em [`docs/licenses/Apache-2.0.txt`](../licenses/Apache-2.0.txt).
 
-| Uso | Caminho de licença |
-|-----|--------------------|
-| Usar, modificar, implantar ou distribuir de acordo com a AGPL-3.0 | Uso gratuito. Serviços de rede e distribuição devem cumprir as obrigações correspondentes de código-fonte. |
-| Alterações proprietárias, marca branca, OEM, integração em produto proprietário ou outro uso que exija exceção à AGPL-3.0 | Solicite uma licença comercial separada ao titular dos direitos. |
+**Pessoas e empresas podem usar a edição de código aberto do GEOFlow sem pagar pela licença, inclusive para fins comerciais.** Os cenários abaixo dispensam uma licença comercial adicional do GEOFlow quando os termos da AGPL-3.0 são cumpridos. O uso interno em uma empresa, a prestação de serviços a clientes e a cobrança por esses serviços, por si só, não exigem a compra de uma licença comercial.
+
+| Cenário de uso | Condições de licença |
+|----------------|----------------------|
+| Aprendizado pessoal, pesquisa, ensino, avaliação e testes | Uso, implantação e modificação gratuitos |
+| Gestão interna de conhecimento, produção de conteúdo, inspeção de qualidade com IA e colaboração em equipe | Implantação gratuita para funcionários, inclusive em empresas com fins lucrativos |
+| Operação de site corporativo, site de marca, subcanal GEO ou site de referência setorial próprio | Uso gratuito, inclusive em operações comerciais |
+| Agências, estúdios ou consultorias que produzem conteúdo ou gerenciam operações de conteúdo para clientes | Uso gratuito; é permitido cobrar pela produção de conteúdo, consultoria e serviços de operação |
+| Prestação de serviços de implantação, treinamento, manutenção ou desenvolvimento sob medida para clientes | Uso gratuito e possibilidade de cobrar pelos serviços; a entrega de cópias do software deve cumprir as obrigações aplicáveis da AGPL quanto à distribuição e ao fornecimento do código-fonte |
+| Oferta de hospedagem ou serviços on-line (SaaS) com base no GEOFlow | Uso gratuito e possibilidade de cobrar pelos serviços; versões modificadas oferecidas pela rede devem disponibilizar aos usuários que interagem com elas uma forma gratuita de obter o código-fonte correspondente completo |
+| Desenvolvimento sob medida, redistribuição e personalização de marca ou entrega OEM em conformidade com a AGPL | Uso gratuito; preserve os avisos exigidos e cumpra as obrigações aplicáveis de manter a mesma licença e fornecer o código-fonte. Os direitos de marca devem ser avaliados separadamente. |
+| Necessidade de exceção às obrigações de código-fonte ou a outras condições da AGPL, como soluções de marca branca, OEM ou integrações proprietárias que exijam manter o código fechado quando essas obrigações forem aplicáveis | Solicite uma licença comercial separada ao titular dos direitos e use o software conforme o acordo assinado |
+
+Antes de usar o GEOFlow:
+
+- **O uso interno em empresas também está sujeito às condições aplicáveis.** Se os funcionários interagem pela rede com uma versão modificada do GEOFlow, a seção 13 da AGPL exige oferecer, de forma destacada, um meio gratuito de obter o código-fonte correspondente completo. A mesma exigência vale para serviços de rede modificados oferecidos a usuários externos. Quem deve receber a oferta do código depende da forma de uso e distribuição; a licença não exige sua publicação em um repositório público do GitHub, e os destinatários mantêm os direitos de redistribuição previstos na licença.
+- **Dados de negócio e código-fonte são avaliados separadamente.** Materiais independentes da base de conhecimento, dados de clientes e artigos gerados geralmente não precisam ser divulgados sob a AGPL apenas pelo uso do GEOFlow. Se a saída contiver código do programa ou outras obras abrangidas pela licença, a avaliação depende do conteúdo.
+- **Gratuito refere-se à licença do software.** Servidores, domínios, chamadas a APIs de modelos, serviços de terceiros e suporte técnico contratado separadamente ficam por conta do usuário.
+
+Estes exemplos explicam a licença existente e não acrescentam exceções. Os direitos e as obrigações aplicáveis são definidos em [LICENSE](../../LICENSE); consulte a [seção 13 da AGPL](https://www.gnu.org/licenses/agpl-3.0.html#section13) e a [explicação do GNU sobre a saída dos programas](https://www.gnu.org/licenses/gpl-faq.en.html#WhatCaseIsOutputGPL). Recomenda-se uma avaliação jurídica prévia para integrações proprietárias complexas ou entregas que envolvam várias entidades.
 
 Inicie uma consulta comercial por um [GitHub Issue](https://github.com/yaojingang/GEOFlow/issues/new). Issues são públicos, então não inclua contratos, preços, dados de clientes ou informações confidenciais. Após o contato inicial, a conversa pode seguir por um canal privado. O texto da licença e qualquer acordo assinado definem as obrigações aplicáveis.
 
