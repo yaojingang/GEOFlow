@@ -12,7 +12,7 @@ class SecurityReleaseMetadataTest extends TestCase
         $payload = $manifest['payload'];
 
         $this->assertSame('3.0.0', $manifest['version']);
-        $this->assertSame('2026-09-04', $manifest['release_date']);
+        $this->assertSame('2026-09-05', $manifest['release_date']);
         $this->assertSame('major', $manifest['release_type']);
         $this->assertSame(
             'https://github.com/yaojingang/GEOFlow/releases/download/v3.0.0/GEOFlow-v3.0.0.zip',
@@ -62,8 +62,8 @@ class SecurityReleaseMetadataTest extends TestCase
         $this->assertStringContainsString('v2.1.0', $zh);
         $this->assertStringContainsString('在线主题编辑能力已在 v2.1.1 中关闭', $zh);
         $this->assertStringContainsString('live theme editing is disabled in v2.1.1', strtolower($en));
-        $this->assertStringContainsString("## 2026-09-04\n\n### v3.0.0", $zh);
-        $this->assertStringContainsString("## 2026-09-04\n\n### v3.0.0", $en);
+        $this->assertStringContainsString("## 2026-09-05\n\n### v3.0.0", $zh);
+        $this->assertStringContainsString("## 2026-09-05\n\n### v3.0.0", $en);
     }
 
     public function test_environment_examples_do_not_lock_the_application_version(): void
