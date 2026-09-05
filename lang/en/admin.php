@@ -3041,6 +3041,7 @@ return [
                 'saved' => 'Competitor saved.',
                 'deleted' => 'Competitor deleted.',
                 'detect_queued' => 'Queued AI competitor detection. New competitors will be added automatically.',
+                'sample_note' => 'Scope: :samples samples in the last 30 days. Mentions counted by competitor name and aliases across full answer texts.',
             ],
             'recent_samples' => 'Recent samples',
             'visible' => 'Visible',
