@@ -40,7 +40,7 @@ class AiVisibilityCompetitorReportService
         $totalSamples = $samples->count();
         $keywordsSampled = $samples->pluck('keyword')->filter()->unique()->count();
 
-        $rows = $competitors->map(function (AiVisibilityCompetitor $competitor) use ($samples): array {
+        $rows = $competitors->map(function (AiVisibilityCompetitor $competitor) use ($samples, $totalSamples): array {
             $terms = $competitor->matchTerms();
             $mentions = 0;
             $samplesMentioned = 0;
