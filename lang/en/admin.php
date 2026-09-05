@@ -3003,6 +3003,24 @@ return [
         'ai_visibility' => [
             'keyword' => 'Keyword',
             'provider' => 'Provider',
+            'schedule' => [
+                'panel_title' => 'Collection schedule',
+                'panel_desc' => 'Configure how many times per day, when, and which keywords to collect. The system checks and runs due jobs after each hour.',
+                'enabled_label' => 'Enable daily collection',
+                'freq_label' => 'Collections per day',
+                'freq1' => 'Once a day (08:00)',
+                'freq2' => 'Twice a day (08:00, 20:00)',
+                'freq3' => 'Three times a day (08:00, 14:00, 20:00)',
+                'freq4' => 'Four times a day (every 6 hours)',
+                'keywords_label' => 'Keywords to collect',
+                'keywords_hint' => 'Leave unchecked = collect all library keywords.',
+                'save' => 'Save settings',
+                'status_enabled' => 'Auto collection enabled',
+                'status_disabled' => 'Auto collection disabled',
+                'last_run' => 'Last auto run: :time (:date)',
+                'saved' => 'Collection schedule saved.',
+            ],
+
             'collect' => [
                 'panel_title' => 'Batch keyword collection',
                 'panel_desc' => 'Pick keywords from the library and run sampling in the background queue (about 1-2 minutes per keyword).',
@@ -3019,6 +3037,8 @@ return [
                 'panel_title' => 'Most cited URLs',
                 'panel_desc' => 'The most cited web pages in AI answers from the last 30 days. Click to visit the source.',
                 'visit' => 'Visit',
+                'table_page' => 'Page',
+                'table_citations' => 'Citations',
                 'no_data' => 'No citations yet. Collect keywords first.',
             ],
             'competitors' => [
@@ -3040,11 +3060,14 @@ return [
                 'delete' => 'Delete',
                 'saved' => 'Competitor saved.',
                 'deleted' => 'Competitor deleted.',
+                'manage_toggle' => 'Manage competitor list',
+                'sample_note' => 'Scope: :samples samples in the last 30 days. Mentions counted by name and aliases across full answer texts.',
                 'detect_queued' => 'Queued AI competitor detection. New competitors will be added automatically.',
                 'sample_note' => 'Scope: :samples samples in the last 30 days. Mentions counted by competitor name and aliases across full answer texts.',
             ],
             'recent_samples' => 'Recent samples',
             'visible' => 'Visible',
+            'table_samples' => 'Sample time',
             'not_visible' => 'Not visible',
             'providers' => [
                 'doubao_ark_responses' => 'Doubao Ark Responses',

@@ -3051,6 +3051,24 @@ return [
         'ai_visibility' => [
             'keyword' => '关键词',
             'provider' => '提供商',
+            'schedule' => [
+                'panel_title' => '自动采集配置',
+                'panel_desc' => '配置每天自动采集的次数、时间和关键词范围，系统每小时整点后自动检查并执行到期的采集任务。',
+                'enabled_label' => '启用每日自动采集',
+                'freq_label' => '每天采集次数',
+                'freq1' => '每天 1 次（08:00）',
+                'freq2' => '每天 2 次（08:00、20:00）',
+                'freq3' => '每天 3 次（08:00、14:00、20:00）',
+                'freq4' => '每天 4 次（每 6 小时）',
+                'keywords_label' => '采集关键词',
+                'keywords_hint' => '不勾选 = 采集关键词库全部关键词。',
+                'save' => '保存配置',
+                'status_enabled' => '自动采集已启用',
+                'status_disabled' => '自动采集已停用',
+                'last_run' => '上次自动运行：:time（:date）',
+                'saved' => '自动采集配置已保存。',
+            ],
+
             'collect' => [
                 'panel_title' => '关键词批量采集',
                 'panel_desc' => '从关键词库勾选要监测的关键词，提交后在后台队列依次采样（每个关键词约 1-2 分钟），完成后数据自动进入下方统计。',
@@ -3067,6 +3085,8 @@ return [
                 'panel_title' => '被引用最多的网址',
                 'panel_desc' => '近 30 天 AI 回答中引用最多的具体网页，点击可查看来源网站内容。',
                 'visit' => '访问',
+                'table_page' => '网页',
+                'table_citations' => '引用次数',
                 'no_data' => '暂无引用数据，先采集关键词后这里会列出被引用的网址。',
             ],
             'competitors' => [
@@ -3088,10 +3108,13 @@ return [
                 'delete' => '删除',
                 'saved' => '竞品已保存。',
                 'deleted' => '竞品已删除。',
+                'manage_toggle' => '管理竞品名单',
+                'sample_note' => '统计口径：近 30 天共 :samples 次采样，按竞品名及别名在采样回答全文中的出现次数计。',
                 'detect_queued' => '已派发 AI 竞品识别任务，完成后新竞品自动加入名单（标注 AI）。',
             ],
             'recent_samples' => '最近采样',
             'visible' => '可见',
+            'table_samples' => '采样时间',
             'not_visible' => '未见',
             'providers' => [
                 'doubao_ark_responses' => '豆包 Ark Responses',

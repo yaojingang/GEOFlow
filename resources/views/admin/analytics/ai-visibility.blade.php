@@ -210,6 +210,8 @@
                     </div>
                 </section>
 
+                @include('admin.analytics._ai-visibility-schedule')
+
                 @include('admin.analytics._ai-visibility-collect')
             </section>
         @endif
