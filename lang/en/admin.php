@@ -3013,6 +3013,14 @@ return [
                 'empty' => 'Select at least one keyword.',
                 'empty_library' => 'Keyword library is empty. Add keywords first.',
             ],
+            'detect_button' => 'AI auto-detect competitors',
+            'detect_queued' => 'Queued AI competitor detection. New competitors will be added automatically.',
+            'top_urls' => [
+                'panel_title' => 'Most cited URLs',
+                'panel_desc' => 'The most cited web pages in AI answers from the last 30 days. Click to visit the source.',
+                'visit' => 'Visit',
+                'no_data' => 'No citations yet. Collect keywords first.',
+            ],
             'competitors' => [
                 'panel_title' => 'Competitor mentions',
                 'panel_desc' => 'Mentions, appearance rate, and associated keywords of each competitor in samples from the last 30 days.',
@@ -3032,6 +3040,7 @@ return [
                 'delete' => 'Delete',
                 'saved' => 'Competitor saved.',
                 'deleted' => 'Competitor deleted.',
+                'detect_queued' => 'Queued AI competitor detection. New competitors will be added automatically.',
             ],
             'recent_samples' => 'Recent samples',
             'visible' => 'Visible',
