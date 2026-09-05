@@ -60,7 +60,7 @@
     <form method="POST" action="{{ route('admin.analytics.ai-visibility.competitors.detect') }}" class="mt-3">
         @csrf
         <button type="submit" class="inline-flex min-h-9 items-center rounded-md border border-violet-300 bg-white px-3 text-xs font-semibold text-violet-700 hover:bg-violet-50">
-            <i data-lucide="sparkles" class="mr-1.5 h-3.5 w-3.5"></i>{{ __('admin.analytics.ai_visibility.competitors.detect_button') }}
+            <i data-lucide="sparkles" class="mr-1.5 h-3.5 w-3.5"></i>{{ __('admin.analytics.ai_visibility.detect_button') }}
         </button>
     </form>
 
