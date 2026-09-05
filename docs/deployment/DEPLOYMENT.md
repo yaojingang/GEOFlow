@@ -1,5 +1,7 @@
 # GEOFlow Laravel 生产 Docker 部署
 
+已有实例升级到 `v3.0.0`，请先阅读 [3.0 升级教程](GEOFLOW_V3_UPGRADE.md)，按当前部署方式选择路径。本文的首次安装步骤仅用于空库；升级时保留原数据库主版本、数据挂载与 `APP_KEY`。
+
 本文对应仓库中的生产编排文件：
 
 - `docker-compose.prod.yml`
