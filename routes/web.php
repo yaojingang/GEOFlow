@@ -168,7 +168,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 ->name('ai-visibility.collect');
             Route::post('ai-visibility/competitors', [AiVisibilityAnalyticsController::class, 'storeCompetitor'])
                 ->name('ai-visibility.competitors.store');
-            Route::post('ai-visibility/competitors/{competitor}/delete', [AiVisibilityAnalyticsController::class, 'destroyCompetitor'])
+            Route::delete('ai-visibility/competitors/{competitor}/delete', [AiVisibilityAnalyticsController::class, 'destroyCompetitor'])
                 ->whereNumber('competitor')
                 ->name('ai-visibility.competitors.destroy');
             Route::get('leads', LeadAnalyticsController::class)->name('leads');
