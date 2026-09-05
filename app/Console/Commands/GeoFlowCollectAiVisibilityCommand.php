@@ -38,6 +38,19 @@ class GeoFlowCollectAiVisibilityCommand extends Command
             }
         }
 
+        // 采集后自动用 AI 从新采样中识别竞品品牌,发现的竞品进入竞品统计名单。
+        try {
+            $detection = app(\App\Services\Admin\Analytics\AiVisibilityCompetitorDetectionService::class)->detect(12);
+            $this->info(sprintf(
+                'AI competitor detection processed: %d runs, discovered: %s',
+                $detection['processed'],
+                $detection['discovered'] === [] ? '(none)' : implode(', ', $detection['discovered']),
+            ));
+        } catch (Throwable $exception) {
+            report($exception);
+            $this->warn('AI competitor detection failed (non-fatal).');
+        }
+
         return $failed === 0 ? self::SUCCESS : self::FAILURE;
     }
 }

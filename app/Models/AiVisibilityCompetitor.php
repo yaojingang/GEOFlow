@@ -10,6 +10,7 @@ class AiVisibilityCompetitor extends Model
         'name',
         'aliases',
         'is_active',
+        'source',
     ];
 
     protected function casts(): array

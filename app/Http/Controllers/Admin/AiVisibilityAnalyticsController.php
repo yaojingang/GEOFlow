@@ -55,6 +55,9 @@ class AiVisibilityAnalyticsController extends Controller
             'competitors' => Schema::hasTable('ai_visibility_competitors')
                 ? AiVisibilityCompetitor::query()->orderBy('id')->get()
                 : collect(),
+            'topCitedUrls' => Schema::hasTable('ai_visibility_sources')
+                ? $this->topCitedUrls(30, 10)
+                : collect(),
         ]);
     }
 
@@ -120,6 +123,41 @@ class AiVisibilityAnalyticsController extends Controller
         AiVisibilityCompetitor::query()->whereKey($competitor)->delete();
 
         return back()->with('message', __('admin.analytics.ai_visibility.competitors.deleted'));
+    }
+
+    /**
+     * 派发后台队列,用 AI 从最近的采样回答中自动识别竞品品牌。
+     */
+    public function detectCompetitors(): RedirectResponse
+    {
+        Artisan::queue('geoflow:ai-visibility:detect-competitors', ['--limit' => 12]);
+
+        return back()->with('message', __('admin.analytics.ai_visibility.competitors.detect_queued'));
+    }
+
+    /**
+     * 近 N 天被 AI 回答引用最多的具体网址(可点击跳转)。
+     *
+     * @return Collection<int, array{url: string, title: string, domain: string, citations: int}>
+     */
+    private function topCitedUrls(int $days, int $limit): Collection
+    {
+        return \App\Models\AiVisibilitySource::query()
+            ->whereHas('run', static fn ($query) => $query
+                ->where('status', 'completed')
+                ->where('updated_at', '>=', now()->subDays($days)))
+            ->where('url', '!=', '')
+            ->get()
+            ->groupBy(static fn (\App\Models\AiVisibilitySource $source): string => (string) $source->url)
+            ->map(static fn (Collection $group, string $url): array => [
+                'url' => $url,
+                'title' => (string) ($group->first()->title ?: $url),
+                'domain' => (string) ($group->first()->domain ?: parse_url($url, PHP_URL_HOST)),
+                'citations' => $group->count(),
+            ])
+            ->sortByDesc('citations')
+            ->take($limit)
+            ->values();
     }
 
     /**

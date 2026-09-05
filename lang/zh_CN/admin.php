@@ -3061,6 +3061,16 @@ return [
                 'empty' => '请至少勾选一个关键词。',
                 'empty_library' => '关键词库为空，请先到「内容资产 → 关键词库」添加关键词。',
             ],
+            'detect_button' => 'AI 自动识别竞品',
+            'detect_queued' => '已派发 AI 竞品识别任务，完成后新竞品自动加入名单（标注 AI）。',
+            'source_auto' => 'AI',
+            'top_urls' => [
+                'panel_title' => '被引用最多的网址',
+                'panel_desc' => '近 30 天 AI 回答中引用最多的具体网页，点击可查看来源网站内容。',
+                'visit' => '访问',
+                'no_data' => '暂无引用数据，先采集关键词后这里会列出被引用的网址。',
+            ],
+            'competitors' => [
             'competitors' => [
                 'panel_title' => '竞品出现监测',
                 'panel_desc' => '在近 30 天的采样回答中统计各竞品被提及的次数、出现率和捆绑关键词。',

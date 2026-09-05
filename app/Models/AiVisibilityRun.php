@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 class AiVisibilityRun extends Model
@@ -82,5 +83,10 @@ class AiVisibilityRun extends Model
     public function sources(): HasMany
     {
         return $this->hasMany(AiVisibilitySource::class, 'ai_visibility_run_id');
+    }
+
+    public function competitorDetection(): HasOne
+    {
+        return $this->hasOne(AiVisibilityCompetitorDetection::class, 'run_id');
     }
 }
