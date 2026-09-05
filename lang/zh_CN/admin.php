@@ -3067,6 +3067,7 @@ return [
                 'status_disabled' => '自动采集已停用',
                 'last_run' => '上次自动运行：:time（:date）',
                 'saved' => '自动采集配置已保存。',
+                'hourly_note' => '系统每小时整点后自动检查并执行到期的采集任务。',
             ],
 
             'collect' => [
