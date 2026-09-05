@@ -135,7 +135,6 @@
                         </span>
                     @endforeach
                 </div>
-            @endforeach
 
             @if ($aiVisibilityCompetitorReport !== null)
                 @if (($aiVisibilityCompetitorReport['total_samples'] ?? 0) === 0)
