@@ -1,0 +1,6 @@
+services:
+  opencodex:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./docker/opencodex.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped

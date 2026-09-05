@@ -34,6 +34,11 @@ if (form) {
             fields.modelId.value = button.dataset.presetModelId || '';
             fields.modelType.value = button.dataset.presetModelType || 'chat';
             fields.apiUrl.value = button.dataset.presetApiUrl || '';
+            if (button.dataset.aiModelPreset === 'opencodex') {
+                fields.apiKey.value = 'not-required';
+            } else if (fields.apiKey.value === 'not-required') {
+                fields.apiKey.value = '';
+            }
             syncMaxTokensVisibility();
         });
     });
