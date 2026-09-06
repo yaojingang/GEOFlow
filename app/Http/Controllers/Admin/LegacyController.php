@@ -229,7 +229,7 @@ class LegacyController extends Controller
                     ->sum('used_today') ?? 0)
                 : 0,
             'visibility_failed_runs' => $isSuperAdmin && Schema::hasTable('ai_visibility_runs')
-                ? AiVisibilityRun::query()->where('status', AiVisibilityRun::STATUS_FAILED)->count()
+                ? AiVisibilityRun::query()->whereIn('provider_type', AiVisibilityRun::SAMPLE_PROVIDERS)->where('status', AiVisibilityRun::STATUS_FAILED)->count()
                 : 0,
         ];
     }

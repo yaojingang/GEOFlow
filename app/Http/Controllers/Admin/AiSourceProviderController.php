@@ -455,7 +455,7 @@ class AiSourceProviderController extends Controller
         $hasProviderUsageDate = $hasProviderTable
             && Schema::hasColumn('ai_source_providers', 'usage_date');
         $providerQuery = $hasProviderTable ? AiSourceProvider::query() : null;
-        $runQuery = Schema::hasTable('ai_visibility_runs') ? AiVisibilityRun::query() : null;
+        $runQuery = Schema::hasTable('ai_visibility_runs') ? AiVisibilityRun::query()->whereIn('provider_type', AiVisibilityRun::SAMPLE_PROVIDERS) : null;
 
         return [
             'provider_count' => $providerQuery ? (clone $providerQuery)->count() : 0,

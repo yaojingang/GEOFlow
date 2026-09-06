@@ -4,104 +4,49 @@ namespace App\Services\Admin\Analytics;
 
 use App\Models\AiVisibilityCompetitor;
 use App\Models\AiVisibilityRun;
-use Illuminate\Support\Collection;
 
 class AiVisibilityCompetitorReportService
 {
-    /**
-     * 统计近 N 天采样中各竞品的出现频率与关联关键词。
-     *
-     * 采样次数以「一次采集」为单位：同一关键词同一天的多个提供商记录合并为一次采样。
-     *
-     * @return array{
-     *     days: int,
-     *     total_samples: int,
-     *     keywords_sampled: int,
-     *     competitors: list<array{
-     *         id: int,
-     *         name: string,
-     *         aliases: list<string>,
-     *         mentions: int,
-     *         samples_mentioned: int,
-     *         mention_rate: float,
-     *         keywords: list<string>,
-     *     }>,
-     * }
-     */
     public function stats(int $days = 30): array
     {
-        $competitors = AiVisibilityCompetitor::query()
-            ->where('is_active', true)
-            ->orderBy('id')
-            ->get();
-
-        $samples = $this->samples(now()->subDays($days));
-
-        $totalSamples = $samples->count();
-        $keywordsSampled = $samples->pluck('keyword')->filter()->unique()->count();
-
-        $rows = $competitors->map(function (AiVisibilityCompetitor $competitor) use ($samples, $totalSamples): array {
+        $days = max(1, min(90, $days));
+        $rows = [];
+        $patterns = [];
+        $mentioned = [];
+        foreach (AiVisibilityCompetitor::query()->where('is_active', true)->select('id', 'name', 'aliases')->lazyById(200) as $competitor) {
             $terms = $competitor->matchTerms();
-            $mentions = 0;
-            $samplesMentioned = 0;
-            $keywords = [];
-
-            foreach ($samples as $sample) {
-                $hits = 0;
-                foreach ($terms as $term) {
-                    $hits += mb_substr_count($sample['text'], $term);
-                }
+            $rows[$competitor->id] = ['id' => $competitor->id, 'name' => $competitor->name, 'aliases' => array_slice($terms, 1), 'mentions' => 0, 'samples_mentioned' => 0, 'mention_rate' => 0.0, 'keywords' => []];
+            usort($terms, static fn (string $a, string $b): int => mb_strlen($b) <=> mb_strlen($a));
+            $patterns[$competitor->id] = '/'.implode('|', array_map(static fn (string $term): string => preg_quote($term, '/'), $terms)).'/iu';
+        }
+        $samples = [];
+        $keywords = [];
+        $runs = AiVisibilityRun::query()->where('status', AiVisibilityRun::STATUS_COMPLETED)
+            ->whereIn('provider_type', AiVisibilityRun::SAMPLE_PROVIDERS)
+            ->whereNotNull('keyword')->where('keyword', '!=', '')
+            ->whereRaw('COALESCE(completed_at, updated_at) >= ?', [now()->subDays($days)])
+            ->select('id', 'keyword', 'answer_text', 'completed_at', 'updated_at')
+            ->lazyById(500);
+        foreach ($runs as $run) {
+            $key = json_encode([$run->keyword, ($run->completed_at ?? $run->updated_at)->toDateString()], JSON_THROW_ON_ERROR);
+            $samples[$key] = true;
+            $keywords[$run->keyword] = true;
+            foreach ($patterns as $id => $pattern) {
+                $hits = preg_match_all($pattern, (string) $run->answer_text);
                 if ($hits > 0) {
-                    $mentions += $hits;
-                    $samplesMentioned++;
-                    if ($sample['keyword'] !== '') {
-                        $keywords[$sample['keyword']] = true;
-                    }
+                    $rows[$id]['mentions'] += $hits;
+                    $rows[$id]['keywords'][$run->keyword] = true;
+                    $mentioned[$id][$key] = true;
                 }
             }
+        }
+        foreach ($rows as $id => &$row) {
+            $row['samples_mentioned'] = count($mentioned[$id] ?? []);
+            $row['mention_rate'] = count($samples) > 0 ? round($row['samples_mentioned'] / count($samples) * 100, 1) : 0.0;
+            $row['keywords'] = array_keys($row['keywords']);
+        }
+        unset($row);
 
-            return [
-                'id' => $competitor->id,
-                'name' => $competitor->name,
-                'aliases' => array_slice($terms, 1),
-                'mentions' => $mentions,
-                'samples_mentioned' => $samplesMentioned,
-                'mention_rate' => $totalSamples > 0 ? round($samplesMentioned / $totalSamples * 100, 1) : 0.0,
-                'keywords' => array_keys($keywords),
-            ];
-        })->sortByDesc('mentions')->values()->all();
-
-        return [
-            'days' => $days,
-            'total_samples' => $totalSamples,
-            'keywords_sampled' => $keywordsSampled,
-            'competitors' => $rows,
-        ];
-    }
-
-    /**
-     * @return Collection<int, array{keyword: string, text: string, key: string}>
-     */
-    private function samples($since): Collection
-    {
-        return AiVisibilityRun::query()
-            ->where('status', 'completed')
-            ->whereIn('provider_type', [
-                AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
-                AiVisibilityRun::PROVIDER_DOUBAO_ARK_RESPONSES,
-            ])
-            ->whereNotNull('keyword')
-            ->where('keyword', '!=', '')
-            ->where('updated_at', '>=', $since)
-            ->orderBy('id')
-            ->get()
-            ->map(static fn (AiVisibilityRun $run): array => [
-                // 一次采集 = 关键词 + 日期（同关键词同日多提供商合并计数）。
-                'key' => $run->keyword.'|'.$run->updated_at->toDateString(),
-                'keyword' => (string) $run->keyword,
-                'text' => (string) $run->answer_text,
-            ])
-            ->unique('key')
-            ->values();
+        return ['days' => $days, 'total_samples' => count($samples), 'keywords_sampled' => count($keywords), 'competitors' => collect($rows)->sortByDesc('mentions')->values()->all()];
     }
 }

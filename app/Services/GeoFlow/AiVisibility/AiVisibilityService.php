@@ -140,6 +140,38 @@ final class AiVisibilityService
         );
     }
 
+    public function runCompetitorDetection(SystemAiIdentity $identity, AiModel $model, AiVisibilityRun $source, string $prompt, ?string $executionUuid = null): AiVisibilityRun
+    {
+        $identity->assertCanCollectVisibility();
+        $run = $this->createRun([
+            'uuid' => $executionUuid,
+            'parent_run_id' => $source->id,
+            'keyword' => $source->keyword,
+            'prompt' => $prompt,
+            'provider_type' => AiVisibilityRun::PROVIDER_COMPETITOR_DETECTION,
+            'provider_key' => 'deepseek',
+            'ai_model_id' => $model->id,
+            'model_id' => $model->model_id,
+        ]);
+
+        return $this->runModelCall(
+            identity: $identity,
+            run: $run,
+            model: $model,
+            bindingType: 'deepseek',
+            callKeyPrefix: 'competitor',
+            operation: 'ai_visibility.detect_competitors',
+            maxProviderAttempts: 1,
+            requestPayload: fn (): AiVisibilityPreparedModelRequest => $this->deepSeekAnalysisClient->prepareRequest($prompt, []),
+            provider: function (AiModel $current, AiVisibilityPreparedModelRequest $prepared) use ($prompt): AiVisibilityResult {
+                $result = $this->deepSeekAnalysisClient->analyze($current, $prompt, [], [], $prepared);
+                app(AiVisibilityCompetitorParser::class)->parse($result->answerText);
+
+                return $result;
+            },
+        );
+    }
+
     /**
      * @param  array<string,mixed>  $searchOptions
      * @param  array<string,mixed>  $analysisOptions
@@ -364,6 +396,10 @@ final class AiVisibilityService
 
     private function providerErrorCode(Throwable $exception): string
     {
+        if ($exception->getMessage() === 'ai_competitor_response_invalid') {
+            return 'ai_competitor_response_invalid';
+        }
+
         return preg_match('/(?:HTTP\s*)?(?:401|403)\b/i', $exception->getMessage()) === 1
             ? 'ai_provider_auth_failed'
             : 'ai_provider_request_failed';

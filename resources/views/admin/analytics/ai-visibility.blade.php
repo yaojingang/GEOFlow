@@ -210,9 +210,9 @@
                     </div>
                 </section>
 
-                @include('admin.analytics._ai-visibility-schedule')
-
-                @include('admin.analytics._ai-visibility-collect')
+                @if (auth('admin')->user()?->isSuperAdmin())
+                    @include('admin.analytics._ai-visibility-collect')
+                @endif
             </section>
         @endif
     </div>

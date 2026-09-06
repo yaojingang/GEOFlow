@@ -161,6 +161,7 @@ class AiVisibilityAnalyticsService
     private function periodRunsQuery(Carbon $start, Carbon $end, ?AiVisibilityAnalyticsFilter $filter = null): Builder
     {
         return AiVisibilityRun::query()
+            ->whereIn('provider_type', AiVisibilityRun::SAMPLE_PROVIDERS)
             ->where(function (Builder $query) use ($start, $end): void {
                 $query
                     ->whereBetween('completed_at', [$start, $end])

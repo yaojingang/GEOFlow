@@ -9,12 +9,14 @@
             <h3 class="text-lg font-semibold text-gray-950">{{ __('admin.analytics.ai_visibility.competitors.panel_title') }}</h3>
             <p class="mt-1 text-sm text-gray-500">{{ __('admin.analytics.ai_visibility.competitors.panel_desc') }}</p>
         </div>
+        @if (auth('admin')->user()?->isSuperAdmin())
         <form method="POST" action="{{ route('admin.analytics.ai-visibility.competitors.detect') }}" class="shrink-0">
             @csrf
             <button type="submit" class="inline-flex min-h-9 items-center rounded-md border border-violet-300 bg-white px-3 text-xs font-semibold text-violet-700 hover:bg-violet-50">
                 <i data-lucide="sparkles" class="mr-1.5 h-3.5 w-3.5"></i>{{ __('admin.analytics.ai_visibility.detect_button') }}
             </button>
         </form>
+        @endif
     </div>
 
     @if ($aiVisibilityCompetitorReport === null)
@@ -67,6 +69,7 @@
         <p class="mt-2 text-xs text-gray-400">{{ __('admin.analytics.ai_visibility.competitors.sample_note', ['samples' => $aiVisibilityCompetitorReport['total_samples']]) }}</p>
     @endif
 
+    @if (auth('admin')->user()?->isSuperAdmin())
     <details class="mt-4 rounded-md border border-gray-200">
         <summary class="flex min-h-10 cursor-pointer items-center px-4 text-sm font-semibold text-gray-700">{{ __('admin.analytics.ai_visibility.competitors.manage_toggle') }}</summary>
         <div class="border-t border-gray-100 p-4">
@@ -104,4 +107,5 @@
             @endif
         </div>
     </details>
+    @endif
 </section>
