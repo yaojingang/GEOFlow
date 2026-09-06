@@ -15,6 +15,7 @@ class AdminLocaleSwitchTest extends TestCase
     {
         $this->assertSame([
             'zh_CN',
+            'zh_TW',
             'en',
             'ja',
             'es',
@@ -25,7 +26,7 @@ class AdminLocaleSwitchTest extends TestCase
 
     public function test_admin_locale_switch_accepts_new_languages(): void
     {
-        foreach (['ja', 'es', 'ru', 'pt_BR'] as $locale) {
+        foreach (['zh_TW', 'ja', 'es', 'ru', 'pt_BR'] as $locale) {
             $this->from(route('admin.login'))
                 ->get(route('admin.locale.switch', ['locale' => $locale]))
                 ->assertRedirect(route('admin.login'))
@@ -45,6 +46,7 @@ class AdminLocaleSwitchTest extends TestCase
         ]);
 
         $expectations = [
+            'zh_TW' => 'GEO 內容營運後台',
             'ja' => 'ダッシュボード',
             'es' => 'Panel',
             'ru' => 'Панель',
@@ -86,7 +88,7 @@ class AdminLocaleSwitchTest extends TestCase
 
         $html = (string) $response->getContent();
         preg_match_all('/class="gf-language-option(?: is-current)?"/', $html, $languageOptions);
-        $this->assertCount(6, $languageOptions[0]);
+        $this->assertCount(7, $languageOptions[0]);
         $this->assertSame(1, substr_count($html, 'class="gf-language-option is-current"'));
 
         foreach (AdminWeb::supportedLocales() as $locale => $label) {

@@ -99,6 +99,7 @@ final class AdminWeb
     {
         return [
             'zh_CN' => '简体中文',
+            'zh_TW' => '繁體中文',
             'en' => 'English',
             'ja' => '日本語',
             'es' => 'Español',
