@@ -2,7 +2,6 @@
 
 @php
     $chatPresets = [
-        ['key' => 'opencodex', 'label' => 'opencodex（免金鑰）', 'name' => 'opencodex / Gemini 3.8 Flash High', 'version' => '3.8', 'model_id' => 'cpamc/gemini-3.8-flash-high', 'api_url' => 'http://opencodex:8080/v1', 'model_type' => 'chat'],
         ['key' => 'minimax', 'label' => 'MiniMax', 'name' => 'MiniMax M3', 'version' => 'M3', 'model_id' => 'MiniMax-M3', 'api_url' => 'https://api.minimax.io', 'model_type' => 'chat'],
         ['key' => 'minimax_m27', 'label' => 'MiniMax M2.7', 'name' => 'MiniMax M2.7', 'version' => 'M2.7', 'model_id' => 'MiniMax-M2.7', 'api_url' => 'https://api.minimax.io', 'model_type' => 'chat'],
         ['key' => 'minimax_highspeed', 'label' => 'MiniMax Highspeed', 'name' => 'MiniMax M2.7 Highspeed', 'version' => 'M2.7', 'model_id' => 'MiniMax-M2.7-highspeed', 'api_url' => 'https://api.minimax.io', 'model_type' => 'chat'],
