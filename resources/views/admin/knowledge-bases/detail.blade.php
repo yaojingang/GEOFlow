@@ -3,6 +3,7 @@
 @php
     $vditorLocaleMap = [
         'zh_CN' => 'zh_CN',
+        'zh_TW' => 'zh_TW',
         'en' => 'en_US',
         'en_US' => 'en_US',
         'ja' => 'ja_JP',

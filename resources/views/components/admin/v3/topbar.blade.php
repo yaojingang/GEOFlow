@@ -14,6 +14,7 @@
     $currentLocaleLabel = $supportedLocales[$currentLocale] ?? reset($supportedLocales);
     $localeAbbreviations = [
         'zh_CN' => 'ZH',
+        'zh_TW' => '繁',
         'en' => 'EN',
         'ja' => 'JA',
         'es' => 'ES',
