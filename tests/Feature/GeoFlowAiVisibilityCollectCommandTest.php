@@ -11,6 +11,7 @@ use App\Models\SiteSetting;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class GeoFlowAiVisibilityCollectCommandTest extends TestCase
@@ -19,6 +20,7 @@ class GeoFlowAiVisibilityCollectCommandTest extends TestCase
 
     public function test_command_collects_search_and_deepseek_analysis_with_saved_bindings(): void
     {
+        Queue::fake();
         Http::preventStrayRequests();
         Http::fake([
             'https://open.feedcoopapi.com/search_api/web_search' => Http::response([

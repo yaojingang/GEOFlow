@@ -115,6 +115,8 @@
                     </div>
                 </div>
 
+                @include('admin.analytics._ai-visibility-competitors')
+
                 <details class="mt-6 rounded-lg border border-gray-200 bg-white shadow-sm" data-ai-visibility-metric-definitions>
                     <summary class="flex min-h-10 cursor-pointer items-center px-5 py-3 text-sm font-semibold text-gray-800" data-ai-visibility-metric-toggle>{{ __('admin.growth_center.ai_visibility.definition_toggle') }}</summary>
                     <div class="border-t border-gray-100 p-5">
@@ -178,20 +180,39 @@
                     </section>
                 </div>
 
+                @include('admin.analytics._ai-visibility-top-urls')
+
                 <section class="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
                     <h3 class="text-lg font-semibold text-gray-950">{{ __('admin.analytics.ai_visibility.recent_samples') }}</h3>
-                    <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                        @forelse (($ai['latest_runs'] ?? []) as $run)
-                            <article class="rounded-lg border border-gray-100 p-4">
-                                <p class="truncate text-sm font-semibold text-gray-900">{{ $run['keyword'] }}</p>
-                                <p class="mt-1 truncate text-xs text-gray-500">{{ __('admin.analytics.ai_visibility.providers.'.$run['provider_type']) }}</p>
-                                <div class="mt-3 flex items-center justify-between gap-2"><time class="font-mono text-xs tabular-nums text-gray-400">{{ $run['date'] }}</time><span class="rounded-full px-2 py-1 text-xs font-medium {{ $run['brand_visible'] ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600' }}">{{ $run['brand_visible'] ? __('admin.analytics.ai_visibility.visible') : __('admin.analytics.ai_visibility.not_visible') }}</span></div>
-                            </article>
-                        @empty
-                            <p class="text-sm text-gray-500">{{ __('admin.analytics.no_data') }}</p>
-                        @endforelse
+                    <div class="mt-4 overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-2.5 text-left font-semibold text-gray-600">{{ __('admin.analytics.ai_visibility.table_samples') }}</th>
+                                    <th class="px-4 py-2.5 text-left font-semibold text-gray-600">{{ __('admin.analytics.ai_visibility.keyword') }}</th>
+                                    <th class="px-4 py-2.5 text-left font-semibold text-gray-600">{{ __('admin.analytics.ai_visibility.provider') }}</th>
+                                    <th class="px-4 py-2.5 text-right font-semibold text-gray-600">{{ __('admin.analytics.ai_visibility.visible') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                @forelse (($ai['latest_runs'] ?? []) as $run)
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-2.5"><time class="font-mono text-xs tabular-nums text-gray-500">{{ $run['date'] }}</time></td>
+                                        <td class="px-4 py-2.5 font-medium text-gray-900">{{ $run['keyword'] }}</td>
+                                        <td class="px-4 py-2.5 text-gray-600">{{ __('admin.analytics.ai_visibility.providers.'.$run['provider_type']) }}</td>
+                                        <td class="px-4 py-2.5 text-right"><span class="rounded-full px-2 py-1 text-xs font-medium {{ $run['brand_visible'] ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600' }}">{{ $run['brand_visible'] ? __('admin.analytics.ai_visibility.visible') : __('admin.analytics.ai_visibility.not_visible') }}</span></td>
+                                    </tr>
+                                @empty
+                                    <tr><td colspan="4" class="px-4 py-8 text-center text-gray-500">{{ __('admin.analytics.no_data') }}</td></tr>
+                                @endforelse
+                            </tbody>
+                        </table>
                     </div>
                 </section>
+
+                @if (auth('admin')->user()?->isSuperAdmin())
+                    @include('admin.analytics._ai-visibility-collect')
+                @endif
             </section>
         @endif
     </div>

@@ -164,6 +164,19 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('content', ContentAnalyticsController::class)->name('content');
             Route::get('traffic', TrafficAnalyticsController::class)->name('traffic');
             Route::get('ai-visibility', AiVisibilityAnalyticsController::class)->name('ai-visibility');
+            Route::post('ai-visibility/collect', [AiVisibilityAnalyticsController::class, 'collect'])
+                ->middleware(['admin.super', 'throttle:admin-sensitive'])
+                ->name('ai-visibility.collect');
+            Route::post('ai-visibility/competitors', [AiVisibilityAnalyticsController::class, 'storeCompetitor'])
+                ->middleware(['admin.super', 'throttle:admin-sensitive'])
+                ->name('ai-visibility.competitors.store');
+            Route::post('ai-visibility/competitors/detect', [AiVisibilityAnalyticsController::class, 'detectCompetitors'])
+                ->middleware(['admin.super', 'throttle:admin-sensitive'])
+                ->name('ai-visibility.competitors.detect');
+            Route::delete('ai-visibility/competitors/{competitor}/delete', [AiVisibilityAnalyticsController::class, 'destroyCompetitor'])
+                ->whereNumber('competitor')
+                ->middleware(['admin.super', 'throttle:admin-sensitive'])
+                ->name('ai-visibility.competitors.destroy');
             Route::get('leads', LeadAnalyticsController::class)->name('leads');
             Route::get('distribution', DistributionAnalyticsController::class)
                 ->middleware('admin.super')
