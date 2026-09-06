@@ -66,7 +66,7 @@ final class DoubaoSearchCustomClient
             'BlockHosts' => $options['block_hosts'] ?? null,
             'TimeRange' => $options['time_range'] ?? null,
             'ContentFormats' => $options['content_formats'] ?? 'Markdown',
-        ], static fn (mixed $value): bool => $value !== null && $value !== '');
+        ], static fn (mixed $value): bool => $value !== null && $value !== '' && $value !== []);
 
         return array_filter([
             'Query' => $query,

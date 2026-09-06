@@ -304,6 +304,65 @@ class AiVisibilityServiceTest extends TestCase
         $this->assertSame(1, (int) $model->fresh()->used_today);
     }
 
+    public function test_search_omits_empty_site_filters_saved_in_provider_metadata(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+        $provider = $this->createSearchProvider([
+            'metadata_json' => [
+                'sites' => [],
+                'block_hosts' => [],
+                'need_content' => false,
+                'need_url' => false,
+            ],
+        ]);
+
+        $run = app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, 'GEOFlow');
+
+        $this->assertSame(AiVisibilityRun::STATUS_COMPLETED, $run->status);
+        Http::assertSentCount(1);
+        Http::assertSent(function ($request): bool {
+            $filter = $request->data()['Filter'];
+
+            return ! array_key_exists('Sites', $filter)
+                && ! array_key_exists('BlockHosts', $filter)
+                && $filter['NeedContent'] === false
+                && $filter['NeedUrl'] === false
+                && $filter['ContentFormats'] === 'Markdown';
+        });
+    }
+
+    public function test_search_preserves_non_empty_site_filters_saved_in_provider_metadata(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+        $provider = $this->createSearchProvider([
+            'metadata_json' => [
+                'sites' => ['example.com'],
+                'block_hosts' => ['blocked.example.com'],
+            ],
+        ]);
+
+        $run = app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, 'GEOFlow');
+
+        $this->assertSame(AiVisibilityRun::STATUS_COMPLETED, $run->status);
+        Http::assertSentCount(1);
+        Http::assertSent(function ($request): bool {
+            $filter = $request->data()['Filter'];
+
+            return $filter['Sites'] === ['example.com']
+                && $filter['BlockHosts'] === ['blocked.example.com'];
+        });
+    }
+
     private function createSearchProvider(array $overrides = []): AiSourceProvider
     {
         return AiSourceProvider::query()->create(array_merge([
