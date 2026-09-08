@@ -1,52 +1,411 @@
-# 蓝绿部署与自动迁移
+# GEOFlow 蓝绿部署与自动迁移使用教程
 
-先通过 geoflow-updater 已签名安装包中的 `packaging/scripts/install.sh` 完成主机安装和信任引导，再使用仓库的薄入口 `scripts/geoflow-deploy.sh`。入口只转交参数给已安装的 updater，主机权限、Docker、签名验证、部署状态和恢复逻辑由 updater 统一处理。
+简体中文 | [English](blue-green-deployment-usage_en.md)
 
-首次安装：
+面向站点管理员和服务器管理员，涵盖首次安装、旧站接管、后台升级、自动迁移、备份和恢复。
 
-```sh
-sudo scripts/geoflow-deploy.sh install --instance primary --root /opt/geoflow --url https://geo.example
+本文依据 [GEOFlow PR #122](https://github.com/yaojingang/GEOFlow/pull/122) 与 [updater PR #16](https://github.com/yaojingang/geoflow-updater/pull/16) 合并后的实现编写。
+
+> **版本前提，核对于 2026 年 9 月 9 日：** 本轮功能已合入两个仓库的 main。公开稳定版仍为 [GEOFlow v3.0.0](https://github.com/yaojingang/GEOFlow/releases/tag/v3.0.0) 和 [updater v0.3.0](https://github.com/yaojingang/geoflow-updater/releases/tag/v0.3.0)，尚未包含本轮完整能力。以下新流程需要后续正式发布的 updater、配套应用镜像和已签名升级计划。仅拉取 main 或安装现有 v0.3.0，无法完成本文的新流程；下一版版本号以正式发布为准。
+
+## 1. 选择使用路径
+
+| 当前情况 | 操作路径 |
+|---|---|
+| 新服务器，尚未安装 GEOFlow | 安装 updater → 首次安装站点 → 配置授权 → 验收 |
+| 已有标准 Docker 站点，尚未受管 | 安装 updater → 维护窗口接管 → 配置授权 → 计划升级转换布局 |
+| 已有受管站点，日常升级 | 后台获取计划并升级，或使用服务器命令 |
+| 升级后出现问题 | 核对失败状态，选择应用回切或完整数据恢复 |
+
+本文统一使用实例 `primary`、目录 `/opt/geoflow`、域名 `https://geo.example.com`。执行前替换实际目录和域名，实例名仍使用当前支持的 `primary`。
+
+所有 `sudo geoflow-updater ...` 命令均在 **Linux 宿主机** 执行。后台操作需要超级管理员权限。
+
+## 2. 哪些升级能不停机
+
+blue、green 是两套应用运行位置。升级时，工具在另一套位置准备新版本，检查通过后切换稳定入口，再完成旧请求和后台任务的排空交接。
+
+数据库、Redis 和业务文件由新旧应用共享。每次能否在线升级，由签名计划和实际预检共同决定：
+
+| 预检结果 | 需要怎样操作 |
+|---|---|
+| `strategy: online` | 在线蓝绿升级，候选验证后切流；长连接可能重连 |
+| `strategy: maintenance` | 安排维护窗口，暂停服务和写入后升级 |
+| `layout_change: true` | 首次转换为蓝绿布局，必须安排维护窗口 |
+| 预检失败 | 排查后重新预检，本次更新尚未开始 |
+
+当前仓库默认计划为 `maintenance`。发布者逐项验证来源版本、数据库、队列、缓存、存储及迁移步骤的兼容性，签名发布在线计划后，对应路径才能在线升级。待执行迁移为 0，也可能因为业务回填、基础服务镜像变化或布局转换而需要维护。
+
+为两套应用同时运行预留 CPU、内存和磁盘，并按实际负载确认容量。当前方案支持单机部署；服务器、数据库或 Redis 故障仍会影响整站。
+
+## 3. 安装或升级 updater
+
+### 3.1 准备服务器
+
+支持 Linux、systemd、Docker Engine 和 Docker Compose v2，CPU 架构为 amd64 或 arm64。当前受管部署使用随站点部署的 PostgreSQL，外置数据库和多机部署不在本教程范围内。
+
+```bash
+uname -m
+docker version
+docker compose version
+systemctl --version
 ```
 
-已有实例接管：
+`x86_64` 对应 amd64，`aarch64` 对应 arm64。updater 安装脚本会检查 Docker，但不会安装 Docker。
 
-```sh
-sudo scripts/geoflow-deploy.sh enroll --instance-id primary --instance-root /opt/geoflow
-sudo scripts/geoflow-deploy.sh status --instance primary --json
+### 3.2 下载并校验
+
+从 [updater Releases](https://github.com/yaojingang/geoflow-updater/releases) 选择明确包含本轮功能的正式版本，下载对应架构的压缩包与 `checksums.txt`，放入专用目录。
+
+下面的 `X.Y.Z` 是占位符，替换为实际版本号，不带 `v`。命令需要已安装 GitHub CLI：
+
+```bash
+UPDATER_VERSION='X.Y.Z'
+UPDATER_ARCH='amd64'
+UPDATER_ARCHIVE="geoflow-updater_${UPDATER_VERSION}_linux_${UPDATER_ARCH}.tar.gz"
+
+gh attestation verify "$UPDATER_ARCHIVE" --repo yaojingang/geoflow-updater
+sha256sum --check checksums.txt --ignore-missing
 ```
 
-先预检，再提交预检结果中的 `plan_sha256`：
+确认所选压缩包的证明验证成功、校验结果为 `OK`，再解压和查看安装脚本。任何校验失败都应先查明原因。
 
-```sh
-sudo scripts/geoflow-deploy.sh update --instance primary --dry-run --json
-sudo scripts/geoflow-deploy.sh update --instance primary --plan-sha256 <plan_sha256>
+```bash
+mkdir geoflow-updater-package
+tar -xzf "$UPDATER_ARCHIVE" -C geoflow-updater-package
+cd geoflow-updater-package
+less packaging/scripts/install.sh
+sudo ./packaging/scripts/install.sh
+sudo geoflow-updater version
+sudo systemctl status geoflow-updater --no-pager
 ```
 
-计划为 `maintenance` 时，在确认维护窗口后加上 `--allow-maintenance`。在线升级要求签名计划明确列出兼容的来源序列，并确认数据库、队列、缓存、存储以及每个迁移步骤可同时运行。默认计划保持维护模式。现有单套部署首次转换为蓝绿布局需要维护窗口。预检失败或计划摘要改变时，重新检查并预检；系统不会自动跳过确认。
+已有 updater 的主机也用这条流程升级工具本身。执行前确认没有正在运行的安装、更新、备份或恢复任务；安装脚本会替换二进制并重启服务。
 
-后台更新中心提供“获取升级计划”，显示目标版本、布局变化和待执行迁移。更新提交会绑定该次预检的摘要，并要求管理员密码（按站点设置）和更新专用授权码。维护模式还要求主动勾选维护窗口。
+## 4. 新服务器：首次安装站点
 
-恢复入口区分应用与数据：
+### 4.1 配置域名入口
 
-```sh
-sudo scripts/geoflow-deploy.sh rollback --application --instance primary
-sudo scripts/geoflow-deploy.sh rollback --data --instance primary --recovery-point <point_id>
+把域名解析到服务器，通过外部 HTTPS 反向代理转发到宿主机入口，默认端口为 `18080`。代理与应用位于同一宿主机时，通常转发到 `http://127.0.0.1:18080`；代理在容器内时，使用它能够访问的宿主机地址。
+
+代理需保留 Host、HTTPS 转发信息，支持 WebSocket 和长连接，避免缓冲流式响应。TLS 证书由外部代理管理；结合防火墙限制 18080 端口来源。
+
+`--url` 使用最终公开地址，只包含协议、主机和可选端口，不带后台路径、查询参数或账号密码。
+
+### 4.2 执行安装
+
+前提：updater 已安装，发布源已有配套签名计划，目标目录不存在或为空。已有业务的目录使用第 5 节的接管流程。
+
+```bash
+sudo geoflow-updater install \
+  --instance primary \
+  --root /opt/geoflow \
+  --url https://geo.example.com
 ```
 
-应用回切保留当前数据，仅在保留版本与当前数据兼容时切换；后台使用更新授权码。数据恢复会恢复指定恢复点中的数据，后台使用恢复专用授权码，并保持最新更新检查点限制。主机 CLI 通过主机权限授权。不要将两种操作当作可互换的恢复方式。
+工具自动生成密钥和随机凭据，准备数据库与存储，拉取签名镜像，执行初始化与升级步骤，启动服务并检查。
 
-发布候选版本时，CI 先以 `deployment/generate-upgrade-plan.py --check` 校验已审阅迁移清单，再把完整计划写入 `releases/<version>/upgrade-plan.json` 的 TUF 签名目标。Schema 3 的维护计划要求 updater 协议至少为 3，在线计划至少为 4。历史 schema 1/2 保留读取兼容；新发布必须包含签名升级计划。
+首次安装中断后，排除原因，用**相同实例、目录和 URL** 重复这条命令。工具按安装记录续接，保留已有密钥和数据；不要先删除目录重新初始化。
 
-新候选版本运行 `planned-acceptance.yml`：原生 amd64、arm64 分别验证镜像与计划一致性、空数据库迁移、首次初始化、固定回填步骤、缓存编译、应用就绪状态和 Nginx 入口切换。审批材料明确标注 `planned-container-contract-and-ingress` 范围；完整已安装主机的升级、恢复点还原及崩溃恢复仍需单独演练。历史 `phase-c-rehearsal.yml` 只接收 schema 2 候选，不能充当 schema 3 的验收证据。
+### 4.3 获取账号
 
-## 运行与恢复边界
+```bash
+sudo cat /opt/geoflow/install-credentials.txt
+```
 
-应用升级、首次初始化、队列及调度进程以 UID 33 读写共享存储。部署器为新目录设置明确权限，运行进程关闭重复权限扫描和自动缓存优化；每个槽位的视图缓存由切流前的升级步骤预热。生产入口优先使用已注入的 APP_KEY，容器继续只读挂载受保护的 `.env.prod`。
+在自己的受控终端查看，按文件中的地址登录，修改初始密码并更新管理员邮箱。文件含明文初始凭据，应按密码材料保管。默认后台前缀为 `/geo_admin`；自定义过前缀的站点以实际配置为准。
 
-稳定入口、PostgreSQL 和 Redis 共享一套；blue、green 各自保存应用配置和编译视图。原站点的 APP_KEY、会话和业务文件延续使用。外部 HTTPS 由现有反向代理提供，入口默认监听主机 18080 端口。首次安装生成的管理员凭据保存在站点目录下 `install-credentials.txt`，仅主机管理员可读。
+继续完成第 6 节授权和第 9 节验收。系统部署完成后，AI 模型密钥、模型选择及业务参数仍需在后台配置。
 
-在线切换先验收候选，再平滑切流。旧队列与调度器完成在途任务后交接，旧请求超时未结束时保留旧槽位并报告需要恢复处理。默认观察 120 秒。当前自动探测覆盖服务进程、入口版本、HTTP、数据库、Redis、存储及业务升级清单；登录延续、真实业务读写、任务副作用、Reverb 跨实例消息和重连需要在对应候选的演练中验证。
+## 5. 已有站点：接管并转换布局
 
-上线前为新旧应用并存预留 CPU、内存和磁盘，并根据实际负载压测确认容量。当前预检验证运行健康与发布兼容性，容量峰值仍需运维确认。在线数据库快照仅覆盖 PostgreSQL 的一致性；完整数据库、Redis、业务文件恢复点在停写维护阶段创建。流量开放后，更新失败不会自动还原整库。
+已有受管实例直接进入第 7 或第 8 节。本节 Compose 命令只适用于**尚未受管的标准单套 Docker 部署**。
 
-`deployment/upgrade-plan.json` 默认使用维护策略，152 个历史迁移文件以 SHA-256 固定。新增迁移后先生成清单并审阅；声明在线版本时需要逐项确认允许来源与数据兼容性，补上对应候选的并发与恢复演练。初次安装中断后，重复相同安装命令会延续原密钥，补齐系统知识与媒体；开放流量后重试仅完成服务激活与检查。
+### 5.1 接管前准备
+
+站点目录应包含 `.env.prod`、`storage/` 和当前 `version.json`。接管要求当前版本信息与签名发布相匹配。若版本不匹配，先按受支持的旧版流程达到可接管版本，不要手改 `version.json` 通过检查。
+
+接管保留配置中的 PostgreSQL、Redis 主版本。支持 PostgreSQL 16、18 和 Redis 7、8，需要确认镜像主版本与实际数据目录一致。数据库大版本迁移需单独安排。
+
+预留维护窗口，停止新增任务，确认待处理、延迟和运行中的队列已排空，并保存部署配置与可恢复备份。旧版 Redis 若未持久化，停止旧容器可能丢失待处理任务。
+
+### 5.2 登记并切换到受管服务
+
+```bash
+sudo geoflow-updater enroll \
+  --instance-id primary \
+  --instance-root /opt/geoflow
+```
+
+首次安装使用 `--instance / --root`，接管使用 `--instance-id / --instance-root`，参数名称不同。建议使用 `/opt` 下的专用站点目录，服务隔离的临时目录或用户主目录可能被拒绝。
+
+在维护窗口按 `enroll` 输出的实际路径完成接管。标准示例如下，两份环境文件都要保留：
+
+```bash
+sudo docker compose \
+  --env-file /opt/geoflow/.env.prod \
+  --env-file /var/lib/geoflow-updater/instances/primary/release.env \
+  -f /var/lib/geoflow-updater/instances/primary/docker-compose.managed.yml \
+  down --remove-orphans
+
+sudo docker compose \
+  --env-file /opt/geoflow/.env.prod \
+  --env-file /var/lib/geoflow-updater/instances/primary/release.env \
+  -f /var/lib/geoflow-updater/instances/primary/docker-compose.managed.yml \
+  up -d --remove-orphans
+```
+
+这一步会停止旧服务，再启动受管服务。完成第 6 节授权后，执行第 9 节验收。
+
+**接管完成后，还需执行一次计划升级转换为蓝绿布局。** 按第 7 或第 8 节获取计划；显示“将迁移到蓝绿部署”时，确认维护窗口再执行。接管命令本身不会完成布局转换。
+
+## 6. 配置后台操作授权
+
+宿主机管理员执行：
+
+```bash
+sudo geoflow-updater authorization-uri --instance primary
+```
+
+把输出的三个 URI 导入受信任管理员的验证器：
+
+| 验证器条目 | 对应后台操作 |
+|---|---|
+| `update` | 检查并安全更新、应用回切 |
+| `backup` | 创建完整备份 |
+| `rollback` | 恢复数据与版本 |
+
+URI 含授权秘密，不要放入工单、聊天记录或公开截图。每次使用与操作对应的新 6 位码，已接受的码不能重复使用。连续输错会触发锁定，先核对条目和验证器时间。
+
+后台默认还要求当前管理员密码，是否显示以站点配置为准。获取计划和运行环境验收无需操作授权码；服务器 CLI 依靠主机管理员权限执行。
+
+## 7. 日常升级：后台操作
+
+1. 用超级管理员打开“系统更新”，默认路径为 `/geo_admin/system-updates`。确认 updater 已连接、授权已配置，当前没有执行中或待恢复操作。
+2. 点击“获取升级计划”。预检可能拉取镜像、启动临时检查容器，需要等待；它不会执行本次迁移或切流。
+3. 核对目标版本、升级策略、布局变化和待执行迁移。
+4. 显示“维护窗口升级”时，安排停机时间，勾选允许暂停服务的维护确认。
+5. 点击“检查并安全更新”，按提示填写管理员密码和 `update` 条目的新授权码。
+6. 查看阶段进度，等待最终状态为“已完成”。生成操作编号只表示任务开始。
+7. 点击“运行环境验收”，并完成第 9 节的业务检查。
+
+后台会把本次预检摘要带入更新请求。提示“升级计划已变化或尚未预检”时，重新获取计划、核对后再提交。
+
+维护期间后台可能暂时无法访问，恢复后重新打开页面查看结果。后台任务由宿主机执行，关闭浏览器页面不会取消任务。
+
+## 8. 日常升级：服务器命令
+
+### 8.1 诊断与预检
+
+```bash
+sudo geoflow-updater doctor --instance primary --json
+sudo geoflow-updater update --instance primary --dry-run --json
+```
+
+宿主机预检最长可运行 25 分钟。重点阅读：
+
+| 字段 | 含义 |
+|---|---|
+| `target_version` | 即将安装的版本 |
+| `source_sequence` / `target_sequence` | 当前与目标发布序列 |
+| `strategy` | 在线或维护升级 |
+| `layout_change` | 是否转换部署布局 |
+| `pending_migrations` | 尚未执行的数据库迁移 |
+| `steps` | 发布计划中的回填、检查和缓存步骤 |
+| `plan_sha256` | 确认执行时提交的预检摘要 |
+
+执行命令使用 `plan_sha256`。`upgrade_plan_sha256` 是应用升级计划文件的摘要，用途不同。
+
+### 8.2 按策略选择一条执行命令
+
+把下面的占位符替换为本次返回的 64 位 `plan_sha256`：
+
+```bash
+GEOFLOW_PLAN_SHA256='替换为本次预检返回的 plan_sha256'
+```
+
+计划为 `online`：
+
+```bash
+sudo geoflow-updater update \
+  --instance primary \
+  --plan-sha256 "$GEOFLOW_PLAN_SHA256" \
+  --json
+```
+
+计划为 `maintenance`，且已进入约定的维护窗口：
+
+```bash
+sudo geoflow-updater update \
+  --instance primary \
+  --plan-sha256 "$GEOFLOW_PLAN_SHA256" \
+  --allow-maintenance \
+  --json
+```
+
+两条命令按策略选一条。`--allow-maintenance` 表示允许维护停机，不能将维护计划改成在线计划。当前没有强制在线升级开关。
+
+CLI 会等待操作结束。长时间操作建议在持久终端会话中运行，保持连接，避免因会话中断触发恢复流程。
+
+### 8.3 源码仓库的统一脚本入口
+
+`scripts/geoflow-deploy.sh` 调用已安装的 updater，共用同一套执行逻辑。日常受管操作不要求服务器保留源码副本。
+
+在 GEOFlow 源码根目录中，维护升级的等价命令为：
+
+```bash
+sudo ./scripts/geoflow-deploy.sh status --instance primary --json
+sudo ./scripts/geoflow-deploy.sh update --instance primary --dry-run --json
+```
+
+核对新预检结果，并更新 `GEOFLOW_PLAN_SHA256` 后执行：
+
+```bash
+sudo ./scripts/geoflow-deploy.sh update \
+  --instance primary \
+  --plan-sha256 "$GEOFLOW_PLAN_SHA256" \
+  --allow-maintenance
+```
+
+在线计划去掉 `--allow-maintenance`。脚本的状态命令叫 `status`，updater 的对应命令叫 `doctor`。
+
+## 9. 自动迁移与升级验收
+
+updater 在候选应用中调用 `geoflow:upgrade`，按签名计划执行检查、应用和验证阶段。当前计划包括：
+
+| 步骤 | 作用 |
+|---|---|
+| 数据库迁移 | 校验文件摘要，只执行尚未应用的迁移 |
+| 托管图片处理 | 执行图片就绪处理并验证 |
+| 系统知识同步 | 更新内置知识和媒体 |
+| 检索数据回填 | 回填检索数据并验证 |
+| 安全检查 | 检查升级后的安全基线 |
+| 缓存预热 | 编译候选版本的配置、路由和视图缓存 |
+
+系统保存阶段与步骤记录，重试结合记录和实际状态继续。日常升级直接使用 updater，无需另行执行 `git pull`、`composer install`、前端构建或手工 `migrate`。
+
+候选检查通过后执行入口切换、后台任务交接和旧请求排空。默认健康观察 120 秒，整个升级还包括下载、迁移和排空时间；旧请求排空超时会保留旧槽位并报告待恢复状态。
+
+完成后检查：
+
+```bash
+sudo geoflow-updater doctor --instance primary --json
+sudo geoflow-updater verify --instance primary --json
+curl --fail --show-error https://geo.example.com/up
+```
+
+确认最终操作状态为 `succeeded`，实例版本符合目标，蓝绿实例的 `layout` 为 `blue-green`、`active_slot` 为 blue 或 green，健康检查无未处理的失败。
+
+自动验收覆盖服务进程、入口版本、HTTP、数据库、Redis、存储和业务升级清单。继续通过真实域名检查：
+
+- 首页、已有文章、图片和静态资源加载正常。
+- 已登录会话可继续使用，新后台登录正常。
+- 保存一条测试内容，确认可读写。
+- 执行一项可控的小任务，确认结果完成且没有重复。
+- 使用实时消息或流式输出页面，确认连接与重连正常。
+
+## 10. 备份与恢复
+
+### 10.1 创建完整备份
+
+**完整备份会暂停服务和写入，需要维护窗口。** 后台选择“创建完整备份”，使用 `backup` 授权码；服务器命令如下：
+
+```bash
+sudo geoflow-updater backup --instance primary --json
+sudo geoflow-updater recovery-points --instance primary
+```
+
+恢复点包含 PostgreSQL、完整业务存储、停写后的 Redis 数据、环境配置和受管部署文件。默认保留 5 个恢复点，其中会保护最近一次更新前检查点。
+
+在线升级期间的数据库快照仅覆盖 PostgreSQL，无法替代包含业务文件和 Redis 的完整恢复点。另行安排完整备份时，也要计入维护时间。
+
+### 10.2 应用回切：保留当前数据
+
+适用于**已成功完成的兼容在线蓝绿升级**，且保留的上一应用版本仍与当前部署对应。维护升级、任意历史版本和待恢复状态不能直接套用此入口。
+
+后台点击“应用回切”，使用 `update` 授权码；服务器执行：
+
+```bash
+sudo geoflow-updater switch-back --instance primary --json
+```
+
+源码脚本的等价命令：
+
+```bash
+sudo ./scripts/geoflow-deploy.sh rollback --application --instance primary
+```
+
+该操作切回保留应用，继续使用当前数据库和业务文件，升级后的新写入仍保留。
+
+### 10.3 数据恢复：回到完整恢复点
+
+适用于需要同时恢复数据、配置和应用版本的情况。**恢复点之后的新增或修改数据会被覆盖**，先确认恢复时间、业务影响和维护窗口。
+
+```bash
+sudo geoflow-updater recovery-points --instance primary
+```
+
+选择实际返回的恢复点 ID：
+
+```bash
+GEOFLOW_RECOVERY_POINT='替换为已核对的恢复点 ID'
+sudo geoflow-updater rollback \
+  --instance primary \
+  --recovery-point "$GEOFLOW_RECOVERY_POINT" \
+  --json
+```
+
+源码脚本的等价命令：
+
+```bash
+sudo ./scripts/geoflow-deploy.sh rollback --data \
+  --instance primary \
+  --recovery-point "$GEOFLOW_RECOVERY_POINT"
+```
+
+后台“恢复数据与版本”使用 `rollback` 授权码，只允许最近一次更新前检查点。主机 CLI 可选择其他经过校验的完整恢复点。恢复后重新完成第 9 节检查。
+
+## 11. 常见问题与中断处理
+
+| 现象 | 处理方式 |
+|---|---|
+| 不认识 `install` 或 `--dry-run` | 查看 updater 版本，确认正式包包含本轮能力 |
+| `signed release has no upgrade plan` | 发布源仍是旧发布，需配套签名发布；不要篡改计划 |
+| 接管版本不匹配 | 按受支持的旧版流程达到可接管版本后再登记 |
+| 后台“未连接” | 检查服务、受管容器的 socket 与实例 token 挂载；不要挂载 Docker socket 给网站 |
+| 后台缺少宿主机路径 | `GEOFLOW_UPDATER_HOST_ROOT` 用于生成接管命令，应填真实主机目录；填路径无法代替服务安装与连接 |
+| 计划摘要变化 | 重新预检，核对后再提交 |
+| 签名、有效期或镜像摘要失败 | 检查主机时间、网络及发布源，保留校验机制 |
+| 已有操作运行 | 等待当前操作完成，避免重复提交 |
+| 维护计划未获允许 | 安排维护窗口，再使用维护勾选项或参数 |
+| `rolled_back` / “已自动回滚” | 本次升级失败，已执行恢复；确认旧版本健康，再排查原因 |
+| `recovery_required` / “需要恢复” | 自动处理未完成，保留状态并检查失败阶段、日志与恢复点 |
+| 应用回切被拒绝 | 核对第 10.2 节条件，必要时评估完整数据恢复 |
+
+常用诊断命令：
+
+```bash
+sudo geoflow-updater doctor --instance primary --json
+sudo systemctl status geoflow-updater --no-pager
+sudo journalctl -u geoflow-updater -n 200 --no-pager
+sudo geoflow-updater recovery-points --instance primary
+```
+
+updater 启动及后台检查会根据持久化记录处理被中断的操作。不要删除部署日志、锁文件、槽位或数据卷。服务已停止时，先排查原因，再启动服务观察恢复结果；正在工作的服务不要反复重启。
+
+维护升级在重新开放流量前具备完整检查点恢复流程。在线失败优先恢复应用并保留新写入；流量开放后不会自动将整库恢复到旧时间点。需要恢复业务数据时，单独执行数据恢复。
+
+共享诊断信息前去掉密码、token、授权 URI 和业务隐私，保留操作编号、版本、失败阶段与脱敏错误。
+
+## 12. 维护者参考
+
+普通站点管理员按上述流程选择和确认计划。在线兼容性由发布者声明，并通过对应候选版本的验证。
+
+- `deployment/upgrade-plan.json` 固定迁移文件摘要。新增迁移后更新并审阅清单，再运行 `python3 deployment/generate-upgrade-plan.py --check`。
+- schema 3 发布清单将完整计划纳入 TUF 签名目标 `releases/<version>/upgrade-plan.json`。维护计划要求协议至少为 3，在线计划至少为 4；应用计划与预检摘要各自的 schema 版本需分别理解。
+- `planned-acceptance.yml` 覆盖原生 amd64、arm64 候选应用和真实入口契约，包括镜像与计划一致性、空库迁移、初始化、回填、缓存和就绪检查。审批范围为 `planned-container-contract-and-ingress`。
+- 完整已安装主机升级、恢复点还原、崩溃恢复、登录、任务副作用及 Reverb 行为仍需对应候选演练。历史 `phase-c-rehearsal.yml` 仅接收 schema 2 候选。
+- 应用和升级步骤使用 UID 33。运行进程关闭重复权限扫描和自动缓存优化，槽位视图缓存由切流前步骤预热。原 APP_KEY、业务存储和会话身份延续使用，受保护的 `.env.prod` 只读挂载。
+- 部署状态位于 `/var/lib/geoflow-updater`，完整恢复点位于 `/var/backups/geoflow-updater`。这些目录由 updater 管理，站点 `.env.prod` 和 `storage/` 需一并纳入运维管理。
+
+相关文档：[部署设计](superpowers/plans/2026-09-08-blue-green-deployment-design.md)、[实现验证记录](reports/2026-09-08-blue-green-implementation-validation.md)、[旧版 3.0 升级指南](deployment/GEOFLOW_V3_UPGRADE.md)、[updater 蓝绿部署说明](https://github.com/yaojingang/geoflow-updater/blob/main/docs/blue-green-deployment.md)、[updater 发布操作手册](https://github.com/yaojingang/geoflow-updater/blob/main/docs/release-runbook.md)。

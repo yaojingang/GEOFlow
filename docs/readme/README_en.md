@@ -6,7 +6,7 @@
 
 GEOFlow connects trusted knowledge, AI content production, quality gates, human review, multi-site delivery, and analytics in one operating workflow. Brand, growth, and content teams can use it to run an enterprise website, a GEO content channel, an industry source site, or an internal content operations platform while keeping source material, decisions, publishing results, and operational data in one system.
 
-[Quick start](#quick-start) · [Interface preview](#interface-preview) · [Core capabilities](#geoflow-30-core-capabilities) · [Deployment guide](../deployment/DEPLOYMENT.md) · [Changelog](../CHANGELOG_en.md) · [Website](https://www.geoflow.me)
+[Quick start](#quick-start) · [Interface preview](#interface-preview) · [Core capabilities](#geoflow-30-core-capabilities) · [Deployment guide](../deployment/DEPLOYMENT.md) · [Blue/green deployment](../blue-green-deployment-usage_en.md) · [Changelog](../CHANGELOG_en.md) · [Website](https://www.geoflow.me)
 
 [![Source version](https://img.shields.io/badge/source-3.0.0-2563eb)](../../version.json)
 [![Latest release](https://img.shields.io/github/v/release/yaojingang/GEOFlow?display_name=tag)](https://github.com/yaojingang/GEOFlow/releases/latest)
@@ -174,6 +174,8 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web que
 ```
 
 See [`docs/deployment/DEPLOYMENT.md`](../deployment/DEPLOYMENT.md) for production setup, health checks, reverse proxy configuration, and recovery.
+
+For signed managed installation, enrollment, automatic migrations, online or maintenance updates, and recovery, see the [blue/green deployment tutorial](../blue-green-deployment-usage_en.md), also available on the [Wiki](https://github.com/yaojingang/GEOFlow/wiki/Blue-Green-Deployment-and-Automatic-Migrations). Check its release prerequisites before using the new workflow.
 
 ### Upgrading from 2.x
 
