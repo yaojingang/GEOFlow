@@ -15,7 +15,7 @@ GEOFlowは、信頼できるナレッジ、AIコンテンツ制作、品質ゲ�
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 
-> **バージョンについて：** 現在のソースバージョンは `3.0.0` です。公開済みバージョンは [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) を基準に確認してください。本番環境では公開済みリリースを使用するか、レビュー済みコミットに固定してください。
+> **バージョンについて：** 現在は `3.0.x` 系列です。`main` ブランチでは開発が続いており、未リリースの変更が含まれる場合があります。正確なソースバージョンは [`version.json`](../../version.json)、正式リリースとアップグレード手順は [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) を参照してください。本番環境では安定版リリースを使用するか、レビュー済みコミットに固定してください。
 
 ---
 

@@ -15,7 +15,7 @@ GEOFlow объединяет проверенные знания, создани
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 
-> **Статус версии:** Текущая версия исходного кода: `3.0.0`. Опубликованные версии перечислены на странице [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases). Для рабочего окружения используйте опубликованный выпуск или зафиксируйте проверенный коммит.
+> **Статус версии:** Текущая серия GEOFlow: `3.0.x`. Ветка `main` активно развивается и может содержать изменения, ещё не вошедшие в релиз. Точная версия исходного кода указана в [`version.json`](../../version.json), а официальные релизы и инструкции по обновлению доступны в [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases). Для рабочего окружения используйте стабильный релиз или зафиксируйте проверенный коммит.
 
 ---
 
