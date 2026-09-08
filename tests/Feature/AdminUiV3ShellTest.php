@@ -198,7 +198,7 @@ class AdminUiV3ShellTest extends TestCase
             ->assertSee('data-ai-form', false)
             ->assertSee('data-ai-suggestion', false)
             ->assertSee(__('admin.ai_workspace.suggestions'))
-            ->assertSee(__('admin.ai_workspace.local_help_available'))
+            ->assertSee(__('admin.ai_workspace.connection_runtime_disabled'))
             ->assertSee('data-runtime-enabled="false"', false)
             ->assertDontSee('data-ai-runs', false)
             ->assertDontSee('data-capability-carousel', false)

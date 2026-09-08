@@ -34,6 +34,16 @@ final class RenderAiWorkspaceJsonErrors
         }
 
         if ($exception instanceof HttpExceptionInterface) {
+            if ($exception->getStatusCode() === 429) {
+                $seconds = max(1, (int) ($exception->getHeaders()['Retry-After'] ?? 60));
+
+                return new JsonResponse([
+                    'message' => __('ai-task.rate_limited', ['seconds' => $seconds]),
+                    'code' => 'ai_workspace_rate_limited',
+                    'retry_after' => $seconds,
+                ], 429, $exception->getHeaders());
+            }
+
             return new JsonResponse([
                 'message' => $exception->getMessage() !== '' ? $exception->getMessage() : Response::$statusTexts[$exception->getStatusCode()],
                 'code' => 'http_error',

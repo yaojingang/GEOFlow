@@ -26,6 +26,7 @@ use App\Services\Admin\AdminAiSettingsService;
 use App\Services\Admin\AdminAiSystemSettingsService;
 use App\Services\Admin\GovernanceAiModelUsageSession;
 use App\Services\Admin\GovernanceAiModelUsageSessionFactory;
+use App\Services\AiWorkspace\AiWorkspaceConnectionStatus;
 use App\Services\AiWorkspace\AiWorkspaceModelCapabilityProbe;
 use App\Services\GeoFlow\AiModelTestDiagnosisService;
 use App\Services\GeoFlow\AiUsageQuotaService;
@@ -73,6 +74,7 @@ class AiModelController extends Controller
         private readonly AiUsageQuotaService $usageQuota,
         private readonly AiModelTestDiagnosisService $modelTestDiagnosis,
         private readonly AiWorkspaceModelCapabilityProbe $aiWorkspaceModelProbe,
+        private readonly AiWorkspaceConnectionStatus $workspaceConnectionStatus,
         private readonly ArticleAiQualityInvalidationService $qualityInvalidationService,
         private readonly AdminAiModelAccessResolver $accessResolver,
         private readonly AdminAiActorContextService $actorContextService,
@@ -442,7 +444,8 @@ class AiModelController extends Controller
             $this->testBoundaryHook->beforeRevalidation($snapshot);
             $actorIsSuperAdmin = $this->testPreparation->revalidateImmediatelyBeforeOutbound($snapshot);
 
-            if ($modelType === 'chat' && $actorIsSuperAdmin) {
+            if ($modelType === 'chat' && ($actorIsSuperAdmin || $request->boolean('workspace_check'))) {
+                $this->testPreparation->revalidateImmediatelyBeforeOutbound($snapshot, workspaceCheck: true);
                 $this->safeHttp->resolveTarget($endpoint);
                 $probeAttempt = $this->aiWorkspaceModelProbe->start($model, $usageSession);
                 $outboundAttempted = $usageSession->hasStartedProviderAttempt();
@@ -452,7 +455,7 @@ class AiModelController extends Controller
                 try {
                     if ($probeAttempt->requiresPlainTextFallback()) {
                         $this->testBoundaryHook->beforeRevalidation($snapshot);
-                        $this->testPreparation->revalidateImmediatelyBeforeOutbound($snapshot);
+                        $this->testPreparation->revalidateImmediatelyBeforeOutbound($snapshot, workspaceCheck: true);
                         $this->safeHttp->resolveTarget($snapshot->endpoint);
                     }
                     $probeResult = $this->aiWorkspaceModelProbe->finish($model, $probeAttempt, $usageSession);
@@ -482,6 +485,10 @@ class AiModelController extends Controller
                 }
                 $reservation = null;
 
+                $workspaceConnection = $request->boolean('workspace_check')
+                    ? $this->workspaceConnectionStatus->forAdmin(Admin::query()->findOrFail($snapshot->adminId))
+                    : null;
+
                 return $this->modelTestResponse(
                     true,
                     __('admin.ai_models.test_success', ['type' => 'Chat']),
@@ -490,7 +497,8 @@ class AiModelController extends Controller
                     (string) $result['endpoint'],
                     (int) $result['http_status'],
                     [
-                        'workspace_ready' => true,
+                        'workspace_ready' => $workspaceConnection['ready'] ?? true,
+                        'workspace_connection' => $workspaceConnection,
                         'readiness_status' => (string) $result['readiness_status'],
                         'readiness_profile' => (array) $result['profile'],
                         'readiness_expires_at' => (string) $result['expires_at'],

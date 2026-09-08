@@ -10,6 +10,9 @@ use App\Models\Admin;
 use App\Models\AiConversationMessage;
 use App\Services\AiWorkspace\AdminHelpAnswerStream;
 use App\Services\AiWorkspace\AiConversationRepository;
+use App\Services\AiWorkspace\TaskCreationAnswerStream;
+use App\Services\AiWorkspace\TaskCreationCatalog;
+use App\Services\AiWorkspace\TaskCreationFlow;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -19,6 +22,9 @@ final class AiWorkspaceApiController extends Controller
     public function __construct(
         private readonly AiConversationRepository $conversations,
         private readonly AdminHelpAnswerStream $answers,
+        private readonly TaskCreationFlow $taskFlow,
+        private readonly TaskCreationCatalog $taskCatalog,
+        private readonly TaskCreationAnswerStream $taskAnswers,
     ) {}
 
     public function conversations(Request $request): JsonResponse
@@ -83,6 +89,9 @@ final class AiWorkspaceApiController extends Controller
                 'meta' => $message->meta ?? [],
                 'created_at' => $message->created_at?->toISOString(),
             ])->all(),
+            'task_card' => is_array($model->task_draft)
+                ? $this->taskFlow->card($model->task_draft, $this->taskCatalog->forAdmin($this->admin($request)))
+                : null,
             'message_page' => [
                 'has_more' => $hasMoreMessages,
                 'next_cursor' => $hasMoreMessages ? (string) $messagePage->last()?->id : null,
@@ -120,7 +129,12 @@ final class AiWorkspaceApiController extends Controller
         $model = $this->conversations->findForAdmin($admin, $conversation);
         $this->audit($request, 'message.ask', ['conversation_id' => $model->id]);
 
-        return $this->answers->respond($admin, $model, (string) $request->validated('prompt'));
+        $prompt = (string) $request->validated('prompt');
+        if ($this->taskFlow->handles($model, $prompt, $request->validated())) {
+            return $this->taskAnswers->respond($admin, $model, $prompt, $request->validated());
+        }
+
+        return $this->answers->respond($admin, $model, $prompt);
     }
 
     private function admin(Request $request): Admin
