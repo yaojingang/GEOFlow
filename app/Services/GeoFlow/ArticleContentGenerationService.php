@@ -11,6 +11,8 @@ use Closure;
 use Laravel\Ai\Responses\AgentResponse;
 use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\StreamableAgentResponse;
+use Laravel\Ai\Streaming\Events\TextDelta;
+use Laravel\Ai\Streaming\Events\TextEnd;
 use RuntimeException;
 use Throwable;
 
@@ -43,7 +45,13 @@ final class ArticleContentGenerationService
             );
         }
 
-        if (OpenAiRuntimeProvider::normalizeGeneratedText((string) ($response->text ?? '')) === '') {
+        $normalized = OpenAiRuntimeProvider::normalizeGeneratedText($response->text);
+        $content = ArticleReasoningFilter::clean($normalized);
+        if ($content !== $normalized) {
+            $response->text = $content;
+        }
+
+        if (trim($content) === '') {
             $this->releaseDailyUsage($reservation);
 
             return $response;
@@ -141,9 +149,29 @@ final class ArticleContentGenerationService
             $upstream->invocationId,
             function () use ($upstream, $reservation, $providerUrl): iterable {
                 $streamEnded = false;
+                $filters = [];
+                $lastDeltas = [];
 
                 try {
                     foreach ($upstream as $event) {
+                        if ($event instanceof TextDelta) {
+                            $filter = $filters[$event->messageId] ??= new ArticleReasoningFilter;
+                            $lastDeltas[$event->messageId] = $event;
+                            $event = clone $event;
+                            $event->delta = $filter->push($event->delta);
+                            if ($event->delta === '') {
+                                continue;
+                            }
+                        } elseif ($event instanceof TextEnd && isset($filters[$event->messageId])) {
+                            $remaining = $filters[$event->messageId]->finish();
+                            if ($remaining !== '') {
+                                $lastDelta = clone $lastDeltas[$event->messageId];
+                                $lastDelta->delta = $remaining;
+                                yield $lastDelta;
+                            }
+                            unset($filters[$event->messageId], $lastDeltas[$event->messageId]);
+                        }
+
                         yield $event;
                     }
                     $streamEnded = true;
@@ -239,9 +267,12 @@ final class ArticleContentGenerationService
 
         $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, $modelId);
         $providerName = OpenAiRuntimeProvider::registerProvider($registrySlot, $driver, $providerUrl, $apiKey);
+        $host = strtolower((string) parse_url($providerUrl, PHP_URL_HOST));
+        $separateReasoning = in_array($host, ['api.minimaxi.com', 'api.minimax.io', 'api.minimax.cn'], true)
+            && str_starts_with(strtolower($modelId), 'minimax-m');
 
         return [
-            new MarkdownContentWriterAgent(maxTokens: $this->maxTokens($aiModel)),
+            new MarkdownContentWriterAgent(maxTokens: $this->maxTokens($aiModel), separateReasoning: $separateReasoning),
             $providerName,
             $modelId,
             $providerUrl,
