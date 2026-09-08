@@ -7,8 +7,12 @@ use App\Data\Ai\AiExecutionContext;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiModelUsageEvent;
+use App\Models\Article;
+use App\Models\Category;
 use App\Models\Task;
 use App\Models\TaskRun;
+use App\Models\Title;
+use App\Models\TitleLibrary;
 use App\Services\Admin\AdminAiModelMutationService;
 use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\GeoFlow\AiExecutionContextFactory;
@@ -23,6 +27,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Laravel\Ai\Attributes\Timeout;
 use Laravel\Ai\Enums\Lab;
+use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionProperty;
@@ -198,6 +203,128 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
         $content = $this->generateContent($this->createChatModel(), '写一篇文章。');
 
         $this->assertSame('结论。Vitamin K2 与 K1 签证保留。', $content);
+    }
+
+    #[DataProvider('reasoningResponses')]
+    public function test_generate_content_removes_only_leading_reasoning(string $raw, string $expected): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://ai.test/v1/chat/completions' => Http::response($this->completion($raw))]);
+        $model = $this->createChatModel();
+
+        $content = $this->generateContent($model, '写一篇榜单文章。');
+
+        $this->assertSame($expected, $content);
+        $service = app(WorkerExecutionService::class);
+        $excerpt = new ReflectionMethod($service, 'buildExcerpt');
+        $this->assertSame($excerpt->invoke($service, $expected), $excerpt->invoke($service, $content));
+        $this->assertSame(1, (int) $model->fresh()->total_used);
+        $this->assertSame(20, AiModelUsageEvent::query()->sole()->output_tokens);
+    }
+
+    public static function reasoningResponses(): array
+    {
+        $body = "## 示例产品 榜单\n\n中文文章正文。";
+        $thought = 'Let me plan a product ranking article before writing the final answer.';
+        $raw = '<think>'.$thought."</think>\n\n".$body;
+
+        return [
+            'inline reasoning' => [$raw, $body],
+            'multiple blocks and whitespace' => [" \n<THINK>Analyze.</THINK>\n<think>Again.</think>\n".$body, $body],
+            'tag attributes' => ['<think mode="analysis">Analyze.</think>'.$body, $body],
+            'SSE text fallback' => ['data: '.json_encode(['choices' => [['delta' => ['content' => $raw]]]])."\n\ndata: [DONE]", $body],
+            'plain article' => [$body, $body],
+            'literal tags in article' => ["说明：<think>这是引用示例。</think>\n\n```html\n<think>示例</think>\n```", "说明：<think>这是引用示例。</think>\n\n```html\n<think>示例</think>\n```"],
+            'ordinary HTML' => ['<div>中文正文</div>', '<div>中文正文</div>'],
+            'similar tag' => ['<thinking>中文正文</thinking>', '<thinking>中文正文</thinking>'],
+            'short literal' => ['<', '<'],
+            'partial ordinary tag' => ['<th', '<th'],
+        ];
+    }
+
+    public function test_worker_saves_clean_article_excerpt_and_meta_description(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://ai.test/v1/chat/completions' => Http::response($this->completion(
+            "<think>Let me plan the article before writing the final answer.</think>\n\n## 示例产品 榜单\n\n中文正文。",
+        ))]);
+        $model = $this->createChatModel();
+        $context = $this->executionContextForModel($model, 'worker-reasoning-persistence');
+        $library = TitleLibrary::query()->create(['name' => '榜单标题库']);
+        Title::query()->create(['library_id' => $library->id, 'title' => '示例产品 榜单', 'keyword' => '示例产品']);
+        Category::query()->create(['name' => '默认分类', 'slug' => 'reasoning-test-category']);
+        Task::query()->findOrFail($context->sourceId)->update([
+            'title_library_id' => $library->id,
+            'draft_limit' => 10,
+            'article_limit' => 10,
+        ]);
+
+        $result = app(WorkerExecutionService::class)->executeTask($context->sourceId, $context);
+
+        $article = Article::query()->findOrFail($result['article_id']);
+        $this->assertSame("## 示例产品 榜单\n\n中文正文。", $article->content);
+        $this->assertSame('示例产品 榜单 中文正文。', $article->excerpt);
+        $this->assertSame('示例产品 榜单 中文正文。', $article->meta_description);
+    }
+
+    #[DataProvider('reasoningOnlyResponses')]
+    public function test_generate_content_rejects_reasoning_without_an_article(string $raw): void
+    {
+        Http::fake(['https://ai.test/v1/chat/completions' => Http::response($this->completion($raw))]);
+        $model = $this->createChatModel(['daily_limit' => 1]);
+
+        try {
+            $this->generateContent($model, '写一篇文章。');
+            $this->fail('Expected reasoning-only output to fail.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('AI返回空正文', $exception->getMessage());
+        }
+
+        $this->assertSame(0, (int) $model->fresh()->used_today);
+        $this->assertSame(0, (int) $model->fresh()->total_used);
+    }
+
+    public static function reasoningOnlyResponses(): array
+    {
+        return [
+            'closed' => ['<think>Analyze only.</think>'],
+            'unclosed' => ['<think>Analyze without a final answer.'],
+            'incomplete opening tag' => ['<think'],
+        ];
+    }
+
+    #[DataProvider('miniMaxEndpoints')]
+    public function test_reasoning_split_is_limited_to_official_minimax_article_requests(string $url, string $modelId, bool $split): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['*' => Http::response($this->completion('中文正文。'))]);
+        $model = $this->createChatModel(['api_url' => $url, 'model_id' => $modelId, 'max_tokens' => 8192]);
+
+        $this->assertSame('中文正文。', $this->generateContent($model, '写一篇文章。'));
+
+        Http::assertSent(function ($request) use ($split): bool {
+            $this->assertSame(8192, $request['max_tokens']);
+            if ($split) {
+                $this->assertTrue($request['reasoning_split'] ?? false);
+            } else {
+                $this->assertArrayNotHasKey('reasoning_split', $request->data());
+            }
+
+            return true;
+        });
+        Http::assertSentCount(1);
+    }
+
+    public static function miniMaxEndpoints(): array
+    {
+        return [
+            'China' => ['https://api.minimaxi.com/v1', 'MiniMax-M2.5', true],
+            'international' => ['https://api.minimax.io/v1', 'MiniMax-M2.1', true],
+            'China current' => ['https://api.minimax.cn/v1', 'MiniMax-M3', true],
+            'proxy' => ['https://ai.test/v1', 'MiniMax-M2.5', false],
+            'lookalike domain' => ['https://api.minimaxi.com.example.test/v1', 'MiniMax-M2.5', false],
+            'other model' => ['https://ai.test/v1', 'test-chat-model', false],
+        ];
     }
 
     public function test_generate_content_releases_usage_for_an_empty_response(): void

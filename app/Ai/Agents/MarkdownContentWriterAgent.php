@@ -38,6 +38,7 @@ class MarkdownContentWriterAgent implements Agent, Conversational, HasProviderOp
         public iterable $messages = [],
         public iterable $tools = [],
         public ?int $maxTokens = null,
+        public bool $separateReasoning = false,
     ) {}
 
     /**
@@ -71,16 +72,19 @@ class MarkdownContentWriterAgent implements Agent, Conversational, HasProviderOp
      */
     public function providerOptions(Lab|string $provider): array
     {
+        $providerKey = $provider instanceof Lab ? $provider->value : $provider;
+        $options = $this->separateReasoning
+            ? ['reasoning_split' => true]
+            : [];
+
         if (is_null($this->maxTokens) || $this->maxTokens <= 0) {
-            return [];
+            return $options;
         }
 
-        $providerKey = $provider instanceof Lab ? $provider->value : $provider;
-
-        return match ($providerKey) {
+        return array_merge($options, match ($providerKey) {
             'gemini' => ['maxOutputTokens' => $this->maxTokens],
             'openai' => ['max_output_tokens' => $this->maxTokens],
             default => ['max_tokens' => $this->maxTokens],
-        };
+        });
     }
 }
