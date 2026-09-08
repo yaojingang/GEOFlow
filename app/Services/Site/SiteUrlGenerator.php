@@ -5,6 +5,7 @@ namespace App\Services\Site;
 use App\Models\Article;
 use App\Models\Category;
 use App\Support\Site\CurrentSite;
+use App\Support\Site\SiteThemePreviewContext;
 
 final class SiteUrlGenerator
 {
@@ -53,6 +54,11 @@ final class SiteUrlGenerator
 
     public function url(string $path): string
     {
+        $previewUrl = app(SiteThemePreviewContext::class)->urlForPath($path);
+        if ($previewUrl !== null) {
+            return $previewUrl;
+        }
+
         return rtrim($this->currentSite->baseUrl(), '/').'/'.ltrim($path, '/');
     }
 }

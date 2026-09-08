@@ -10,6 +10,7 @@ use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\ArticleStickyAdPicker;
 use App\Support\Site\ArticleTextAdPicker;
 use App\Support\Site\SiteSettingsBag;
+use App\Support\Site\SiteThemePreviewContext;
 use App\Support\Site\SiteThemeViewResolver;
 use Illuminate\View\View;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -35,8 +36,10 @@ class ArticleController extends Controller
             throw new NotFoundHttpException(__('site.article_not_found'));
         }
 
-        $article->increment('view_count');
-        $article->refresh();
+        if (! app(SiteThemePreviewContext::class)->isActive()) {
+            $article->increment('view_count');
+            $article->refresh();
+        }
 
         $map = SiteSettingsBag::all();
         $siteTitle = (string) ($map['site_name'] ?? config('geoflow.site_name', config('app.name')));

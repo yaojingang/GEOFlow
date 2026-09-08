@@ -10,14 +10,10 @@ class SiteThemeCatalog
     public function all(): array
     {
         $themesRoot = resource_path('views/theme');
-        if (! is_dir($themesRoot)) {
-            return [];
-        }
-
         $themes = [];
-        $entries = scandir($themesRoot);
+        $entries = is_dir($themesRoot) ? scandir($themesRoot) : [];
         if (! is_array($entries)) {
-            return [];
+            $entries = [];
         }
 
         foreach ($entries as $entry) {
@@ -68,6 +64,22 @@ class SiteThemeCatalog
             ];
         }
 
+        $builtinIds = array_column($themes, 'id');
+        foreach ($themes as &$theme) {
+            $manifest = json_decode((string) @file_get_contents($themesRoot.'/'.$theme['id'].'/manifest.json'), true);
+            $theme['source'] = 'builtin';
+            $theme['distribution'] = is_array($manifest) ? (array) ($manifest['distribution'] ?? []) : [];
+            $theme['can_export'] = is_array($manifest) && $theme['id'] !== 'default';
+        }
+        unset($theme);
+        foreach (app(InstalledSiteThemeRepository::class)->all() as $theme) {
+            if (! in_array($theme['id'], $builtinIds, true)) {
+                $theme['distribution'] = (array) ($theme['manifest']['distribution'] ?? []);
+                $theme['can_export'] = true;
+                $themes[] = $theme;
+            }
+        }
+
         usort($themes, static fn (array $a, array $b): int => strcmp((string) $a['name'], (string) $b['name']));
 
         return $themes;
@@ -93,7 +105,8 @@ class SiteThemeCatalog
 
         return array_values(array_filter(
             $this->all(),
-            static fn (array $theme): bool => in_array((string) $theme['id'], $certifiedIds, true)
+            static fn (array $theme): bool => ($theme['source'] ?? 'builtin') === 'builtin'
+                && in_array((string) $theme['id'], $certifiedIds, true)
         ));
     }
 

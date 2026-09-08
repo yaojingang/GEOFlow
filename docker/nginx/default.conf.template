@@ -51,16 +51,27 @@ server {
         expires 1y;
         access_log off;
         add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header Access-Control-Allow-Origin "*";
         add_header X-Content-Type-Options nosniff always;
         add_header X-Frame-Options SAMEORIGIN always;
         add_header Referrer-Policy strict-origin-when-cross-origin always;
         try_files $uri =404;
     }
 
+    location ^~ /themes/ {
+        if ($uri !~* "^/themes/[A-Za-z0-9_-]+/.+[.](css|js|jpg|jpeg|gif|png|svg|ico|webp|avif|ttf|otf|woff|woff2)$") { return 404; }
+        if ($uri ~ "(?:^|/)[.]") { return 404; }
+        access_log off;
+        add_header X-Content-Type-Options nosniff always;
+        add_header Access-Control-Allow-Origin "*";
+        try_files $uri /index.php?$query_string;
+    }
+
     location ~* \.(?:css|js|jpg|jpeg|gif|png|svg|ico|webp|avif|ttf|otf|woff|woff2)$ {
         expires 5m;
         access_log off;
         add_header Cache-Control "public, max-age=300";
+        add_header Access-Control-Allow-Origin "*";
         add_header X-Content-Type-Options nosniff always;
         add_header X-Frame-Options SAMEORIGIN always;
         add_header Referrer-Policy strict-origin-when-cross-origin always;

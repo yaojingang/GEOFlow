@@ -180,6 +180,15 @@ return [
     'theme_replication_package_max_total_bytes' => max(1, (int) env('GEOFLOW_THEME_REPLICATION_PACKAGE_MAX_TOTAL_BYTES', 25 * 1024 * 1024)),
     'theme_replication_package_lock_timeout_milliseconds' => max(1, (int) env('GEOFLOW_THEME_REPLICATION_PACKAGE_LOCK_TIMEOUT_MS', 5000)),
 
+    'theme_packages' => [
+        'max_archive_bytes' => 10 * 1024 * 1024,
+        'max_files' => 500,
+        'max_file_bytes' => 5 * 1024 * 1024,
+        'max_total_bytes' => 25 * 1024 * 1024,
+        'ttl_minutes' => 60,
+        'lock_timeout_milliseconds' => 5000,
+    ],
+
     // 前台列表每页条数
     'items_per_page' => (int) env('GEOFLOW_ITEMS_PER_PAGE', 12),
     // 后台列表每页条数

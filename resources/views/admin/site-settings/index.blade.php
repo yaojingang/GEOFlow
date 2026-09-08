@@ -763,6 +763,14 @@
                     </div>
                     @endif
 
+                    @if(auth('admin')->user()?->canManageProtectedWorkflows())
+                        <div class="flex flex-wrap items-center justify-between gap-3 border-y border-gray-200 py-4" data-theme-package-actions>
+                            <p class="text-sm text-gray-600">{{ __('admin.theme_packages.entry_hint') }}</p>
+                            <a href="{{ route('admin.site-settings.theme-packages.imports.create') }}" class="inline-flex min-h-11 items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 active:scale-[.98]">
+                                <i data-lucide="upload" class="h-4 w-4" aria-hidden="true"></i>{{ __('admin.theme_packages.import_title') }}
+                            </a>
+                        </div>
+                    @endif
                     <div class="space-y-4">
                         <label class="flex items-start gap-4 rounded-2xl border border-gray-200 bg-gray-50/70 p-4">
                             <input type="radio" name="active_theme" value="" class="mt-1 text-blue-600 focus:ring-blue-500" @checked($settings['active_theme'] === '')>
@@ -774,7 +782,7 @@
 
                         @foreach ($availableThemes as $themeOption)
                             <label class="flex items-start gap-4 rounded-2xl border border-gray-200 bg-white p-4">
-                                <input type="radio" name="active_theme" value="{{ $themeOption['id'] }}" class="mt-1 text-blue-600 focus:ring-blue-500" @checked($settings['active_theme'] === $themeOption['id'])>
+                                <input type="radio" name="active_theme" value="{{ $themeOption['id'] }}" class="mt-1 text-blue-600 focus:ring-blue-500" @checked($settings['active_theme'] === $themeOption['id']) @disabled(($themeOption['source'] ?? '') === 'installed' && !auth('admin')->user()?->canManageProtectedWorkflows())>
                                 <div class="min-w-0 flex-1">
                                     <div class="flex flex-wrap items-center gap-2">
                                         <div class="text-sm font-semibold text-gray-900">{{ $themeOption['name'] }}</div>
@@ -784,16 +792,30 @@
                                         @if ($settings['active_theme'] === $themeOption['id'])
                                             <span class="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">{{ __('admin.site_settings.theme.active_badge') }}</span>
                                         @endif
+                                        @if(($themeOption['source'] ?? '') === 'installed')
+                                            <span class="text-xs text-gray-500">{{ __('admin.theme_packages.source_installed') }}</span>
+                                        @endif
+                                        @if(($themeOption['distribution']['visibility'] ?? '') === 'customer_private')
+                                            <span class="text-xs font-medium text-amber-800">{{ __('admin.theme_packages.private') }}</span>
+                                        @endif
                                     </div>
                                     <div class="mt-1 text-sm text-gray-600">
                                         {{ $themeOption['description'] !== '' ? $themeOption['description'] : __('admin.site_settings.theme.no_description') }}
                                     </div>
+                                    @if(($themeOption['source'] ?? '') === 'installed' && auth('admin')->user()?->canManageProtectedWorkflows())
+                                        <a class="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-blue-700 hover:underline" href="{{ route('admin.site-settings.theme-packages.preview', ['themeId' => $themeOption['id']]) }}">{{ __('admin.theme_packages.preview.title') }}</a>
+                                    @endif
                                 </div>
                             </label>
                         @endforeach
                     </div>
 
-                    <div class="flex justify-end pt-2 border-t border-gray-200">
+                    <div class="flex flex-wrap justify-end gap-3 pt-4 border-t border-gray-200">
+                        @if(auth('admin')->user()?->canManageProtectedWorkflows())
+                            <button type="submit" formaction="{{ route('admin.site-settings.theme-packages.exports.store') }}" class="inline-flex min-h-11 items-center gap-2 rounded-md border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50 active:scale-[.98]">
+                                <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>{{ __('admin.theme_packages.export_title') }}
+                            </button>
+                        @endif
                         <button type="submit" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                             <i data-lucide="layout-template" class="w-5 h-5 mr-2"></i>
                             {{ __('admin.site_settings.theme.save') }}

@@ -1,6 +1,10 @@
 <?php
 
 return [
+    'theme_package_upload' => 'Importar tema',
+    'theme_package_inspection' => 'Verificar pacote de tema',
+    'theme_package_preview' => 'Visualizar tema',
+
     'ai_workspace' => 'Espaço de IA',
     'operations_dashboard' => 'Operações',
     'analytics' => 'Central de dados',

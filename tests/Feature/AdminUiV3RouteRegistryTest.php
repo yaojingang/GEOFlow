@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Admin;
 use App\Support\AdminUiRegistry;
+use App\Support\AdminWeb;
 use Illuminate\Routing\Route as LaravelRoute;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Route;
@@ -116,7 +117,7 @@ class AdminUiV3RouteRegistryTest extends TestCase
                 && $registry->routeClassification($name) === 'shell')
             ->values();
 
-        $this->assertCount(102, $shellRouteNames);
+        $this->assertCount(106, $shellRouteNames);
         $shellRouteNames->each(function (string $routeName) use ($registry): void {
             $identity = $registry->pageIdentity($routeName);
 
@@ -144,7 +145,7 @@ class AdminUiV3RouteRegistryTest extends TestCase
         $this->assertNull($registry->pageIdentity('admin.unregistered-page'));
     }
 
-    public function test_every_page_identity_has_all_six_localizations(): void
+    public function test_every_page_identity_has_all_supported_localizations(): void
     {
         $registry = app(AdminUiRegistry::class);
         $routeNames = collect(Route::getRoutes())
@@ -153,9 +154,9 @@ class AdminUiV3RouteRegistryTest extends TestCase
             ->unique()
             ->values();
 
-        $this->assertCount(105, $routeNames);
+        $this->assertCount(109, $routeNames);
 
-        foreach (['zh_CN', 'en', 'ja', 'es', 'ru', 'pt_BR'] as $locale) {
+        foreach (array_keys(AdminWeb::supportedLocales()) as $locale) {
             App::setLocale($locale);
             $routeNames->each(function (string $routeName) use ($registry, $locale): void {
                 $identity = $registry->pageIdentity($routeName);
