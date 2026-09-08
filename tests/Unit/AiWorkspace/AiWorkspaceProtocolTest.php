@@ -136,12 +136,14 @@ final class AiWorkspaceProtocolTest extends TestCase
         self::assertStringContainsString('任务管理：查看任务状态。', $instructions);
     }
 
-    public function test_message_request_accepts_only_a_bounded_prompt(): void
+    public function test_message_request_accepts_a_bounded_prompt_and_versioned_task_choices(): void
     {
         $rules = (new SendMessageRequest)->rules();
 
         self::assertSame(['required', 'string', 'max:4000'], $rules['prompt']);
-        self::assertSame(['prompt'], array_keys($rules));
+        self::assertSame(['prompt', 'task_draft_id', 'task_draft_revision', 'task_choice', 'task_choice.field', 'task_choice.id'], array_keys($rules));
+        self::assertContains('required_with:task_draft_id,task_choice', $rules['task_draft_revision']);
+        self::assertContains('array:field,id', $rules['task_choice']);
     }
 
     private function admin(string $role): Admin

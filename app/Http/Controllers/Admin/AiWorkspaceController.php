@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Services\AiWorkspace\AdminHelpKnowledgeCatalog;
-use App\Services\AiWorkspace\AiWorkspaceModelReadiness;
+use App\Services\AiWorkspace\AiWorkspaceConnectionStatus;
 use App\Support\AdminWeb;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
@@ -14,18 +14,19 @@ final class AiWorkspaceController extends Controller
 {
     public function __invoke(
         AdminHelpKnowledgeCatalog $catalog,
-        AiWorkspaceModelReadiness $readiness,
+        AiWorkspaceConnectionStatus $connectionStatus,
     ): View {
         /** @var Admin $admin */
         $admin = auth('admin')->user();
-        $modelStatus = $readiness->status($admin);
+        $connection = $connectionStatus->forAdmin($admin);
         $displayName = trim((string) ($admin->display_name ?: $admin->username));
 
         return view('admin.ai-workspace.index', [
             'pageTitle' => __('admin.ai_workspace.page_title'),
             'activeMenu' => 'ai-workspace',
             'adminSiteName' => AdminWeb::siteName(),
-            'assistantAvailable' => (bool) config('ai-workspace.runtime_enabled', false) && $modelStatus['ready'],
+            'assistantAvailable' => $connection['ready'],
+            'assistantConnection' => $connection,
             'starterActions' => $catalog->starterActions($admin),
             'userInitial' => Str::upper(Str::substr($displayName, 0, 1)),
             'aiWorkspaceLabels' => $this->labels(),
@@ -36,6 +37,11 @@ final class AiWorkspaceController extends Controller
     private function labels(): array
     {
         $keys = [
+            'connectionChecking' => 'connection_checking',
+            'connectionSuccess' => 'connection_success',
+            'connectionFailed' => 'connection_failed',
+            'connectionRetry' => 'connection_retry',
+            'connectionRateLimited' => 'connection_rate_limited',
             'copyAnswer' => 'copy_answer',
             'copyCode' => 'copy_code',
             'copied' => 'copied',
@@ -72,6 +78,7 @@ final class AiWorkspaceController extends Controller
             ->unique()
             ->values()
             ->all();
+        $labels['task'] = __('ai-task.ui');
         $labels['dialogCancel'] = (string) __('admin.action_dialog.cancel');
         $labels['dialogRequired'] = (string) __('admin.action_dialog.required');
 

@@ -5,9 +5,113 @@ import {
     createSseParser,
     fallbackConversationTitle,
     parseSseBuffer,
+    setupWorkspaceConnectionCheck,
     trustedFeatureUrl,
 } from '../../resources/js/admin/ai-workspace.js';
 import { markdownBlockSources, normalizeAnswerMarkdown } from '../../resources/js/admin/ai-workspace/markdown.js';
+
+function connectionSurface(request) {
+    const button = { dataset: { testUrl: '/admin/ai-models/3/test' }, disabled: true, addEventListener() {} };
+    const message = { textContent: 'Check first' };
+    const actions = { hidden: false };
+    const notice = {
+        dataset: {}, setAttribute() {},
+        querySelector: (selector) => ({
+            '[data-ai-connection-check]': button,
+            '[data-ai-connection-message]': message,
+            '[data-ai-connection-actions]': actions,
+        })[selector],
+    };
+    const root = { dataset: { runtimeEnabled: 'false' }, querySelector: () => notice };
+    const labels = {
+        connectionChecking: 'Checking', connectionSuccess: 'Ready', connectionFailed: 'Check failed',
+        connectionRetry: 'Retry', connectionRateLimited: 'Slow down', sessionExpired: 'Sign in again',
+    };
+    let readyCalls = 0;
+    const client = setupWorkspaceConnectionCheck(root, { request, labels, onReady: () => { readyCalls += 1; } });
+
+    return { client, button, message, actions, notice, root, readyCalls: () => readyCalls };
+}
+
+test('homepage connection check is manual, prevents duplicate requests and updates readiness in place', async () => {
+    let finish;
+    const calls = [];
+    const ui = connectionSurface((url, options) => {
+        calls.push({ url, options });
+        return new Promise((resolve) => { finish = resolve; });
+    });
+    assert.equal(calls.length, 0);
+    assert.equal(ui.button.disabled, false);
+    const pending = ui.client.check();
+    await ui.client.check();
+    assert.equal(calls.length, 1);
+    assert.equal(ui.notice.dataset.state, 'checking');
+    assert.equal(ui.button.disabled, true);
+    assert.equal(calls[0].options.method, 'POST');
+    assert.deepEqual(JSON.parse(calls[0].options.body), { workspace_check: true });
+    finish({ success: true, meta: { workspace_ready: true } });
+    await pending;
+    assert.equal(ui.root.dataset.runtimeEnabled, 'true');
+    assert.equal(ui.notice.dataset.state, 'ready');
+    assert.equal(ui.message.textContent, 'Ready');
+    assert.equal(ui.actions.hidden, true);
+    assert.equal(ui.readyCalls(), 1);
+    await ui.client.check();
+    assert.equal(calls.length, 1);
+});
+
+test('homepage refuses plain connectivity success without workspace readiness and allows retry', async () => {
+    let attempts = 0;
+    const ui = connectionSurface(async () => (++attempts === 1
+        ? { success: true, meta: {} }
+        : { success: true, meta: { workspace_ready: true } }));
+    await ui.client.check();
+    assert.equal(ui.notice.dataset.state, 'failed');
+    assert.equal(ui.root.dataset.runtimeEnabled, 'false');
+    assert.equal(ui.actions.hidden, false);
+    assert.equal(ui.button.disabled, false);
+    assert.equal(ui.readyCalls(), 0);
+    await ui.client.check();
+    assert.equal(ui.root.dataset.runtimeEnabled, 'true');
+    assert.equal(ui.readyCalls(), 1);
+});
+
+test('homepage connection check presents safe diagnosis, expired sessions and rate limits', async () => {
+    for (const [error, expected] of [
+        [{ status: 422, diagnosis: { reason: 'Credential rejected' } }, 'Credential rejected'],
+        [{ status: 401 }, 'Sign in again'],
+        [{ status: 419 }, 'Sign in again'],
+        [{ status: 429 }, 'Slow down'],
+        [new TypeError('Failed to fetch'), 'Check failed'],
+    ]) {
+        const ui = connectionSurface(async () => { throw error; });
+        await ui.client.check();
+        assert.equal(ui.message.textContent, expected);
+        assert.equal(ui.button.disabled, false);
+        assert.equal(ui.root.dataset.runtimeEnabled, 'false');
+        assert.equal(ui.readyCalls(), 0);
+    }
+});
+
+test('homepage follows a changed default model without losing the recovery action', async () => {
+    const urls = [];
+    const ui = connectionSurface(async (url) => {
+        urls.push(url);
+        return urls.length === 1
+            ? { success: true, meta: { workspace_ready: false, workspace_connection: {
+                ready: false, test_url: '/admin/ai-models/7/test', message: 'Check the new default',
+            } } }
+            : { success: true, meta: { workspace_ready: true, workspace_connection: { ready: true } } };
+    });
+    await ui.client.check();
+    assert.equal(ui.root.dataset.runtimeEnabled, 'false');
+    assert.equal(ui.message.textContent, 'Check the new default');
+    assert.equal(ui.button.hidden, false);
+    assert.equal(ui.readyCalls(), 0);
+    await ui.client.check();
+    assert.deepEqual(urls, ['/admin/ai-models/3/test', '/admin/ai-models/7/test']);
+    assert.equal(ui.root.dataset.runtimeEnabled, 'true');
+});
 
 test('SSE parser preserves incomplete chunks and returns ordered events', () => {
     const first = parseSseBuffer('', 'event: status\ndata: {"stage":"under');

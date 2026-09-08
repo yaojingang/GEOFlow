@@ -1,4 +1,11 @@
+import { renderTaskCard, syncTaskCardActions, taskDraftContext } from './ai-workspace/task-card.js';
 import { createStreamingMarkdownRenderer, normalizeAnswerMarkdown, renderMarkdownInto } from './ai-workspace/markdown.js';
+
+export function scrollTaskStepIntoView(scrollRoot, target) {
+    if (!target) return;
+    const top = scrollRoot.scrollTop + target.getBoundingClientRect().top - scrollRoot.getBoundingClientRect().top - 16;
+    scrollRoot.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+}
 
 export function parseSseBuffer(buffer, chunk = '', flush = false) {
     const source = `${buffer ?? ''}${chunk ?? ''}`.replace(/\r\n/gu, '\n');
@@ -83,6 +90,69 @@ function isAbortError(error) {
     return error?.name === 'AbortError';
 }
 
+export function setupWorkspaceConnectionCheck(root, { request, labels, onReady = () => {} }) {
+    const notice = root.querySelector('[data-ai-connection-notice]');
+    const button = notice?.querySelector('[data-ai-connection-check]');
+    const message = notice?.querySelector('[data-ai-connection-message]');
+    const actions = notice?.querySelector('[data-ai-connection-actions]');
+    if (!button || !message || !button.dataset.testUrl) return null;
+
+    let checking = false;
+    let ready = false;
+    button.disabled = false;
+    const check = async () => {
+        if (checking || ready) return;
+        checking = true;
+        button.disabled = true;
+        notice.dataset.state = 'checking';
+        notice.setAttribute('aria-busy', 'true');
+        message.textContent = labels.connectionChecking;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 95_000);
+
+        try {
+            const payload = await request(button.dataset.testUrl, {
+                method: 'POST',
+                body: JSON.stringify({ workspace_check: true }),
+                signal: controller.signal,
+            });
+            if (payload.success !== true) {
+                throw new Error(labels.connectionFailed);
+            }
+            const connection = payload.meta?.workspace_connection;
+            if (connection && connection.ready !== true) {
+                notice.dataset.state = 'idle';
+                message.textContent = connection.message || labels.connectionFailed;
+                button.hidden = !connection.test_url;
+                if (connection.test_url) button.dataset.testUrl = connection.test_url;
+                root.dataset.runtimeEnabled = 'false';
+                return;
+            }
+            if (payload.meta?.workspace_ready !== true) throw new Error(labels.connectionFailed);
+            ready = true;
+            notice.dataset.state = 'ready';
+            message.textContent = labels.connectionSuccess;
+            if (actions) actions.hidden = true;
+            root.dataset.runtimeEnabled = 'true';
+            onReady();
+        } catch (error) {
+            notice.dataset.state = 'failed';
+            message.textContent = [401, 419].includes(error.status) ? labels.sessionExpired
+                : error.status === 429 ? labels.connectionRateLimited
+                    : error.diagnosis?.reason || (error.status ? error.message : labels.connectionFailed);
+        } finally {
+            clearTimeout(timeout);
+            checking = false;
+            notice.setAttribute('aria-busy', 'false');
+            button.disabled = ready;
+            button.textContent = labels.connectionRetry;
+        }
+    };
+    button.addEventListener('click', check);
+
+    return { check };
+}
+
 function setupAiWorkspace(root, { documentRef = document, windowRef = window, fetcher = window.fetch.bind(window) } = {}) {
     const form = root.querySelector('[data-ai-form]');
     const input = root.querySelector('[data-ai-input]');
@@ -122,6 +192,7 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
         loadingEarlier: false,
         generationId: 0,
         viewId: 0,
+        taskCard: null,
     };
     const scrollRoot = root.closest('.gf-main') ?? documentRef.scrollingElement ?? documentRef.documentElement;
     let activeConversationLoad = null;
@@ -129,6 +200,12 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
 
     const refreshIcons = (scope = root) => windowRef.lucide?.createIcons?.({ attrs: { 'stroke-width': 1.8 }, nameAttr: 'data-lucide', root: scope });
     const scrollToLatest = (behavior = 'smooth') => scrollRoot.scrollTo({ top: scrollRoot.scrollHeight, behavior });
+    const scrollToLatestReply = () => {
+        const latest = Array.from(messages.querySelectorAll('.is-assistant')).at(-1);
+        const taskStep = latest?.querySelector('[data-task-draft]');
+        if (taskStep) scrollTaskStepIntoView(scrollRoot, taskStep);
+        else scrollToLatest('auto');
+    };
     const isNearBottom = () => scrollRoot.scrollHeight - scrollRoot.scrollTop - scrollRoot.clientHeight < 180;
 
     const announce = (message) => {
@@ -155,6 +232,7 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
         send.hidden = state.generating;
         stop.hidden = !state.generating;
         input.setAttribute('aria-busy', String(state.generating));
+        syncTaskCardActions(root, state.taskCard, state.generating, labels.task);
     };
 
     let showcaseIndex = 0;
@@ -219,6 +297,7 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
         thread.hidden = true;
         messages.replaceChildren();
         state.conversationId = null;
+        state.taskCard = null;
         state.title = '';
         state.nextCursor = null;
         state.hasMore = false;
@@ -465,6 +544,17 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
         target.append(section);
     };
 
+    const renderTask = (target, data) => renderTaskCard(target, data, {
+        documentRef, labels: labels.task,
+        safeUrl: (url) => trustedFeatureUrl(url, windowRef.location.origin, root.dataset.adminBasePath),
+        onPrompt: (prompt, choice, card) => void sendQuestion(prompt, card ? taskDraftContext(card) : null, choice),
+        onConfirm: (card) => void sendQuestion(labels.task?.confirmPrompt ?? 'Confirm creation', taskDraftContext(card)),
+        onAdjust: () => {
+            input.placeholder = labels.task?.adjustPlaceholder ?? '';
+            input.focus({ preventScroll: true });
+        },
+    });
+
     const addCopyAction = (target, content) => {
         const copyContent = normalizeAnswerMarkdown(content);
         const action = documentRef.createElement('button');
@@ -505,6 +595,7 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
             renderKnowledgeSources(body, meta.knowledge_sources);
             renderFeatureLinks(body, meta.related_features);
             renderSuggestions(body, meta.suggestions);
+            renderTask(body, meta.task_card);
             row.append(createAvatar('assistant'), body);
         } else {
             const bubble = documentRef.createElement('div');
@@ -581,6 +672,7 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
     };
 
     const renderCompletion = (pending, data) => {
+        if (data?.task_card) state.taskCard = data.task_card;
         clearStatusTimers(pending);
         pending.renderer.finish(pending.content);
         pending.row.classList.remove('is-pending');
@@ -592,7 +684,10 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
         renderKnowledgeSources(pending.body, data?.knowledge_sources);
         renderFeatureLinks(pending.body, data?.related_features);
         renderSuggestions(pending.body, data?.suggestions);
+        const taskStep = renderTask(pending.body, data?.task_card);
+        syncTaskCardActions(root, state.taskCard, state.generating, labels.task);
         refreshIcons(pending.row);
+        return taskStep;
     };
 
     const renderError = (pending, data) => {
@@ -662,6 +757,7 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
             const payload = await response.json().catch(() => ({}));
             const error = new Error(payload.message ?? `Request failed with ${response.status}`);
             error.status = response.status;
+            error.diagnosis = payload.meta?.diagnosis;
             throw error;
         }
 
@@ -684,16 +780,18 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
     };
 
     const applyHistory = (payload, { prepend = false } = {}) => {
+        if (!prepend) state.taskCard = payload.task_card ?? null;
         const history = (Array.isArray(payload.messages) ? payload.messages : []).map((message) => createMessage(
             String(message.role ?? 'assistant'),
             String(message.content ?? ''),
-            message.meta ?? {},
+            { ...(message.meta ?? {}), ...(message.meta?.task_card?.id === payload.task_card?.id && message.meta?.task_card?.revision === payload.task_card?.revision ? { task_card: payload.task_card } : {}) },
         ));
         if (prepend) messages.prepend(...history);
         else messages.replaceChildren(...history);
         state.hasMore = Boolean(payload.message_page?.has_more);
         state.nextCursor = payload.message_page?.next_cursor ?? null;
         if (loadEarlier) loadEarlier.hidden = !state.hasMore;
+        syncTaskCardActions(root, state.taskCard, state.generating, labels.task);
         refreshIcons(messages);
     };
 
@@ -707,7 +805,7 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
         applyHistory(payload.data);
         showThread();
         updateLocation(state.conversationId);
-        windowRef.requestAnimationFrame(() => scrollToLatest('auto'));
+        windowRef.requestAnimationFrame(scrollToLatestReply);
 
         return true;
     };
@@ -735,8 +833,9 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
         autoResize();
     };
 
-    const sendQuestion = async (question) => {
+    const sendQuestion = async (question, taskContext = null, taskChoice = null) => {
         if (state.generating || question === '') return;
+        const taskTurn = taskContext !== null || taskChoice !== null || ['collecting', 'ready'].includes(state.taskCard?.status);
         const generationId = ++state.generationId;
         state.generating = true;
         state.controller = new AbortController();
@@ -755,7 +854,7 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
         const renderAnswer = () => {
             renderFrame = null;
             if (!pending) return;
-            const shouldFollow = isNearBottom();
+            const shouldFollow = !taskTurn && isNearBottom();
             pending.renderer.update(pending.content);
             if (shouldFollow) scrollToLatest('auto');
         };
@@ -787,7 +886,8 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
                 applyConversationTitle(data?.conversation_title);
                 if (renderFrame !== null) windowRef.cancelAnimationFrame(renderFrame);
                 renderAnswer();
-                renderCompletion(pending, data);
+                const taskStep = renderCompletion(pending, data);
+                if (taskStep) scrollTaskStepIntoView(scrollRoot, taskStep);
                 announce(labels.answerComplete ?? '回答已生成');
             }
             if (event === 'error') appError = data;
@@ -826,7 +926,8 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
             pending = createPendingAnswer();
             messages.append(userMessage, pending.row);
             refreshIcons(messages);
-            scrollToLatest();
+            if (taskTurn) scrollTaskStepIntoView(scrollRoot, pending.row);
+            else scrollToLatest();
             startStatusTimers(pending);
 
             const defaultTitles = Array.isArray(labels.defaultTitles) ? labels.defaultTitles : [labels.defaultTitle ?? '新对话', '新对话'];
@@ -842,7 +943,7 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': csrfToken(documentRef),
                 },
-                body: JSON.stringify({ prompt: question }),
+                body: JSON.stringify({ prompt: question, ...(taskContext ?? taskDraftContext(state.taskCard)), ...(taskChoice ? { task_choice: taskChoice } : {}) }),
                 signal: controller.signal,
             });
             if (!response.ok || !response.body) {
@@ -1028,7 +1129,7 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
             }
         }
     });
-    jumpLatest?.addEventListener('click', () => scrollToLatest());
+    jumpLatest?.addEventListener('click', scrollToLatestReply);
     scrollRoot.addEventListener('scroll', () => {
         if (jumpLatest) jumpLatest.hidden = isNearBottom();
     }, { passive: true });
@@ -1041,6 +1142,14 @@ function setupAiWorkspace(root, { documentRef = document, windowRef = window, fe
 
     autoResize();
     syncComposer();
+    setupWorkspaceConnectionCheck(root, {
+        request: fetchJson,
+        labels,
+        onReady: () => {
+            announce(labels.connectionSuccess);
+            input.focus({ preventScroll: true });
+        },
+    });
     showShowcaseSlide(0);
     startShowcase();
     refreshIcons(root);

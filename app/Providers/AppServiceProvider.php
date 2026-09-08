@@ -10,6 +10,7 @@ use App\Contracts\Outbound\HostResolver;
 use App\Contracts\Outbound\OutboundTransport;
 use App\Contracts\SystemUpdater\AgentClient;
 use App\Http\ApiAuthContext;
+use App\Http\Requests\Admin\AiWorkspace\SendMessageRequest;
 use App\Jobs\GenerateKnowledgeFactBatchJob;
 use App\Jobs\ProcessTitleGenerationBatchJob;
 use App\Models\Admin;
@@ -18,6 +19,7 @@ use App\Services\Admin\AdminUpdateMetadataService;
 use App\Services\Admin\AdminWelcomeModalService;
 use App\Services\Admin\DatabaseAiModelWriteLock;
 use App\Services\AiWorkspace\AiWorkspaceModelRuntime;
+use App\Services\AiWorkspace\TaskCreationFlow;
 use App\Services\GeoFlow\AnonymousUsageTelemetry;
 use App\Services\GeoFlow\ArticleAiQualityWorkerLiveness;
 use App\Services\GeoFlow\ArticleGeoFlowService;
@@ -48,6 +50,7 @@ use Illuminate\Queue\Events\WorkerStopping;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -177,10 +180,13 @@ class AppServiceProvider extends ServiceProvider
         });
         RateLimiter::for('ai-workspace-messages', function (Request $request): array {
             $adminId = (int) ($request->user('admin')?->getAuthIdentifier() ?? 0);
+            $validator = Validator::make($request->only(array_keys((new SendMessageRequest)->rules())), (new SendMessageRequest)->rules());
+            $localControl = $validator->passes() && app(TaskCreationFlow::class)->isLocalControlRequest((string) $request->input('prompt'), $validator->validated());
+            $scope = $localControl ? 'ai-workspace-controls' : 'ai-workspace-messages';
 
             return [
-                Limit::perMinute(6)->by('ai-workspace-messages:admin:'.$adminId),
-                Limit::perMinute(12)->by('ai-workspace-messages:ip:'.$request->ip()),
+                Limit::perMinute($localControl ? 60 : 6)->by($scope.':admin:'.$adminId),
+                Limit::perMinute($localControl ? 120 : 12)->by($scope.':ip:'.$request->ip()),
             ];
         });
         RateLimiter::for('site-lead-submission', function (Request $request): Limit {

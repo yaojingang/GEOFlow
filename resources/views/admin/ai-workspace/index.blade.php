@@ -44,9 +44,15 @@
                 </div>
 
                 @unless($assistantAvailable)
-                    <div class="gf-ai-help__notice" role="status">
+                    <div class="gf-ai-help__notice" data-ai-connection-notice data-state="idle">
                         <i data-lucide="circle-alert"></i>
-                        <span>{{ __('admin.ai_workspace.local_help_available') }}</span>
+                        <span class="gf-ai-help__notice-message" data-ai-connection-message role="status" aria-live="polite">{{ $assistantConnection['message'] }}</span>
+                        <div class="gf-ai-help__notice-actions" data-ai-connection-actions>
+                            @if ($assistantConnection['test_url'])
+                                <button type="button" data-ai-connection-check data-test-url="{{ $assistantConnection['test_url'] }}" disabled>{{ __('admin.ai_workspace.connection_check') }}</button>
+                            @endif
+                            <a href="{{ \App\Support\AdminWeb::routePath('admin.ai-models.index') }}">{{ __('admin.ai_workspace.connection_settings') }}</a>
+                        </div>
                     </div>
                 @endunless
             </div>
@@ -65,8 +71,8 @@
                     <button class="gf-ai-help__tool-mode" type="button" data-ai-fill-prompt="{{ __('admin.ai_workspace.composer_diagnosis_prompt') }}" aria-label="{{ __('admin.ai_workspace.composer_diagnosis') }}">
                         <i data-lucide="chart-no-axes-combined"></i><span>{{ __('admin.ai_workspace.composer_diagnosis') }}</span><em>{{ __('admin.ai_workspace.new_badge') }}</em>
                     </button>
-                    <button class="gf-ai-help__tool-mode is-active" type="button" data-ai-fill-prompt="{{ __('admin.ai_workspace.composer_content_prompt') }}" aria-label="{{ __('admin.ai_workspace.composer_content') }}">
-                        <i data-lucide="file-plus-2"></i><span>{{ __('admin.ai_workspace.composer_content') }}</span>
+                    <button class="gf-ai-help__tool-mode is-active" type="button" data-ai-fill-prompt="{{ __('ai-task.ui.startPrompt') }}" aria-label="{{ __('ai-task.ui.start') }}">
+                        <i data-lucide="file-plus-2"></i><span>{{ __('ai-task.ui.start') }}</span>
                     </button>
                 </div>
                 <span class="gf-ai-help__shortcut">{{ __('admin.ai_workspace.send_shortcut') }}</span>

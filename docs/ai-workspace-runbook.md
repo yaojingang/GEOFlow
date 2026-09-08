@@ -1,8 +1,26 @@
-# GEOFlow 后台帮助助手运行手册
+# GEOFlow AI 工作台运行手册
 
 ## 定位
 
-AI 工作台提供后台功能问答、操作指引和可信功能入口。请求在 Web 进程内完成本地知识检索，并执行一次对话模型调用。旧版 Run、Plan、Approval、Capability 与 Trace 工作流已停止接收请求，相关数据库表和历史数据继续保留。
+AI 工作台提供后台功能问答、操作指引、可信功能入口和对话式任务创建。帮助问答在 Web 进程内完成本地知识检索与模型调用；任务创建使用独立的结构化草稿流程。旧版 Run、Plan、Approval、Capability 与 Trace 工作流已停止接收请求，相关数据库表和历史数据继续保留。
+
+## 首页任务创建助手
+
+在首页点击「创建任务」，或输入「帮我创建一个文章发布任务」。助手根据真实后台配置整理任务，卡片标明所有剩余必填项，每轮最多追问两个缺失项。选择标题库后，可点击推荐任务名或自己填写。用户可以点击配置选项，也可以自然语言补充、修改或取消。每轮完成及历史恢复时，页面定位到最新任务卡片的开头，保持下一步问题可见。字段齐全后显示摘要；点击「创建任务」或回复「按这个创建」后，服务端创建一条真实任务。
+
+本轮支持生成新文章、本站发布、人工审核或自动通过、执行一次。审核方式默认人工审核，可回复“发布方式改成自动通过”或“改回人工审核”；草稿中的 `need_review` 仅接受 0/1，旧草稿默认 1，修改结果会显示在回复和发布方式摘要中。新任务固定为暂停状态，调度关闭；确认创建不会生成文章或向外发布。标题库、写作模板、写作模型和栏目均来自当前管理员可用的配置，知识库、作者和配图为可选项。标题库选项标注可用标题数，并过滤数量不足的选项。超出首轮范围的需求会提示当前支持范围，并保留已有草稿和待修正的问题；设置完整时仍可确认创建。
+
+实现与状态约束：
+
+- `TaskCreationAssistant` 使用 Laravel AI SDK 的结构化输出整理字段；服务端校验必填项、范围、真实引用和模型权限。模型不能执行创建或设定运行状态。
+- `TaskCreationCatalog` 仅向模型提供必要的配置 ID、名称和数量，排除模型密钥、连接地址和系统知识库。
+- 草稿存放于会话的 `task_draft` JSON 字段，状态为 `collecting`、`ready`、`created` 或 `cancelled`。新迁移 `2026_09_08_094502_add_task_draft_to_ai_conversations.php` 需随版本执行。
+- 页面提交草稿 ID 和版本。旧页面的文字修改、配置选择和确认请求不能修改新版本；刷新会恢复最新卡片。配置在确认前变化时，需要核对更新后的摘要。
+- 有效配置点选、确认和取消使用独立的本地操作限流（管理员每分钟 60 次、IP 每分钟 120 次）；模型消息保留每分钟 6 次和 12 次限制。本地操作请求由同一判定函数识别，过期或伪造草稿不能转入模型分支。429 使用界面语言返回等待秒数并保留输入。
+- 创建复用 `TaskLifecycleService::createTask`，任务、会话完成消息和创建审计在同一事务内提交。确认重试返回已有任务，避免重复创建。账号和运行开关在模型返回与提交前再次校验。
+- 会话与任务需要使用同一个数据库连接。任务分支沿用会话生成租约、额度、模型权限和调用记录。空白或缺少顶层字段的结构化结果最多重试一次，共用一轮总超时；每次调用分别计入额度和记录。模型调用失败时保留已确认的草稿，配置选项与最终确认直接由服务端处理。
+
+任务分支沿用消息接口，接受可选的 `task_draft_id`、`task_draft_revision` 和 `task_choice: {field, id}`。`done` 事件及助手消息 `meta` 包含 `task_card`；会话详情另返回按当前配置重新校验的 `task_card`。任务卡片的链接由服务端生成，按钮绑定其显示的草稿版本。
 
 ## 请求链路
 
@@ -79,7 +97,9 @@ php artisan geoflow:sync-system-knowledge --key=ai_workspace_manual --media
 
 工作台复用 AI 配置器中的已启用对话模型、日额度、优先级和 Provider 故障转移。
 
-工作台按照模型故障转移优先级选择已启用且通过文本检测的对话模型。新建、配置已变更、检测已过期或最近检测失败的模型不会参与真实问答；超级管理员重新执行模型连接检测并通过后才会恢复。连接检测优先执行真实流式请求，成功时记录 `streaming.ready`；流式失败后再验证普通文本，成功时记录 `streaming.degraded` 和已观测的降级原因。流式成功要求至少一个正文分片和非错误的终止事件，缺失终止事件、错误事件或未知终止原因都会按中断处理。流式与普通文本探测共用总超时预算。成功回答会刷新 7 天就绪记录。结构化输出和工具调用不参与工作台就绪判断。
+首页在当前模型未就绪时显示具体原因和「检测连接」入口。检测由用户点击触发，复用模型连接测试接口的 `workspace_check=true` 模式；超级管理员和普通管理员都可以检测自己有权管理的模型。共享模型需要由配置提供者完成检测。检测保留当前输入，成功后重新读取工作台状态并原位更新；检测期间切换默认模型时，页面会更新为当前模型的检测入口。运行开关关闭或尚无可用模型时，页面显示对应指引。
+
+工作台按照模型故障转移优先级选择已启用且通过文本检测的对话模型。新建、配置已变更、检测已过期或最近检测失败的模型不会参与真实问答；模型所有者在工作台首页重新检测并通过后才会恢复。连接检测优先执行真实流式请求，成功时记录 `streaming.ready`；流式失败后再验证普通文本，成功时记录 `streaming.degraded` 和已观测的降级原因。流式成功要求至少一个正文分片和非错误的终止事件，缺失终止事件、错误事件或未知终止原因都会按中断处理。流式与普通文本探测共用总超时预算。成功回答会刷新 7 天就绪记录。结构化输出和工具调用不参与工作台就绪判断。
 
 相关环境变量：
 
@@ -104,7 +124,7 @@ GEOFLOW_AI_WORKSPACE_REQUIRE_VERIFIED_MODEL=true
 
 1. 确认 `GEOFLOW_AI_WORKSPACE_RUNTIME_ENABLED=true`。
 2. 在 AI 配置器中确认至少一个对话模型为启用状态。
-3. 新建模型、模型配置变更、检测失败或检测过期时，由超级管理员重新执行模型连接检测；检测通过后模型才会进入工作台候选列表。
+3. 新建模型、模型配置变更、检测失败或检测过期时，在工作台首页点击「检测连接」。管理员可检测自己的模型，共享模型由配置提供者检测；检测通过后模型才会进入工作台候选列表。
 4. 检查模型日额度和管理员日调用额度。
 
 ### 一直等待且没有正文
@@ -139,11 +159,13 @@ GEOFLOW_AI_WORKSPACE_REQUIRE_VERIFIED_MODEL=true
 
 ```bash
 php artisan test --compact tests/Feature/AdminAiWorkspaceTest.php
+php artisan test --compact tests/Feature/AiWorkspaceTaskCreationTest.php tests/Feature/AdminAiWorkspaceConnectionTest.php
 php artisan test --compact tests/Feature/AiWorkspaceRuntimeProtocolV2Test.php
 php artisan test --compact tests/Feature/AiWorkspaceWorkflowTest.php
 php artisan test --compact tests/Feature/SystemKnowledgeBaseTest.php tests/Feature/AiWorkspaceKnowledgeMediaTest.php
 php artisan test --compact tests/Unit/AiWorkspace
 node --test tests/JavaScript/ai-workspace.test.js
+node --test tests/JavaScript/ai-task-card.test.js
 vendor/bin/pint --dirty --format agent
 npm run build
 php artisan route:list --path=admin/ai-workspace --except-vendor
@@ -154,4 +176,4 @@ php artisan geoflow:sync-system-knowledge --key=ai_workspace_manual --media
 
 ## 回滚
 
-代码回滚需要恢复旧控制器、前端资源、流式服务和模型运行时。接口路由、数据库结构与环境变量没有变化，现有工作流表、迁移与历史数据无需恢复。
+代码回滚需要恢复旧控制器、前端资源、流式服务和模型运行时。任务创建新增的 `task_draft` 可空字段可以保留，旧版本会忽略该字段；删除该字段会丢失对话中的任务草稿，应在备份后按迁移范围处理。已确认创建的任务继续保留在任务管理中。旧工作流表和历史数据不受本次功能影响。

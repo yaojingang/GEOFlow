@@ -23,6 +23,7 @@ class AiConversation extends Conversation
     {
         return [
             'archived_at' => 'datetime',
+            'task_draft' => 'array',
         ];
     }
 
