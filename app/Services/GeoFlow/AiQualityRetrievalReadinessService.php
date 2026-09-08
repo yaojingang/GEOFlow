@@ -19,7 +19,7 @@ class AiQualityRetrievalReadinessService
      *   modes:array<string,array{available:bool,blockers:list<array<string,mixed>>}>
      * }
      */
-    public function inspect(array $knowledgeBaseIds): array
+    public function inspect(array $knowledgeBaseIds, bool $readOnly = false): array
     {
         $ids = collect($knowledgeBaseIds)
             ->map(static fn (mixed $id): int => (int) $id)
@@ -55,7 +55,7 @@ class AiQualityRetrievalReadinessService
             ->get()
             ->groupBy('knowledge_base_id');
 
-        $rollout = $this->rolloutPolicy->state();
+        $rollout = $this->rolloutPolicy->state($readOnly);
         $rows = $ids->map(function (int $id) use ($knowledgeBases, $chunkCounts, $rollout): array {
             $knowledgeBase = $knowledgeBases->get($id);
             if (! $knowledgeBase) {

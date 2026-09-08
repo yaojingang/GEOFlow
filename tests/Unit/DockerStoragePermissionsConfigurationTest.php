@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Process\Process;
 
@@ -95,6 +96,48 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
         );
     }
 
+    public function test_production_entrypoint_runs_as_uid_33_with_mounted_public_storage(): void
+    {
+        if (getenv('GEOFLOW_DOCKER_TEST') !== '1') {
+            $this->markTestSkipped('Set GEOFLOW_DOCKER_TEST=1 to run the isolated UID 33 container check.');
+        }
+        $root = dirname(__DIR__, 2);
+        $dockerfile = (string) file_get_contents($root.'/docker/Dockerfile.prod');
+        preg_match_all('/^RUN ((?:[^\n]*\\\\\n)*[^\n]*)/m', $dockerfile, $instructions);
+        $preparation = array_values(array_filter($instructions[1], static fn (string $instruction): bool => str_contains($instruction, 'chown -R www-data:www-data storage bootstrap/cache')));
+        $this->assertCount(1, $preparation);
+        $container = 'geoflow-storage-review-'.bin2hex(random_bytes(6));
+        $script = <<<'SH'
+set -eu
+cd /var/www/html
+mkdir -p public bootstrap/cache storage/app/public /tmp/review-bin
+chmod 755 public
+printf 'APP_KEY=base64:test\n' > .env
+chmod 600 .env
+printf '#!/bin/sh\nexit 97\n' > /tmp/review-bin/php
+chmod 755 /tmp/review-bin/php
+SH;
+        $script .= "\n".$preparation[0]."\n";
+        $script .= <<<'SH'
+printf 'mounted storage' > storage/app/public/readiness.txt
+exec su -s /bin/sh www-data -c 'PATH=/tmp/review-bin:$PATH AUTO_OPTIMIZE=false AUTO_FIX_STORAGE_PERMISSIONS=false AUTO_WAIT_FOR_DB=false /bin/sh /tmp/entrypoint.prod.sh /bin/sh -c '\''test "$(id -u)" = 33 && test ! -r .env && test ! -w public && test -L public/storage && test -e public/storage && test -w bootstrap/cache && test "$(cat public/storage/readiness.txt)" = "mounted storage" && touch public/storage/worker-write.txt && printf "uid-33-storage-ready\n"'\'''
+SH;
+        $process = new Process([
+            'docker', 'run', '--rm', '--name', $container, '--network', 'none',
+            '--env', 'APP_KEY=base64:'.base64_encode(str_repeat('k', 32)),
+            '--mount', 'type=tmpfs,destination=/var/www/html/storage',
+            '--mount', 'type=bind,source='.$root.'/docker/entrypoint.prod.sh,destination=/tmp/entrypoint.prod.sh,readonly',
+            '--entrypoint', 'sh', 'php:8.4-fpm-bookworm', '-c', $script,
+        ], null, null, null, 30);
+        try {
+            $process->mustRun();
+            $this->assertStringContainsString('uid-33-storage-ready', $process->getOutput());
+            $this->assertStringNotContainsString('storage:link', $process->getOutput());
+        } finally {
+            (new Process(['docker', 'rm', '-f', $container], null, null, null, 10))->run();
+        }
+    }
+
     public function test_production_image_retries_composer_downloads_with_a_shared_bounded_cache(): void
     {
         $dockerfile = file_get_contents(dirname(__DIR__, 2).'/docker/Dockerfile.prod');
@@ -107,6 +150,88 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
         );
         $this->assertStringContainsString('for attempt in 1 2 3; do', $dockerfile);
         $this->assertStringContainsString('sleep "$((attempt * 15))"', $dockerfile);
+    }
+
+    #[DataProvider('applicationKeySources')]
+    public function test_entrypoint_key_precedence_preserves_generation_and_invalid_environment_cleanup(string $entrypoint, string $environmentKey, bool $fileKey, bool $privateFile, bool $generate): void
+    {
+        if (getenv('GEOFLOW_DOCKER_TEST') !== '1') {
+            $this->markTestSkipped('Set GEOFLOW_DOCKER_TEST=1 to verify application key precedence as UID 33.');
+        }
+        $root = dirname(__DIR__, 2);
+        $container = 'geoflow-key-review-'.bin2hex(random_bytes(6));
+        $validKey = 'base64:'.base64_encode(str_repeat('k', 32));
+        $environmentKey = $environmentKey === 'valid' ? $validKey : $environmentKey;
+        $script = <<<'SH'
+set -eu
+cd /var/www/html
+mkdir -p public bootstrap/cache storage/app/public vendor /tmp/review-bin
+touch vendor/autoload.php
+ln -sT /var/www/html/storage/app/public public/storage
+chown -R www-data:www-data storage bootstrap/cache
+printf 'APP_KEY=%s\n' "$REVIEW_FILE_KEY" > .env
+if [ "$REVIEW_PRIVATE_FILE" = true ]; then chmod 600 .env; fi
+if [ "$REVIEW_GENERATE" = true ]; then chown www-data:www-data .env; fi
+cat > /tmp/review-bin/php <<'STUB'
+#!/bin/sh
+set -eu
+test "$*" = 'artisan key:generate --force --no-interaction'
+test -z "${APP_KEY+x}"
+printf 'APP_KEY=%s\n' "$REVIEW_GENERATED_KEY" > .env
+touch storage/key-generated
+STUB
+chmod 755 /tmp/review-bin/php
+exec su -s /bin/sh www-data -c 'PATH=/tmp/review-bin:$PATH COMPOSER_ON_START=false AUTO_OPTIMIZE=false AUTO_MIGRATE=false AUTO_INSTALL_ONCE=false AUTO_INIT_ONCE=false AUTO_FIX_STORAGE_PERMISSIONS=false AUTO_WAIT_FOR_DB=false DB_CONNECTION= /bin/sh /tmp/entrypoint.sh /bin/sh -c '\''test "$(id -u)" = 33
+if [ "$REVIEW_ENVIRONMENT_VALID" = true ]; then
+    test "$APP_KEY" = "$REVIEW_GENERATED_KEY"
+else
+    test -z "${APP_KEY+x}"
+fi
+if [ "$REVIEW_GENERATE" = true ]; then
+    test -f storage/key-generated
+    test "$(cat .env)" = "APP_KEY=$REVIEW_GENERATED_KEY"
+else
+    test ! -f storage/key-generated
+fi
+printf "key-precedence-ready\n"'\'''
+SH;
+        $process = new Process([
+            'docker', 'run', '--rm', '--name', $container, '--network', 'none',
+            '--env', 'APP_KEY='.$environmentKey,
+            '--env', 'REVIEW_FILE_KEY='.($fileKey ? $validKey : ''),
+            '--env', 'REVIEW_PRIVATE_FILE='.($privateFile ? 'true' : 'false'),
+            '--env', 'REVIEW_GENERATE='.($generate ? 'true' : 'false'),
+            '--env', 'REVIEW_ENVIRONMENT_VALID='.($environmentKey === $validKey ? 'true' : 'false'),
+            '--env', 'REVIEW_GENERATED_KEY='.$validKey,
+            '--mount', 'type=bind,source='.$root.'/'.$entrypoint.',destination=/tmp/entrypoint.sh,readonly',
+            '--entrypoint', 'sh', 'php:8.4-fpm-bookworm', '-c', $script,
+        ], null, null, null, 30);
+        try {
+            $process->mustRun();
+            $this->assertStringContainsString('key-precedence-ready', $process->getOutput());
+            $this->assertSame($generate, str_contains($process->getOutput(), 'php artisan key:generate'));
+        } finally {
+            (new Process(['docker', 'rm', '-f', $container], null, null, null, 10))->run();
+        }
+    }
+
+    public static function applicationKeySources(): array
+    {
+        $cases = [];
+        foreach (['docker/entrypoint.prod.sh', 'docker/entrypoint.sh'] as $entrypoint) {
+            foreach ([
+                'environment with private file' => ['valid', true, true, false],
+                'environment with empty private file' => ['valid', false, true, false],
+                'file fallback without environment' => ['', true, false, false],
+                'invalid environment falls back to file' => ['invalid-key', true, false, false],
+                'missing key is generated' => ['', false, false, true],
+                'invalid environment is cleared before generation' => ['invalid-key', false, false, true],
+            ] as $name => $case) {
+                $cases[$entrypoint.' '.$name] = [$entrypoint, ...$case];
+            }
+        }
+
+        return $cases;
     }
 
     public function test_production_compose_renders_distinct_project_resources(): void

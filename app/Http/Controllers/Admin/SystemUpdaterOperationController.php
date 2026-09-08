@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Contracts\SystemUpdater\AgentClient;
+use App\Contracts\SystemUpdater\PlannedAgentClient;
 use App\Exceptions\SystemUpdaterPreparationException;
 use App\Http\Controllers\Controller;
 use App\Services\Admin\SystemUpdateOperationGuard;
@@ -68,7 +69,27 @@ class SystemUpdaterOperationController extends Controller
         );
     }
 
-    public function update(Request $request, AgentClient $agentClient, SystemUpdateOperationGuard $operationGuard): RedirectResponse
+    public function preview(Request $request, AgentClient $agentClient): RedirectResponse
+    {
+        $this->ensureUpdateCenterEnabled();
+        $request->session()->forget('system_updater_plan');
+        try {
+            if (! $agentClient instanceof PlannedAgentClient) {
+                throw new \RuntimeException('Updater preview is unavailable.');
+            }
+            $plan = $agentClient->preview();
+            $request->session()->put('system_updater_plan', $plan);
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return redirect()->route('admin.system-updates.index')
+                ->withErrors([__('admin.system_updates.updater.plan_failed')]);
+        }
+
+        return redirect()->route('admin.system-updates.index');
+    }
+
+    public function switchBack(Request $request, AgentClient $agentClient, SystemUpdateOperationGuard $operationGuard): RedirectResponse
     {
         $this->ensureUpdateCenterEnabled();
         $authorizationCode = $this->validateMutationRequest($request);
@@ -76,8 +97,29 @@ class SystemUpdaterOperationController extends Controller
         return $this->startOperation(
             fn (): array => $this->startAuthorizedMutation(
                 $agentClient,
+                'switch-back',
+                fn (): array => $agentClient instanceof PlannedAgentClient
+                    ? $agentClient->startSwitchBack($authorizationCode)
+                    : throw new \RuntimeException('Code switch-back is unavailable.'),
+                $operationGuard,
+            ),
+            'switch-back',
+        );
+    }
+
+    public function update(Request $request, AgentClient $agentClient, SystemUpdateOperationGuard $operationGuard): RedirectResponse
+    {
+        $this->ensureUpdateCenterEnabled();
+        $authorizationCode = $this->validateMutationRequest($request);
+        $options = $this->validateUpdatePlan($request, $agentClient);
+
+        return $this->startOperation(
+            fn (): array => $this->startAuthorizedMutation(
+                $agentClient,
                 'update',
-                fn (): array => $agentClient->startUpdate($authorizationCode),
+                fn (): array => $agentClient instanceof PlannedAgentClient
+                    ? $agentClient->startPlannedUpdate($authorizationCode, $options['allow_maintenance'], $options['expected_plan_sha256'])
+                    : $agentClient->startUpdate($authorizationCode),
                 $operationGuard,
             ),
             'update',
@@ -129,6 +171,30 @@ class SystemUpdaterOperationController extends Controller
         );
     }
 
+    /** @return array{allow_maintenance: bool, expected_plan_sha256: string} */
+    private function validateUpdatePlan(Request $request, AgentClient $agentClient): array
+    {
+        if (! $agentClient instanceof PlannedAgentClient) {
+            return ['allow_maintenance' => false, 'expected_plan_sha256' => ''];
+        }
+        $validated = $request->validate([
+            'expected_plan_sha256' => ['required', 'string', 'regex:/\A[a-f0-9]{64}\z/'],
+            'allow_maintenance' => ['sometimes', 'boolean'],
+        ]);
+        $plan = $request->session()->get('system_updater_plan');
+        $hash = is_array($plan) ? ($plan['plan_sha256'] ?? null) : null;
+        if (! is_string($hash) || ! hash_equals($hash, $validated['expected_plan_sha256'])) {
+            throw ValidationException::withMessages(['expected_plan_sha256' => __('admin.system_updates.updater.plan_changed')]);
+        }
+        $allowMaintenance = (bool) ($validated['allow_maintenance'] ?? false);
+        if (($plan['strategy'] ?? null) === 'maintenance' && ! $allowMaintenance) {
+            throw ValidationException::withMessages(['allow_maintenance' => __('admin.system_updates.updater.maintenance_confirmation')]);
+        }
+        $request->session()->forget('system_updater_plan');
+
+        return ['allow_maintenance' => $allowMaintenance, 'expected_plan_sha256' => $validated['expected_plan_sha256']];
+    }
+
     private function validateMutationRequest(Request $request): string
     {
         $validated = $request->validate([
@@ -161,7 +227,8 @@ class SystemUpdaterOperationController extends Controller
         SystemUpdateOperationGuard $operationGuard,
     ): array {
         $status = $agentClient->status();
-        if ($this->mutationPolicy->allows($status, $kind)) {
+        $currentOperation = $agentClient->currentOperation();
+        if ($this->mutationPolicy->allows($status, $kind, $currentOperation)) {
             return $operationGuard->run($start, $status);
         }
 

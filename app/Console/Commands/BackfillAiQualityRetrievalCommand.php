@@ -14,7 +14,9 @@ class BackfillAiQualityRetrievalCommand extends Command
 {
     protected $signature = 'geoflow:backfill-ai-quality-retrieval
         {--batch=200 : Rows processed per batch}
-        {--dry-run : Report eligible rows without changing data}';
+        {--dry-run : Report eligible rows without changing data}
+        {--verify : Read only and fail while any backfill count remains nonzero}
+        {--json : Emit structured backfill counts}';
 
     protected $description = 'Backfill legacy AI quality modes, source ledgers, and serving chunk generations';
 
@@ -26,7 +28,7 @@ class BackfillAiQualityRetrievalCommand extends Command
     public function handle(): int
     {
         $batch = max(1, min(1000, (int) $this->option('batch')));
-        $dryRun = (bool) $this->option('dry-run');
+        $dryRun = (bool) $this->option('dry-run') || (bool) $this->option('verify');
         $counts = [
             'tasks' => 0,
             'tasks_deferred' => 0,
@@ -78,11 +80,14 @@ class BackfillAiQualityRetrievalCommand extends Command
                         if (! $locked || ! $locked->active_revision_id || (int) $locked->active_fact_count !== 0) {
                             return false;
                         }
+                        $manifest = DB::table('knowledge_fact_library_revisions')
+                            ->where('id', $locked->active_revision_id)
+                            ->value('manifest_json');
+                        $decoded = json_decode((string) $manifest, true);
+                        if (is_array($decoded['facts'] ?? null) && $decoded['facts'] === []) {
+                            return false;
+                        }
                         if (! $dryRun) {
-                            $manifest = DB::table('knowledge_fact_library_revisions')
-                                ->where('id', $locked->active_revision_id)
-                                ->value('manifest_json');
-                            $decoded = json_decode((string) $manifest, true);
                             DB::table('knowledge_fact_libraries')->where('id', $locked->id)->update([
                                 'active_fact_count' => is_array($decoded['facts'] ?? null)
                                     ? count($decoded['facts'])
@@ -113,7 +118,7 @@ class BackfillAiQualityRetrievalCommand extends Command
                         if ($ids->isEmpty() && (int) $locked->knowledge_base_id > 0) {
                             $ids->push((int) $locked->knowledge_base_id);
                         }
-                        $readiness = $this->readinessService->inspect($ids->all());
+                        $readiness = $this->readinessService->inspect($ids->all(), readOnly: $dryRun);
                         if (! (bool) data_get($readiness, 'modes.'.AiQualityRetrievalMode::CHUNK.'.available', false)) {
                             return 'deferred';
                         }
@@ -222,12 +227,23 @@ class BackfillAiQualityRetrievalCommand extends Command
                 }
             });
 
-        $prefix = $dryRun ? 'Eligible' : 'Backfilled';
-        foreach ($counts as $kind => $count) {
-            $this->line(sprintf('%s %s: %d', $prefix, $kind, $count));
+        $complete = array_sum($counts) === 0;
+        if ($this->option('json')) {
+            $this->line(json_encode([
+                'schema_version' => 1,
+                'status' => $this->option('verify') && ! $complete ? 'fail' : 'pass',
+                'dry_run' => $dryRun,
+                'complete' => $complete,
+                'counts' => $counts,
+            ], JSON_THROW_ON_ERROR));
+        } else {
+            $prefix = $dryRun ? 'Eligible' : 'Backfilled';
+            foreach ($counts as $kind => $count) {
+                $this->line(sprintf('%s %s: %d', $prefix, $kind, $count));
+            }
         }
 
-        return self::SUCCESS;
+        return $this->option('verify') && ! $complete ? self::FAILURE : self::SUCCESS;
     }
 
     /** @param array<string,int> $counts */

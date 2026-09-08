@@ -190,3 +190,40 @@ test('authorized updater actions collect central prompt fields and preserve the 
     assert.equal(form.password.value, 'secret-123');
     assert.equal(form.submitter, button);
 });
+
+
+test('planned confirmation never prompts or submits with a missing hash or unchecked maintenance', async () => {
+    class Element { closest() { return this; } }
+    class Input extends Element {}
+    class Form extends Element {
+        constructor() {
+            super(); this.dataset = {}; this.auth = new Input(); this.plan = new Input(); this.maintenance = new Input();
+            this.plan.value = ''; this.maintenance.checked = false; this.submitted = false;
+        }
+        querySelector(selector) {
+            if (selector.includes('updater_authorization_code')) return this.auth;
+            if (selector.includes('expected_plan_sha256')) return this.plan;
+            if (selector.includes('allow_maintenance')) return this.maintenance;
+            return null;
+        }
+        requestSubmit() { this.submitted = true; }
+    }
+    let listener; let prompts = 0;
+    const form = new Form();
+    initializeSystemUpdaterAuthorizationDialogs({ addEventListener(_type, callback) { listener = callback; } }, {
+        Element, HTMLFormElement: Form, HTMLInputElement: Input, HTMLButtonElement: Input,
+        AdminActionDialog: { async prompt() { prompts++; return { authorization: '123456' }; } },
+    });
+    const event = { target: form, preventDefault() {} };
+    await listener(event);
+    form.plan.value = 'a'.repeat(64);
+    await listener(event);
+    assert.equal(prompts, 0);
+    assert.equal(form.submitted, false);
+    form.maintenance.checked = true;
+    await listener(event);
+    assert.equal(prompts, 1);
+    assert.equal(form.submitted, true);
+    assert.equal(form.plan.value, 'a'.repeat(64));
+    assert.equal(form.maintenance.checked, true);
+});

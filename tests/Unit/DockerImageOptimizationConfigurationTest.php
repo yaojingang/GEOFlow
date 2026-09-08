@@ -48,7 +48,7 @@ class DockerImageOptimizationConfigurationTest extends TestCase
         $dockerignore = (string) file_get_contents(dirname(__DIR__, 2).'/.dockerignore');
         $patterns = preg_split('/\R/', $dockerignore) ?: [];
 
-        foreach (['storage', 'tests', '.agents', '.claude', '.cursor', 'browser-extension', 'public/build'] as $pattern) {
+        foreach (['storage', 'tests', '.agents', '.claude', '.cursor', 'browser-extension', 'public/build', 'public/storage'] as $pattern) {
             $this->assertContains($pattern, $patterns, sprintf('%s must stay out of application images.', $pattern));
         }
     }

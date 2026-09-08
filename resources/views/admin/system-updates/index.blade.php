@@ -22,6 +22,9 @@
         $updaterInstance = is_array($updaterBridge['instance'] ?? null) ? $updaterBridge['instance'] : [];
         $updaterChecks = is_array($updaterBridge['checks'] ?? null) ? array_values(array_filter($updaterBridge['checks'], 'is_array')) : [];
         $updaterDoctorStatus = (string) ($updaterBridge['doctor_status'] ?? 'unavailable');
+        $plannedOperationsAvailable = !empty($updaterBridge['planned_operations_available']);
+        $upgradePlan = $plannedOperationsAvailable && is_array(session('system_updater_plan')) ? session('system_updater_plan') : [];
+        $upgradePlanRequiresMaintenance = ($upgradePlan['strategy'] ?? null) === 'maintenance';
         $updaterOperationsAvailable = !empty($updaterBridge['operations_available']);
         $mutationAuthorizationReady = !empty($updaterBridge['mutation_authorization_ready']);
         $phaseBHandoverReady = !empty($updaterBridge['phase_b_handover_ready']);
@@ -106,6 +109,7 @@
         }
         $readOnlyOperationDisabled = $updaterOperationBlocksMutations || !$updaterOperationsAvailable;
         $mutationDisabled = $readOnlyOperationDisabled || $legacyCutoverBlocked || $updaterConnection !== 'connected' || !$mutationAuthorizationReady;
+        $recoveryDisabled = $legacyCutoverBlocked || empty($updaterBridge['recovery_available']);
         $updateMutationDisabled = $readOnlyOperationDisabled || $legacyCutoverBlocked || ($updaterConnection !== 'connected' && !$phaseBHandoverReady) || !$mutationAuthorizationReady;
         $authorizationCheckFailed = !$mutationAuthorizationReady;
         $manualCommands = is_array($summary['manual_commands'] ?? null) ? $summary['manual_commands'] : [];
@@ -380,9 +384,29 @@
                                 <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.system_updates.updater.operations_hint') }}</p>
                                 <p class="mt-2 text-xs leading-5 text-gray-500">{{ __('admin.system_updates.updater.authorization_hint') }}</p>
                             </div>
+                            @if($plannedOperationsAvailable)
+                                <section class="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-4" aria-label="{{ __('admin.system_updates.updater.plan_title') }}">
+                                    <h4 class="font-semibold text-gray-900">{{ __('admin.system_updates.updater.plan_title') }}</h4>
+                                    <p class="mt-1 text-sm text-gray-600">{{ __('admin.system_updates.updater.plan_hint') }}</p>
+                                    <form method="POST" action="{{ route('admin.system-updates.updater.plan') }}" class="mt-3">
+                                        @csrf
+                                        <button type="submit" @disabled($readOnlyOperationDisabled) class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50">{{ __('admin.system_updates.updater.plan_preview') }}</button>
+                                    </form>
+                                    @if($upgradePlan !== [])
+                                        <p class="mt-3 text-sm font-medium">{{ __('admin.system_updates.updater.plan_summary', ['version' => $upgradePlan['target_version'], 'strategy' => __('admin.system_updates.updater.strategy.'.$upgradePlan['strategy']), 'migrations' => count($upgradePlan['pending_migrations'] ?? [])]) }}</p>
+                                        <p class="mt-1 text-sm">{{ __('admin.system_updates.updater.layout_change') }}: {{ !empty($upgradePlan['layout_change']) ? __('admin.system_updates.updater.layout_migration') : __('admin.system_updates.updater.layout_current') }}</p>
+                                        <ul class="mt-2 list-inside list-disc text-xs text-gray-600">
+                                            @foreach($upgradePlan['pending_migrations'] ?? [] as $migration)
+                                                <li class="break-all">{{ $migration['name'] }}</li>
+                                            @endforeach
+                                        </ul>
+                                        <p class="mt-2 break-all font-mono text-xs text-gray-500">SHA-256: {{ $upgradePlan['plan_sha256'] }}</p>
+                                    @endif
+                                </section>
+                            @endif
                             <div class="mt-5 grid w-full gap-3 md:grid-cols-3">
-                                @foreach(['update', 'backup'] as $operationKind)
-                                    @php($operationDisabled = $operationKind === 'update' ? $updateMutationDisabled : $mutationDisabled)
+                                @foreach($plannedOperationsAvailable ? ['update', 'backup', 'switch-back'] : ['update', 'backup'] as $operationKind)
+                                    @php($operationDisabled = $operationKind === 'update' ? ($updateMutationDisabled || ($plannedOperationsAvailable && $upgradePlan === [])) : $mutationDisabled)
                                     <form
                                         method="POST"
                                         action="{{ route('admin.system-updates.updater.'.$operationKind) }}"
@@ -390,8 +414,8 @@
                                         data-system-updater-authorized-action
                                         data-dialog-tone="{{ $operationKind === 'update' ? 'warning' : 'info' }}"
                                         data-dialog-title="{{ __('admin.system_updates.updater.action.'.$operationKind) }}"
-                                        data-dialog-message="{{ __('admin.system_updates.updater.operations_hint') }}"
-                                        data-dialog-guidance="{{ __('admin.system_updates.release_notice.version_line', ['current' => $currentReleaseVersion, 'latest' => $latestReleaseVersion]) }}"
+                                        data-dialog-message="{{ $operationKind === 'switch-back' ? __('admin.system_updates.updater.switch_back_hint') : ($operationKind === 'update' && $upgradePlanRequiresMaintenance ? __('admin.system_updates.updater.maintenance_confirmation') : __('admin.system_updates.updater.operations_hint')) }}"
+                                        data-dialog-guidance="{{ $operationKind === 'update' && $upgradePlan !== [] ? __('admin.system_updates.updater.plan_summary', ['version' => $upgradePlan['target_version'], 'strategy' => __('admin.system_updates.updater.strategy.'.$upgradePlan['strategy']), 'migrations' => count($upgradePlan['pending_migrations'] ?? [])]) : __('admin.system_updates.release_notice.version_line', ['current' => $currentReleaseVersion, 'latest' => $latestReleaseVersion]) }}"
                                         data-dialog-confirm-label="{{ __('admin.system_updates.updater.action.'.$operationKind) }}"
                                         data-authorization-label="{{ __('admin.system_updates.updater.authorization_label') }}"
                                         data-password-label="{{ __('admin.system_updates.label.current_admin_password') }}"
@@ -400,6 +424,14 @@
                                         @if($passwordRequired) data-password-required="true" @endif
                                     >
                                         @csrf
+                                        @if($operationKind === 'update' && $plannedOperationsAvailable)
+                                            <input type="hidden" name="expected_plan_sha256" value="{{ (string) ($upgradePlan['plan_sha256'] ?? '') }}">
+                                            @if($upgradePlanRequiresMaintenance)
+                                                <label class="text-sm text-amber-900"><input type="checkbox" name="allow_maintenance" value="1" required @disabled($operationDisabled)> {{ __('admin.system_updates.updater.maintenance_confirmation') }}</label>
+                                            @else
+                                                <input type="hidden" name="allow_maintenance" value="0">
+                                            @endif
+                                        @endif
                                         <input id="updater-{{ $operationKind }}-authorization" type="hidden" name="updater_authorization_code" @disabled($operationDisabled)>
                                         @if($passwordRequired)
                                             <input id="updater-{{ $operationKind }}-password" type="hidden" name="current_admin_password" @disabled($operationDisabled)>
@@ -474,11 +506,11 @@
                                         >
                                             @csrf
                                             <input type="hidden" name="recovery_point_id" value="{{ (string) ($recoveryPoint['id'] ?? '') }}">
-                                            <input id="rollback-authorization-{{ $loop->index }}" type="hidden" name="updater_authorization_code" @disabled($mutationDisabled)>
+                                            <input id="rollback-authorization-{{ $loop->index }}" type="hidden" name="updater_authorization_code" @disabled($recoveryDisabled)>
                                             @if($passwordRequired)
-                                                <input id="rollback-password-{{ $loop->index }}" type="hidden" name="current_admin_password" @disabled($mutationDisabled)>
+                                                <input id="rollback-password-{{ $loop->index }}" type="hidden" name="current_admin_password" @disabled($recoveryDisabled)>
                                             @endif
-                                            <button type="submit" @disabled($mutationDisabled) class="inline-flex min-h-10 items-center justify-center rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-50 disabled:bg-gray-100 disabled:text-gray-400">
+                                            <button type="submit" @disabled($recoveryDisabled) class="inline-flex min-h-10 items-center justify-center rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-50 disabled:bg-gray-100 disabled:text-gray-400">
                                                 <i data-lucide="rotate-ccw" class="mr-2 h-4 w-4"></i>
                                                 {{ __('admin.system_updates.updater.action.rollback') }}
                                             </button>

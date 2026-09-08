@@ -7,13 +7,21 @@ use Illuminate\Console\Command;
 
 class ManagedImageHashReadinessCommand extends Command
 {
-    protected $signature = 'geoflow:managed-images:readiness';
+    protected $signature = 'geoflow:managed-images:readiness
+        {--dry-run : Inspect identities and registry without writes}
+        {--json : Emit structured readiness counts}';
 
     protected $description = 'Backfill managed image identities, reconcile their registry, and report physical deletion readiness';
 
     public function handle(ManagedImageFileService $managedImages): int
     {
-        $status = $managedImages->managedPathHashReadiness();
+        $status = $managedImages->managedPathHashReadiness(readOnly: (bool) $this->option('dry-run'));
+        if ($this->option('json')) {
+            $complete = $status['remaining'] === 0 && $status['terminal'] === 0 && $status['registry_failed'] === 0;
+            $this->line(json_encode(['schema_version' => 1, 'status' => $complete ? 'pass' : 'fail', ...$status], JSON_THROW_ON_ERROR));
+
+            return $complete ? self::SUCCESS : self::FAILURE;
+        }
 
         $this->table(['processed', 'resolved', 'terminal', 'remaining', 'registry_reconciled', 'registry_failed', 'deletion_enabled', 'ready'], [[
             $status['processed'],

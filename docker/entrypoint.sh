@@ -33,7 +33,7 @@ if [ "${RUN_COMPOSER}" = "true" ]; then
   fi
   echo "[entrypoint] composer install (COMPOSER_ON_START=${COMPOSER_ON_START}, vendor missing=$([ ! -f vendor/autoload.php ] && echo yes || echo no))"
   # 无有效 APP_KEY 时 composer 脚本会调 artisan（package:discover），易失败且留不下 vendor/autoload.php
-  if grep -Eq '^APP_KEY=base64:' .env 2>/dev/null; then
+  if [ -n "${APP_KEY:-}" ] || grep -Eq '^APP_KEY=base64:' .env 2>/dev/null; then
     composer install --no-interaction --prefer-dist --optimize-autoloader
   else
     composer install --no-interaction --prefer-dist --no-scripts --optimize-autoloader
@@ -41,8 +41,8 @@ if [ "${RUN_COMPOSER}" = "true" ]; then
   fi
 fi
 
-# .env 为可写挂载时，无密钥则自动生成（宿主机可无 PHP）。
-if ! grep -q '^APP_KEY=base64:' .env 2>/dev/null; then
+# 优先使用已注入的密钥；缺少密钥时才读取或初始化可写的 .env。
+if [ -z "${APP_KEY:-}" ] && ! grep -q '^APP_KEY=base64:' .env 2>/dev/null; then
   echo "[entrypoint] php artisan key:generate --force"
   php artisan key:generate --force --no-interaction
 fi
@@ -118,7 +118,7 @@ fi
 
 # 缓存 config / events / routes / views（需有效 APP_KEY；设为 false 可跳过，便于本地排障）
 if [ "${AUTO_OPTIMIZE:-false}" = "true" ]; then
-  if grep -Eq '^APP_KEY=base64:' .env 2>/dev/null; then
+  if [ -n "${APP_KEY:-}" ] || grep -Eq '^APP_KEY=base64:' .env 2>/dev/null; then
     echo "[entrypoint] php artisan optimize"
     php artisan optimize --no-interaction || echo "[entrypoint] warning: php artisan optimize failed, continuing"
   else
