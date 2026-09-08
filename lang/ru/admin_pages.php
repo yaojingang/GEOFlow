@@ -1,6 +1,10 @@
 <?php
 
 return [
+    'theme_package_upload' => 'Импорт темы',
+    'theme_package_inspection' => 'Проверка пакета темы',
+    'theme_package_preview' => 'Предпросмотр темы',
+
     'ai_workspace' => 'Рабочая область ИИ',
     'operations_dashboard' => 'Операции',
     'analytics' => 'Центр данных',

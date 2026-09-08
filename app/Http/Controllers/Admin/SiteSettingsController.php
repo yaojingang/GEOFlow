@@ -216,6 +216,11 @@ class SiteSettingsController extends Controller
             return back()->withErrors(__('admin.site_settings.theme.invalid_selection'));
         }
 
+        $theme = collect($this->siteThemeCatalog->all())->firstWhere('id', $selectedTheme);
+        if (($theme['source'] ?? '') === 'installed') {
+            abort_unless($request->user('admin')?->canManageProtectedWorkflows(), 403);
+        }
+
         SiteSetting::query()->updateOrCreate(
             ['setting_key' => 'active_theme'],
             ['setting_value' => $selectedTheme]

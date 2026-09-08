@@ -1,12 +1,17 @@
 <?php
 
 $base = require __DIR__.'/../en/admin.php';
+$themePackagesPath = __DIR__.'/theme_packages.php';
+if (! is_file($themePackagesPath) && function_exists('lang_path')) {
+    $themePackagesPath = lang_path('pt_BR/theme_packages.php');
+}
 $manualPublicationsPath = __DIR__.'/manual_publications.php';
 if (! is_file($manualPublicationsPath) && function_exists('lang_path')) {
     $manualPublicationsPath = lang_path('pt_BR/manual_publications.php');
 }
 
 return array_replace_recursive($base, [
+    'theme_packages' => require $themePackagesPath,
     'action_dialog' => [
         'cancel' => 'Cancelar', 'close' => 'Fechar', 'confirm' => 'Confirmar', 'continue' => 'Continuar',
         'input_label' => 'Digite um valor', 'required' => 'Digite um valor antes de continuar.',
