@@ -6,6 +6,7 @@ if (! is_file($manualPublicationsPath) && function_exists('lang_path')) {
 }
 
 return [
+    'theme_packages' => require __DIR__.'/theme_packages.php',
     'manual_publications' => require $manualPublicationsPath,
     'action_dialog' => [
         'cancel' => 'Cancel',

@@ -7,7 +7,10 @@ use App\Support\AdminActivityLogger;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
+use Throwable;
 
 /**
  * 后台管理员写操作日志中间件。
@@ -25,7 +28,19 @@ class LogAdminActivity
         $admin = auth('admin')->user();
 
         // 先放行业务逻辑，确保日志失败不阻断正常响应。
-        $response = $next($request);
+        try {
+            $response = $next($request);
+        } catch (Throwable $exception) {
+            $route = (string) $request->route()?->getName();
+            if ($admin instanceof Admin && ! $request->isMethod('GET') && Str::startsWith($route, 'admin.site-settings.theme-packages.')) {
+                AdminActivityLogger::logFromRequest($request, $admin, $route.':failed', [
+                    'success' => false,
+                    'http_status' => $exception instanceof ValidationException ? $exception->status
+                        : ($exception instanceof HttpExceptionInterface ? $exception->getStatusCode() : 500),
+                ]);
+            }
+            throw $exception;
+        }
 
         $method = strtoupper((string) $request->method());
         if (! in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
@@ -51,7 +66,10 @@ class LogAdminActivity
             || Str::startsWith($routeName, 'admin.knowledge-bases.fact-evidences.')
             || Str::startsWith($routeName, 'admin.knowledge-bases.fact-revisions.')
             || Str::startsWith($routeName, 'admin.knowledge-bases.fact-generation.');
-        $details = $isKnowledgeFacts
+        $isThemePackage = Str::startsWith($routeName, 'admin.site-settings.theme-packages.');
+        $details = $isThemePackage
+            ? ['http_status' => $response->getStatusCode()]
+            : ($isKnowledgeFacts
             ? $this->knowledgeFactAuditSummary($request, $response)
             : ($isAiWorkspace
             ? $this->aiWorkspaceAuditSummary($request, $response)
@@ -59,7 +77,7 @@ class LogAdminActivity
                 'password', 'password_confirmation', 'package_password',
                 'current_password', 'current_admin_password', 'updater_authorization_code',
                 'new_password', 'confirm_password',
-            ]));
+            ])));
         $explicitDetails = $request->attributes->get('admin_activity_details');
         if (is_array($explicitDetails) && ! $isKnowledgeFacts) {
             $details = array_replace($details, $explicitDetails);

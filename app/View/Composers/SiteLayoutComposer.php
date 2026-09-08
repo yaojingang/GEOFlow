@@ -7,6 +7,7 @@ use App\Models\HostedSiteProfile;
 use App\Services\Site\SiteScopedArticleQuery;
 use App\Support\Site\CurrentSite;
 use App\Support\Site\SiteSettingsBag;
+use App\Support\Site\SiteThemePreviewContext;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
@@ -29,7 +30,7 @@ final class SiteLayoutComposer
         $copyright = (string) ($map['copyright_info'] ?? '');
         $filingInfo = trim((string) ($map['filing_info'] ?? ''));
         $filingUrl = trim((string) ($map['filing_url'] ?? ''));
-        $analyticsCode = (string) ($map['analytics_code'] ?? '');
+        $analyticsCode = app(SiteThemePreviewContext::class)->isActive() ? '' : (string) ($map['analytics_code'] ?? '');
 
         $categories = collect();
         if (Schema::hasTable('categories')) {

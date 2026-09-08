@@ -38,6 +38,7 @@ use App\Services\Site\HostedSiteResolver;
 use App\Services\SystemUpdater\UnixSocketAgentClient;
 use App\Support\AdminUiRegistry;
 use App\Support\Site\CurrentSite;
+use App\Support\Site\SiteThemePreviewContext;
 use App\View\Composers\SiteLayoutComposer;
 use Closure;
 use GuzzleHttp\Utils;
@@ -92,6 +93,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(TaskLifecycleService::class);
         $this->app->singleton(ArticleGeoFlowService::class);
         $this->app->scoped(CurrentSite::class);
+        $this->app->scoped(SiteThemePreviewContext::class);
         $this->app->singleton(HostedSiteResolver::class);
         $this->app->singleton(AiWorkspaceModelRuntime::class);
         $this->app->alias(AiWorkspaceModelRuntime::class, AdminHelpResponder::class);

@@ -1,6 +1,10 @@
 <?php
 
 return [
+    'theme_package_upload' => '导入模板',
+    'theme_package_inspection' => '检查模板包',
+    'theme_package_preview' => '预览模板',
+
     'ai_workspace' => 'AI 工作台',
     'operations_dashboard' => '运营工作台',
     'analytics' => '数据中心',

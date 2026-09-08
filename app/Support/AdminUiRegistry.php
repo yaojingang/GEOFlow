@@ -80,7 +80,7 @@ final class AdminUiRegistry
     {
         return [
             ['key' => 'site', 'label_key' => 'admin.ui_v3.settings_site_brand', 'route' => 'admin.site-settings.index', 'patterns' => ['admin.site-settings.index'], 'protected' => false],
-            ['key' => 'theme', 'label_key' => 'admin.ui_v3.settings_home_theme', 'route' => 'admin.site-settings.homepage-modules.edit', 'patterns' => ['admin.site-settings.homepage*', 'admin.site-settings.theme-replications.*', 'admin.site-theme-replications.*'], 'protected' => false],
+            ['key' => 'theme', 'label_key' => 'admin.ui_v3.settings_home_theme', 'route' => 'admin.site-settings.homepage-modules.edit', 'patterns' => ['admin.site-settings.homepage*', 'admin.site-settings.theme-replications.*', 'admin.site-settings.theme-packages.*', 'admin.site-theme-replications.*'], 'protected' => false],
             ['key' => 'forms', 'label_key' => 'admin.ui_v3.settings_forms_leads', 'route' => 'admin.lead-forms.index', 'patterns' => ['admin.lead-forms.*', 'admin.leads.*'], 'protected' => false],
             ['key' => 'users', 'label_key' => 'admin.ui_v3.users_permissions', 'route' => 'admin.admin-users.index', 'patterns' => ['admin.admin-users.*', 'admin.api-tokens.*'], 'protected' => true],
             ['key' => 'security', 'label_key' => 'admin.ui_v3.security_audit', 'route' => 'admin.security-settings.index', 'patterns' => ['admin.security-settings.*', 'admin.site-settings.sensitive-words', 'admin.admin-activity-logs'], 'protected' => false],
@@ -227,6 +227,10 @@ final class AdminUiRegistry
             'admin.leads.show' => ['key' => 'lead_detail', 'icon' => 'user', 'body_heading' => 'hidden'],
             'admin.site-settings.index' => ['key' => 'site_settings', 'icon' => 'settings', 'body_heading' => 'hidden'],
             'admin.site-settings.homepage-modules.edit' => ['key' => 'homepage_modules', 'icon' => 'panels-top-left', 'body_heading' => 'hidden'],
+            'admin.site-settings.theme-packages.imports.create' => ['key' => 'theme_package_upload', 'icon' => 'upload', 'body_heading' => 'content'],
+            'admin.site-settings.theme-packages.imports.show' => ['key' => 'theme_package_inspection', 'icon' => 'scan-line', 'body_heading' => 'content'],
+            'admin.site-settings.theme-packages.imports.file' => ['key' => 'theme_package_inspection', 'icon' => 'file-search', 'body_heading' => 'content'],
+            'admin.site-settings.theme-packages.preview' => ['key' => 'theme_package_preview', 'icon' => 'eye', 'body_heading' => 'content'],
             'admin.site-settings.theme-replications.create' => ['key' => 'theme_replication_create', 'icon' => 'copy-plus', 'body_heading' => 'hidden'],
             'admin.site-settings.theme-replications.show' => ['key' => 'theme_replication_detail', 'icon' => 'copy-check', 'body_heading' => 'content'],
             'admin.site-settings.sensitive-words' => ['key' => 'sensitive_words', 'icon' => 'shield-alert', 'body_heading' => 'hidden'],
@@ -352,11 +356,11 @@ final class AdminUiRegistry
     {
         $classifications = [
             'redirect' => ['admin.entry', 'admin.locale.switch', 'admin.security-settings.index'],
-            'special' => ['admin.login', 'admin.site-settings.theme-replications.preview'],
+            'special' => ['admin.site-settings.theme-packages.preview.frame', 'admin.login', 'admin.site-settings.theme-replications.preview'],
             'download' => [
                 'admin.leads.export', 'admin.manual-publications.export',
                 'admin.articles.batch.export-markdown.download',
-                'admin.site-settings.theme-replications.package',
+                'admin.site-settings.theme-replications.package', 'admin.site-settings.theme-packages.exports.download',
                 'admin.system-updates.updater.download',
             ],
             'binary' => ['admin.ai-workspace.media.show'],

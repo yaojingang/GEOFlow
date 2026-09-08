@@ -1,6 +1,10 @@
 <?php
 
 return [
+    'theme_package_upload' => 'テーマをインポート',
+    'theme_package_inspection' => 'テーマパッケージを確認',
+    'theme_package_preview' => 'テーマをプレビュー',
+
     'ai_workspace' => 'AI ワークスペース',
     'operations_dashboard' => '運用ダッシュボード',
     'analytics' => 'データセンター',

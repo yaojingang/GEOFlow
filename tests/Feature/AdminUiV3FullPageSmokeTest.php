@@ -30,6 +30,7 @@ use App\Models\Task;
 use App\Models\TitleGenerationRun;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
+use App\Services\Admin\SiteThemePackageService;
 use App\Support\AdminUiRegistry;
 use Database\Seeders\UiV3ReviewSeeder;
 use Illuminate\Database\Schema\Blueprint;
@@ -38,6 +39,7 @@ use Illuminate\Routing\Route as LaravelRoute;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\ThemePackageFixture;
 use Tests\TestCase;
 
 class AdminUiV3FullPageSmokeTest extends TestCase
@@ -76,7 +78,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         $this->seed(UiV3ReviewSeeder::class);
 
         $admin = Admin::query()->where('username', 'ui_v3_reviewer')->firstOrFail();
-        $parameters = $this->routeParameters();
+        $parameters = $this->routeParameters() + $this->themePackageParameters($admin);
         $registry = app(AdminUiRegistry::class);
         $shellRoutes = collect(Route::getRoutes())
             ->filter(fn (LaravelRoute $route): bool => in_array('GET', $route->methods(), true))
@@ -85,7 +87,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             ->sortBy(fn (LaravelRoute $route): string => (string) $route->getName())
             ->values();
 
-        $this->assertCount(102, $shellRoutes);
+        $this->assertCount(106, $shellRoutes);
 
         foreach ($shellRoutes as $route) {
             $routeName = (string) $route->getName();
@@ -144,7 +146,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         $this->seed(UiV3ReviewSeeder::class);
 
         $admin = Admin::query()->where('username', 'ui_v3_reviewer')->firstOrFail();
-        $parameters = $this->routeParameters();
+        $parameters = $this->routeParameters() + $this->themePackageParameters($admin);
         $registry = app(AdminUiRegistry::class);
         $routesByClassification = collect(Route::getRoutes())
             ->filter(fn (LaravelRoute $route): bool => in_array('GET', $route->methods(), true))
@@ -152,9 +154,9 @@ class AdminUiV3FullPageSmokeTest extends TestCase
                 && str_starts_with($route->getName(), 'admin.'))
             ->groupBy(fn (LaravelRoute $route): string => (string) $registry->routeClassification((string) $route->getName()));
 
-        $this->assertCount(2, $routesByClassification->get('special', collect()));
+        $this->assertCount(3, $routesByClassification->get('special', collect()));
         $this->assertCount(3, $routesByClassification->get('redirect', collect()));
-        $this->assertCount(5, $routesByClassification->get('download', collect()));
+        $this->assertCount(6, $routesByClassification->get('download', collect()));
         $this->assertCount(14, $routesByClassification->get('endpoint', collect()));
 
         $this->get(route('admin.login'))
@@ -167,6 +169,12 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         $authenticated
             ->get(route('admin.site-settings.theme-replications.preview', $parameters['admin.site-settings.theme-replications.preview']))
             ->assertOk()
+            ->assertDontSee('data-gf-shell', false);
+
+        $authenticated
+            ->get(route('admin.site-settings.theme-packages.preview.frame', $parameters['admin.site-settings.theme-packages.preview.frame']))
+            ->assertOk()
+            ->assertSee('Fixture home')
             ->assertDontSee('data-gf-shell', false);
 
         foreach ($routesByClassification->get('redirect', collect()) as $route) {
@@ -295,6 +303,23 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             ->assertSee('aria-label="'.e(__('admin.common.back')).'"', false)
             ->assertSee('action="'.route('admin.ai-models.update', ['modelId' => $model->id]).'"', false)
             ->assertDontSee('id="modelModal"', false);
+    }
+
+    /** @return array<string, array<string, string>> */
+    private function themePackageParameters(Admin $admin): array
+    {
+        $service = app(SiteThemePackageService::class);
+        $inspection = $service->inspect(ThemePackageFixture::archive(ThemePackageFixture::files()), $admin->id);
+        $service->install($admin->id, $inspection['token'], true);
+        $export = $service->export('fixture-theme', $admin->id);
+
+        return [
+            'admin.site-settings.theme-packages.imports.show' => ['token' => $inspection['token']],
+            'admin.site-settings.theme-packages.imports.file' => ['token' => $inspection['token'], 'fileIndex' => 0],
+            'admin.site-settings.theme-packages.exports.download' => ['token' => $export['token']],
+            'admin.site-settings.theme-packages.preview' => ['themeId' => 'fixture-theme'],
+            'admin.site-settings.theme-packages.preview.frame' => ['themeId' => 'fixture-theme'],
+        ];
     }
 
     /** @return array<string, array<string, int|string>> */

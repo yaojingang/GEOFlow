@@ -1,6 +1,10 @@
 <?php
 
 return [
+    'theme_package_upload' => 'Import theme',
+    'theme_package_inspection' => 'Inspect theme package',
+    'theme_package_preview' => 'Preview theme',
+
     'ai_workspace' => 'AI Workspace',
     'operations_dashboard' => 'Operations',
     'analytics' => 'Data Center',
