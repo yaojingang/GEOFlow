@@ -10,12 +10,14 @@ It follows the implementation merged in [GEOFlow PR #122](https://github.com/yao
 
 ## 1. Choose your path
 
+[GEOFlow Updater](https://github.com/yaojingang/geoflow-updater) is a separate host-side tool for signed installation, upgrades, backups, and recovery.
+
 | Current installation | Path |
 |---|---|
-| New server with no GEOFlow installation | Install updater → Install the site → Configure authorization → Verify |
-| Existing standard Docker deployment without updater management | Install updater → Enroll during maintenance → Configure authorization → Run a planned update to convert the layout |
-| Existing managed deployment | Preview and update through the admin UI or server CLI |
-| Problems after an update | Check the failure state, then choose application switch-back or full data recovery |
+| New server with no GEOFlow installation | [Install GEOFlow Updater](#3-install-or-upgrade-updater) → [Install the site](#4-new-server-install-the-site) → [Configure authorization](#6-configure-authorization-for-the-admin-ui) → [Verify](#9-automatic-migrations-and-verification) |
+| Existing standard Docker deployment without updater management | [Install GEOFlow Updater](#3-install-or-upgrade-updater) → [Enroll during maintenance](#5-existing-site-enroll-and-convert-the-layout) → [Configure authorization](#6-configure-authorization-for-the-admin-ui) → [Run a planned update to convert the layout](#8-routine-updates-through-the-server-cli) |
+| Existing managed deployment | Preview and update through the [admin UI](#7-routine-updates-through-the-admin-ui) or [server CLI](#8-routine-updates-through-the-server-cli) |
+| Problems after an update | [Check the failure state](#11-troubleshooting-and-interrupted-operations), then choose [application switch-back](#102-switch-the-application-back-and-keep-current-data) or [full data recovery](#103-restore-data-from-a-full-recovery-point) |
 
 Examples use instance `primary`, directory `/opt/geoflow`, and URL `https://geo.example.com`. Replace the directory and domain with your actual values. Keep the instance name `primary`, which is the only supported instance name.
 
@@ -94,7 +96,7 @@ Set `--url` to the final public origin: scheme, host, and optional port. Exclude
 
 ### 4.2 Run installation
 
-Prerequisites: updater is installed, the release repository contains a matching signed plan, and the target directory is absent or empty. Use the enrollment procedure in section 5 for an existing site.
+Prerequisites: [updater installation](#3-install-or-upgrade-updater) is complete, the release repository contains a matching signed plan, and the target directory is absent or empty. Use the enrollment procedure in [section 5](#5-existing-site-enroll-and-convert-the-layout) for an existing site.
 
 ```bash
 sudo geoflow-updater install \
@@ -115,11 +117,11 @@ sudo cat /opt/geoflow/install-credentials.txt
 
 Read this file in your own controlled terminal. Sign in at the URL shown, change the initial password, and update the administrator email address. The file contains the initial password in plain text; handle it as password material. The default admin prefix is `/geo_admin`; use your actual prefix if you have customized it.
 
-Complete authorization in section 6 and verification in section 9. After deployment, configure AI provider credentials, model selection, and business settings in the admin UI.
+Complete authorization in [section 6](#6-configure-authorization-for-the-admin-ui) and verification in [section 9](#9-automatic-migrations-and-verification). After deployment, configure AI provider credentials, model selection, and business settings in the admin UI.
 
 ## 5. Existing site: enroll and convert the layout
 
-For an already managed instance, go directly to section 7 or 8. The Compose commands in this section apply only to a **standard single-stack Docker deployment that is not yet managed**.
+For an already managed instance, go directly to [section 7](#7-routine-updates-through-the-admin-ui) or [section 8](#8-routine-updates-through-the-server-cli). The Compose commands in this section apply only to a **standard single-stack Docker deployment that is not yet managed**.
 
 ### 5.1 Prepare for enrollment
 
@@ -155,9 +157,9 @@ sudo docker compose \
   up -d --remove-orphans
 ```
 
-This stops the old services and starts the managed services. Configure authorization in section 6, then perform the checks in section 9.
+This stops the old services and starts the managed services. Configure authorization in [section 6](#6-configure-authorization-for-the-admin-ui), then perform the checks in [section 9](#9-automatic-migrations-and-verification).
 
-**After enrollment, run a planned update to convert to the blue/green layout.** Preview the plan through section 7 or 8. If it shows “Migration to blue/green deployment,” confirm a maintenance window before applying it. Enrollment alone does not convert the layout.
+**After enrollment, run a planned update to convert to the blue/green layout.** Preview the plan through [section 7](#7-routine-updates-through-the-admin-ui) or [section 8](#8-routine-updates-through-the-server-cli). If it shows “Migration to blue/green deployment,” confirm a maintenance window before applying it. Enrollment alone does not convert the layout.
 
 ## 6. Configure authorization for the admin UI
 
@@ -187,7 +189,7 @@ The admin UI also requires the current administrator password by default; the si
 4. If the plan says “Maintenance upgrade,” schedule downtime and select the confirmation that allows service interruption.
 5. Click “Check and safely update.” Supply your administrator password when requested and a fresh code from the `update` entry.
 6. Follow the stages until the final status is “Completed.” Receiving an operation ID only means the task has started.
-7. Click “Run verification,” then perform the business checks in section 9.
+7. Click “Run verification,” then perform the business checks in [section 9](#9-automatic-migrations-and-verification).
 
 The page submits the digest from the preview with the update request. If it reports that the plan changed or has not been previewed, obtain a new preview, review it, and submit again.
 
@@ -363,7 +365,7 @@ sudo ./scripts/geoflow-deploy.sh rollback --data \
   --recovery-point "$GEOFLOW_RECOVERY_POINT"
 ```
 
-“Restore data and release” in the admin UI uses a `rollback` code and only permits the newest pre-update checkpoint. A host administrator can select other verified full recovery points through the CLI. Repeat the checks in section 9 after restoration.
+“Restore data and release” in the admin UI uses a `rollback` code and only permits the newest pre-update checkpoint. A host administrator can select other verified full recovery points through the CLI. Repeat the checks in [section 9](#9-automatic-migrations-and-verification) after restoration.
 
 ## 11. Troubleshooting and interrupted operations
 
@@ -380,7 +382,7 @@ sudo ./scripts/geoflow-deploy.sh rollback --data \
 | Maintenance has not been allowed | Schedule a window, then use the maintenance checkbox or CLI option |
 | `rolled_back` / “Automatically rolled back” | The update failed and recovery ran; confirm the old release is healthy before investigating |
 | `recovery_required` / “Recovery required” | Automatic handling is incomplete; preserve state and inspect the failed stage, logs, and recovery points |
-| Application switch-back is rejected | Check the conditions in section 10.2 and assess full data recovery if needed |
+| Application switch-back is rejected | Check the conditions in [section 10.2](#102-switch-the-application-back-and-keep-current-data) and assess full data recovery if needed |
 
 Useful diagnostics:
 
@@ -393,7 +395,7 @@ sudo geoflow-updater recovery-points --instance primary
 
 Updater checks persisted records at startup and during background reconciliation to handle interrupted operations. Keep deployment journals, lock files, slots, and data volumes intact. If the service has stopped, investigate first, then start it and observe recovery. Avoid repeatedly restarting an active service.
 
-Maintenance upgrades have a full-checkpoint recovery path before traffic reopens. Online failures prioritize application recovery while preserving new writes. After traffic opens, updater does not automatically rewind the whole database. Run a separate data-recovery operation if business data must be restored.
+Maintenance upgrades have a full-checkpoint recovery path before traffic reopens. Online failures prioritize application recovery while preserving new writes. After traffic opens, updater does not automatically rewind the whole database. Run a separate [data-recovery operation](#103-restore-data-from-a-full-recovery-point) if business data must be restored.
 
 Before sharing diagnostics, remove passwords, tokens, authorization URIs, and private business data. Include the operation ID, versions, failed stage, and redacted errors.
 
