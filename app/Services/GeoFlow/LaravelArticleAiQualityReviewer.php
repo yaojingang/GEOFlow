@@ -12,6 +12,9 @@ use App\Services\Outbound\OutboundRequestFailedException;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use JsonException;
+use Laravel\Ai\Responses\AgentResponse;
+use Laravel\Ai\Responses\Data\FinishReason;
+use Laravel\Ai\Responses\StructuredAgentResponse;
 use RuntimeException;
 use Throwable;
 
@@ -177,6 +180,7 @@ final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptA
             $configuredMaxTokens = (int) config('geoflow.ai_quality_max_output_tokens', 2048);
             $modelMaxTokens = (int) ($model->max_tokens ?: $configuredMaxTokens);
             $maxTokens = max(512, min($configuredMaxTokens, $modelMaxTokens));
+            $providerOptions = $this->qualityProviderOptions($model, $driver, $baseUrl);
             $timeout = max(1, min(
                 (int) config('geoflow.ai_quality_request_timeout_seconds', 160),
                 $timeoutSeconds,
@@ -190,7 +194,7 @@ final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptA
                 $providerResponseReturned = false;
                 try {
                     $externalRequestAttempted = true;
-                    $response = (new ArticleQualityJsonReviewerAgent($instructions, $maxTokens))->prompt(
+                    $response = (new ArticleQualityJsonReviewerAgent($instructions, $maxTokens))->withQualityProviderOptions($providerOptions)->prompt(
                         '请执行本分段质检，只返回 JSON。',
                         [],
                         $provider,
@@ -198,7 +202,7 @@ final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptA
                         $timeout,
                     );
                     $providerResponseReturned = true;
-                    $result = $this->decodeJson((string) $response->text);
+                    $result = $this->decodeResponse($response);
                     if ($providerUsageAttempt !== null) {
                         $usageSession?->providerReturned($providerUsageAttempt, $response->usage);
                     }
@@ -206,7 +210,7 @@ final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptA
                     $typed = $this->typedProviderException($jsonException, $baseUrl);
                     if ($providerUsageAttempt !== null) {
                         $providerResponseReturned
-                            ? $usageSession?->providerResultDiscarded($providerUsageAttempt, $response->usage ?? null)
+                            ? $usageSession?->providerResultDiscarded($providerUsageAttempt, $response->usage ?? null, $typed->safeCode())
                             : $usageSession?->providerFailed($providerUsageAttempt, $typed->safeCode());
                     }
                     $this->recordReadinessAttempt($model, $mode, false, $attemptStartedAt, $typed->safeCode());
@@ -215,26 +219,30 @@ final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptA
                 }
             } else {
                 $providerUsageAttempt = $usageSession?->begin('structured');
+                $providerResponseReturned = false;
                 try {
                     $externalRequestAttempted = true;
                     $agent = $usesV2Schema
                         ? new ArticleQualityReviewerAgent($instructions, $maxTokens)
                         : new LegacyArticleQualityReviewerAgent($instructions, $maxTokens);
-                    $response = $agent->prompt(
+                    $response = $agent->withQualityProviderOptions($providerOptions)->prompt(
                         '请执行本分段质检并返回完整结构化结果。',
                         [],
                         $provider,
                         (string) $model->model_id,
                         $timeout,
                     );
-                    $result = $response->structured;
+                    $providerResponseReturned = true;
+                    $result = $this->decodeResponse($response);
                     if ($providerUsageAttempt !== null) {
                         $usageSession?->providerReturned($providerUsageAttempt, $response->usage);
                     }
                 } catch (Throwable $structuredException) {
                     $structuredTyped = $this->typedProviderException($structuredException, $baseUrl);
                     if ($providerUsageAttempt !== null) {
-                        $usageSession?->providerFailed($providerUsageAttempt, $structuredTyped->safeCode());
+                        $providerResponseReturned
+                            ? $usageSession?->providerResultDiscarded($providerUsageAttempt, $response->usage ?? null, $structuredTyped->safeCode())
+                            : $usageSession?->providerFailed($providerUsageAttempt, $structuredTyped->safeCode());
                     }
                     $this->recordReadinessAttempt($model, 'structured', false, $attemptStartedAt, $structuredTyped->safeCode());
                     $remainingSeconds = $timeout - ((hrtime(true) - $attemptStartedAt) / 1_000_000_000);
@@ -256,7 +264,7 @@ final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptA
                     $providerResponseReturned = false;
                     try {
                         $externalRequestAttempted = true;
-                        $response = (new ArticleQualityJsonReviewerAgent($instructions, $maxTokens))->prompt(
+                        $response = (new ArticleQualityJsonReviewerAgent($instructions, $maxTokens))->withQualityProviderOptions($providerOptions)->prompt(
                             '请执行本分段质检，只返回 JSON。',
                             [],
                             $provider,
@@ -264,7 +272,7 @@ final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptA
                             max(1, (int) floor($remainingSeconds)),
                         );
                         $providerResponseReturned = true;
-                        $result = $this->decodeJson((string) $response->text);
+                        $result = $this->decodeResponse($response);
                         if ($providerUsageAttempt !== null) {
                             $usageSession?->providerReturned($providerUsageAttempt, $response->usage);
                         }
@@ -272,7 +280,7 @@ final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptA
                         $typed = $this->typedProviderException($fallbackException, $baseUrl, $structuredException);
                         if ($providerUsageAttempt !== null) {
                             $providerResponseReturned
-                                ? $usageSession?->providerResultDiscarded($providerUsageAttempt, $response->usage ?? null)
+                                ? $usageSession?->providerResultDiscarded($providerUsageAttempt, $response->usage ?? null, $typed->safeCode())
                                 : $usageSession?->providerFailed($providerUsageAttempt, $typed->safeCode());
                         }
                         $this->recordReadinessAttempt($model, $mode, false, $attemptStartedAt, $typed->safeCode());
@@ -280,14 +288,6 @@ final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptA
                         throw $typed;
                     }
                 }
-            }
-
-            if (! is_array($result) || $result === []) {
-                if ($providerUsageAttempt !== null) {
-                    $usageSession?->providerResultDiscarded($providerUsageAttempt, $response->usage ?? null, 'invalid_model_output');
-                }
-                $this->recordReadinessAttempt($model, $mode, false, $attemptStartedAt, 'invalid_model_output');
-                throw new ArticleAiQualityRuntimeException('invalid_model_output');
             }
 
             $this->usageQuota->recordModelSuccess($reservation);
@@ -337,9 +337,48 @@ final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptA
     }
 
     /** @return array<string, mixed> */
+    private function qualityProviderOptions(AiModel $model, string $driver, string $baseUrl): array
+    {
+        if ($driver === 'deepseek') {
+            return ['thinking' => ['type' => 'disabled']];
+        }
+        if ($driver !== 'openai-compatible') {
+            return [];
+        }
+
+        $host = strtolower((string) parse_url($baseUrl, PHP_URL_HOST));
+        $modelId = strtolower(trim((string) $model->model_id));
+        if (in_array($host, ['api.minimaxi.com', 'api.minimax.io'], true)
+            && str_starts_with($modelId, 'minimax-m')) {
+            return ['reasoning_split' => true];
+        }
+        if (in_array($host, ['open.bigmodel.cn', 'api.z.ai'], true)
+            && preg_match('/^glm-(\d+)(?:\.(\d+))?(?:-|$)/', $modelId, $version) === 1
+            && ((int) $version[1] > 4 || ((int) $version[1] === 4 && (int) ($version[2] ?? 0) >= 5))) {
+            return ['thinking' => ['type' => 'disabled'], 'response_format' => ['type' => 'json_object']];
+        }
+
+        return [];
+    }
+
+    /** @return array<string, mixed> */
+    private function decodeResponse(AgentResponse $response): array
+    {
+        if ($response->steps->last()?->finishReason === FinishReason::Length) {
+            throw new ArticleAiQualityRuntimeException('model_output_truncated', true);
+        }
+        if ($response instanceof StructuredAgentResponse && $response->structured !== []) {
+            return $response->structured;
+        }
+
+        return $this->decodeJson($response->text);
+    }
+
+    /** @return array<string, mixed> */
     private function decodeJson(string $text): array
     {
         $trimmed = trim($text);
+        $trimmed = preg_replace('/\A(?:<think\b[^>]*>.*?<\/think>\s*)+/is', '', $trimmed) ?? $trimmed;
         $trimmed = preg_replace('/^```(?:json)?\s*|\s*```$/iu', '', $trimmed) ?? $trimmed;
 
         try {
@@ -355,7 +394,11 @@ final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptA
             );
         }
 
-        return is_array($decoded) ? $decoded : [];
+        if (! is_array($decoded) || $decoded === []) {
+            throw new ArticleAiQualityRuntimeException('invalid_model_output', true);
+        }
+
+        return $decoded;
     }
 
     private function typedProviderException(
