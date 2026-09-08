@@ -6,7 +6,7 @@
 
 GEOFlow 把可信知识、AI 内容生产、质量门禁、人工审核、多站点分发与数据分析接进一条可持续运营链路。品牌、增长和内容团队可以用它建设企业官网、GEO 子频道、行业信源站或内部内容运营平台，让资料、流程、发布结果和运营数据留在同一套系统中。
 
-[快速开始](#快速开始) · [界面预览](#界面预览) · [核心能力](#geoflow-30-核心能力) · [文档中心](docs/README.md) · [3.0 升级教程](docs/deployment/GEOFLOW_V3_UPGRADE.md) · [更新日志](docs/CHANGELOG.md) · [官方网站](https://www.geoflow.me)
+[快速开始](#快速开始) · [界面预览](#界面预览) · [核心能力](#geoflow-30-核心能力) · [文档中心](docs/README.md) · [3.0 升级教程](docs/deployment/GEOFLOW_V3_UPGRADE.md) · [蓝绿部署与自动迁移](docs/blue-green-deployment-usage.md) · [更新日志](docs/CHANGELOG.md) · [官方网站](https://www.geoflow.me)
 
 [![Source version](https://img.shields.io/badge/source-3.0.0-2563eb)](version.json)
 [![Latest release](https://img.shields.io/github/v/release/yaojingang/GEOFlow?display_name=tag)](https://github.com/yaojingang/GEOFlow/releases/latest)

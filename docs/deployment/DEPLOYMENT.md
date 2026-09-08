@@ -1,5 +1,7 @@
 # GEOFlow Laravel 生产 Docker 部署
 
+签名受管安装、自动迁移与蓝绿切换见 [联合部署操作指引](../blue-green-deployment-usage.md)。本文保留单套 Compose 的手动部署流程；历史安全迁移仍须停机排空。已完成安全基线和布局转换的实例，可在签名在线计划与兼容性检查通过后使用 updater 在线升级。
+
 已有实例升级到 `v3.0.0`，请先阅读 [3.0 升级教程](GEOFLOW_V3_UPGRADE.md)，按当前部署方式选择路径。本文的首次安装步骤仅用于空库；升级时保留原数据库主版本、数据挂载与 `APP_KEY`。
 
 本文对应仓库中的生产编排文件：
@@ -55,7 +57,7 @@ GEOFLOW_SELF_DELETE=1 bash geoflow-docker-deploy.sh
 
 完整变量说明见 `deploy-scripts/README.md`。
 
-已有数据的实例禁止使用一键脚本升级，也禁止滚动升级。请完整执行 3.1 节的停机排空协议。
+本节一键脚本仅用于空库首次安装。已有数据实例使用本手动流程时，完整执行 3.1 节的停机排空协议；受管实例按联合部署指引选择签名策略。
 
 ## 2. 准备环境文件
 
@@ -119,7 +121,7 @@ $COMPOSE_PROD up -d --remove-orphans app web queue ai-quality-queue ai-quality-b
 
 升级到包含 `images.managed_path_hash` 的版本时，先保持 `GEOFLOW_MANAGED_IMAGE_DELETION_ENABLED=false`。已有数据或既有迁移历史的数据库必须使用 down → stop/drain → one-time confirmation → migrate → start-new → readiness → up → enable 的顺序。迁移会在任何 schema 变更前检查 `GEOFLOW_SECURITY_UPGRADE_DRAIN_CONFIRMED=true`；未确认时会安全终止。全新空库使用 init 服务限定作用域的 `GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true`。
 
-滚动升级、migration-first、一键升级均无法覆盖已经通过旧版空 replay 检查的在途请求，因此明确禁止用于已有数据的实例。一次性确认仅表示运维人员已经完成排空，不会自动停止进程。
+包含本节历史安全迁移的升级必须停机排空；滚动升级、migration-first 和首次安装脚本均无法覆盖已通过旧版空 replay 检查的在途请求。一次性确认仅表示运维人员已经完成排空，不会自动停止进程。
 
 ```bash
 # 1. 先进入维护模式，再停止入口和所有旧版常驻进程。
@@ -283,7 +285,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
 
 ## 7. 回滚与更新
 
-已有部署的更新统一执行 3.1 节。`git pull` 与镜像构建应放在停机排空流程内，禁止用 `git pull` → `build` → `up -d` 直接替代该流程。
+已有单套 Compose 部署使用本手动流程更新时，执行 3.1 节；签名受管实例按联合部署指引执行预检后选择策略。`git pull` 与镜像构建应放在停机排空流程内，禁止用 `git pull` → `build` → `up -d` 直接替代该流程。
 
 回滚：
 

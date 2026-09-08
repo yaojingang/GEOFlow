@@ -191,6 +191,12 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('updater/download', [SystemUpdaterOperationController::class, 'download'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.download');
+            Route::post('updater/plan', [SystemUpdaterOperationController::class, 'preview'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('updater.plan');
+            Route::post('updater/switch-back', [SystemUpdaterOperationController::class, 'switchBack'])
+                ->middleware('throttle:admin-sensitive')
+                ->name('updater.switch-back');
             Route::post('updater/update', [SystemUpdaterOperationController::class, 'update'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.update');

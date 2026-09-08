@@ -37,10 +37,19 @@ class SystemUpdaterMutationPolicy
             && ($blockingChecks[0]['status'] ?? null) === 'fail';
     }
 
-    public function allows(array $status, string $kind): bool
+    public function allows(array $status, string $kind, ?array $currentOperation = null): bool
     {
         if (! $this->authorizationReady($status)) {
             return false;
+        }
+
+        $operationStatus = $currentOperation['status'] ?? null;
+        if (in_array($operationStatus, ['queued', 'running'], true)) {
+            return false;
+        }
+        if ($operationStatus === 'recovery_required') {
+            return $kind === 'rollback'
+                && ($status['instance']['id'] ?? null) === config('geoflow.updater_instance_id', 'primary');
         }
 
         return ($status['status'] ?? null) === 'pass'

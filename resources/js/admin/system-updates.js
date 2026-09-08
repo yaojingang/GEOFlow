@@ -126,6 +126,14 @@ export function initializeSystemUpdaterAuthorizationDialogs(root = document, win
         const passwordInput = form.querySelector('input[name="current_admin_password"]');
         if (!(authorizationInput instanceof windowRef.HTMLInputElement)) return;
 
+        const planHashInput = form.querySelector('input[name="expected_plan_sha256"]');
+        const maintenanceInput = form.querySelector('input[name="allow_maintenance"][type="checkbox"]');
+        if (planHashInput && !/^[a-f0-9]{64}$/.test(planHashInput.value)) return;
+        if (maintenanceInput && !maintenanceInput.checked) {
+            maintenanceInput.reportValidity?.();
+            return;
+        }
+
         const fields = [{
             name: 'authorization',
             label: form.dataset.authorizationLabel ?? '',

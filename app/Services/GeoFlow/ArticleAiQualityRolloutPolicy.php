@@ -15,17 +15,19 @@ class ArticleAiQualityRolloutPolicy
     private const CACHE_KEY = 'geoflow.ai-quality.rollout.v1';
 
     /** @return array<string,mixed> */
-    public function state(): array
+    public function state(bool $readOnly = false): array
     {
         if (! $this->tableExists()) {
             return $this->configurationFallback();
         }
 
-        return Cache::remember(self::CACHE_KEY, now()->addSeconds(15), function (): array {
+        $read = function (): array {
             $rollout = ArticleAiQualityRollout::query()->find(1);
 
             return $rollout ? $this->serialize($rollout) : $this->safeDefaults('database_uninitialized');
-        });
+        };
+
+        return $readOnly ? $read() : Cache::remember(self::CACHE_KEY, now()->addSeconds(15), $read);
     }
 
     public function ensureState(): ArticleAiQualityRollout

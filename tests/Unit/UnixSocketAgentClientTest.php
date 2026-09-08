@@ -196,7 +196,7 @@ class UnixSocketAgentClientTest extends TestCase
         $pid = pcntl_fork();
 
         if ($pid === 0) {
-            for ($index = 0; $index < 4; $index++) {
+            for ($index = 0; $index < 6; $index++) {
                 $connection = stream_socket_accept($server, 5);
                 if (! is_resource($connection)) {
                     exit(1);
@@ -232,8 +232,12 @@ class UnixSocketAgentClientTest extends TestCase
                     'started_at' => '2026-08-27T12:34:56Z',
                 ];
                 $status = '200 OK';
-                if ($firstLine === 'POST /v1/instances/primary/updates HTTP/1.0' && $updateAuthorized) {
+                if ($firstLine === 'POST /v1/instances/primary/updates HTTP/1.0' && $updateAuthorized
+                    && ($requestBody === '' || $requestBody === json_encode(['allow_maintenance' => true, 'expected_plan_sha256' => str_repeat('a', 64)]))) {
                     $status = '202 Accepted';
+                } elseif ($firstLine === 'POST /v1/instances/primary/switch-backs HTTP/1.0' && $updateAuthorized && $requestBody === '') {
+                    $status = '202 Accepted';
+                    $operation['kind'] = 'switch-back';
                 } elseif ($firstLine === 'POST /v1/instances/primary/rollbacks HTTP/1.0'
                     && $requestBody === '{"recovery_point_id":"20260827T120000Z-1234abcd"}'
                     && $rollbackAuthorized) {
@@ -275,6 +279,8 @@ class UnixSocketAgentClientTest extends TestCase
             $client = new UnixSocketAgentClient;
 
             $this->assertSame('update', $client->startUpdate('123456')['kind']);
+            $this->assertSame('update', $client->startPlannedUpdate('123456', true, str_repeat('a', 64))['kind']);
+            $this->assertSame('switch-back', $client->startSwitchBack('123456')['kind']);
             $this->assertSame('rollback', $client->startRollback('20260827T120000Z-1234abcd', '234567')['kind']);
             $this->assertSame('running', $client->currentOperation()['status']);
             $this->assertSame('20260827T120000Z-1234abcd', $client->recoveryPoints()[0]['id']);
@@ -376,6 +382,28 @@ class UnixSocketAgentClientTest extends TestCase
         $this->assertSame('recovery_required', $operation['status']);
     }
 
+    public function test_recovery_operation_from_another_instance_is_rejected_at_the_socket_boundary(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('invalid operation response');
+        $this->withAgentResponse([
+            'schema_version' => 1, 'id' => '20260827T123456.000000000Z-0011223344556677',
+            'instance_id' => 'other-instance', 'kind' => 'update', 'status' => 'recovery_required',
+            'stages' => [], 'started_at' => '2026-08-27T12:34:56Z',
+        ], fn (UnixSocketAgentClient $client): ?array => $client->currentOperation());
+    }
+
+    public function test_recovery_status_from_another_instance_is_rejected_at_the_socket_boundary(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('unsupported status response');
+        $this->withAgentResponse([
+            'schema_version' => 1, 'status' => 'fail', 'updater_version' => '0.3.0',
+            'instance' => ['id' => 'other-instance', 'version' => '3.0.0', 'release_sequence' => 17],
+            'checks' => [['id' => 'mutation-authorization', 'status' => 'pass', 'message' => 'Configured']],
+        ], fn (UnixSocketAgentClient $client): array => $client->status());
+    }
+
     /**
      * @template T
      *
@@ -383,6 +411,30 @@ class UnixSocketAgentClientTest extends TestCase
      * @param  callable(UnixSocketAgentClient): T  $callback
      * @return T
      */
+    public function test_preview_accepts_a_complete_plan_and_rejects_malformed_fields(): void
+    {
+        $plan = ['schema_version' => 1, 'source_sequence' => 17, 'target_sequence' => 18, 'target_version' => '3.0.0',
+            'strategy' => 'maintenance', 'plan_sha256' => str_repeat('a', 64), 'upgrade_plan_sha256' => str_repeat('b', 64),
+            'layout_change' => true, 'pending_migrations' => [],
+            'steps' => [['id' => 'migrate', 'kind' => 'migrate', 'phase' => 'apply', 'timeout_seconds' => 600, 'online' => false]]];
+        $this->assertSame($plan, $this->withAgentResponse($plan, fn (UnixSocketAgentClient $client): array => $client->preview()));
+        foreach (['plan_sha256' => 'wrong', 'strategy' => 'automatic', 'layout_change' => 'true', 'pending_migrations' => [false], 'steps' => [['kind' => 'shell']]] as $key => $value) {
+            try {
+                $this->withAgentResponse(array_replace($plan, [$key => $value]), fn (UnixSocketAgentClient $client): array => $client->preview());
+                $this->fail('Invalid preview field accepted: '.$key);
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString('Updater returned', $exception->getMessage());
+            }
+        }
+    }
+
+    public function test_planned_update_rejects_a_bad_preview_hash_before_connecting(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('preview hash is invalid');
+        (new UnixSocketAgentClient)->startPlannedUpdate('123456', true, '../bad');
+    }
+
     private function withAgentResponse(array $payload, callable $callback, int $httpStatus = 200): mixed
     {
         $directory = sys_get_temp_dir().'/geoflow-updater-client-'.bin2hex(random_bytes(8));
