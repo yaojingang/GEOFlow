@@ -1,6 +1,14 @@
 # GEOFlow v3.1.0 配套发布记录与流程
 
-本轮版本：GEOFlow `3.1.0`、Updater `0.4.0`、签名更新序列 `3`。当前公开基线为 GEOFlow `3.0.0`、Updater `0.3.0`、序列 `2`；开始发布时重新核对远端状态，序列必须递增。
+本轮版本：GEOFlow `3.1.0`、Updater `0.4.0`、签名更新序列 `3`。发布前基线为 GEOFlow `3.0.0`、Updater `0.3.0`、序列 `2`；开始发布时重新核对远端状态，序列必须递增。
+
+## 正式发布结果
+
+2026 年 9 月 9 日，[GEOFlow v3.1.0](https://github.com/yaojingang/GEOFlow/releases/tag/v3.1.0) 与 [Updater v0.4.0](https://github.com/yaojingang/geoflow-updater/releases/tag/v0.4.0) 均已正式发布。两个标签使用维护者的现有 GPG 密钥签署，发布资产已回读核验。
+
+- Core 固定提交：`6c963783bbf49f0b5ec9d0121a924ee54005b60d`；Updater 固定提交：`51a0a4b3bd00c67eb719c076e68ba4e35aec071a`。
+- [候选 34322064152](https://github.com/yaojingang/geoflow-updater/actions/runs/34322064152)对应的[验收 34324570077](https://github.com/yaojingang/geoflow-updater/actions/runs/34324570077)共 11 个任务，全部通过。
+- [配套发布](https://github.com/yaojingang/geoflow-updater/actions/runs/34342933580)及 [Pages 部署](https://github.com/yaojingang/geoflow-updater/actions/runs/34343146320)成功，公共更新源为 Core `3.1.0`、序列 `3`、维护模式。
 
 ## 固定发布范围
 
@@ -17,7 +25,7 @@
 4. 从固定 Updater main 触发 `release-candidate.yml`，输入 `updater_version=0.4.0`、Core 最终 SHA、`geoflow_version=3.1.0` 和 `release_sequence=3`。记录候选 run ID，下载候选并核对版本、源码、档案、镜像、版本文档和升级计划摘要。
 5. 运行 `planned-acceptance.yml`，两种原生架构分别完成容器检查、首次安装、旧版升级恢复、在线机制和同版本接管转换演练。审阅汇总证据后，由发布操作员、安全审阅者和产品负责人具名批准该候选；将完整 JSON 写入受保护环境并记录 SHA-256。以前的 RC 记录作为历史证据保留。
 6. 从 Core 最终 SHA 生成并核对三个资产，创建签名标签 `v3.1.0` 和 Draft Release，重新下载比较字节与校验和。全部门槛通过后公开 Core，暂不提升 Latest，验证不可变 Release 及资产证明。
-7. 按 [Updater 发布手册](https://github.com/yaojingang/geoflow-updater/blob/main/docs/release-runbook.md)触发 `release.yml`，使用同一候选和已批准证据，`superadmin_risk_waiver=false`。等待发布工作流和其触发的 Pages 工作流均成功，回读公共 TUF 签名链、Core `3.1.0`／序列 `3`／源码及镜像摘要，以及 Updater 两架构资产和发布授权。
+7. 由具名发布身份在候选 Updater 源码提交上创建并验证签名标签 `v0.4.0`，保留版本标签保护。按 [Updater 发布手册](https://github.com/yaojingang/geoflow-updater/blob/main/docs/release-runbook.md)触发 `release.yml`，使用同一候选和已批准证据，`superadmin_risk_waiver=false`。等待发布工作流和其触发的 Pages 工作流均成功，回读公共 TUF 签名链、Core `3.1.0`／序列 `3`／源码及镜像摘要，以及 Updater 两架构资产和发布授权。
 8. 确认配套内容都可用后，将 Updater `v0.4.0` 和 Core `v3.1.0` 依次提升为 Latest；回读两处 Latest 下载入口、Core 版本文档和 Updater bootstrap。同步中英文教程与 Wiki 的最终结果。
 
 完成后按原状态恢复两个元数据刷新工作流。若发布中止且签名目标尚未提交，核对旧稳定通道后恢复；若新 TUF 已提交，先用同一候选安全续跑并闭合资产与 Pages 状态，再恢复刷新。记录任何仍未完成的环节及停用状态。

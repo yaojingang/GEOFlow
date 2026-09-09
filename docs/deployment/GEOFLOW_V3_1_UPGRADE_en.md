@@ -2,7 +2,7 @@
 
 [简体中文](GEOFLOW_V3_1_UPGRADE.md) | English
 
-The target pair is GEOFlow `v3.1.0` and GEOFlow Updater `v0.4.0`. Proceed after both official releases, matching images and the signed update source are public. A version number on a source branch alone does not establish publication.
+[GEOFlow v3.1.0](https://github.com/yaojingang/GEOFlow/releases/tag/v3.1.0) and [GEOFlow Updater v0.4.0](https://github.com/yaojingang/geoflow-updater/releases/tag/v0.4.0) were officially published on September 9, 2026. Matching dual-architecture images and the signed update source are public. This release uses sequence `3` and the `maintenance` strategy.
 
 ## Choose an upgrade path
 

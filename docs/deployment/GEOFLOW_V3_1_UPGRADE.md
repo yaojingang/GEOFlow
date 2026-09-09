@@ -2,7 +2,7 @@
 
 简体中文 | [English](GEOFLOW_V3_1_UPGRADE_en.md)
 
-目标版本为 GEOFlow `v3.1.0` 与 GEOFlow Updater `v0.4.0`。执行前确认两个正式 Release、配套镜像和签名更新源均已公开；源码分支中的版本号本身不代表发布完成。
+[GEOFlow v3.1.0](https://github.com/yaojingang/GEOFlow/releases/tag/v3.1.0) 与 [GEOFlow Updater v0.4.0](https://github.com/yaojingang/geoflow-updater/releases/tag/v0.4.0) 已于 2026 年 9 月 9 日正式发布。配套双架构镜像和签名更新源已公开，本次更新序列为 `3`，升级策略为 `maintenance`。
 
 ## 选择升级路径
 
