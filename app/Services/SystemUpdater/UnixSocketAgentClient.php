@@ -39,7 +39,8 @@ class UnixSocketAgentClient implements PlannedAgentClient
         $this->requireStatus($status, [200], $plan, 'preview');
         if (($plan['schema_version'] ?? null) !== 1
             || ! is_int($plan['source_sequence'] ?? null) || $plan['source_sequence'] < 1
-            || ! is_int($plan['target_sequence'] ?? null) || $plan['target_sequence'] <= $plan['source_sequence']
+            || ! is_int($plan['target_sequence'] ?? null) || $plan['target_sequence'] < $plan['source_sequence']
+            || ($plan['target_sequence'] === $plan['source_sequence'] && (($plan['layout_change'] ?? null) !== true || ($plan['strategy'] ?? null) !== 'maintenance'))
             || ! $this->boundedString($plan['target_version'] ?? null, 100)
             || ! in_array($plan['strategy'] ?? null, ['online', 'maintenance'], true)
             || ! is_string($plan['plan_sha256'] ?? null) || preg_match('/\A[a-f0-9]{64}\z/', $plan['plan_sha256']) !== 1

@@ -4,6 +4,19 @@ This document tracks user-facing updates in the public repository. For future Gi
 
 ## 2026-09-09
 
+### v3.1.0
+
+- GEOFlow Updater `0.4.0` adds blue/green deployment, signed plan previews, automatic migrations and backfills, full backups and recovery, with separate admin actions for application switch-back preserving live data and complete data restoration.
+- AI Workspace can collect task parameters through conversation and create task drafts, with clearer connection, model-readiness and failure states.
+- Site themes support package import, isolated preview, installation and export; installed themes survive application upgrades, while imported packages must declare compatibility with the current Core version.
+- AI visibility supports bulk keyword collection, competitor detection, competitor mention statistics and source analysis.
+- Add Traditional Chinese admin and editor text, and restore the knowledge outline in fullscreen editing.
+- Improve AI quality result parsing for GLM and MiniMax, remove reasoning text from MiniMax-generated articles, and fix Doubao search failures caused by empty domain filters.
+- Fix invalid empty-string comparisons against PostgreSQL UUID lease fields during task recovery, and include companion Updater fixes for interrupted recovery, scheduler draining, startup health and network recreation.
+- Component versions: Core `3.1.0`, Updater `0.4.0`, bundled CLI `0.2.0`, and Chrome operations assistant `0.1.0`; official releases provide the source ZIP, SHA-256, version document and signed dual-architecture updater packages.
+
+See the [3.1 upgrade instructions](deployment/GEOFLOW_V3_1_UPGRADE_en.md). Enrolled `3.0.0` sites confirm the first maintenance upgrade through the host CLI; unenrolled older sites first upgrade to the matching signed version during maintenance, then enroll. This release uses a maintenance plan, and initial blue/green conversion requires a maintenance window.
+
 ### README version guidance
 
 - READMEs in all six languages now identify the current `3.0.x` series, explain that `main` may contain unreleased changes, and link to the exact source version, official releases, and upgrade notes.
