@@ -1,4 +1,4 @@
-# GEOFlow 3.0
+# GEOFlow 3.1
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | [Português (BR)](README_pt_BR.md)
 
@@ -8,14 +8,14 @@ GEOFlow объединяет проверенные знания, создани
 
 [Быстрый старт](#быстрый-старт) · [Интерфейс](#интерфейс) · [Основные возможности](#основные-возможности-geoflow-30) · [Развёртывание](../deployment/DEPLOYMENT.md) · [История изменений](../CHANGELOG_en.md) · [Сайт](https://www.geoflow.me)
 
-[![Source version](https://img.shields.io/badge/source-3.0.0-2563eb)](../../version.json)
+[![Source version](https://img.shields.io/badge/source-3.1.0-2563eb)](../../version.json)
 [![Latest release](https://img.shields.io/github/v/release/yaojingang/GEOFlow?display_name=tag)](https://github.com/yaojingang/GEOFlow/releases/latest)
 [![PHP](https://img.shields.io/badge/PHP-8.3%2B-777bb4)](https://www.php.net/)
 [![CI](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 
-> **Статус версии:** Текущая серия GEOFlow: `3.0.x`. Ветка `main` активно развивается и может содержать изменения, ещё не вошедшие в релиз. Точная версия исходного кода указана в [`version.json`](../../version.json), а официальные релизы и инструкции по обновлению доступны в [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases). Для рабочего окружения используйте стабильный релиз или зафиксируйте проверенный коммит.
+> **Статус версии:** Текущая серия GEOFlow: `3.1.x`. Ветка `main` активно развивается и может содержать изменения, ещё не вошедшие в релиз. Точная версия исходного кода указана в [`version.json`](../../version.json), а официальные релизы и инструкции по обновлению доступны в [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases). Для рабочего окружения используйте стабильный релиз или зафиксируйте проверенный коммит.
 
 ---
 
@@ -123,7 +123,7 @@ GEOFlow рассчитан на команды с реальными делов�
 
 | Компонент | Версия исходного кода или состояние | Описание |
 |-----------|--------------------------------------|----------|
-| GEOFlow Core | `3.0.0` | Приложение Laravel, панель, frontend, API, очереди и система публикации |
+| GEOFlow Core | `3.1.0` | Приложение Laravel, панель, frontend, API, очереди и система публикации |
 | GEOFlow CLI | `0.2.0` | Входит как `bin/geoflow`; поддерживает macOS, Linux и WSL |
 | Помощник Chrome | `0.1.0` | Исходный код и пакет находятся в `browser-extension/` и `dist/browser-extension/` |
 | GEOFlow Updater | Отдельный компонент | Используйте подписанную версию, совместимую с целевым выпуском; см. [geoflow-updater](https://github.com/yaojingang/geoflow-updater) |

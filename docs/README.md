@@ -1,9 +1,10 @@
 # GEOFlow 文档中心
 
-当前正式版：[GEOFlow v3.0.0](https://github.com/yaojingang/GEOFlow/releases/tag/v3.0.0)，发布于 2026-09-05。
+源码版本见 [`version.json`](../version.json)，当前正式版及下载入口见 [GitHub Latest Release](https://github.com/yaojingang/GEOFlow/releases/latest)。
 
 ## 安装与升级
 
+- [3.1 升级说明](deployment/GEOFLOW_V3_1_UPGRADE.md) · [English instructions](deployment/GEOFLOW_V3_1_UPGRADE_en.md)：配套 Updater 0.4.0、旧版后台的首次升级、未受管站点桥接及维护窗口。
 - [3.0 升级教程](deployment/GEOFLOW_V3_UPGRADE.md)：版本选择、备份、普通 Compose 升级、Updater 接管、数据回填、验收和故障恢复。
 - [蓝绿部署与自动迁移教程](blue-green-deployment-usage.md) · [English tutorial](blue-green-deployment-usage_en.md)：签名安装、旧站接管、后台与 CLI 升级、备份和恢复；适用发布版本见教程开头。
 - [生产 Docker 部署](deployment/DEPLOYMENT.md)：首次安装、环境配置、反向代理和运行进程。
@@ -24,6 +25,7 @@
 - [Wiki 首页](https://github.com/yaojingang/GEOFlow/wiki)：使用场景、知识库、分发、主题和常见问题。
 - [Wiki 3.0 升级教程](https://github.com/yaojingang/GEOFlow/wiki/v3.0.0-升级教程)。
 - [Wiki 蓝绿部署教程](https://github.com/yaojingang/GEOFlow/wiki/蓝绿部署与自动迁移教程) · [Wiki English tutorial](https://github.com/yaojingang/GEOFlow/wiki/Blue-Green-Deployment-and-Automatic-Migrations)。
-- [维护者正式发布手册](deployment/GEOFLOW_V3_RELEASE.md)：标签、Release 资产和签名发布流程。
+- [3.1 配套发布流程](deployment/GEOFLOW_V3_1_RELEASE.md)：正式候选、双架构验收、签名资产和配套 Latest 顺序。
+- [3.0 历史发布手册](deployment/GEOFLOW_V3_RELEASE.md)：标签、Release 资产和签名发布流程。
 
 `plans/`、`reports/`、`reviews/` 中保留设计与评审记录。部署操作以对应正式版、升级教程及运行手册为准。

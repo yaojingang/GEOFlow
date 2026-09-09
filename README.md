@@ -1,4 +1,4 @@
-# GEOFlow 3.0
+# GEOFlow 3.1
 
 > Languages: [简体中文](README.md) | [English](docs/readme/README_en.md) | [日本語](docs/readme/README_ja.md) | [Español](docs/readme/README_es.md) | [Русский](docs/readme/README_ru.md) | [Português (BR)](docs/readme/README_pt_BR.md)
 
@@ -8,14 +8,14 @@ GEOFlow 把可信知识、AI 内容生产、质量门禁、人工审核、多站
 
 [快速开始](#快速开始) · [界面预览](#界面预览) · [核心能力](#geoflow-30-核心能力) · [文档中心](docs/README.md) · [3.0 升级教程](docs/deployment/GEOFLOW_V3_UPGRADE.md) · [蓝绿部署与自动迁移](docs/blue-green-deployment-usage.md) · [更新日志](docs/CHANGELOG.md) · [官方网站](https://www.geoflow.me)
 
-[![Source version](https://img.shields.io/badge/source-3.0.0-2563eb)](version.json)
+[![Source version](https://img.shields.io/badge/source-3.1.0-2563eb)](version.json)
 [![Latest release](https://img.shields.io/github/v/release/yaojingang/GEOFlow?display_name=tag)](https://github.com/yaojingang/GEOFlow/releases/latest)
 [![PHP](https://img.shields.io/badge/PHP-8.3%2B-777bb4)](https://www.php.net/)
 [![CI](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 
-> **版本说明：** 当前为 `3.0.x` 系列，`main` 分支持续迭代，可能包含尚未发布的更新。精确源码版本见 [`version.json`](version.json)，正式发布版本与升级说明见 [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases)。生产部署建议使用正式 Release，或固定到经过审核的提交。
+> **版本说明：** 当前为 `3.1.x` 系列，`main` 分支持续迭代，可能包含尚未发布的更新。精确源码版本见 [`version.json`](version.json)，正式发布版本与升级说明见 [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases)。生产部署建议使用正式 Release，或固定到经过审核的提交。
 
 ---
 
@@ -123,7 +123,7 @@ GEOFlow 适合拥有真实业务资料、明确审核责任和持续运营计划
 
 | 组件 | 当前源码版本或状态 | 说明 |
 |------|-------------------|------|
-| GEOFlow Core | `3.0.0` | Laravel 应用、管理后台、前台、API、队列和分发系统 |
+| GEOFlow Core | `3.1.0` | Laravel 应用、管理后台、前台、API、队列和分发系统 |
 | GEOFlow CLI | `0.2.0` | 仓库内置 `bin/geoflow`，支持 macOS、Linux 和 WSL |
 | Chrome 运营助手 | `0.1.0` | 源码和打包产物位于 `browser-extension/` 与 `dist/browser-extension/` |
 | GEOFlow Updater | 独立组件 | 使用与目标 Release 明确兼容的签名版本，参见 [geoflow-updater](https://github.com/yaojingang/geoflow-updater) |

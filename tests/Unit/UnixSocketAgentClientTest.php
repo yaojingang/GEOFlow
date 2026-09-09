@@ -435,6 +435,21 @@ class UnixSocketAgentClientTest extends TestCase
         (new UnixSocketAgentClient)->startPlannedUpdate('123456', true, '../bad');
     }
 
+    public function test_preview_accepts_equal_sequence_only_for_maintenance_layout_conversion(): void
+    {
+        $plan = ['schema_version' => 1, 'source_sequence' => 17, 'target_sequence' => 17, 'target_version' => '3.1.0',
+            'strategy' => 'maintenance', 'plan_sha256' => str_repeat('a', 64), 'upgrade_plan_sha256' => str_repeat('b', 64),
+            'layout_change' => true, 'pending_migrations' => [],
+            'steps' => [['id' => 'migrate', 'kind' => 'migrate', 'phase' => 'apply', 'timeout_seconds' => 600, 'online' => false]]];
+        $this->assertSame($plan, $this->withAgentResponse($plan, fn (UnixSocketAgentClient $client): array => $client->preview()));
+        foreach ([['target_sequence' => 16], ['strategy' => 'online'], ['layout_change' => false], ['layout_change' => 'true']] as $conflict) {
+            $this->assertThrows(
+                fn () => $this->withAgentResponse(array_replace($plan, $conflict), fn (UnixSocketAgentClient $client): array => $client->preview()),
+                RuntimeException::class,
+            );
+        }
+    }
+
     private function withAgentResponse(array $payload, callable $callback, int $httpStatus = 200): mixed
     {
         $directory = sys_get_temp_dir().'/geoflow-updater-client-'.bin2hex(random_bytes(8));

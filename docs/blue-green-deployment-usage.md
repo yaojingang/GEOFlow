@@ -6,7 +6,7 @@
 
 本文依据 [GEOFlow PR #122](https://github.com/yaojingang/GEOFlow/pull/122) 与 [updater PR #16](https://github.com/yaojingang/geoflow-updater/pull/16) 合并后的实现编写。后续恢复修复及完整双架构结果见[主机验收记录](reports/2026-09-09-blue-green-host-acceptance.md)。
 
-> **版本前提，核对于 2026 年 9 月 9 日：** 本轮功能已合入两个仓库的 main。公开稳定版仍为 [GEOFlow v3.0.0](https://github.com/yaojingang/GEOFlow/releases/tag/v3.0.0) 和 [updater v0.3.0](https://github.com/yaojingang/geoflow-updater/releases/tag/v0.3.0)，尚未包含本轮完整能力。以下新流程需要后续正式发布的 updater、配套应用镜像和已签名升级计划。仅拉取 main 或安装现有 v0.3.0，无法完成本文的新流程；下一版版本号以正式发布为准。
+> **版本前提：** 本教程的新流程要求正式发布的 [GEOFlow v3.1.0](https://github.com/yaojingang/GEOFlow/releases/tag/v3.1.0)、[Updater v0.4.0](https://github.com/yaojingang/geoflow-updater/releases/tag/v0.4.0)、配套镜像和已签名升级计划。确认两个 Release 和签名更新源均已公开后执行；源码分支的版本号本身不代表发布完成。旧站首次升级路径见 [3.1 升级说明](deployment/GEOFLOW_V3_1_UPGRADE.md)。
 
 ## 1. 选择使用路径
 
@@ -59,10 +59,10 @@ systemctl --version
 
 从 [updater Releases](https://github.com/yaojingang/geoflow-updater/releases) 选择明确包含本轮功能的正式版本，下载对应架构的压缩包与 `checksums.txt`，放入专用目录。
 
-下面的 `X.Y.Z` 是占位符，替换为实际版本号，不带 `v`。命令需要已安装 GitHub CLI：
+本轮配套版本为 `0.4.0`，命令需要已安装 GitHub CLI：
 
 ```bash
-UPDATER_VERSION='X.Y.Z'
+UPDATER_VERSION='0.4.0'
 UPDATER_ARCH='amd64'
 UPDATER_ARCHIVE="geoflow-updater_${UPDATER_VERSION}_linux_${UPDATER_ARCH}.tar.gz"
 
@@ -125,7 +125,7 @@ sudo cat /opt/geoflow/install-credentials.txt
 
 ### 5.1 接管前准备
 
-站点目录应包含 `.env.prod`、`storage/` 和当前 `version.json`。接管要求当前版本信息与签名发布相匹配。若版本不匹配，先按受支持的旧版流程达到可接管版本，不要手改 `version.json` 通过检查。
+站点目录应包含 `.env.prod`、`storage/` 和当前 `version.json`。接管要求当前版本信息与签名发布相匹配。若版本不匹配，先按 [3.1 升级说明](deployment/GEOFLOW_V3_1_UPGRADE.md)维护升级至签名源匹配版本，不要手改 `version.json` 通过检查。
 
 接管保留配置中的 PostgreSQL、Redis 主版本。支持 PostgreSQL 16、18 和 Redis 7、8，需要确认镜像主版本与实际数据目录一致。数据库大版本迁移需单独安排。
 
@@ -182,6 +182,8 @@ URI 含授权秘密，不要放入工单、聊天记录或公开截图。每次�
 后台默认还要求当前管理员密码，是否显示以站点配置为准。获取计划和运行环境验收无需操作授权码；服务器 CLI 依靠主机管理员权限执行。
 
 ## 7. 日常升级：后台操作
+
+已有受管 `3.0.0` 的首次升级应按 [3.1 升级说明](deployment/GEOFLOW_V3_1_UPGRADE.md)通过宿主机 CLI 确认维护计划；升级到 3.1 后再使用本节后台入口。
 
 1. 用超级管理员打开“系统更新”，默认路径为 `/geo_admin/system-updates`。确认 updater 已连接、授权已配置，当前没有执行中或待恢复操作。
 2. 点击“获取升级计划”。预检可能拉取镜像、启动临时检查容器，需要等待；它不会执行本次迁移或切流。

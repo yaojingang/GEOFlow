@@ -1,4 +1,4 @@
-# GEOFlow 3.0
+# GEOFlow 3.1
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | [Português (BR)](README_pt_BR.md)
 
@@ -8,14 +8,14 @@ GEOFlowは、信頼できるナレッジ、AIコンテンツ制作、品質ゲ�
 
 [クイックスタート](#クイックスタート) · [画面プレビュー](#画面プレビュー) · [主要機能](#geoflow-30の主要機能) · [デプロイガイド](../deployment/DEPLOYMENT.md) · [変更履歴](../CHANGELOG_en.md) · [公式サイト](https://www.geoflow.me)
 
-[![Source version](https://img.shields.io/badge/source-3.0.0-2563eb)](../../version.json)
+[![Source version](https://img.shields.io/badge/source-3.1.0-2563eb)](../../version.json)
 [![Latest release](https://img.shields.io/github/v/release/yaojingang/GEOFlow?display_name=tag)](https://github.com/yaojingang/GEOFlow/releases/latest)
 [![PHP](https://img.shields.io/badge/PHP-8.3%2B-777bb4)](https://www.php.net/)
 [![CI](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 
-> **バージョンについて：** 現在は `3.0.x` 系列です。`main` ブランチでは開発が続いており、未リリースの変更が含まれる場合があります。正確なソースバージョンは [`version.json`](../../version.json)、正式リリースとアップグレード手順は [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) を参照してください。本番環境では安定版リリースを使用するか、レビュー済みコミットに固定してください。
+> **バージョンについて：** 現在は `3.1.x` 系列です。`main` ブランチでは開発が続いており、未リリースの変更が含まれる場合があります。正確なソースバージョンは [`version.json`](../../version.json)、正式リリースとアップグレード手順は [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) を参照してください。本番環境では安定版リリースを使用するか、レビュー済みコミットに固定してください。
 
 ---
 
@@ -123,7 +123,7 @@ GEOFlowは、実際の事業資料、明確なレビュー責任者、継続的�
 
 | コンポーネント | 現在のソースバージョンまたは状態 | 説明 |
 |----------------|----------------------------------|------|
-| GEOFlow Core | `3.0.0` | Laravelアプリ、管理画面、フロントエンド、API、キュー、配信システム |
+| GEOFlow Core | `3.1.0` | Laravelアプリ、管理画面、フロントエンド、API、キュー、配信システム |
 | GEOFlow CLI | `0.2.0` | `bin/geoflow` を同梱し、macOS、Linux、WSLをサポート |
 | Chrome運用アシスタント | `0.1.0` | ソースと配布用ファイルは `browser-extension/` と `dist/browser-extension/` に配置 |
 | GEOFlow Updater | 独立コンポーネント | 対象リリースと明示的に互換性がある署名版を使用。詳細は [geoflow-updater](https://github.com/yaojingang/geoflow-updater) を参照 |
