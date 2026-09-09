@@ -4,7 +4,7 @@
 
 面向站点管理员和服务器管理员，涵盖首次安装、旧站接管、后台升级、自动迁移、备份和恢复。
 
-本文依据 [GEOFlow PR #122](https://github.com/yaojingang/GEOFlow/pull/122) 与 [updater PR #16](https://github.com/yaojingang/geoflow-updater/pull/16) 合并后的实现编写。
+本文依据 [GEOFlow PR #122](https://github.com/yaojingang/GEOFlow/pull/122) 与 [updater PR #16](https://github.com/yaojingang/geoflow-updater/pull/16) 合并后的实现编写。后续恢复修复及完整双架构结果见[主机验收记录](reports/2026-09-09-blue-green-host-acceptance.md)。
 
 > **版本前提，核对于 2026 年 9 月 9 日：** 本轮功能已合入两个仓库的 main。公开稳定版仍为 [GEOFlow v3.0.0](https://github.com/yaojingang/GEOFlow/releases/tag/v3.0.0) 和 [updater v0.3.0](https://github.com/yaojingang/geoflow-updater/releases/tag/v0.3.0)，尚未包含本轮完整能力。以下新流程需要后续正式发布的 updater、配套应用镜像和已签名升级计划。仅拉取 main 或安装现有 v0.3.0，无法完成本文的新流程；下一版版本号以正式发布为准。
 
@@ -403,11 +403,20 @@ updater 启动及后台检查会根据持久化记录处理被中断的操作。
 
 普通站点管理员按上述流程选择和确认计划。在线兼容性由发布者声明，并通过对应候选版本的验证。
 
+**2026 年 9 月 9 日进展：** Updater `0.4.0-rc.4` 配套签名候选已完成原生 amd64、arm64 的安装、完整升级恢复、中断恢复和在线机制验收，全部通过。候选身份、逐项结果及修复 PR 见[验收记录](reports/2026-09-09-blue-green-host-acceptance.md)。技术验收与正式发布分别记录，安装时仍需满足[版本前提](#geoflow-蓝绿部署与自动迁移使用教程)。
+
 - `deployment/upgrade-plan.json` 固定迁移文件摘要。新增迁移后更新并审阅清单，再运行 `python3 deployment/generate-upgrade-plan.py --check`。
 - schema 3 发布清单将完整计划纳入 TUF 签名目标 `releases/<version>/upgrade-plan.json`。维护计划要求协议至少为 3，在线计划至少为 4；应用计划与预检摘要各自的 schema 版本需分别理解。
-- `planned-acceptance.yml` 覆盖原生 amd64、arm64 候选应用和真实入口契约，包括镜像与计划一致性、空库迁移、初始化、回填、缓存和就绪检查。审批范围为 `planned-container-contract-and-ingress`。
-- 完整已安装主机升级、恢复点还原、崩溃恢复、登录、任务副作用及 Reverb 行为仍需对应候选演练。历史 `phase-c-rehearsal.yml` 仅接收 schema 2 候选。
+- [候选验收工作流](https://github.com/yaojingang/geoflow-updater/actions/workflows/planned-acceptance.yml) 在原生 amd64、arm64 主机运行应用与入口检查，并分别执行完整升级恢复、首次安装重试和在线切换演练。完整恢复会核对数据库、Redis、文件、配置及迁移记录；中断演练包含调度进程被冻结后恢复、恢复失败后的重试状态。
+- 在线演练使用单独签名的同代码测试候选，检查登录会话、任务交接、实时消息跨槽传递、重连和保留数据的应用回切。正式旧版本与新版本之间的在线兼容性，仍需针对实际版本对验证。常规发布检查目前接受维护模式计划。
+- 发布者需审阅同一个候选在两种架构上的完整结果，并完成发布、技术安全和产品审批。自动检查逐项验证必要用例；运行时修复后要重新构建候选并复测。历史 `phase-c-rehearsal.yml` 仅接收 schema 2 候选。具体操作见 [主机验收说明](https://github.com/yaojingang/geoflow-updater/blob/main/docs/planned-host-acceptance.md)。
 - 应用和升级步骤使用 UID 33。运行进程关闭重复权限扫描和自动缓存优化，槽位视图缓存由切流前步骤预热。原 APP_KEY、业务存储和会话身份延续使用，受保护的 `.env.prod` 只读挂载。
 - 部署状态位于 `/var/lib/geoflow-updater`，完整恢复点位于 `/var/backups/geoflow-updater`。这些目录由 updater 管理，站点 `.env.prod` 和 `storage/` 需一并纳入运维管理。
 
 相关文档：[部署设计](superpowers/plans/2026-09-08-blue-green-deployment-design.md)、[实现验证记录](reports/2026-09-08-blue-green-implementation-validation.md)、[旧版 3.0 升级指南](deployment/GEOFLOW_V3_UPGRADE.md)、[updater 蓝绿部署说明](https://github.com/yaojingang/geoflow-updater/blob/main/docs/blue-green-deployment.md)、[updater 发布操作手册](https://github.com/yaojingang/geoflow-updater/blob/main/docs/release-runbook.md)。
+
+### 12.1 站点管理员需要做什么
+
+双架构候选验收由发布维护者完成。站点管理员按发布说明安装配套 Updater，首次接管和布局转换安排维护窗口，并检查自己站点的备份及恢复能力。
+
+上线前，在隔离测试环境用本站数据副本试一次升级和完整恢复，核对登录、关键业务、队列任务、文件及实时消息。按数据规模记录备份、迁移和恢复耗时，用于安排维护窗口。后续每次升级先预检计划，再按 `online` 或 `maintenance` 选择执行方式。

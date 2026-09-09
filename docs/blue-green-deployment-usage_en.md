@@ -4,7 +4,7 @@
 
 For site and server administrators. This tutorial covers fresh installation, enrollment, updates through the admin UI or CLI, automatic migrations, backups, and recovery.
 
-It follows the implementation merged in [GEOFlow PR #122](https://github.com/yaojingang/GEOFlow/pull/122) and [updater PR #16](https://github.com/yaojingang/geoflow-updater/pull/16).
+It follows the implementation merged in [GEOFlow PR #122](https://github.com/yaojingang/GEOFlow/pull/122) and [updater PR #16](https://github.com/yaojingang/geoflow-updater/pull/16). Subsequent recovery fixes and complete dual-architecture results are recorded in the [host acceptance report](reports/2026-09-09-blue-green-host-acceptance_en.md).
 
 > **Release prerequisite, checked September 9, 2026:** These changes are merged into both repositories' main branches. The published stable versions remain [GEOFlow v3.0.0](https://github.com/yaojingang/GEOFlow/releases/tag/v3.0.0) and [updater v0.3.0](https://github.com/yaojingang/geoflow-updater/releases/tag/v0.3.0), which do not include the complete workflow described here. You need a subsequent official updater release, matching application images, and a signed upgrade plan. Pulling main or installing the existing v0.3.0 package alone is insufficient. Use the version number from the official release when it becomes available.
 
@@ -403,11 +403,20 @@ Before sharing diagnostics, remove passwords, tokens, authorization URIs, and pr
 
 Site administrators select and confirm plans through the workflow above. Publishers declare online compatibility and validate it against the corresponding candidate release.
 
+**September 9, 2026 update:** The signed candidate paired with Updater `0.4.0-rc.4` passed installation, full upgrade/restoration, interruption recovery and online-mechanism acceptance on native amd64 and arm64. See the [acceptance report](reports/2026-09-09-blue-green-host-acceptance_en.md) for candidate identity, individual results and fix PRs. Technical acceptance and official publication have separate records; installation still requires the [release prerequisites](#geoflow-bluegreen-deployment-and-automatic-migration-tutorial).
+
 - `deployment/upgrade-plan.json` pins migration-file digests. After adding migrations, update and review the manifest, then run `python3 deployment/generate-upgrade-plan.py --check`.
 - A schema 3 release manifest includes the complete plan as the TUF-signed target `releases/<version>/upgrade-plan.json`. Maintenance plans require protocol 3 or later; online plans require protocol 4 or later. Application-plan and preview schemas have their own versions.
-- `planned-acceptance.yml` covers native amd64 and arm64 candidate application and real-ingress contracts: image/plan consistency, empty-database migrations, initialization, backfills, caches, and readiness. Its approval scope is `planned-container-contract-and-ingress`.
-- Full installed-host upgrades, recovery-point restoration, crash recovery, login continuity, task side effects, and Reverb behavior still require rehearsal with the corresponding candidate. The legacy `phase-c-rehearsal.yml` accepts schema 2 candidates only.
+- The [candidate acceptance workflow](https://github.com/yaojingang/geoflow-updater/actions/workflows/planned-acceptance.yml) runs application and ingress checks on native amd64 and arm64 hosts, plus separate full upgrade/restore, first-install retry, and online-switch rehearsals. Restoration checks cover the database, Redis, files, configuration, and migration history. Interruption cases include a frozen scheduler and failed-recovery retry state.
+- Online rehearsal uses a separately signed fixture with identical application code. It checks login sessions, queued job handover, cross-slot realtime messages, reconnect, and application switch-back that preserves data. Production online compatibility still needs acceptance for the actual old-version/new-version pair. Ordinary publication currently accepts maintenance plans.
+- Publishers review complete results for the same candidate on both architectures and obtain release, security, and product approvals. Automated checks require each mandatory case. Runtime fixes require a new candidate build and another acceptance run. The legacy `phase-c-rehearsal.yml` accepts schema 2 candidates only. See [host acceptance instructions](https://github.com/yaojingang/geoflow-updater/blob/main/docs/planned-host-acceptance.md).
 - Application and upgrade processes use UID 33. Runtime processes disable repeated permission scans and automatic cache optimization; pre-switch upgrade steps warm each slot's view cache. Existing APP_KEY, business storage, and session identity are preserved, and the protected `.env.prod` is mounted read-only.
 - Deployment state is stored under `/var/lib/geoflow-updater`; full recovery points are under `/var/backups/geoflow-updater`. Updater manages these directories. Include the site's `.env.prod` and `storage/` in your operational data management.
 
 Related documentation: [Deployment design (Chinese)](superpowers/plans/2026-09-08-blue-green-deployment-design.md), [Implementation validation (Chinese)](reports/2026-09-08-blue-green-implementation-validation.md), [Legacy 3.0 upgrade guide (Chinese)](deployment/GEOFLOW_V3_UPGRADE.md), [Updater blue/green deployment guide (Chinese)](https://github.com/yaojingang/geoflow-updater/blob/main/docs/blue-green-deployment.md), and [Updater release runbook](https://github.com/yaojingang/geoflow-updater/blob/main/docs/release-runbook.md).
+
+### 12.1 Site administrator responsibilities
+
+Release maintainers perform dual-architecture candidate acceptance. Site administrators install the matching Updater described in the release notes, schedule a maintenance window for initial handover and layout conversion, and verify their own backup and restoration process.
+
+Before rollout, rehearse one upgrade and full restoration with a copy of the site's data in an isolated environment. Check login, critical business functions, queue jobs, files, and realtime messages. Record backup, migration, and restore durations for the site's data volume to plan the maintenance window. Preview each later update and choose the procedure indicated by its `online` or `maintenance` strategy.
