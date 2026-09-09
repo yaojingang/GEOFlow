@@ -13,7 +13,7 @@
 
 1. 保留[前版发布手册](GEOFLOW_V3_RELEASE.md#零启用发布完整性保护)中的不可变 Release、受保护版本标签、具名发布身份和签名标签检查，使用本轮版本及实际证据。核对发布窗口内有写权限的身份、应用及自动化，记录权限清点结果。
 2. 通过 PR 合并准备变更，确认 Core 的应用和 PostgreSQL CI、Updater CI、配套定向回归与独立复核通过。固定两个仓库的候选提交；运行时修复后重新构建候选。
-3. 在发布窗口记录 `metadata-refresh.yml` 与 `targets-refresh.yml` 的原启用状态，暂停这两个会写入并部署元数据的工作流，避免候选来源漂移或中断发布的待公开目标提前进入 Pages。保留正常发布所需的候选、验收、发布及 Pages 工作流。
+3. 在发布窗口记录 `metadata-refresh.yml` 与 `targets-refresh.yml` 的原启用状态，暂停这两个会写入并部署元数据的工作流，避免候选来源漂移或中断发布的待公开目标提前进入 Pages。暂停后处理它们已排队、执行中或等待审批的任务及关联 Pages 任务，回读稳定状态并重新固定 main SHA，再开始候选。保留正常发布所需的候选、验收、发布及 Pages 工作流。
 4. 从固定 Updater main 触发 `release-candidate.yml`，输入 `updater_version=0.4.0`、Core 最终 SHA、`geoflow_version=3.1.0` 和 `release_sequence=3`。记录候选 run ID，下载候选并核对版本、源码、档案、镜像、版本文档和升级计划摘要。
 5. 运行 `planned-acceptance.yml`，两种原生架构分别完成容器检查、首次安装、旧版升级恢复、在线机制和同版本接管转换演练。审阅汇总证据后，由发布操作员、安全审阅者和产品负责人具名批准该候选；将完整 JSON 写入受保护环境并记录 SHA-256。以前的 RC 记录作为历史证据保留。
 6. 从 Core 最终 SHA 生成并核对三个资产，创建签名标签 `v3.1.0` 和 Draft Release，重新下载比较字节与校验和。全部门槛通过后公开 Core，暂不提升 Latest，验证不可变 Release 及资产证明。
