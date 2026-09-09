@@ -15,7 +15,7 @@ O GEOFlow conecta conhecimento confiável, produção de conteúdo com IA, contr
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 
-> **Status da versão:** A versão atual do código-fonte é `3.0.0`. Consulte [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) para saber quais versões foram publicadas. Em produção, use uma versão publicada ou fixe um commit revisado.
+> **Status da versão:** O GEOFlow está atualmente na série `3.0.x`. A branch `main` continua em desenvolvimento e pode incluir alterações ainda não lançadas. Consulte [`version.json`](../../version.json) para ver a versão exata do código-fonte e [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) para ver as versões oficiais e as instruções de atualização. Em produção, use uma versão estável ou fixe um commit revisado.
 
 ---
 

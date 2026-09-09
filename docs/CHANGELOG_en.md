@@ -2,6 +2,12 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-09-09
+
+### README version guidance
+
+- READMEs in all six languages now identify the current `3.0.x` series, explain that `main` may contain unreleased changes, and link to the exact source version, official releases, and upgrade notes.
+
 ## 2026-09-05
 
 ### v3.0.0

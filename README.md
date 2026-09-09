@@ -15,7 +15,7 @@ GEOFlow 把可信知识、AI 内容生产、质量门禁、人工审核、多站
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 
-> **版本说明：** 当前源码版本为 `3.0.0`，实际公开发布状态以 [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) 为准。生产部署建议使用已发布版本，或固定到经过审核的提交。
+> **版本说明：** 当前为 `3.0.x` 系列，`main` 分支持续迭代，可能包含尚未发布的更新。精确源码版本见 [`version.json`](version.json)，正式发布版本与升级说明见 [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases)。生产部署建议使用正式 Release，或固定到经过审核的提交。
 
 ---
 
