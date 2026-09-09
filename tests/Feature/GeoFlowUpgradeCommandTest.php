@@ -91,7 +91,8 @@ class GeoFlowUpgradeCommandTest extends TestCase
         $report = $this->invoke('inspect');
         $this->assertSame('pass', $report['status']);
         $this->assertSame(1, $report['schema_version']);
-        $this->assertSame('3.0.0', $report['version']);
+        $manifest = json_decode((string) file_get_contents(base_path('version.json')), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame($manifest['version'], $report['version']);
         $this->assertSame(hash_file('sha256', $this->planPath), $report['plan_sha256']);
         $this->assertSame([$name], array_column($report['pending_migrations'], 'name'));
         $this->assertFalse($report['eligible_online']);
