@@ -1,0 +1,678 @@
+{
+  "schema_version": 1,
+  "candidate": {
+    "schema_version": 1,
+    "candidate_run_id": 34310152452,
+    "updater": {
+      "version": "0.4.0-rc.4",
+      "commit": "917b0acecd85d833ba41a6c04ddf279980c50697",
+      "archives": {
+        "linux-amd64": "5f1b38064a32ce032e2f7d9357554a324e2f84754a0c196a19d6afbf8ad0b6e5",
+        "linux-arm64": "8f86f407d1e765d5d9d279e9f55eb67a509e55c30a652818c5487d3a50704afa"
+      }
+    },
+    "geoflow": {
+      "version": "3.0.0",
+      "commit": "02babc6f514ffbd0116dfeaa7e262cb655695d5b",
+      "release_sequence": 3,
+      "app_digest": "sha256:b05f0d0ac6753530073c3d58d1fec6cc6179712ddf575a4863a65f886223b117",
+      "web_digest": "sha256:c148a87bc9a5126deff3fe92c18f6a7bfa533ce0cb620dc15e552bf56a91ca54"
+    },
+    "targets": {
+      "release_manifest_sha256": "b88cee757ba7c36cf62a1ff67e1a97d7e73203a8f62ed8c38ea76e67d31466b6",
+      "compose_sha256": "a0da750f2dc015d9244229f47b8d3fe0141557146064c709856ee3d6501b94b4",
+      "version_document_sha256": "4edabf7822c59bdf70511ad7308a5b4ead10391e4932b94ef8784d09f022bf96",
+      "upgrade_plan_sha256": "51504c6bf8a1df791a7baa4640bacc9a49a409c11863c4b31dceec653a2508cc"
+    },
+    "online_fixture": {
+      "scope": "same-application-online-switch-and-switch-back",
+      "source_sequence": 3,
+      "target_sequence": 4,
+      "base_app_digest": "sha256:b05f0d0ac6753530073c3d58d1fec6cc6179712ddf575a4863a65f886223b117",
+      "app_digest": "sha256:a732e18c51181b061599d7e23525d21c8f197a2e029fb378be1ae68228da89f1",
+      "release_manifest_sha256": "89dce7ca03b4fdcdbe4d0325ecd7a9a3fb229e334c13c01057fd51b852e04da4",
+      "upgrade_plan_sha256": "e4c76767e0bb399a7a65453efef40134b6595fecba3f66877935840c30c7bc68"
+    }
+  },
+  "verification_scope": "planned-container-contract-and-ingress",
+  "installed_host_scope": "maintenance-upgrade-restore-stage-interruption-install-retry-and-online-fixture",
+  "limitations": [
+    "Online fixture uses identical application code with no pending migrations. Each production online source/target pair requires its own compatibility approval."
+  ],
+  "architectures": {
+    "linux-amd64": {
+      "result": "pass",
+      "evidence_link": "https://github.com/yaojingang/geoflow-updater/actions/runs/34312377078",
+      "container": {
+        "schema_version": 1,
+        "platform": "linux-amd64",
+        "kernel_arch": "x86_64",
+        "candidate_run_id": "34310152452",
+        "result": "pass",
+        "verification_scope": "planned-container-contract-and-ingress",
+        "checks": [
+          "signed-image-identity",
+          "fresh-migrations",
+          "first-install",
+          "backfills",
+          "cache-compilation",
+          "standalone-readiness",
+          "install-idempotency",
+          "real-ingress-switch-and-stream"
+        ]
+      },
+      "hosts": {
+        "online": {
+          "schema_version": 1,
+          "candidate_run_id": "34310152452",
+          "platform": "linux-amd64",
+          "kernel_arch": "x86_64",
+          "mode": "online",
+          "harness_commit": "917b0acecd85d833ba41a6c04ddf279980c50697",
+          "result": "pass",
+          "failed_check": "",
+          "checks": [
+            {
+              "id": "native-candidate-install",
+              "status": "pass",
+              "evidence": "Verified candidate archive installed through its systemd installer"
+            },
+            {
+              "id": "session-login",
+              "status": "pass",
+              "evidence": "Real administrator HTTP session reaches the protected update center"
+            },
+            {
+              "id": "fresh-install-retry",
+              "status": "pass",
+              "evidence": "Killed installer after real administrator initialization; repeated install preserved credentials and completed readiness"
+            },
+            {
+              "id": "online-reverb-cross-slot",
+              "status": "pass",
+              "evidence": "Old WebSocket received a broadcast from the newly active application through Redis scaling"
+            },
+            {
+              "id": "changed-online-live-writes",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "online-upgrade",
+              "status": "pass",
+              "evidence": "Signed application-identical fixture switched slots and completed its database snapshot"
+            },
+            {
+              "id": "online-reverb-reconnect",
+              "status": "pass",
+              "evidence": "Browser-equivalent WebSocket reconnected and received broadcasts after both transitions"
+            },
+            {
+              "id": "online-queue-handover",
+              "status": "pass",
+              "evidence": "Forty jobs queued with the old consumer stopped ran once on the destination workers; slot and sequence recorded"
+            },
+            {
+              "id": "online-switch-back-preserves-data",
+              "status": "pass",
+              "evidence": "Application switch-back retained database, Redis and storage writes"
+            },
+            {
+              "id": "online-http-session",
+              "status": "pass",
+              "evidence": "Continuous public health and authenticated requests succeeded across upgrade and switch-back"
+            }
+          ]
+        },
+        "install": {
+          "schema_version": 1,
+          "candidate_run_id": "34310152452",
+          "platform": "linux-amd64",
+          "kernel_arch": "x86_64",
+          "mode": "install",
+          "harness_commit": "917b0acecd85d833ba41a6c04ddf279980c50697",
+          "result": "pass",
+          "failed_check": "",
+          "checks": [
+            {
+              "id": "native-candidate-install",
+              "status": "pass",
+              "evidence": "Verified candidate archive installed through its systemd installer"
+            },
+            {
+              "id": "session-login",
+              "status": "pass",
+              "evidence": "Real administrator HTTP session reaches the protected update center"
+            },
+            {
+              "id": "fresh-install-retry",
+              "status": "pass",
+              "evidence": "Killed installer after real administrator initialization; repeated install preserved credentials and completed readiness"
+            }
+          ]
+        },
+        "upgrade": {
+          "schema_version": 1,
+          "candidate_run_id": "34310152452",
+          "platform": "linux-amd64",
+          "kernel_arch": "x86_64",
+          "mode": "upgrade",
+          "harness_commit": "917b0acecd85d833ba41a6c04ddf279980c50697",
+          "result": "pass",
+          "failed_check": "",
+          "checks": [
+            {
+              "id": "native-candidate-install",
+              "status": "pass",
+              "evidence": "Verified candidate archive installed through its systemd installer"
+            },
+            {
+              "id": "session-login",
+              "status": "pass",
+              "evidence": "Real administrator HTTP session reaches the protected update center"
+            },
+            {
+              "id": "legacy-enrollment",
+              "status": "pass",
+              "evidence": "Existing signed stable deployment enrolled and started on PostgreSQL 18 / Redis 8"
+            },
+            {
+              "id": "restored-retain-assets",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-retain-assets",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "restored-quiesce",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-quiesce",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "restored-scheduler-freeze",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-scheduler-freeze",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "restored-backup",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-backup",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "changed-upgrade",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "restored-upgrade",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-upgrade",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "changed-layout",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "restored-layout",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-layout",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "changed-candidate",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "restored-candidate",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-candidate",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "changed-switch",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "restored-switch",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-switch",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "changed-workers",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "restored-workers",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-workers",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "changed-observe",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "restored-observe",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-observe",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "changed-recovery-backoff",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "restored-recovery-backoff",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-recovery-backoff",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "session-after-upgrade",
+              "status": "pass",
+              "evidence": "Real administrator HTTP session reaches the protected update center"
+            },
+            {
+              "id": "signed-upgrade",
+              "status": "pass",
+              "evidence": "Stable installed deployment converted to the signed candidate with automatic migrations"
+            },
+            {
+              "id": "changed-manual-rollback",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "restored-manual-rollback",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "complete-backup-restore",
+              "status": "pass",
+              "evidence": "A later manual backup retained the update checkpoint; explicit restore recovered all tested surfaces"
+            }
+          ]
+        }
+      }
+    },
+    "linux-arm64": {
+      "result": "pass",
+      "evidence_link": "https://github.com/yaojingang/geoflow-updater/actions/runs/34312377078",
+      "container": {
+        "schema_version": 1,
+        "platform": "linux-arm64",
+        "kernel_arch": "aarch64",
+        "candidate_run_id": "34310152452",
+        "result": "pass",
+        "verification_scope": "planned-container-contract-and-ingress",
+        "checks": [
+          "signed-image-identity",
+          "fresh-migrations",
+          "first-install",
+          "backfills",
+          "cache-compilation",
+          "standalone-readiness",
+          "install-idempotency",
+          "real-ingress-switch-and-stream"
+        ]
+      },
+      "hosts": {
+        "online": {
+          "schema_version": 1,
+          "candidate_run_id": "34310152452",
+          "platform": "linux-arm64",
+          "kernel_arch": "aarch64",
+          "mode": "online",
+          "harness_commit": "917b0acecd85d833ba41a6c04ddf279980c50697",
+          "result": "pass",
+          "failed_check": "",
+          "checks": [
+            {
+              "id": "native-candidate-install",
+              "status": "pass",
+              "evidence": "Verified candidate archive installed through its systemd installer"
+            },
+            {
+              "id": "session-login",
+              "status": "pass",
+              "evidence": "Real administrator HTTP session reaches the protected update center"
+            },
+            {
+              "id": "fresh-install-retry",
+              "status": "pass",
+              "evidence": "Killed installer after real administrator initialization; repeated install preserved credentials and completed readiness"
+            },
+            {
+              "id": "online-reverb-cross-slot",
+              "status": "pass",
+              "evidence": "Old WebSocket received a broadcast from the newly active application through Redis scaling"
+            },
+            {
+              "id": "changed-online-live-writes",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "online-upgrade",
+              "status": "pass",
+              "evidence": "Signed application-identical fixture switched slots and completed its database snapshot"
+            },
+            {
+              "id": "online-reverb-reconnect",
+              "status": "pass",
+              "evidence": "Browser-equivalent WebSocket reconnected and received broadcasts after both transitions"
+            },
+            {
+              "id": "online-queue-handover",
+              "status": "pass",
+              "evidence": "Forty jobs queued with the old consumer stopped ran once on the destination workers; slot and sequence recorded"
+            },
+            {
+              "id": "online-switch-back-preserves-data",
+              "status": "pass",
+              "evidence": "Application switch-back retained database, Redis and storage writes"
+            },
+            {
+              "id": "online-http-session",
+              "status": "pass",
+              "evidence": "Continuous public health and authenticated requests succeeded across upgrade and switch-back"
+            }
+          ]
+        },
+        "install": {
+          "schema_version": 1,
+          "candidate_run_id": "34310152452",
+          "platform": "linux-arm64",
+          "kernel_arch": "aarch64",
+          "mode": "install",
+          "harness_commit": "917b0acecd85d833ba41a6c04ddf279980c50697",
+          "result": "pass",
+          "failed_check": "",
+          "checks": [
+            {
+              "id": "native-candidate-install",
+              "status": "pass",
+              "evidence": "Verified candidate archive installed through its systemd installer"
+            },
+            {
+              "id": "session-login",
+              "status": "pass",
+              "evidence": "Real administrator HTTP session reaches the protected update center"
+            },
+            {
+              "id": "fresh-install-retry",
+              "status": "pass",
+              "evidence": "Killed installer after real administrator initialization; repeated install preserved credentials and completed readiness"
+            }
+          ]
+        },
+        "upgrade": {
+          "schema_version": 1,
+          "candidate_run_id": "34310152452",
+          "platform": "linux-arm64",
+          "kernel_arch": "aarch64",
+          "mode": "upgrade",
+          "harness_commit": "917b0acecd85d833ba41a6c04ddf279980c50697",
+          "result": "pass",
+          "failed_check": "",
+          "checks": [
+            {
+              "id": "native-candidate-install",
+              "status": "pass",
+              "evidence": "Verified candidate archive installed through its systemd installer"
+            },
+            {
+              "id": "session-login",
+              "status": "pass",
+              "evidence": "Real administrator HTTP session reaches the protected update center"
+            },
+            {
+              "id": "legacy-enrollment",
+              "status": "pass",
+              "evidence": "Existing signed stable deployment enrolled and started on PostgreSQL 18 / Redis 8"
+            },
+            {
+              "id": "restored-retain-assets",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-retain-assets",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "restored-quiesce",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-quiesce",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "restored-scheduler-freeze",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-scheduler-freeze",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "restored-backup",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-backup",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "changed-upgrade",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "restored-upgrade",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-upgrade",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "changed-layout",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "restored-layout",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-layout",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "changed-candidate",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "restored-candidate",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-candidate",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "changed-switch",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "restored-switch",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-switch",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "changed-workers",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "restored-workers",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-workers",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "changed-observe",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "restored-observe",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-observe",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "changed-recovery-backoff",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "restored-recovery-backoff",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "crash-recovery-backoff",
+              "status": "pass",
+              "evidence": "SIGKILL at the recorded durable stage; correct recovery policy and restart stability"
+            },
+            {
+              "id": "session-after-upgrade",
+              "status": "pass",
+              "evidence": "Real administrator HTTP session reaches the protected update center"
+            },
+            {
+              "id": "signed-upgrade",
+              "status": "pass",
+              "evidence": "Stable installed deployment converted to the signed candidate with automatic migrations"
+            },
+            {
+              "id": "changed-manual-rollback",
+              "status": "pass",
+              "evidence": "Verified non-baseline database, Redis and storage markers before restoration"
+            },
+            {
+              "id": "restored-manual-rollback",
+              "status": "pass",
+              "evidence": "Data markers, full configuration hashes, migration history and doctor match the baseline"
+            },
+            {
+              "id": "complete-backup-restore",
+              "status": "pass",
+              "evidence": "A later manual backup retained the update checkpoint; explicit restore recovered all tested surfaces"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "approvals": {
+    "release_operator": {
+      "name": "",
+      "decision": "pending"
+    },
+    "security_reviewer": {
+      "name": "",
+      "decision": "pending"
+    },
+    "product_owner": {
+      "name": "",
+      "decision": "pending"
+    }
+  }
+}

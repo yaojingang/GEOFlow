@@ -4,7 +4,7 @@
 
 面向站点管理员和服务器管理员，涵盖首次安装、旧站接管、后台升级、自动迁移、备份和恢复。
 
-本文依据 [GEOFlow PR #122](https://github.com/yaojingang/GEOFlow/pull/122)、[updater PR #16](https://github.com/yaojingang/geoflow-updater/pull/16) 及[主机验收与恢复修复 PR #17](https://github.com/yaojingang/geoflow-updater/pull/17) 合并后的实现编写。
+本文依据 [GEOFlow PR #122](https://github.com/yaojingang/GEOFlow/pull/122) 与 [updater PR #16](https://github.com/yaojingang/geoflow-updater/pull/16) 合并后的实现编写。后续恢复修复及完整双架构结果见[主机验收记录](reports/2026-09-09-blue-green-host-acceptance.md)。
 
 > **版本前提，核对于 2026 年 9 月 9 日：** 本轮功能已合入两个仓库的 main。公开稳定版仍为 [GEOFlow v3.0.0](https://github.com/yaojingang/GEOFlow/releases/tag/v3.0.0) 和 [updater v0.3.0](https://github.com/yaojingang/geoflow-updater/releases/tag/v0.3.0)，尚未包含本轮完整能力。以下新流程需要后续正式发布的 updater、配套应用镜像和已签名升级计划。仅拉取 main 或安装现有 v0.3.0，无法完成本文的新流程；下一版版本号以正式发布为准。
 
@@ -402,6 +402,8 @@ updater 启动及后台检查会根据持久化记录处理被中断的操作。
 ## 12. 维护者参考
 
 普通站点管理员按上述流程选择和确认计划。在线兼容性由发布者声明，并通过对应候选版本的验证。
+
+**2026 年 9 月 9 日进展：** Updater `0.4.0-rc.4` 配套签名候选已完成原生 amd64、arm64 的安装、完整升级恢复、中断恢复和在线机制验收，全部通过。候选身份、逐项结果及修复 PR 见[验收记录](reports/2026-09-09-blue-green-host-acceptance.md)。技术验收与正式发布分别记录，安装时仍需满足[版本前提](#geoflow-蓝绿部署与自动迁移使用教程)。
 
 - `deployment/upgrade-plan.json` 固定迁移文件摘要。新增迁移后更新并审阅清单，再运行 `python3 deployment/generate-upgrade-plan.py --check`。
 - schema 3 发布清单将完整计划纳入 TUF 签名目标 `releases/<version>/upgrade-plan.json`。维护计划要求协议至少为 3，在线计划至少为 4；应用计划与预检摘要各自的 schema 版本需分别理解。

@@ -4,7 +4,7 @@
 
 For site and server administrators. This tutorial covers fresh installation, enrollment, updates through the admin UI or CLI, automatic migrations, backups, and recovery.
 
-It follows the implementation merged in [GEOFlow PR #122](https://github.com/yaojingang/GEOFlow/pull/122), [updater PR #16](https://github.com/yaojingang/geoflow-updater/pull/16), and [host acceptance and recovery fixes in PR #17](https://github.com/yaojingang/geoflow-updater/pull/17).
+It follows the implementation merged in [GEOFlow PR #122](https://github.com/yaojingang/GEOFlow/pull/122) and [updater PR #16](https://github.com/yaojingang/geoflow-updater/pull/16). Subsequent recovery fixes and complete dual-architecture results are recorded in the [host acceptance report](reports/2026-09-09-blue-green-host-acceptance_en.md).
 
 > **Release prerequisite, checked September 9, 2026:** These changes are merged into both repositories' main branches. The published stable versions remain [GEOFlow v3.0.0](https://github.com/yaojingang/GEOFlow/releases/tag/v3.0.0) and [updater v0.3.0](https://github.com/yaojingang/geoflow-updater/releases/tag/v0.3.0), which do not include the complete workflow described here. You need a subsequent official updater release, matching application images, and a signed upgrade plan. Pulling main or installing the existing v0.3.0 package alone is insufficient. Use the version number from the official release when it becomes available.
 
@@ -402,6 +402,8 @@ Before sharing diagnostics, remove passwords, tokens, authorization URIs, and pr
 ## 12. Maintainer reference
 
 Site administrators select and confirm plans through the workflow above. Publishers declare online compatibility and validate it against the corresponding candidate release.
+
+**September 9, 2026 update:** The signed candidate paired with Updater `0.4.0-rc.4` passed installation, full upgrade/restoration, interruption recovery and online-mechanism acceptance on native amd64 and arm64. See the [acceptance report](reports/2026-09-09-blue-green-host-acceptance_en.md) for candidate identity, individual results and fix PRs. Technical acceptance and official publication have separate records; installation still requires the [release prerequisites](#geoflow-bluegreen-deployment-and-automatic-migration-tutorial).
 
 - `deployment/upgrade-plan.json` pins migration-file digests. After adding migrations, update and review the manifest, then run `python3 deployment/generate-upgrade-plan.py --check`.
 - A schema 3 release manifest includes the complete plan as the TUF-signed target `releases/<version>/upgrade-plan.json`. Maintenance plans require protocol 3 or later; online plans require protocol 4 or later. Application-plan and preview schemas have their own versions.
