@@ -315,13 +315,26 @@ html[data-gf-sidebar-resizing] body { cursor: col-resize; user-select: none; }
 .gf-field > small { color: var(--gf-gray-400); font-size: 10px; }
 .gf-settings-actions { align-items: center; background: var(--gf-gray-50); border-top: 1px solid var(--gf-gray-200); display: flex; gap: 10px; justify-content: flex-end; padding: 14px 24px; }
 .gf-settings-actions > span { color: var(--gf-gray-400); font-size: 11px; margin-right: auto; }
-.gf-account-page { align-items: start; display: grid; gap: 18px; grid-template-columns: minmax(0, 1.35fr) minmax(320px, .65fr); }
-.gf-account-page__aside { display: grid; gap: 18px; }
+.gf-account-page { align-items: start; display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) 320px; }
+.gf-account-page__main { display: grid; gap: 24px; min-width: 0; }
+.gf-account-page__aside { min-width: 0; }
+.gf-account-page .gf-settings-panel__header { padding: 20px 24px; }
+.gf-account-page .gf-settings-panel__header h2 { font-size: 16px; }
+.gf-account-page .gf-settings-panel__header p { font-size: 13px; line-height: 1.6; }
+.gf-account-page__fields { display: grid; gap: 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 22px 24px; }
+.gf-account-page__field--full { grid-column: 1 / -1; }
+.gf-account-page .gf-field { min-width: 0; }
+.gf-account-page .gf-field > span { font-size: 13px; }
+.gf-account-page .gf-settings-actions { flex-wrap: wrap; gap: 12px; }
+.gf-account-page .gf-settings-actions > span { color: var(--gf-gray-500); flex: 1 1 180px; font-size: 12px; }
+.gf-account-page .gf-settings-actions .gf-button { flex: 0 0 auto; white-space: nowrap; }
+.gf-account-page .gf-button svg { flex-shrink: 0; }
+.gf-account-page__aside .gf-settings-actions { align-items: flex-start; flex-direction: column; }
+.gf-account-page__aside .gf-settings-actions > span { flex: auto; }
 .gf-permission-list { display: grid; gap: 12px; list-style: none; margin: 0; padding: 18px 22px 22px; }
 .gf-permission-list li { align-items: flex-start; color: var(--gf-gray-600); display: flex; gap: 10px; }
 .gf-permission-list li > span { align-items: center; background: var(--gf-emerald-50); border-radius: 999px; color: var(--gf-emerald-600); display: inline-flex; flex: 0 0 24px; height: 24px; justify-content: center; width: 24px; }
 .gf-permission-list svg { height: 14px; width: 14px; }
-.gf-password-fields { display: grid; gap: 16px; padding: 22px 24px; }
 
 .gf-modal-backdrop { align-items: center; background: rgba(15, 23, 42, .48); display: flex; inset: 0; justify-content: center; opacity: 0; overscroll-behavior: contain; padding: 24px; position: fixed; transition: opacity 160ms ease-out; z-index: 120; }
 .gf-modal-backdrop.is-open { opacity: 1; }
@@ -944,6 +957,11 @@ details.gf-ai-trace-event[open] .gf-ai-trace-event__chevron { transform: rotate(
     .gf-settings-actions { flex-wrap: wrap; padding: 14px 18px; }
     .gf-settings-actions > span { flex-basis: 100%; }
     .gf-settings-actions .gf-button { flex: 1; }
+    .gf-account-page, .gf-account-page__main { gap: 18px; }
+    .gf-account-page .gf-settings-panel__header { padding: 18px; }
+    .gf-account-page__fields { grid-template-columns: minmax(0, 1fr); padding: 18px; }
+    .gf-account-page .gf-settings-actions > span { flex-basis: 100%; }
+    .gf-account-page .gf-settings-actions .gf-button { width: 100%; }
     .gf-modal-backdrop { align-items: center; padding: 16px; }
     .gf-modal { max-height: calc(100dvh - 32px); }
     .gf-community-dialog { gap: 20px; grid-template-columns: 1fr; }
