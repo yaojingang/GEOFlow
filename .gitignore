@@ -30,3 +30,18 @@ __pycache__/
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# AI tool caches (per-machine)
+.agents/
+.boost/
+.claude/
+.codex/
+.cursor/
+.gemini/
+.bak/
+.dockerignore.local
+
+_route_refs.txt
+
+.untracked-stash/
+

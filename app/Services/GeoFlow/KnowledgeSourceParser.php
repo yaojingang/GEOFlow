@@ -5,6 +5,7 @@ namespace App\Services\GeoFlow;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Smalot\PdfParser\Parser as SmalotPdfParser;
 
 final class KnowledgeSourceParser
 {
@@ -13,6 +14,12 @@ final class KnowledgeSourceParser
     private const MAX_DOCX_XML_BYTES = 16 * 1024 * 1024;
 
     private const MAX_DOCX_COMPRESSION_RATIO = 100;
+
+    private const MAX_PPTX_XML_BYTES = 16 * 1024 * 1024;
+
+    private const MAX_PPTX_COMPRESSION_RATIO = 100;
+
+    private const MAX_PDF_BYTES = 32 * 1024 * 1024;
 
     public function storeUploadedKnowledgeFile(UploadedFile $file, string $relativeDirectory = 'uploads/knowledge'): string
     {
@@ -191,7 +198,7 @@ final class KnowledgeSourceParser
 
         $fileType = (string) ($parsedFiles[0]['file_type'] ?? 'markdown');
 
-        return in_array($fileType, ['markdown', 'word', 'text'], true) ? $fileType : 'markdown';
+        return in_array($fileType, ['markdown', 'word', 'text', 'pdf', 'presentation'], true) ? $fileType : 'markdown';
     }
 
     /**
@@ -247,6 +254,34 @@ final class KnowledgeSourceParser
                 'content' => $content,
                 'file_type' => 'word',
             ];
+        }
+
+        if ($extension === 'pdf') {
+            $content = $this->extractPdfContent($absolutePath);
+            if ($content === '') {
+                throw new \RuntimeException(__('admin.knowledge_bases.error.file_type_invalid'));
+            }
+
+            return [
+                'content' => $content,
+                'file_type' => 'pdf',
+            ];
+        }
+
+        if ($extension === 'pptx') {
+            $content = $this->extractPptxContent($absolutePath);
+            if ($content === '') {
+                throw new \RuntimeException(__('admin.knowledge_bases.error.file_type_invalid'));
+            }
+
+            return [
+                'content' => $content,
+                'file_type' => 'presentation',
+            ];
+        }
+
+        if ($extension === 'ppt') {
+            throw new \RuntimeException(__('admin.knowledge_bases.error.ppt_legacy_not_supported'));
         }
 
         throw new \RuntimeException(__('admin.knowledge_bases.error.file_type_invalid'));
@@ -427,6 +462,138 @@ final class KnowledgeSourceParser
         }
         $reader->close();
         fclose($temporary);
+        rewind($textOutput);
+        $content = stream_get_contents($textOutput, self::MAX_KNOWLEDGE_BYTES + 1);
+        fclose($textOutput);
+
+        return is_string($content) ? $this->normalizeKnowledgeText($content) : '';
+    }
+
+
+    public function extractPdfContent(string $absolutePath): string
+    {
+        if (@filesize($absolutePath) > self::MAX_PDF_BYTES) {
+            throw new \RuntimeException(__('admin.knowledge_bases.error.file_too_large'));
+        }
+        if (! class_exists(SmalotPdfParser::class)) {
+            return '';
+        }
+
+        try {
+            $parser = new SmalotPdfParser;
+            $document = $parser->parseFile($absolutePath);
+            $text = $document->getText();
+            if (! is_string($text) || $text === '') {
+                return '';
+            }
+
+            if (strlen($text) > self::MAX_KNOWLEDGE_BYTES) {
+                throw new \RuntimeException(__('admin.knowledge_bases.error.content_too_large'));
+            }
+
+            return $this->normalizeKnowledgeText($this->convertUploadedTextToUtf8($text));
+        } catch (\Throwable $exception) {
+            return '';
+        }
+    }
+
+    public function extractPptxContent(string $absolutePath): string
+    {
+        if (! class_exists('ZipArchive') || ! class_exists('XMLReader')) {
+            return '';
+        }
+
+        $zip = new \ZipArchive;
+        if ($zip->open($absolutePath) !== true) {
+            return '';
+        }
+
+        $slideNames = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = $zip->getNameIndex($i);
+            if (is_string($name) && preg_match('#^ppt/slides/slide\d+\.xml$#', $name)) {
+                $slideNames[] = $name;
+            }
+        }
+        sort($slideNames, SORT_NATURAL);
+
+        if ($slideNames === []) {
+            $zip->close();
+            return '';
+        }
+
+        $presentationNamespace = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+        $textOutput = tmpfile();
+        if (! is_resource($textOutput)) {
+            $zip->close();
+            return '';
+        }
+
+        $slideNumber = 0;
+        $contentBytes = 0;
+        foreach ($slideNames as $slideName) {
+            $stat = $zip->statName($slideName);
+            $uncompressedSize = is_array($stat) ? max(0, (int) ($stat['size'] ?? 0)) : 0;
+            $compressedSize = is_array($stat) ? max(1, (int) ($stat['comp_size'] ?? 0)) : 1;
+            if ($uncompressedSize > self::MAX_PPTX_XML_BYTES || ($uncompressedSize / $compressedSize) > self::MAX_PPTX_COMPRESSION_RATIO) {
+                fclose($textOutput);
+                $zip->close();
+                throw new \RuntimeException(__('admin.knowledge_bases.error.pptx_expansion_too_large'));
+            }
+
+            $source = $zip->getStream($slideName);
+            if (! is_resource($source)) {
+                continue;
+            }
+
+            $temporary = tmpfile();
+            if (! is_resource($temporary)) {
+                fclose($source);
+                fclose($textOutput);
+                $zip->close();
+                return '';
+            }
+
+            $copiedBytes = stream_copy_to_stream($source, $temporary, self::MAX_PPTX_XML_BYTES + 1);
+            fclose($source);
+            if (! is_int($copiedBytes) || $copiedBytes > self::MAX_PPTX_XML_BYTES) {
+                fclose($temporary);
+                fclose($textOutput);
+                $zip->close();
+                throw new \RuntimeException(__('admin.knowledge_bases.error.pptx_expansion_too_large'));
+            }
+
+            $metadata = stream_get_meta_data($temporary);
+            $temporaryPath = (string) ($metadata['uri'] ?? '');
+            $reader = new \XMLReader;
+            if ($temporaryPath !== '' && @$reader->open($temporaryPath, null, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING)) {
+                $slideNumber++;
+                fwrite($textOutput, "\n\n# Slide " . $slideNumber . "\n\n");
+                while ($reader->read()) {
+                    if (
+                        $reader->nodeType === \XMLReader::ELEMENT
+                        && $reader->localName === 't'
+                        && $reader->namespaceURI === $presentationNamespace
+                    ) {
+                        $value = trim($reader->readString());
+                        if ($value !== '') {
+                            $contentBytes += strlen($value) + 1;
+                            if ($contentBytes > self::MAX_KNOWLEDGE_BYTES) {
+                                $reader->close();
+                                fclose($temporary);
+                                fclose($textOutput);
+                                $zip->close();
+                                throw new \RuntimeException(__('admin.knowledge_bases.error.content_too_large'));
+                            }
+                            fwrite($textOutput, $value . "\n");
+                        }
+                    }
+                }
+                $reader->close();
+            }
+            fclose($temporary);
+        }
+        $zip->close();
         rewind($textOutput);
         $content = stream_get_contents($textOutput, self::MAX_KNOWLEDGE_BYTES + 1);
         fclose($textOutput);
