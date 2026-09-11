@@ -165,6 +165,17 @@ final class OpenAiRuntimeProvider
     }
 
     /**
+     * 综合判断 URL + 模型是否属于火山方舟多模态 embedding。
+     *
+     * 仅当 URL 指向 *.volces.com 且模型 id 包含 "vision" 时返回 true。
+     */
+    public static function isVolcengineMultimodalEmbedding(string $apiUrl, string $modelId): bool
+    {
+        return self::isVolcengineProviderUrl($apiUrl)
+            && self::isVolcengineMultimodalEmbeddingModel($modelId);
+    }
+
+    /**
      * Gemini 原生 Chat/Embedding API 共用 v1beta base，不使用 OpenAI compatibility 子路径。
      */
     public static function resolveGeminiBaseUrl(string $apiUrl): string

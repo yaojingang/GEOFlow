@@ -81,4 +81,32 @@ class VolcengineMultimodalEmbeddingRouteTest extends TestCase
         $this->assertFalse(OpenAiRuntimeProvider::isVolcengineMultimodalEmbeddingModel('doubao-embedding-text-240515'));
         $this->assertFalse(OpenAiRuntimeProvider::isVolcengineMultimodalEmbeddingModel(''));
     }
+
+    #[Test]
+    public function it_composites_volcengine_url_and_vision_model_into_multimodal_embedding(): void
+    {
+        $this->assertTrue(OpenAiRuntimeProvider::isVolcengineMultimodalEmbedding(
+            'https://ark.cn-beijing.volces.com/api/v3',
+            'doubao-embedding-vision-251215',
+        ));
+        $this->assertFalse(OpenAiRuntimeProvider::isVolcengineMultimodalEmbedding(
+            'https://ark.cn-beijing.volces.com/api/v3',
+            'doubao-embedding-text-240515',
+        ));
+        $this->assertFalse(OpenAiRuntimeProvider::isVolcengineMultimodalEmbedding(
+            'https://api.openai.com/v1',
+            'doubao-embedding-vision-251215',
+        ));
+        $this->assertFalse(OpenAiRuntimeProvider::isVolcengineMultimodalEmbedding('', ''));
+    }
+
+    #[Test]
+    public function it_resolves_embedding_base_url_without_collapsing_volcengine_branch(): void
+    {
+        // The base URL helper strips /embeddings or /chat/completions but never
+        // collapses the volces host, otherwise the multimodal path can never be
+        // detected by resolveEndpoint downstream.
+        $base = OpenAiRuntimeProvider::resolveEmbeddingBaseUrl('https://ark.cn-beijing.volces.com/api/v3/embeddings');
+        $this->assertSame('https://ark.cn-beijing.volces.com/api/v3', $base);
+    }
 }
