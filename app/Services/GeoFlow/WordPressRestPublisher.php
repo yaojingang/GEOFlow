@@ -43,6 +43,10 @@ class WordPressRestPublisher implements DistributionPublisherInterface
 
     public function publish(ArticleDistribution $distribution, array $payload): array
     {
+        if ($distribution->wordpressPostId()) {
+            return $this->update($distribution, $payload);
+        }
+
         $distribution->loadMissing('channel');
         $channel = $this->channel($distribution);
         $response = $this->requestFactory->request($channel)
@@ -59,7 +63,7 @@ class WordPressRestPublisher implements DistributionPublisherInterface
         $channel = $this->channel($distribution);
         $postId = $distribution->wordpressPostId();
         if (! $postId) {
-            return $this->publish($distribution, $payload);
+            throw new RuntimeException('WordPress 文章更新缺少远端文章 ID。');
         }
 
         $response = $this->requestFactory->request($channel)
@@ -136,17 +140,23 @@ class WordPressRestPublisher implements DistributionPublisherInterface
             ->get($channel->wordpressRestBaseUrl().'/wp/v2/posts', [
                 'slug' => $slug,
                 'context' => 'edit',
-                'per_page' => 1,
+                'per_page' => 2,
                 '_fields' => 'id,link,slug',
+                'status' => ['publish', 'draft', 'pending', 'private', 'future'],
             ]);
         if ($response->failed()) {
             return null;
         }
         $posts = $response->json();
-        $post = is_array($posts) && is_array($posts[0] ?? null) ? $posts[0] : null;
-        if (! is_array($post) || (string) ($post['slug'] ?? '') !== $slug || (int) ($post['id'] ?? 0) <= 0) {
+        $matches = collect(is_array($posts) ? $posts : [])
+            ->filter(static fn ($post): bool => is_array($post)
+                && (string) ($post['slug'] ?? '') === $slug
+                && (int) ($post['id'] ?? 0) > 0)
+            ->values();
+        if ($matches->count() !== 1) {
             return null;
         }
+        $post = $matches->first();
 
         return [
             'remote_id' => (string) $post['id'],
@@ -222,9 +232,12 @@ class WordPressRestPublisher implements DistributionPublisherInterface
         }
 
         $postId = (int) ($json['id'] ?? 0);
+        if ($postId <= 0) {
+            throw new RuntimeException('WordPress 返回内容缺少有效文章 ID。');
+        }
 
         return [
-            'remote_id' => $postId > 0 ? (string) $postId : '',
+            'remote_id' => (string) $postId,
             'remote_url' => (string) ($json['link'] ?? ''),
             'remote_meta' => [
                 'wordpress_post_id' => $postId,

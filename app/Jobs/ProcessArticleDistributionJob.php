@@ -11,6 +11,7 @@ use App\Services\AiWorkspace\AiWorkspaceDispatchGuard;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionRetryPolicy;
 use App\Services\HostedSites\HostedSitePublishFailureService;
+use App\Services\Outbound\OutboundRequestFailedException;
 use App\Support\GeoFlow\DistributionErrorSanitizer;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -114,7 +115,8 @@ class ProcessArticleDistributionJob implements ShouldQueue
                 ?->firstWhere('id', (int) $distribution->distribution_channel_id)
                 ?->pivot?->max_attempts ?? 3);
             $shouldRetry = $retryPolicy->shouldRetry($e, $attemptCount, $maxAttempts);
-            if ($this->createsUncertainAiWordPressPost($distribution) && $shouldRetry) {
+            if ($this->createsUncertainWordPressPost($distribution)
+                && $this->requiresWordPressCreateReconciliation($e)) {
                 try {
                     if ($orchestrator->reconcileUnknownOutcome($distribution)) {
                         return;
@@ -138,7 +140,7 @@ class ProcessArticleDistributionJob implements ShouldQueue
                 }
                 $orchestrator->log(
                     'error',
-                    'AI 工作台 WordPress 分发结果无法确认，已停止自动重试',
+                    'WordPress 分发结果无法确认，已停止自动重试',
                     (int) $distribution->distribution_channel_id,
                     (int) $distribution->id,
                     (int) $distribution->article_id,
@@ -211,7 +213,7 @@ class ProcessArticleDistributionJob implements ShouldQueue
         $exceptionClass = $exception ? class_basename($exception) : 'UnknownFailure';
         $safeMessage = 'Distribution job terminated: '.$exceptionClass;
         $distribution->loadMissing('channel');
-        if ((string) $distribution->status === 'sending' && $this->createsUncertainAiWordPressPost($distribution)) {
+        if ((string) $distribution->status === 'sending' && $this->createsUncertainWordPressPost($distribution)) {
             try {
                 if (app(DistributionOrchestrator::class)->reconcileUnknownOutcome($distribution)) {
                     return;
@@ -238,7 +240,7 @@ class ProcessArticleDistributionJob implements ShouldQueue
                 'article_id' => (int) $distribution->article_id,
                 'level' => 'error',
                 'event' => 'distribution.outcome_unknown',
-                'message' => 'AI 工作台 WordPress 分发 Worker 终止，远程结果无法确认。',
+                'message' => 'WordPress 分发 Worker 终止，远程结果无法确认。',
                 'context' => ['exception_class' => $exceptionClass],
                 'created_at' => now(),
             ]);
@@ -330,11 +332,28 @@ class ProcessArticleDistributionJob implements ShouldQueue
         }
     }
 
-    private function createsUncertainAiWordPressPost(ArticleDistribution $distribution): bool
+    private function createsUncertainWordPressPost(ArticleDistribution $distribution): bool
     {
-        return is_array(data_get($distribution->remote_meta, 'ai_workspace_guard'))
-            && $distribution->channel?->isWordPressRest()
-            && ((string) $distribution->action === 'publish'
-                || ((string) $distribution->action === 'update' && ! $distribution->wordpressPostId()));
+        return $distribution->channel?->isWordPressRest()
+            && (string) $distribution->action === 'publish'
+            && ! $distribution->wordpressPostId();
+    }
+
+    private function requiresWordPressCreateReconciliation(Throwable $exception): bool
+    {
+        if ($exception instanceof OutboundRequestFailedException) {
+            return true;
+        }
+
+        $message = mb_strtolower($exception->getMessage(), 'UTF-8');
+
+        return str_contains($message, 'timeout')
+            || str_contains($message, 'connection')
+            || str_contains($message, '500')
+            || str_contains($message, '502')
+            || str_contains($message, '503')
+            || str_contains($message, '504')
+            || str_contains($message, '不是有效 json')
+            || str_contains($message, '缺少有效文章 id');
     }
 }

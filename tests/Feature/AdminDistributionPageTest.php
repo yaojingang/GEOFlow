@@ -4500,8 +4500,16 @@ MD,
 
         $this->assertDatabaseHas('article_distributions', [
             'id' => (int) $distribution->id,
+            'action' => 'publish',
+            'status' => 'synced',
+            'remote_url' => 'https://example.com/article/remote-edit-article/',
+        ]);
+        $this->assertDatabaseHas('article_distributions', [
+            'article_id' => (int) $article->id,
+            'distribution_channel_id' => (int) $channel->id,
             'action' => 'update',
             'status' => 'synced',
+            'remote_id' => 'geoflow-remote-edit-article',
             'remote_url' => 'https://example.com/article/remote-edit-article/',
         ]);
         Http::assertSent(fn ($request): bool => $request->url() === 'https://example.com/geoflow-agent/v1/articles/remote-edit-article/update'
@@ -4561,8 +4569,16 @@ MD,
 
         $this->assertDatabaseHas('article_distributions', [
             'id' => (int) $distribution->id,
+            'action' => 'publish',
+            'status' => 'synced',
+            'remote_id' => 'geoflow-remote-delete-article',
+        ]);
+        $this->assertDatabaseHas('article_distributions', [
+            'article_id' => (int) $article->id,
+            'distribution_channel_id' => (int) $channel->id,
             'action' => 'delete',
             'status' => 'synced',
+            'remote_id' => 'geoflow-remote-delete-article',
             'remote_url' => null,
         ]);
         $this->assertDatabaseHas('articles', [
@@ -4619,18 +4635,26 @@ MD,
             'idempotency_key' => 'article-'.$article->id.'-channel-'.$channel->id.'-publish-v1',
         ]);
 
-        $this->actingAs($this->admin(), 'admin')
+        $response = $this->actingAs($this->admin(), 'admin')
             ->withHeaders([
                 'Accept' => 'application/json',
                 'X-Requested-With' => 'XMLHttpRequest',
             ])
-            ->post(route('admin.distribution.article.delete', ['distributionId' => (int) $distribution->id]))
+            ->post(route('admin.distribution.article.delete', ['distributionId' => (int) $distribution->id]));
+
+        $deleteDistribution = ArticleDistribution::query()
+            ->where('article_id', (int) $article->id)
+            ->where('distribution_channel_id', (int) $channel->id)
+            ->where('action', 'delete')
+            ->sole();
+
+        $response
             ->assertOk()
             ->assertJson([
                 'ok' => true,
                 'message' => __('admin.distribution.message.remote_article_deleted'),
                 'job' => [
-                    'id' => (int) $distribution->id,
+                    'id' => (int) $deleteDistribution->id,
                     'action' => 'delete',
                     'status' => 'synced',
                     'remote_url' => null,
