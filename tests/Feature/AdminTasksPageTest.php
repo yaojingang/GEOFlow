@@ -18,6 +18,7 @@ use App\Models\TitleLibrary;
 use App\Models\WorkerHeartbeat;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\JobQueueService;
+use App\Services\GeoFlow\TaskLifecycleService;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Database\Eloquent\Collection;
@@ -25,6 +26,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -856,6 +858,36 @@ class AdminTasksPageTest extends TestCase
         $task->refresh();
         $this->assertNull($task->knowledge_base_id);
         $this->assertSame(0, $task->knowledgeBases()->count());
+    }
+
+    public function test_changing_task_to_distribution_only_makes_published_articles_private(): void
+    {
+        Queue::fake();
+        [$task, $article] = $this->createPublishedTaskArticle('scope-narrowing');
+
+        app(TaskLifecycleService::class)->updateTask((int) $task->id, [
+            'publish_scope' => 'distribution_only',
+        ]);
+
+        $this->assertSame('distribution_only', $task->fresh()->publish_scope);
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertNull($article->fresh()->published_at);
+    }
+
+    public function test_changing_distribution_only_task_to_local_scope_does_not_publish_private_articles(): void
+    {
+        Queue::fake();
+        [$task, $article] = $this->createPublishedTaskArticle('scope-widening');
+        $task->update(['publish_scope' => 'distribution_only']);
+        $article->update(['status' => 'private', 'published_at' => null]);
+
+        app(TaskLifecycleService::class)->updateTask((int) $task->id, [
+            'publish_scope' => 'local_and_distribution',
+        ]);
+
+        $this->assertSame('local_and_distribution', $task->fresh()->publish_scope);
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertNull($article->fresh()->published_at);
     }
 
     public function test_stale_task_edit_cannot_restore_distribution_state_after_channel_deletion(): void
@@ -1857,6 +1889,39 @@ class AdminTasksPageTest extends TestCase
         }
 
         return $knowledgeBases;
+    }
+
+    /** @return array{Task, Article} */
+    private function createPublishedTaskArticle(string $suffix): array
+    {
+        $task = Task::query()->create([
+            'name' => 'Publish scope task '.$suffix,
+            'status' => 'paused',
+            'schedule_enabled' => 0,
+            'publish_scope' => 'local_and_distribution',
+            'ai_quality_enabled' => false,
+        ]);
+        $category = Category::query()->create([
+            'name' => 'Publish scope category '.$suffix,
+            'slug' => 'publish-scope-'.$suffix,
+        ]);
+        $author = Author::query()->create([
+            'name' => 'Publish scope author '.$suffix,
+            'email' => $suffix.'@example.test',
+        ]);
+        $article = Article::query()->create([
+            'title' => 'Publish scope article '.$suffix,
+            'slug' => 'publish-scope-article-'.$suffix,
+            'content' => 'Publish scope article content.',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'task_id' => $task->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+
+        return [$task, $article];
     }
 
     /**

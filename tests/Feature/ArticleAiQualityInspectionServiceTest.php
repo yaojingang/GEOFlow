@@ -33,6 +33,7 @@ use App\Services\GeoFlow\ArticleAiQualityRetrievalCoordinator;
 use App\Services\GeoFlow\ArticleAiQualityRolloutPolicy;
 use App\Services\GeoFlow\ArticleFactCandidateExtractor;
 use App\Services\GeoFlow\ArticleWorkflowTransitionService;
+use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\KnowledgeFacts\ArticleAtomicFactInspector;
 use App\Services\GeoFlow\KnowledgeRetrievalService;
 use App\Support\GeoFlow\ApiKeyCrypto;
@@ -42,6 +43,7 @@ use Illuminate\Contracts\Queue\Queue as QueueContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use InvalidArgumentException;
 use Mockery;
@@ -2219,6 +2221,9 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
     {
         $this->bindPassingReviewer();
         $article = $this->createQualityFixture('restore-private-target', needReview: false);
+        $orchestrator = Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldNotReceive('enqueueForArticle');
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
         $service = app(ArticleAiQualityInspectionService::class);
         $check = $service->requestManualInspection(
             $article,
@@ -2235,6 +2240,103 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $this->assertSame('passed', $completed->decision);
         $this->assertSame('private', $article->fresh()->status);
         $this->assertSame('approved', $article->fresh()->review_status);
+    }
+
+    public function test_passing_inspection_enqueues_a_publish_target_already_normalized_to_private(): void
+    {
+        $this->bindPassingReviewer();
+        $article = $this->createQualityFixture('distribution-only-pre-normalized', needReview: false);
+        $article->task()->update(['publish_scope' => 'distribution_only']);
+        $article->forceFill([
+            'status' => 'private',
+            'review_status' => 'approved',
+            'published_at' => null,
+        ])->save();
+        $orchestrator = Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldReceive('enqueueForArticle')->once()->andReturn([]);
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->requestManualInspection(
+            $article,
+            dispatch: false,
+            requestedWorkflowState: [
+                'status' => 'published',
+                'review_status' => 'approved',
+                'published_at' => now(),
+            ],
+        );
+
+        $completed = $service->process($check);
+
+        $this->assertSame('passed', $completed->decision);
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertSame('approved', $article->fresh()->review_status);
+        $this->assertNull($article->fresh()->published_at);
+    }
+
+    public function test_newer_private_intent_cancels_a_pending_distribution_only_publish_request(): void
+    {
+        $this->bindPassingReviewer();
+        $article = $this->createQualityFixture('distribution-only-cancelled-target', needReview: false);
+        $article->task()->update(['publish_scope' => 'distribution_only']);
+        $article->forceFill([
+            'status' => 'private',
+            'review_status' => 'approved',
+            'published_at' => null,
+        ])->save();
+        $orchestrator = Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldNotReceive('enqueueForArticle');
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->requestManualInspection(
+            $article,
+            dispatch: false,
+            requestedWorkflowState: [
+                'status' => 'published',
+                'review_status' => 'approved',
+                'published_at' => now(),
+            ],
+        );
+
+        DB::transaction(function () use ($article): void {
+            $lockedArticle = Article::query()->whereKey((int) $article->id)->lockForUpdate()->firstOrFail();
+            app(ArticleWorkflowTransitionService::class)->cancelPendingDistributionIntent($lockedArticle);
+        });
+
+        $completed = $service->process($check);
+        $check->refresh();
+
+        $this->assertSame('passed', $completed->decision);
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertSame('private', data_get($check->execution_meta, 'requested_workflow_state.status'));
+        $this->assertNotNull(data_get($check->execution_meta, 'distribution_intent_cancelled_at'));
+    }
+
+    public function test_passing_inspection_keeps_distribution_only_publish_target_private_and_enqueues_it(): void
+    {
+        $this->bindPassingReviewer();
+        $article = $this->createQualityFixture('distribution-only-target', needReview: false);
+        $article->task()->update(['publish_scope' => 'distribution_only']);
+        $orchestrator = Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldReceive('enqueueForArticle')->once()->andReturn([]);
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->requestManualInspection(
+            $article,
+            dispatch: false,
+            requestedWorkflowState: [
+                'status' => 'published',
+                'review_status' => 'approved',
+                'published_at' => now(),
+            ],
+        );
+
+        $completed = $service->process($check);
+
+        $this->assertSame('passed', $completed->decision);
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertSame('approved', $article->fresh()->review_status);
+        $this->assertNull($article->fresh()->published_at);
     }
 
     public function test_failed_post_quality_workflow_is_persisted_and_reconciled(): void

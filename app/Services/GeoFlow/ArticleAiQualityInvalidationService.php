@@ -41,13 +41,18 @@ class ArticleAiQualityInvalidationService
         return $updated;
     }
 
-    public function invalidateArticle(Article|int $article, string $reason, bool $reconcile = true): int
-    {
+    public function invalidateArticle(
+        Article|int $article,
+        string $reason,
+        bool $reconcile = true,
+        bool $preserveWorkflow = false,
+    ): int {
         $articleId = $article instanceof Article ? (int) $article->id : $article;
         [$updated] = $this->invalidateChecks(
             ArticleAiQualityCheck::query()->where('article_id', $articleId),
             'input_changed',
             $reason,
+            $preserveWorkflow ? [$articleId] : [],
         );
         $this->invalidateOptimizationArticles([$articleId], $reason);
 
@@ -116,8 +121,12 @@ class ArticleAiQualityInvalidationService
         return $updated + $optimizationUpdated;
     }
 
-    public function invalidateTask(int $taskId, string $reason): int
-    {
+    /** @param iterable<int> $preserveWorkflowArticleIds */
+    public function invalidateTask(
+        int $taskId,
+        string $reason,
+        iterable $preserveWorkflowArticleIds = [],
+    ): int {
         $articles = Article::withTrashed()->where('task_id', $taskId);
         [$updated, $affectedArticleIds] = $this->invalidateChecks(
             ArticleAiQualityCheck::query()->where(function (Builder $query) use ($taskId, $articles): void {
@@ -126,6 +135,7 @@ class ArticleAiQualityInvalidationService
             }),
             'policy_changed',
             $reason,
+            $preserveWorkflowArticleIds,
         );
         $this->dispatchReconcile($this->articleIds($articles)->merge($affectedArticleIds));
         $this->invalidateTaskOptimization($taskId, $reason);
@@ -388,17 +398,30 @@ class ArticleAiQualityInvalidationService
         return $updated;
     }
 
-    /** @return array{int, Collection<int, int>} */
-    private function invalidateChecks(Builder $query, string $errorCode, string $reason): array
-    {
+    /**
+     * @param  iterable<int>  $preserveWorkflowArticleIds
+     * @return array{int, Collection<int, int>}
+     */
+    private function invalidateChecks(
+        Builder $query,
+        string $errorCode,
+        string $reason,
+        iterable $preserveWorkflowArticleIds = [],
+    ): array {
         $updated = 0;
         $affectedArticleIds = [];
+        $preservedArticleIds = collect($preserveWorkflowArticleIds)
+            ->map(static fn (mixed $articleId): int => (int) $articleId)
+            ->filter(static fn (int $articleId): bool => $articleId > 0)
+            ->unique()
+            ->values();
         (clone $query)
             ->whereIn('status', ['queued', 'running', 'completed', 'failed'])
             ->select(['id', 'article_id'])
             ->chunkById(500, function (Collection $checks) use (
                 $errorCode,
                 $reason,
+                $preservedArticleIds,
                 &$updated,
                 &$affectedArticleIds,
             ): void {
@@ -431,8 +454,9 @@ class ArticleAiQualityInvalidationService
                         'updated_at' => $timestamp,
                     ]);
                 if ($articleIds->isNotEmpty()) {
+                    $workflowArticleIds = $articleIds->diff($preservedArticleIds)->values();
                     Article::query()
-                        ->whereIn('id', $articleIds->all())
+                        ->whereIn('id', $workflowArticleIds->all())
                         ->where('status', '!=', 'published')
                         ->where('review_status', '!=', 'rejected')
                         ->update([

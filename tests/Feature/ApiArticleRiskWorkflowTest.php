@@ -17,6 +17,7 @@ use App\Models\Task;
 use App\Services\GeoFlow\ArticleRiskGate;
 use App\Services\GeoFlow\ArticleRiskScanner;
 use App\Services\GeoFlow\ArticleWorkflowTransitionService;
+use App\Services\GeoFlow\DistributionOrchestrator;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -212,6 +213,47 @@ class ApiArticleRiskWorkflowTest extends TestCase
         $this->assertTrue($scan->is_overridden);
         $this->assertSame('Reviewed by the API editor.', $scan->override_reason);
         $this->assertSame($this->admin->id, $scan->overridden_by_admin_id);
+    }
+
+    public function test_distribution_only_create_stays_private_and_enters_distribution(): void
+    {
+        $task = $this->createDistributionOnlyTask();
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldReceive('enqueueForArticle')
+            ->once()
+            ->with(\Mockery::on(fn (mixed $candidate): bool => $candidate instanceof Article
+                && (int) $candidate->task_id === (int) $task->id))
+            ->andReturn([]);
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $response = $this->postArticle($this->articlePayload([
+            'task_id' => $task->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+        ]));
+
+        $response->assertCreated()
+            ->assertJsonPath('data.status', 'private')
+            ->assertJsonPath('data.review_status', 'approved')
+            ->assertJsonPath('data.published_at', null);
+    }
+
+    public function test_distribution_only_explicit_private_create_does_not_enter_distribution(): void
+    {
+        $task = $this->createDistributionOnlyTask();
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldNotReceive('enqueueForArticle');
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->postArticle($this->articlePayload([
+            'task_id' => $task->id,
+            'status' => 'private',
+            'review_status' => 'approved',
+        ]))
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'private')
+            ->assertJsonPath('data.review_status', 'approved')
+            ->assertJsonPath('data.published_at', null);
     }
 
     public function test_warning_auto_approved_create_returns_409_as_an_unoverridden_draft(): void
@@ -517,6 +559,74 @@ class ApiArticleRiskWorkflowTest extends TestCase
         $this->assertSame($this->admin->id, $scan->admin_id);
     }
 
+    public function test_distribution_only_publish_stays_private_and_enters_distribution(): void
+    {
+        $task = $this->createDistributionOnlyTask();
+        $article = $this->createArticle([
+            'task_id' => $task->id,
+            'review_status' => 'approved',
+        ]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldReceive('enqueueForArticle')
+            ->once()
+            ->with(\Mockery::on(fn (mixed $candidate): bool => $candidate instanceof Article
+                && (int) $candidate->task_id === (int) $task->id))
+            ->andReturn([]);
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->withHeader('Authorization', 'Bearer '.$this->token)
+            ->postJson("/api/v1/articles/{$article->id}/publish")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'private')
+            ->assertJsonPath('data.review_status', 'approved')
+            ->assertJsonPath('data.published_at', null);
+    }
+
+    public function test_distribution_only_approved_review_stays_private_and_enters_distribution(): void
+    {
+        $task = $this->createDistributionOnlyTask(['need_review' => 0]);
+        $article = $this->createArticle(['task_id' => $task->id]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldReceive('enqueueForArticle')
+            ->once()
+            ->with(\Mockery::on(fn (mixed $candidate): bool => $candidate instanceof Article
+                && (int) $candidate->task_id === (int) $task->id))
+            ->andReturn([]);
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->withHeader('Authorization', 'Bearer '.$this->token)
+            ->postJson("/api/v1/articles/{$article->id}/review", [
+                'review_status' => 'approved',
+                'review_note' => 'Ready for channel publication.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'private')
+            ->assertJsonPath('data.review_status', 'approved')
+            ->assertJsonPath('data.published_at', null);
+    }
+
+    public function test_distribution_only_approved_review_keeps_explicit_private_article_out_of_distribution(): void
+    {
+        $task = $this->createDistributionOnlyTask(['need_review' => 1]);
+        $article = $this->createArticle([
+            'task_id' => $task->id,
+            'status' => 'private',
+        ]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldNotReceive('enqueueForArticle');
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->withHeader('Authorization', 'Bearer '.$this->token)
+            ->postJson("/api/v1/articles/{$article->id}/review", [
+                'review_status' => 'approved',
+                'review_note' => 'Approved for storage only.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'private')
+            ->assertJsonPath('data.review_status', 'approved')
+            ->assertJsonPath('data.published_at', null);
+    }
+
     public function test_pending_article_cannot_be_published(): void
     {
         $article = $this->createArticle(['review_status' => 'pending']);
@@ -704,6 +814,18 @@ class ApiArticleRiskWorkflowTest extends TestCase
             'author_id' => $this->author->id,
             'status' => 'draft',
             'review_status' => 'pending',
+        ], $overrides));
+    }
+
+    /** @param array<string, mixed> $overrides */
+    private function createDistributionOnlyTask(array $overrides = []): Task
+    {
+        return Task::query()->create(array_merge([
+            'name' => 'API distribution only task '.uniqid(),
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'distribution_only',
+            'ai_quality_enabled' => false,
         ], $overrides));
     }
 }

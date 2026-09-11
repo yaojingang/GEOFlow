@@ -537,7 +537,7 @@ class ArticleController extends Controller
             if ($gateRejection instanceof ArticleRiskGateException || $gateRejection instanceof ArticleAiQualityGateException) {
                 throw $gateRejection;
             }
-            if ($article->status === 'published') {
+            if ($workflowState['status'] === 'published') {
                 $this->distributionOrchestrator->enqueueForArticle($article);
             }
         } catch (ArticleRiskGateException|ArticleAiQualityGateException $e) {
@@ -960,7 +960,7 @@ class ArticleController extends Controller
                     ->route('admin.articles.edit', ['articleId' => $articleId])
                     ->with('message', __('admin.articles.ai_quality.recheck_queued'));
             }
-            if ($article->status === 'published') {
+            if ($workflowState['status'] === 'published') {
                 $this->distributionOrchestrator->enqueueForArticle($article);
             }
         } catch (ArticleRiskGateException|ArticleAiQualityGateException $e) {
