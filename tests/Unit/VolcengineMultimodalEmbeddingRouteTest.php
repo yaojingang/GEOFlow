@@ -109,4 +109,25 @@ class VolcengineMultimodalEmbeddingRouteTest extends TestCase
         $base = OpenAiRuntimeProvider::resolveEmbeddingBaseUrl('https://ark.cn-beijing.volces.com/api/v3/embeddings');
         $this->assertSame('https://ark.cn-beijing.volces.com/api/v3', $base);
     }
+
+    #[Test]
+    public function it_detects_volcengine_endpoint_id_prefix_as_multimodal_embedding(): void
+    {
+        $this->assertTrue(OpenAiRuntimeProvider::isVolcengineMultimodalEmbeddingModel('ep-m-20260911110530-ndb86'));
+        $this->assertTrue(OpenAiRuntimeProvider::isVolcengineMultimodalEmbeddingModel('ep-20260101000000-abcdef12'));
+        $this->assertTrue(OpenAiRuntimeProvider::isVolcengineMultimodalEmbeddingModel('EP-m-XXX'));
+        $this->assertFalse(OpenAiRuntimeProvider::isVolcengineMultimodalEmbeddingModel('text-embedding-3-small'));
+        $this->assertFalse(OpenAiRuntimeProvider::isVolcengineMultimodalEmbeddingModel('doubao-embedding-text-240515'));
+    }
+
+    #[Test]
+    public function it_routes_volcengine_endpoint_id_to_multimodal_driver(): void
+    {
+        $driver = OpenAiRuntimeProvider::resolveEmbeddingDriver(
+            'https://ark.cn-beijing.volces.com/api/v3',
+            'ep-m-20260911110530-ndb86',
+        );
+
+        $this->assertSame('volcengine-multimodal', $driver);
+    }
 }

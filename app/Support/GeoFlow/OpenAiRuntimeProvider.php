@@ -150,8 +150,14 @@ final class OpenAiRuntimeProvider
     public static function isVolcengineMultimodalEmbeddingModel(string $modelId): bool
     {
         $needle = strtolower(trim($modelId));
+        if ($needle === '') {
+            return false;
+        }
+        if (str_contains($needle, 'vision')) {
+            return true;
+        }
 
-        return $needle !== '' && str_contains($needle, 'vision');
+        return str_starts_with($needle, 'ep-');
     }
 
     /**
