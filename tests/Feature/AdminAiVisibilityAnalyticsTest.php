@@ -7,6 +7,8 @@ use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
 use App\Models\AiVisibilitySource;
+use App\Models\Keyword;
+use App\Models\KeywordLibrary;
 use App\Models\SiteSetting;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsFilter;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsService;
@@ -404,6 +406,66 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         }
 
         return $run;
+    }
+
+    public function test_keyword_libraries_mark_recently_sampled_keywords_for_collection_panel(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        config()->set('geoflow.site_name', 'GEOFlow');
+        config()->set('geoflow.site_url', 'https://geoflow.example.com');
+
+        $this->configureAiVisibilityApis();
+
+        $library = KeywordLibrary::query()->create(['name' => 'GEOFlow 关键词库']);
+        Keyword::query()->create(['library_id' => $library->id, 'keyword' => 'GEOFlow 内容工程']);
+        Keyword::query()->create(['library_id' => $library->id, 'keyword' => 'AI 可见度']);
+        Keyword::query()->create(['library_id' => $library->id, 'keyword' => '冷门长尾词']);
+
+        $this->completedRun(
+            keyword: 'GEOFlow 内容工程',
+            providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+            answer: 'GEOFlow 在内容工程场景中表现良好。',
+            sentiment: 'positive',
+            completedAt: '2026-07-09 09:00:00',
+            sources: [],
+        );
+
+        $response = $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.analytics.ai-visibility'))
+            ->assertOk();
+
+        $response->assertSee('data-ai-visibility-sampled="1"', false);
+        $response->assertSee(__('admin.analytics.ai_visibility.collect.recently_sampled'));
+        $response->assertSee('AI 可见度');
+        $response->assertSee('冷门长尾词');
+        $response->assertSee('data-ai-visibility-select-all', false);
+        $response->assertSee('data-ai-visibility-counter', false);
+        $response->assertSee('data-ai-visibility-global-counter', false);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_collect_panel_rejects_more_than_50_keywords(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        config()->set('geoflow.site_name', 'GEOFlow');
+        config()->set('geoflow.site_url', 'https://geoflow.example.com');
+
+        $library = KeywordLibrary::query()->create(['name' => '大批量库']);
+        for ($i = 1; $i <= 51; $i++) {
+            Keyword::query()->create(['library_id' => $library->id, 'keyword' => '关键词 '.$i]);
+        }
+
+        $ids = Keyword::query()->where('library_id', $library->id)->orderBy('id')->limit(51)->pluck('id')->all();
+
+        $response = $this->actingAs($this->admin(), 'admin')
+            ->from(route('admin.analytics.ai-visibility'))
+            ->post(route('admin.analytics.ai-visibility.collect'), ['keyword_ids' => $ids]);
+
+        $response->assertRedirect();
+        $response->assertSessionHasErrors('keyword_ids');
+
+        Carbon::setTestNow();
     }
 
     private function configureAiVisibilityApis(): void
