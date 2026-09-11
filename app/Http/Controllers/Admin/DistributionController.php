@@ -925,7 +925,7 @@ class DistributionController extends Controller
         }
 
         try {
-            $this->distributionOrchestrator->deleteRemoteArticle($distribution);
+            $distribution = $this->distributionOrchestrator->deleteRemoteArticle($distribution);
         } catch (Throwable $e) {
             if ($request->expectsJson()) {
                 return response()->json([
@@ -937,7 +937,6 @@ class DistributionController extends Controller
             return back()->withErrors(__('admin.distribution.message.remote_article_delete_failed', ['message' => $e->getMessage()]));
         }
 
-        $distribution->refresh();
         if ($request->expectsJson()) {
             return response()->json([
                 'ok' => true,

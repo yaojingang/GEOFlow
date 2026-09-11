@@ -372,13 +372,101 @@ class DistributionOrchestrator
                         return null;
                     }
 
-                    $distribution = ArticleDistribution::query()
+                    $distributions = ArticleDistribution::query()
                         ->where('article_id', (int) $articleModel->id)
                         ->where('distribution_channel_id', (int) $lockedChannel->id)
-                        ->where('action', $action)
+                        ->orderBy('id')
                         ->lockForUpdate()
-                        ->first();
+                        ->get();
+                    $distribution = $distributions->firstWhere('action', $action);
+                    if ($lockedChannel->isWordPressRest()) {
+                        $unknownDistribution = $distributions->firstWhere('status', 'outcome_unknown');
+                        if ($unknownDistribution instanceof ArticleDistribution) {
+                            $this->log('warning', 'WordPress 分发结果尚未确认，已阻止重复入队', $lockedChannel->id, $unknownDistribution->id, $articleModel->id, [
+                                'event' => 'distribution.outcome_unknown_requeue_blocked',
+                            ]);
+
+                            return null;
+                        }
+                        if ($distributions->contains('status', 'sending')) {
+                            return null;
+                        }
+                    }
                     if ($distribution && (string) $distribution->status === 'sending') {
+                        return null;
+                    }
+                    $remoteMeta = is_array($distribution?->remote_meta) ? $distribution->remote_meta : [];
+                    $wordpressPostIds = $lockedChannel->isWordPressRest()
+                        ? $distributions
+                            ->map(static fn (ArticleDistribution $candidate): ?int => $candidate->wordpressPostId())
+                            ->filter(static fn (?int $postId): bool => is_int($postId) && $postId > 0)
+                            ->unique()
+                            ->sort()
+                            ->values()
+                        : collect();
+                    if ($wordpressPostIds->count() > 1) {
+                        $distribution ??= new ArticleDistribution([
+                            'article_id' => (int) $articleModel->id,
+                            'distribution_channel_id' => (int) $lockedChannel->id,
+                            'action' => $action,
+                            'idempotency_key' => $this->idempotencyKey(
+                                (int) $articleModel->id,
+                                (int) $lockedChannel->id,
+                                $action,
+                                $payloadHash,
+                            ),
+                            'payload_hash' => $payloadHash,
+                        ]);
+                        $remoteMeta['wordpress_identity_conflict'] = [
+                            'known_post_ids' => $wordpressPostIds->all(),
+                            'detected_at' => now()->toIso8601String(),
+                        ];
+                        $distribution->forceFill([
+                            'status' => 'outcome_unknown',
+                            'next_retry_at' => null,
+                            'last_error_message' => '检测到多个 WordPress 远端文章 ID，需要人工对账。',
+                            'remote_meta' => $remoteMeta,
+                        ])->save();
+                        $this->log('error', '检测到多个 WordPress 远端文章 ID，已停止分发', $lockedChannel->id, $distribution->id, $articleModel->id, [
+                            'event' => 'distribution.remote_identity_conflict',
+                            'known_post_ids' => $wordpressPostIds->all(),
+                        ]);
+
+                        return null;
+                    }
+                    $wordpressIdentitySource = $lockedChannel->isWordPressRest()
+                        ? $distributions->first(static fn (ArticleDistribution $candidate): bool => (bool) $candidate->wordpressPostId())
+                        : null;
+                    if ($wordpressIdentitySource instanceof ArticleDistribution
+                        && ! $distribution?->wordpressPostId()) {
+                        $remotePostId = $wordpressIdentitySource->wordpressPostId();
+                        $distribution ??= new ArticleDistribution([
+                            'article_id' => (int) $articleModel->id,
+                            'distribution_channel_id' => (int) $lockedChannel->id,
+                            'action' => $action,
+                        ]);
+                        $distribution->forceFill([
+                            'remote_id' => (string) $remotePostId,
+                            'remote_url' => $wordpressIdentitySource->remote_url,
+                        ]);
+                        $remoteMeta['wordpress_post_id'] = $remotePostId;
+                        $remoteMeta['wordpress_identity_source_distribution_id'] = (int) $wordpressIdentitySource->id;
+                    }
+                    $wordpressDeliveryFingerprint = $lockedChannel->isWordPressRest()
+                        ? $this->wordpressDeliveryFingerprint($payload, $lockedChannel)
+                        : null;
+                    if ($distribution
+                        && $wordpressDeliveryFingerprint !== null
+                        && (string) $distribution->status === 'synced'
+                        && $distribution->wordpressPostId()
+                        && hash_equals(
+                            (string) ($remoteMeta['wordpress_delivery_fingerprint'] ?? ''),
+                            $wordpressDeliveryFingerprint,
+                        )) {
+                        $this->log('info', 'WordPress 文章内容与渠道配置未变化，已跳过重复分发', $lockedChannel->id, $distribution->id, $articleModel->id, [
+                            'event' => 'distribution.unchanged_skipped',
+                        ]);
+
                         return null;
                     }
                     $distribution ??= new ArticleDistribution([
@@ -386,7 +474,9 @@ class DistributionOrchestrator
                         'distribution_channel_id' => (int) $lockedChannel->id,
                         'action' => $action,
                     ]);
-                    $remoteMeta = is_array($distribution->remote_meta) ? $distribution->remote_meta : [];
+                    if ($wordpressDeliveryFingerprint !== null) {
+                        $remoteMeta['wordpress_delivery_fingerprint'] = $wordpressDeliveryFingerprint;
+                    }
                     if ($qualityCheck !== null) {
                         $remoteMeta['ai_quality_guard'] = $this->qualityGuardAudit($qualityCheck);
                     } else {
@@ -717,6 +807,35 @@ class DistributionOrchestrator
                     $responseMeta = is_array($response['remote_meta'] ?? null) ? $response['remote_meta'] : [];
 
                     $existingMeta = is_array($locked->remote_meta) ? $locked->remote_meta : [];
+                    $knownWordPressPostId = $lockedChannel->isWordPressRest()
+                        && (string) $locked->action !== 'delete'
+                        ? $locked->wordpressPostId()
+                        : null;
+                    $returnedWordPressPostId = $this->wordpressPostIdFromResponse($response);
+                    if ($knownWordPressPostId
+                        && $returnedWordPressPostId
+                        && $knownWordPressPostId !== $returnedWordPressPostId) {
+                        $existingMeta['wordpress_identity_conflict'] = [
+                            'expected_post_id' => $knownWordPressPostId,
+                            'returned_post_id' => $returnedWordPressPostId,
+                        ];
+                        $locked->forceFill([
+                            'status' => 'outcome_unknown',
+                            'next_retry_at' => null,
+                            'last_error_message' => 'WordPress 返回的文章 ID 与已知远端身份不一致，需要人工对账。',
+                            'remote_meta' => $existingMeta,
+                        ])->save();
+
+                        return [
+                            'saved' => false,
+                            'identity_conflict' => true,
+                            'expected_post_id' => $knownWordPressPostId,
+                            'returned_post_id' => $returnedWordPressPostId,
+                        ];
+                    }
+                    if ($lockedChannel->isWordPressRest() && (string) $locked->action !== 'delete') {
+                        unset($existingMeta['wordpress_remote_deleted_at']);
+                    }
                     $locked->forceFill([
                         'status' => 'synced',
                         'remote_id' => is_scalar($response['remote_id'] ?? null) ? (string) $response['remote_id'] : $locked->remote_id,
@@ -731,6 +850,22 @@ class DistributionOrchestrator
                 }, 3);
                 if (($response['deferred_exception'] ?? null) instanceof Throwable) {
                     throw $response['deferred_exception'];
+                }
+                if ((bool) ($response['identity_conflict'] ?? false)) {
+                    $this->log(
+                        'error',
+                        'WordPress 返回的文章 ID 与已知远端身份不一致，已停止分发',
+                        $lockedChannel->id,
+                        $distribution->id,
+                        $article->id,
+                        [
+                            'event' => 'distribution.remote_identity_conflict',
+                            'expected_post_id' => $response['expected_post_id'] ?? null,
+                            'returned_post_id' => $response['returned_post_id'] ?? null,
+                        ],
+                    );
+
+                    return false;
                 }
                 if (! is_array($response) || ! (bool) ($response['saved'] ?? false)) {
                     $this->log(
@@ -779,23 +914,99 @@ class DistributionOrchestrator
             return false;
         }
 
-        $updated = DB::transaction(function () use ($distribution, $response): bool {
-            $locked = ArticleDistribution::query()->whereKey((int) $distribution->id)->lockForUpdate()->firstOrFail();
+        $result = DB::transaction(function () use ($distribution, $response): array {
+            $channel = DistributionChannel::query()
+                ->whereKey((int) $distribution->distribution_channel_id)
+                ->lockForUpdate()
+                ->first();
+            if (! $channel?->isWordPressRest()) {
+                return ['updated' => false];
+            }
+            $distributions = ArticleDistribution::query()
+                ->where('article_id', (int) $distribution->article_id)
+                ->where('distribution_channel_id', (int) $distribution->distribution_channel_id)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+            $locked = $distributions->firstWhere('id', (int) $distribution->id);
+            if (! $locked instanceof ArticleDistribution) {
+                return ['updated' => false];
+            }
             if (! in_array((string) $locked->status, ['sending', 'outcome_unknown'], true)) {
-                return (string) $locked->status === 'synced';
+                return ['updated' => (string) $locked->status === 'synced'];
+            }
+            $knownWordPressPostIds = $distributions
+                ->map(static fn (ArticleDistribution $candidate): ?int => $candidate->wordpressPostId())
+                ->filter(static fn (?int $postId): bool => is_int($postId) && $postId > 0)
+                ->unique()
+                ->sort()
+                ->values();
+            $knownWordPressPostId = $knownWordPressPostIds->count() === 1
+                ? (int) $knownWordPressPostIds->first()
+                : null;
+            $returnedWordPressPostId = $this->wordpressPostIdFromResponse($response);
+            if ($knownWordPressPostIds->count() > 1
+                || ($knownWordPressPostId
+                    && $returnedWordPressPostId
+                    && $knownWordPressPostId !== $returnedWordPressPostId)) {
+                $existingMeta = is_array($locked->remote_meta) ? $locked->remote_meta : [];
+                $identityConflict = $knownWordPressPostIds->count() > 1
+                    ? ['known_post_ids' => $knownWordPressPostIds->all()]
+                    : [
+                        'expected_post_id' => $knownWordPressPostId,
+                        'returned_post_id' => $returnedWordPressPostId,
+                    ];
+                $existingMeta['wordpress_identity_conflict'] = $identityConflict;
+                $locked->forceFill([
+                    'status' => 'outcome_unknown',
+                    'next_retry_at' => null,
+                    'last_error_message' => $knownWordPressPostIds->count() > 1
+                        ? '检测到多个 WordPress 远端文章 ID，需要人工对账。'
+                        : 'WordPress 返回的文章 ID 与已知远端身份不一致，需要人工对账。',
+                    'remote_meta' => $existingMeta,
+                ])->save();
+
+                return [
+                    'updated' => false,
+                    'identity_conflict' => true,
+                    'expected_post_id' => $knownWordPressPostId,
+                    'returned_post_id' => $returnedWordPressPostId,
+                    'known_post_ids' => $knownWordPressPostIds->all(),
+                ];
+            }
+            if (! $returnedWordPressPostId) {
+                return ['updated' => false];
             }
             $existingMeta = is_array($locked->remote_meta) ? $locked->remote_meta : [];
             $locked->forceFill([
                 'status' => 'synced',
-                'remote_id' => (string) ($response['remote_id'] ?? ''),
+                'remote_id' => (string) $returnedWordPressPostId,
                 'remote_url' => (string) ($response['remote_url'] ?? ''),
                 'remote_meta' => array_replace($existingMeta, (array) ($response['remote_meta'] ?? [])),
                 'last_error_message' => null,
                 'next_retry_at' => null,
             ])->save();
 
-            return true;
+            return ['updated' => true];
         });
+        if ((bool) ($result['identity_conflict'] ?? false)) {
+            $this->log(
+                'error',
+                'WordPress slug 对账结果与已知远端身份冲突，已停止对账',
+                (int) $distribution->distribution_channel_id,
+                (int) $distribution->id,
+                (int) $distribution->article_id,
+                [
+                    'event' => 'distribution.remote_identity_conflict',
+                    'expected_post_id' => $result['expected_post_id'] ?? null,
+                    'returned_post_id' => $result['returned_post_id'] ?? null,
+                    'known_post_ids' => $result['known_post_ids'] ?? [],
+                ],
+            );
+
+            return false;
+        }
+        $updated = (bool) ($result['updated'] ?? false);
         if ($updated) {
             $this->log(
                 'warning',
@@ -893,14 +1104,14 @@ class DistributionOrchestrator
         });
     }
 
-    public function updateRemoteArticle(ArticleDistribution $distribution): void
+    public function updateRemoteArticle(ArticleDistribution $distribution): ArticleDistribution
     {
-        $this->sendImmediateAction($distribution, 'update');
+        return $this->sendImmediateAction($distribution, 'update');
     }
 
-    public function deleteRemoteArticle(ArticleDistribution $distribution): void
+    public function deleteRemoteArticle(ArticleDistribution $distribution): ArticleDistribution
     {
-        $this->sendImmediateAction($distribution, 'delete');
+        return $this->sendImmediateAction($distribution, 'delete');
     }
 
     public function enqueueChannelContentRefresh(DistributionChannel $channel): int
@@ -1056,7 +1267,7 @@ class DistributionOrchestrator
             : $key.'-'.substr($payloadHash, 0, 16);
     }
 
-    private function sendImmediateAction(ArticleDistribution $distribution, string $action): void
+    private function sendImmediateAction(ArticleDistribution $distribution, string $action): ArticleDistribution
     {
         $distribution->loadMissing(['article', 'channel']);
         $article = $distribution->article;
@@ -1073,31 +1284,49 @@ class DistributionOrchestrator
             ? null
             : hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
 
-        [$distribution, $channel] = $this->claimImmediateAction($distribution, $action, $payloadHash);
+        [$distribution, $channel, $identityConflict] = $this->claimImmediateAction($distribution, $action, $payloadHash);
+        if (is_array($identityConflict)) {
+            $this->log(
+                'error',
+                '检测到多个 WordPress 远端文章 ID，已停止立即操作',
+                (int) $channel->id,
+                (int) $distribution->id,
+                (int) $article->id,
+                [
+                    'event' => 'distribution.remote_identity_conflict',
+                    'known_post_ids' => $identityConflict['known_post_ids'],
+                ],
+            );
+
+            throw new \RuntimeException('检测到多个 WordPress 远端文章 ID，需要人工对账。');
+        }
+        $wordpressDeliveryFingerprint = $channel->isWordPressRest() && $action === 'update'
+            ? $this->wordpressDeliveryFingerprint($payload, $channel)
+            : null;
 
         $this->channelOperationLeaseService->run(
             $channel,
             'article_'.$action,
-            function (DistributionChannel $lockedChannel) use ($distribution, $action, $payload, $article): void {
+            function (DistributionChannel $lockedChannel) use ($distribution, $action, $payload, $article, $wordpressDeliveryFingerprint): void {
                 $publisher = $this->publisherManager->forChannel($lockedChannel);
                 $response = $action === 'delete'
                     ? $publisher->delete($distribution)
                     : $publisher->update($distribution, $payload);
 
                 $responseMeta = is_array($response['remote_meta'] ?? null) ? $response['remote_meta'] : [];
-                $saved = DB::transaction(function () use ($distribution, $response, $responseMeta, $action): bool {
+                $result = DB::transaction(function () use ($distribution, $response, $responseMeta, $action, $lockedChannel, $payload, $wordpressDeliveryFingerprint): array {
                     $article = Article::query()
                         ->whereKey((int) $distribution->article_id)
                         ->lockForUpdate()
                         ->first(['id', 'task_id']);
                     if (! $article) {
-                        return false;
+                        return ['saved' => false];
                     }
                     $task = $article->task_id
                         ? Task::query()->whereKey((int) $article->task_id)->lockForUpdate()->first(['id'])
                         : null;
                     if ($article->task_id && ! $task) {
-                        return false;
+                        return ['saved' => false];
                     }
                     $locked = ArticleDistribution::query()
                         ->whereKey((int) $distribution->id)
@@ -1105,10 +1334,40 @@ class DistributionOrchestrator
                         ->lockForUpdate()
                         ->first();
                     if (! $locked || (string) $locked->status !== 'sending') {
-                        return false;
+                        return ['saved' => false];
                     }
 
                     $existingMeta = is_array($locked->remote_meta) ? $locked->remote_meta : [];
+                    $knownWordPressPostId = $lockedChannel->isWordPressRest() && $action !== 'delete'
+                        ? $locked->wordpressPostId()
+                        : null;
+                    $returnedWordPressPostId = $this->wordpressPostIdFromResponse($response);
+                    if ($knownWordPressPostId
+                        && $returnedWordPressPostId
+                        && $knownWordPressPostId !== $returnedWordPressPostId) {
+                        $existingMeta['wordpress_identity_conflict'] = [
+                            'expected_post_id' => $knownWordPressPostId,
+                            'returned_post_id' => $returnedWordPressPostId,
+                        ];
+                        $locked->forceFill([
+                            'status' => 'outcome_unknown',
+                            'next_retry_at' => null,
+                            'last_error_message' => 'WordPress 返回的文章 ID 与已知远端身份不一致，需要人工对账。',
+                            'remote_meta' => $existingMeta,
+                        ])->save();
+
+                        return [
+                            'saved' => false,
+                            'identity_conflict' => true,
+                            'expected_post_id' => $knownWordPressPostId,
+                            'returned_post_id' => $returnedWordPressPostId,
+                        ];
+                    }
+                    if ($wordpressDeliveryFingerprint !== null) {
+                        $existingMeta['wordpress_delivery_fingerprint'] = $wordpressDeliveryFingerprint;
+                        $existingMeta['distribution_payload'] = $payload;
+                        unset($existingMeta['wordpress_remote_deleted_at']);
+                    }
                     $locked->forceFill([
                         'status' => 'synced',
                         'remote_id' => is_scalar($response['remote_id'] ?? null) ? (string) $response['remote_id'] : $locked->remote_id,
@@ -1118,10 +1377,65 @@ class DistributionOrchestrator
                         'remote_meta' => array_replace($existingMeta, $responseMeta),
                         'last_error_message' => null,
                     ])->save();
+                    if ($action === 'delete' && $lockedChannel->isWordPressRest()) {
+                        ArticleDistribution::query()
+                            ->where('article_id', (int) $locked->article_id)
+                            ->where('distribution_channel_id', (int) $locked->distribution_channel_id)
+                            ->where('id', '!=', (int) $locked->id)
+                            ->where('action', '!=', 'delete')
+                            ->lockForUpdate()
+                            ->get()
+                            ->each(function (ArticleDistribution $sibling): void {
+                                $siblingMeta = is_array($sibling->remote_meta) ? $sibling->remote_meta : [];
+                                unset($siblingMeta['wordpress_delivery_fingerprint']);
+                                $siblingMeta['wordpress_remote_deleted_at'] = now()->toIso8601String();
+                                $sibling->forceFill([
+                                    'remote_url' => null,
+                                    'remote_meta' => $siblingMeta,
+                                ])->save();
+                            });
+                    }
+                    if ($wordpressDeliveryFingerprint !== null) {
+                        ArticleDistribution::query()
+                            ->where('article_id', (int) $locked->article_id)
+                            ->where('distribution_channel_id', (int) $locked->distribution_channel_id)
+                            ->where('id', '!=', (int) $locked->id)
+                            ->where('action', '!=', 'delete')
+                            ->lockForUpdate()
+                            ->get()
+                            ->each(function (ArticleDistribution $sibling) use ($payload, $response, $wordpressDeliveryFingerprint): void {
+                                $siblingMeta = is_array($sibling->remote_meta) ? $sibling->remote_meta : [];
+                                $siblingMeta['wordpress_delivery_fingerprint'] = $wordpressDeliveryFingerprint;
+                                $siblingMeta['distribution_payload'] = $payload;
+                                unset($siblingMeta['wordpress_remote_deleted_at']);
+                                $sibling->forceFill([
+                                    'remote_url' => is_scalar($response['remote_url'] ?? null)
+                                        ? (string) $response['remote_url']
+                                        : $sibling->remote_url,
+                                    'remote_meta' => $siblingMeta,
+                                ])->save();
+                            });
+                    }
 
-                    return true;
+                    return ['saved' => true];
                 });
-                if (! $saved) {
+                if ((bool) ($result['identity_conflict'] ?? false)) {
+                    $this->log(
+                        'error',
+                        'WordPress 返回的文章 ID 与已知远端身份不一致，已停止立即操作',
+                        (int) $lockedChannel->id,
+                        (int) $distribution->id,
+                        (int) $article->id,
+                        [
+                            'event' => 'distribution.remote_identity_conflict',
+                            'expected_post_id' => $result['expected_post_id'] ?? null,
+                            'returned_post_id' => $result['returned_post_id'] ?? null,
+                        ],
+                    );
+
+                    throw new \RuntimeException('WordPress 返回的文章 ID 与已知远端身份不一致，需要人工对账。');
+                }
+                if (! (bool) ($result['saved'] ?? false)) {
                     $this->log(
                         'warning',
                         '远端立即操作返回时本地任务已删除，保留待人工核对状态',
@@ -1144,10 +1458,12 @@ class DistributionOrchestrator
                 );
             },
         );
+
+        return ArticleDistribution::query()->findOrFail((int) $distribution->id);
     }
 
     /**
-     * @return array{ArticleDistribution,DistributionChannel}
+     * @return array{ArticleDistribution,DistributionChannel,array<string,mixed>|null}
      */
     private function claimImmediateAction(ArticleDistribution $candidate, string $action, ?string $payloadHash): array
     {
@@ -1169,13 +1485,13 @@ class DistributionOrchestrator
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get();
-            $distribution = $distributions->firstWhere('action', $action)
-                ?? $distributions->firstWhere('id', (int) $candidate->id);
+            $sourceDistribution = $distributions->firstWhere('id', (int) $candidate->id);
+            $distribution = $distributions->firstWhere('action', $action);
             if (! $channel
                 || ! $article
                 || ($article->task_id && ! $task)
-                || ! $distribution
-                || (int) $distribution->article_id !== (int) $article->id) {
+                || ! $sourceDistribution
+                || (int) $sourceDistribution->article_id !== (int) $article->id) {
                 throw new \RuntimeException('分发记录缺少文章或渠道');
             }
             if ((string) $channel->status !== DistributionChannel::STATUS_ACTIVE) {
@@ -1185,9 +1501,60 @@ class DistributionOrchestrator
 
                 throw new \RuntimeException($message);
             }
+            if ($channel->isWordPressRest()) {
+                $blockedDistribution = $distributions->first(
+                    static fn (ArticleDistribution $item): bool => in_array(
+                        (string) $item->status,
+                        ['sending', 'outcome_unknown'],
+                        true,
+                    ),
+                );
+                if ($blockedDistribution instanceof ArticleDistribution) {
+                    throw new \RuntimeException('WordPress 分发正在处理中或等待人工对账，当前操作已阻止。');
+                }
+                $wordpressPostIds = $distributions
+                    ->map(static fn (ArticleDistribution $distribution): ?int => $distribution->wordpressPostId())
+                    ->filter(static fn (?int $postId): bool => is_int($postId) && $postId > 0)
+                    ->unique()
+                    ->sort()
+                    ->values();
+                if ($wordpressPostIds->count() > 1) {
+                    $sourceMeta = is_array($sourceDistribution->remote_meta) ? $sourceDistribution->remote_meta : [];
+                    $sourceMeta['wordpress_identity_conflict'] = [
+                        'known_post_ids' => $wordpressPostIds->all(),
+                        'detected_at' => now()->toIso8601String(),
+                    ];
+                    $sourceDistribution->forceFill([
+                        'status' => 'outcome_unknown',
+                        'next_retry_at' => null,
+                        'last_error_message' => '检测到多个 WordPress 远端文章 ID，需要人工对账。',
+                        'remote_meta' => $sourceMeta,
+                    ])->save();
+
+                    return [
+                        $sourceDistribution,
+                        $channel,
+                        ['known_post_ids' => $wordpressPostIds->all()],
+                    ];
+                }
+            }
+            $distribution ??= new ArticleDistribution([
+                'article_id' => (int) $sourceDistribution->article_id,
+                'distribution_channel_id' => (int) $sourceDistribution->distribution_channel_id,
+                'action' => $action,
+                'remote_id' => $sourceDistribution->remote_id,
+                'remote_url' => $sourceDistribution->remote_url,
+                'remote_meta' => $sourceDistribution->remote_meta,
+            ]);
+            if (! $distribution->wordpressPostId() && $sourceDistribution->wordpressPostId()) {
+                $distribution->forceFill([
+                    'remote_id' => $sourceDistribution->remote_id,
+                    'remote_url' => $sourceDistribution->remote_url,
+                    'remote_meta' => $sourceDistribution->remote_meta,
+                ]);
+            }
 
             $distribution->forceFill([
-                'action' => $action,
                 'status' => 'sending',
                 'attempt_count' => (int) $distribution->attempt_count + 1,
                 'last_attempt_at' => now(),
@@ -1201,8 +1568,36 @@ class DistributionOrchestrator
                 ),
             ])->save();
 
-            return [$distribution, $channel];
+            return [$distribution, $channel, null];
         });
+    }
+
+    /** @param array<string,mixed> $response */
+    private function wordpressPostIdFromResponse(array $response): ?int
+    {
+        $remoteId = $response['remote_id'] ?? null;
+        if (! is_scalar($remoteId) || ! ctype_digit((string) $remoteId)) {
+            return null;
+        }
+
+        $postId = (int) $remoteId;
+
+        return $postId > 0 ? $postId : null;
+    }
+
+    /** @param array<string,mixed> $payload */
+    private function wordpressDeliveryFingerprint(array $payload, DistributionChannel $channel): string
+    {
+        $deliveryPayload = $payload;
+        unset($deliveryPayload['event']);
+        if (is_array($deliveryPayload['article'] ?? null)) {
+            unset($deliveryPayload['article']['updated_at']);
+        }
+
+        return AiPayloadDigest::make([
+            'payload' => $deliveryPayload,
+            'channel_revision' => $this->channelRevision($channel),
+        ]);
     }
 
     /**

@@ -2,6 +2,14 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-09-11
+
+### Idempotent WordPress distribution
+
+- WordPress distribution now reuses the known remote post ID for each article and channel. Saving unchanged content skips delivery, while content or channel changes update the same remote post.
+- When a WordPress create request times out, returns a server error, or omits a valid ID, GEOFlow reconciles the result by slug across post statuses. Results that cannot be identified uniquely are marked for manual reconciliation and excluded from automatic retries.
+- Immediate admin updates and deletions use dedicated action records while retaining the publish mapping. Remote ID conflicts preserve the known identity and block further overwrites.
+
 ## 2026-09-09
 
 ### v3.1.0

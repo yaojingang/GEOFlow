@@ -792,10 +792,12 @@ class DistributionArticleRiskWorkflowTest extends TestCase
             return Http::response(['ok' => true, 'remote_id' => 'remote-delete-race']);
         });
 
-        app(DistributionOrchestrator::class)->deleteRemoteArticle($distribution);
+        $deleteDistribution = app(DistributionOrchestrator::class)->deleteRemoteArticle($distribution);
 
-        $this->assertSame('outcome_unknown', (string) $distribution->fresh()->status);
-        $this->assertNull($distribution->fresh()->next_retry_at);
+        $this->assertSame('synced', (string) $distribution->fresh()->status);
+        $this->assertSame('publish', (string) $distribution->fresh()->action);
+        $this->assertSame('outcome_unknown', (string) $deleteDistribution->fresh()->status);
+        $this->assertNull($deleteDistribution->fresh()->next_retry_at);
         $this->assertNull(Task::query()->find($task->id));
         Http::assertSentCount(1);
     }

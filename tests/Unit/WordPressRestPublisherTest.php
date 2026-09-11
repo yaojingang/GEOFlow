@@ -82,6 +82,124 @@ class WordPressRestPublisherTest extends TestCase
         $this->assertSame('https://wp.example.com/hello-world-updated/', $result['remote_url']);
     }
 
+    public function test_publish_updates_the_existing_wordpress_post_instead_of_creating_a_duplicate(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://wp.example.com/wp-json/wp/v2/posts/123' => Http::response([
+                'id' => 123,
+                'link' => 'https://wp.example.com/hello-world-updated/',
+            ]),
+        ]);
+
+        [, $distribution] = $this->makeDistribution(['remote_id' => '123']);
+
+        $result = app(WordPressRestPublisher::class)->publish($distribution, [
+            'article' => [
+                'title' => 'Hello Updated',
+                'slug' => 'hello-world',
+                'excerpt' => '',
+                'content_html' => '<p>Updated</p>',
+                'keywords' => '',
+                'meta_description' => '',
+            ],
+            'assets' => ['images' => []],
+        ]);
+
+        $this->assertSame('123', (string) $result['remote_id']);
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+            && $request->url() === 'https://wp.example.com/wp-json/wp/v2/posts/123');
+    }
+
+    public function test_update_rejects_a_missing_wordpress_post_id_without_creating_a_post(): void
+    {
+        Http::preventStrayRequests();
+        [, $distribution] = $this->makeDistribution();
+
+        try {
+            app(WordPressRestPublisher::class)->update($distribution, [
+                'article' => [
+                    'title' => 'Hello Updated',
+                    'slug' => 'hello-world',
+                    'excerpt' => '',
+                    'content_html' => '<p>Updated</p>',
+                ],
+                'assets' => ['images' => []],
+            ]);
+            $this->fail('Expected a missing WordPress post ID to be rejected.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('WordPress 文章更新缺少远端文章 ID。', $exception->getMessage());
+        }
+
+        Http::assertNothingSent();
+    }
+
+    public function test_publish_rejects_a_success_response_without_a_valid_wordpress_post_id(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://wp.example.com/wp-json/wp/v2/posts' => Http::response([
+                'id' => 0,
+                'link' => 'https://wp.example.com/hello-world/',
+            ], 201),
+        ]);
+        [, $distribution] = $this->makeDistribution();
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('WordPress 返回内容缺少有效文章 ID。');
+
+        app(WordPressRestPublisher::class)->publish($distribution, [
+            'article' => [
+                'title' => 'Hello World',
+                'slug' => 'hello-world',
+                'excerpt' => '',
+                'content_html' => '<p>Hello</p>',
+            ],
+            'assets' => ['images' => []],
+        ]);
+    }
+
+    public function test_reconciliation_searches_every_supported_wordpress_publication_status(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://wp.example.com/wp-json/wp/v2/posts*' => Http::response([[
+                'id' => 123,
+                'link' => 'https://wp.example.com/hello-world/',
+                'slug' => 'hello-world',
+            ]]),
+        ]);
+        [, $distribution] = $this->makeDistribution();
+
+        $result = app(WordPressRestPublisher::class)->reconcilePublication($distribution, [
+            'article' => ['slug' => 'hello-world'],
+        ]);
+
+        $this->assertSame('123', (string) ($result['remote_id'] ?? ''));
+        Http::assertSent(fn ($request): bool => $request->method() === 'GET'
+            && $request->url() === 'https://wp.example.com/wp-json/wp/v2/posts?slug=hello-world&context=edit&per_page=2&_fields=id%2Clink%2Cslug&status%5B0%5D=publish&status%5B1%5D=draft&status%5B2%5D=pending&status%5B3%5D=private&status%5B4%5D=future');
+    }
+
+    public function test_reconciliation_rejects_multiple_exact_wordpress_slug_matches(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://wp.example.com/wp-json/wp/v2/posts*' => Http::response([
+                ['id' => 123, 'link' => 'https://wp.example.com/hello-world/', 'slug' => 'hello-world'],
+                ['id' => 456, 'link' => 'https://wp.example.com/hello-world-copy/', 'slug' => 'hello-world'],
+            ]),
+        ]);
+        [, $distribution] = $this->makeDistribution();
+
+        $result = app(WordPressRestPublisher::class)->reconcilePublication($distribution, [
+            'article' => ['slug' => 'hello-world'],
+        ]);
+
+        $this->assertNull($result);
+        Http::assertSentCount(1);
+    }
+
     public function test_it_deletes_existing_wordpress_post_id(): void
     {
         Http::fake([
