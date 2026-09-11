@@ -25,7 +25,7 @@ final class ArticleStickyAdPicker
 
             $copy = trim((string) ($item['copy'] ?? ''));
             $buttonText = trim((string) ($item['button_text'] ?? ''));
-            $buttonUrl = trim((string) ($item['button_url'] ?? ''));
+            $buttonUrl = CtaTargetUrlNormalizer::normalize((string) ($item['button_url'] ?? ''));
             if ($copy === '' || $buttonText === '' || $buttonUrl === '') {
                 continue;
             }
@@ -36,28 +36,10 @@ final class ArticleStickyAdPicker
                 'title' => trim((string) ($item['title'] ?? '')),
                 'copy' => $copy,
                 'button_text' => $buttonText,
-                'button_url' => self::normalizeCtaTargetUrl($buttonUrl),
+                'button_url' => $buttonUrl,
             ];
         }
 
         return null;
-    }
-
-    private static function normalizeCtaTargetUrl(string $url): string
-    {
-        $normalized = trim($url);
-        if ($normalized === '') {
-            return '';
-        }
-
-        if (str_starts_with($normalized, '/')) {
-            return $normalized;
-        }
-
-        if (preg_match('#^https?://#i', $normalized) === 1) {
-            return $normalized;
-        }
-
-        return '/'.ltrim($normalized, '/');
     }
 }

@@ -177,6 +177,124 @@ MD);
             ->assertSee('Read more');
     }
 
+    public function test_theme_article_page_skips_unsafe_sticky_ad_and_renders_next_valid_ad(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'active_theme'],
+            ['setting_value' => 'tdwh-netease-news-en-20260508']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'article_detail_ads'],
+            ['setting_value' => json_encode([
+                [
+                    'id' => 'unsafe-ad',
+                    'badge' => 'Unsafe',
+                    'title' => 'Unsafe CTA',
+                    'copy' => 'Unsafe sticky ad copy',
+                    'button_text' => 'Unsafe link',
+                    'button_url' => '//evil.example/demo',
+                    'enabled' => true,
+                ],
+                [
+                    'id' => 'safe-ad',
+                    'badge' => 'Safe',
+                    'title' => 'Safe CTA',
+                    'copy' => 'Safe sticky ad copy',
+                    'button_text' => 'Safe link',
+                    'button_url' => '/category/tech',
+                    'enabled' => true,
+                ],
+            ], JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSettingsBag::forget();
+
+        $category = Category::query()->create([
+            'name' => '科技资讯',
+            'slug' => 'tech',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+        $article = Article::query()->create([
+            'title' => 'Sticky Ad 安全回退测试',
+            'slug' => 'sticky-ad-safe-fallback-test',
+            'excerpt' => '',
+            'content' => '## 正文',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'is_ai_generated' => 1,
+            'published_at' => now(),
+        ]);
+
+        $this->get(route('site.article', $article->slug))
+            ->assertOk()
+            ->assertSee('Safe CTA')
+            ->assertSee('Safe sticky ad copy')
+            ->assertSee('href="/category/tech"', false)
+            ->assertDontSee('Unsafe CTA')
+            ->assertDontSee('evil.example');
+    }
+
+    public function test_theme_article_page_omits_sticky_ad_when_all_enabled_ads_are_unsafe(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'active_theme'],
+            ['setting_value' => 'tdwh-netease-news-en-20260508']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'article_detail_ads'],
+            ['setting_value' => json_encode([
+                [
+                    'id' => 'protocol-relative-ad',
+                    'badge' => 'Unsafe',
+                    'title' => 'Protocol-relative CTA',
+                    'copy' => 'Protocol-relative sticky ad copy',
+                    'button_text' => 'Unsafe link',
+                    'button_url' => '//evil.example/demo',
+                    'enabled' => true,
+                ],
+                [
+                    'id' => 'script-ad',
+                    'badge' => 'Unsafe',
+                    'title' => 'Script CTA',
+                    'copy' => 'Script sticky ad copy',
+                    'button_text' => 'Unsafe script',
+                    'button_url' => 'javascript:alert(1)',
+                    'enabled' => true,
+                ],
+            ], JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSettingsBag::forget();
+
+        $category = Category::query()->create([
+            'name' => '科技资讯',
+            'slug' => 'tech',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+        $article = Article::query()->create([
+            'title' => 'Sticky Ad 全量拦截测试',
+            'slug' => 'sticky-ad-all-unsafe-test',
+            'excerpt' => '',
+            'content' => '## 正文',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'is_ai_generated' => 1,
+            'published_at' => now(),
+        ]);
+
+        $this->get(route('site.article', $article->slug))
+            ->assertOk()
+            ->assertDontSee('class="ne-ad-slot"', false)
+            ->assertDontSee('evil.example')
+            ->assertDontSee('javascript:alert(1)');
+    }
+
     public function test_article_page_renders_content_text_ads_around_article_body(): void
     {
         SiteSetting::query()->updateOrCreate(
