@@ -2368,6 +2368,10 @@ class KnowledgeChunkSyncService
             );
         }
 
+        if ($this->isVolcengineMultimodalEmbeddingMetadata($embeddingMetadata)) {
+            return $this->requestVolcengineMultimodalEmbeddings($inputs, $embeddingMetadata);
+        }
+
         return $this->requestOpenAiCompatibleEmbeddings($inputs, $embeddingMetadata);
     }
 
@@ -2394,6 +2398,79 @@ class KnowledgeChunkSyncService
             'model' => (string) $embeddingMetadata['model_name'],
             'input' => $inputs,
         ], (int) config('geoflow.outbound_ai_max_bytes', 8 * 1024 * 1024));
+
+        if (! $response->successful()) {
+            $error = data_get($response->json(), 'error.message');
+            $message = is_string($error) && $this->isEmbeddingBatchSizeError($error)
+                ? 'Embedding provider rejected batch size.'
+                : 'Embedding provider request failed.';
+
+            throw new \RuntimeException(sprintf(
+                'HTTP request returned status code %d: %s',
+                $response->status(),
+                $message,
+            ), 0, $response->toException());
+        }
+
+        $data = $response->json();
+        $rows = is_array($data) ? ($data['data'] ?? []) : [];
+        if (! is_array($rows)) {
+            return new KnowledgeEmbeddingProviderResult([], is_array($data) ? ($data['usage'] ?? null) : null);
+        }
+
+        $embeddings = [];
+        foreach ($rows as $position => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $index = $position;
+            if (array_key_exists('index', $row) && is_numeric($row['index'])) {
+                $index = max(0, (int) $row['index']);
+            }
+
+            $embeddings[$index] = $row['embedding'] ?? null;
+        }
+        ksort($embeddings);
+
+        return new KnowledgeEmbeddingProviderResult(
+            $embeddings,
+            is_array($data) ? ($data['usage'] ?? null) : null,
+        );
+    }
+
+    /**
+     * 直连火山方舟多模态 embedding endpoint。
+     *
+     * 该 endpoint（/embeddings/multimodal-embedding-v1）与通用 /embeddings 不兼容，
+     * 请求/响应采用 OpenAI 兼容结构但 input 必须是 [{"type":"text","text":...}] 形式。
+     *
+     * 请求通过统一安全出站网关校验并固定目标地址。
+     *
+     * @param  list<string>  $inputs
+     * @param  array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string,driver:string}  $embeddingMetadata
+     */
+    private function requestVolcengineMultimodalEmbeddings(
+        array $inputs,
+        array $embeddingMetadata,
+    ): KnowledgeEmbeddingProviderResult {
+        $endpoint = rtrim((string) $embeddingMetadata['api_url'], '/')
+            .OpenAiRuntimeProvider::volcengineMultimodalEmbeddingPath();
+
+        $payload = [
+            'model' => (string) $embeddingMetadata['model_name'],
+            'input' => array_map(
+                static fn (string $text): array => ['type' => 'text', 'text' => $text],
+                $inputs,
+            ),
+        ];
+
+        $request = $this->http->acceptJson()
+            ->asJson()
+            ->withToken((string) $embeddingMetadata['api_key'])
+            ->connectTimeout(8)
+            ->timeout(45);
+        $response = $this->safeHttp->post($request, $endpoint, $payload, (int) config('geoflow.outbound_ai_max_bytes', 8 * 1024 * 1024));
 
         if (! $response->successful()) {
             $error = data_get($response->json(), 'error.message');
@@ -2487,6 +2564,19 @@ class KnowledgeChunkSyncService
     {
         return (string) ($embeddingMetadata['driver'] ?? '') === 'gemini'
             || OpenAiRuntimeProvider::isGeminiProviderUrl((string) ($embeddingMetadata['api_url'] ?? ''));
+    }
+
+    /**
+     * @param  array<string, mixed>  $embeddingMetadata
+     */
+    private function isVolcengineMultimodalEmbeddingMetadata(array $embeddingMetadata): bool
+    {
+        if ((string) ($embeddingMetadata['driver'] ?? '') === 'volcengine-multimodal') {
+            return true;
+        }
+
+        return OpenAiRuntimeProvider::isVolcengineProviderUrl((string) ($embeddingMetadata['api_url'] ?? ''))
+            && OpenAiRuntimeProvider::isVolcengineMultimodalEmbeddingModel((string) ($embeddingMetadata['model_name'] ?? ''));
     }
 
     private function normalizeGeminiEmbeddingSegment(string $value): string
