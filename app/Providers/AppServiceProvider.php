@@ -31,6 +31,7 @@ use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\GeoFlow\TaskMonitoringQueryService;
 use App\Services\Outbound\FinalOutboundSecurityPolicy;
 use App\Services\Outbound\LaravelPinnedOutboundTransport;
+use App\Services\Outbound\OutboundProxyPolicy;
 use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Services\Outbound\SecureHttpFactory;
 use App\Services\Outbound\SystemHostResolver;
@@ -71,6 +72,12 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(AgentClient::class, UnixSocketAgentClient::class);
         $this->app->bind(AiModelWriteLock::class, DatabaseAiModelWriteLock::class);
         $this->app->singleton(FinalOutboundSecurityPolicy::class);
+        $this->app->singleton(OutboundProxyPolicy::class, function (): OutboundProxyPolicy {
+            return OutboundProxyPolicy::fromConfig(
+                config('geoflow.outbound_proxy_url'),
+                (string) config('geoflow.outbound_proxy_hosts', ''),
+            );
+        });
         $this->app->bind(OutboundTransport::class, function () use ($fixedContextCapability): LaravelPinnedOutboundTransport {
             return new LaravelPinnedOutboundTransport($fixedContextCapability);
         });
