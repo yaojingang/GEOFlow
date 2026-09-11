@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Site;
 
 use App\Http\Controllers\Controller;
 use App\Models\Article;
+use App\Services\Site\SiteScopedArticleQuery;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeViewResolver;
@@ -17,6 +18,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 class ArchiveController extends Controller
 {
+    public function __construct(private readonly SiteScopedArticleQuery $siteArticles) {}
+
     public function index(): View
     {
         $map = SiteSettingsBag::all();
@@ -43,8 +46,7 @@ class ArchiveController extends Controller
             ],
         };
 
-        $archives = Article::query()
-            ->published()
+        $archives = $this->siteArticles->query()
             ->selectRaw("{$yearExpression} AS archive_year")
             ->selectRaw("{$monthExpression} AS archive_month")
             ->selectRaw('COUNT(*) AS archive_count')
@@ -95,9 +97,8 @@ class ArchiveController extends Controller
         $siteDescription = (string) ($map['site_description'] ?? config('geoflow.site_description', ''));
         $siteKeywords = (string) ($map['site_keywords'] ?? config('geoflow.site_keywords', ''));
 
-        $articles = Article::query()
+        $articles = $this->siteArticles->query()
             ->with(['category', 'author'])
-            ->published()
             ->where(function ($query) use ($start, $end): void {
                 $query->whereBetween('published_at', [$start, $end])
                     ->orWhere(function ($fallback) use ($start, $end): void {

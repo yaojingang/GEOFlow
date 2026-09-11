@@ -27,6 +27,7 @@ use App\Services\GeoFlow\KnowledgeFacts\ArticleAtomicFactInspector;
 use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\AiQualityRetrievalBasis;
 use App\Support\GeoFlow\AiQualityRetrievalMode;
+use App\Support\GeoFlow\ArticleWorkflow;
 use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Date;
@@ -3018,29 +3019,21 @@ class ArticleAiQualityInspectionService
                 return;
             }
 
-            $requestedWorkflowState = is_array($check->execution_meta['requested_workflow_state'] ?? null)
-                ? $check->execution_meta['requested_workflow_state']
-                : null;
-            $targetState = $requestedWorkflowState !== null
-                && in_array((string) ($requestedWorkflowState['status'] ?? ''), ['published', 'private'], true)
-                ? $requestedWorkflowState
-                : ['status' => 'draft', 'review_status' => 'approved', 'published_at' => null];
-            $this->applyPassedWorkflowUnderRolloutFence($checkId, $targetState);
+            $this->applyPassedWorkflowUnderRolloutFence($checkId);
         } catch (Throwable $exception) {
             $this->failWorkflowApplyAttempt($checkId);
             report($exception);
         }
     }
 
-    /** @param array{status:string,review_status:string,published_at:mixed} $targetState */
-    private function applyPassedWorkflowUnderRolloutFence(int $checkId, array $targetState): bool
+    private function applyPassedWorkflowUnderRolloutFence(int $checkId): bool
     {
         $checkInfo = ArticleAiQualityCheck::query()->whereKey($checkId)->first(['article_id', 'task_id']);
         if (! $checkInfo) {
             return false;
         }
 
-        return DB::transaction(function () use ($checkId, $checkInfo, $targetState): bool {
+        return DB::transaction(function () use ($checkId, $checkInfo): bool {
             $rollout = ArticleAiQualityRollout::query()->whereKey(1)->lockForUpdate()->first();
             $committedEpoch = max(1, (int) ($rollout?->epoch ?? 1));
             $article = Article::query()->whereKey((int) $checkInfo->article_id)->lockForUpdate()->first();
@@ -3064,6 +3057,19 @@ class ArticleAiQualityInspectionService
             if ($task instanceof Task && ! $task->trashed()) {
                 $check->setRelation('task', $task);
             }
+
+            $requestedWorkflowState = is_array($check->execution_meta['requested_workflow_state'] ?? null)
+                ? $check->execution_meta['requested_workflow_state']
+                : null;
+            $targetState = $requestedWorkflowState !== null
+                && in_array((string) ($requestedWorkflowState['status'] ?? ''), ['published', 'private'], true)
+                ? $requestedWorkflowState
+                : ['status' => 'draft', 'review_status' => 'approved', 'published_at' => null];
+            $distributionRequested = (string) $targetState['status'] === 'published';
+            $targetState = ArticleWorkflow::normalizeForPublishScope(
+                $targetState,
+                $task?->publish_scope,
+            );
 
             $this->rolloutPolicy->forget();
             $manualReviewRequired = (bool) data_get(
@@ -3143,7 +3149,7 @@ class ArticleAiQualityInspectionService
                     false,
                 );
             }
-            if ((string) $article->status === 'published') {
+            if ($distributionRequested) {
                 app(DistributionOrchestrator::class)->enqueueForArticle($article, throwOnFailure: true);
             }
             $this->setWorkflowApplyStatus($check, 'succeeded');

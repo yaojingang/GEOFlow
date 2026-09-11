@@ -22,7 +22,14 @@ final class SiteScopedArticleQuery
     public function apply(Builder $query): Builder
     {
         if (! $this->currentSite->isHosted()) {
-            return $query->published();
+            return $query
+                ->published()
+                ->where(function (Builder $articles): void {
+                    $articles
+                        ->whereNull('articles.task_id')
+                        ->orWhereHas('task', fn (Builder $task): Builder => $task
+                            ->where('publish_scope', '!=', 'distribution_only'));
+                });
         }
 
         $profileId = (int) $this->currentSite->profileId();

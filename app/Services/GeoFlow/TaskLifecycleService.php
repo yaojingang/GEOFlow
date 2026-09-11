@@ -455,8 +455,9 @@ class TaskLifecycleService
         $knowledgeBaseIds = $knowledgeBaseIdsProvided ? $normalized['knowledge_base_ids'] : [];
         unset($normalized['knowledge_base_ids']);
         $samplingWasDisabled = false;
+        $preserveWorkflowArticleIds = [];
 
-        DB::transaction(function () use (&$qualityConfigurationChanged, &$qualityControlConfigurationChanged, &$optimizationLevelChanged, &$optimizationWasDisabled, &$samplingWasDisabled, $normalized, $knowledgeBaseIdsProvided, $knowledgeBaseIds, $status, $taskId, $canManageHostedTask, $auditAdminId, $apiTokenId, $qualityConfigurationRequested, $expectedQualityVersion, $accessAdmin): void {
+        DB::transaction(function () use (&$qualityConfigurationChanged, &$qualityControlConfigurationChanged, &$optimizationLevelChanged, &$optimizationWasDisabled, &$samplingWasDisabled, &$preserveWorkflowArticleIds, $normalized, $knowledgeBaseIdsProvided, $knowledgeBaseIds, $status, $taskId, $canManageHostedTask, $auditAdminId, $apiTokenId, $qualityConfigurationRequested, $expectedQualityVersion, $accessAdmin): void {
             Article::withTrashed()
                 ->where('task_id', $taskId)
                 ->orderBy('id')
@@ -645,6 +646,26 @@ class TaskLifecycleService
                 Task::query()->whereKey($taskId)->update($normalized);
             }
 
+            $publishScopeNarrowed = array_key_exists('publish_scope', $normalized)
+                && (string) $normalized['publish_scope'] === 'distribution_only'
+                && (string) $current->publish_scope !== 'distribution_only';
+            if ($publishScopeNarrowed) {
+                $publishedArticles = Article::withTrashed()
+                    ->where('task_id', $taskId)
+                    ->where('status', 'published');
+                $preserveWorkflowArticleIds = (clone $publishedArticles)
+                    ->pluck('articles.id')
+                    ->map('intval')
+                    ->all();
+                if ($preserveWorkflowArticleIds !== []) {
+                    $publishedArticles->update([
+                        'status' => 'private',
+                        'published_at' => null,
+                        'updated_at' => now(),
+                    ]);
+                }
+            }
+
             if ($knowledgeBaseIdsProvided) {
                 $this->syncTaskKnowledgeBases($taskId, is_array($knowledgeBaseIds) ? $knowledgeBaseIds : []);
             }
@@ -703,7 +724,11 @@ class TaskLifecycleService
         });
 
         if ($qualityConfigurationChanged) {
-            $this->articleAiQualityInvalidationService->invalidateTask($taskId, '任务质检配置或知识依据已更新');
+            $this->articleAiQualityInvalidationService->invalidateTask(
+                $taskId,
+                '任务质检配置或知识依据已更新',
+                preserveWorkflowArticleIds: $preserveWorkflowArticleIds,
+            );
         }
 
         $task = $this->getTask($taskId, $responseViewer);

@@ -55,6 +55,22 @@ final class ArticleWorkflow
         ];
     }
 
+    /**
+     * @param  array{status: string, review_status: string, published_at: mixed}  $workflowState
+     * @return array{status: string, review_status: string, published_at: mixed}
+     */
+    public static function normalizeForPublishScope(array $workflowState, ?string $publishScope): array
+    {
+        if ((string) $publishScope !== 'distribution_only' || $workflowState['status'] !== 'published') {
+            return $workflowState;
+        }
+
+        $workflowState['status'] = 'private';
+        $workflowState['published_at'] = null;
+
+        return $workflowState;
+    }
+
     public static function generateUniqueSlug(string $title, ?int $excludeArticleId = null): string
     {
         $slug = self::randomSlug(8);

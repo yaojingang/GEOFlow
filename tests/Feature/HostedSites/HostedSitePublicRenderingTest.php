@@ -70,6 +70,46 @@ class HostedSitePublicRenderingTest extends TestCase
         $this->assertNotNull($betaArticle->id);
     }
 
+    public function test_primary_site_excludes_distribution_only_articles_from_every_public_entry(): void
+    {
+        $distributionOnlyArticle = $this->articleFixture(
+            'Channel only article',
+            'channel-only-article',
+            'published',
+        );
+        $localArticle = $this->articleFixture(
+            'Primary local article',
+            'primary-local-article',
+            'published',
+            'local_and_distribution',
+        );
+        $archiveYear = $localArticle->published_at->format('Y');
+        $archiveMonth = $localArticle->published_at->format('m');
+
+        $this->get('http://primary.test/')
+            ->assertOk()
+            ->assertSee($localArticle->title)
+            ->assertDontSee($distributionOnlyArticle->title);
+        $this->get('http://primary.test/category/'.$localArticle->category->slug)
+            ->assertOk()
+            ->assertSee($localArticle->title)
+            ->assertDontSee($distributionOnlyArticle->title);
+        $this->get('http://primary.test/article/'.$localArticle->slug)->assertOk();
+        $this->get('http://primary.test/article/'.$distributionOnlyArticle->slug)->assertNotFound();
+        $this->get("http://primary.test/archive/{$archiveYear}/{$archiveMonth}")
+            ->assertOk()
+            ->assertSee($localArticle->title)
+            ->assertDontSee($distributionOnlyArticle->title);
+        $this->get('http://primary.test/archive')
+            ->assertOk()
+            ->assertViewHas('archives', fn (array $archives): bool => count($archives) === 1
+                && $archives[0]['count'] === 1);
+        $this->get('http://primary.test/sitemap.xml')
+            ->assertOk()
+            ->assertSee($localArticle->slug)
+            ->assertDontSee($distributionOnlyArticle->slug);
+    }
+
     public function test_hosted_about_forms_and_submission_ownership_use_the_site_allowlist(): void
     {
         [$profile] = $this->siteFixture('alpha', 'Alpha Site', 'Alpha article', [
@@ -252,12 +292,16 @@ class HostedSitePublicRenderingTest extends TestCase
         return [$profile, $article];
     }
 
-    private function articleFixture(string $title, string $slug, string $status): Article
-    {
+    private function articleFixture(
+        string $title,
+        string $slug,
+        string $status,
+        string $publishScope = 'distribution_only',
+    ): Article {
         $task = Task::query()->create([
             'name' => $title.' task',
             'status' => 'active',
-            'publish_scope' => 'distribution_only',
+            'publish_scope' => $publishScope,
         ]);
         $category = Category::query()->firstOrCreate(
             ['slug' => 'ai'],

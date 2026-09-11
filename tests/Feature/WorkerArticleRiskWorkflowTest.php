@@ -9,6 +9,7 @@ use App\Models\Category;
 use App\Models\SensitiveWord;
 use App\Models\Task;
 use App\Services\GeoFlow\ArticleRiskGate;
+use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\WorkerExecutionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -129,20 +130,63 @@ class WorkerArticleRiskWorkflowTest extends TestCase
         $this->assertSame(0, (int) $task->fresh()->published_count);
     }
 
+    public function test_worker_keeps_approved_distribution_only_article_private_and_enqueues_it(): void
+    {
+        [$task, $article] = $this->createTaskArticle([], [
+            'publish_scope' => 'distribution_only',
+        ]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldReceive('enqueueForArticle')
+            ->once()
+            ->with((int) $article->id)
+            ->andReturn([]);
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $result = app(WorkerExecutionService::class)->executeTask((int) $task->id);
+
+        $this->assertSame((int) $article->id, $result['article_id']);
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertSame('approved', $article->fresh()->review_status);
+        $this->assertNull($article->fresh()->published_at);
+    }
+
+    public function test_worker_keeps_auto_approved_distribution_only_article_private_and_enqueues_it(): void
+    {
+        [$task, $article] = $this->createTaskArticle([
+            'review_status' => 'auto_approved',
+        ], [
+            'publish_scope' => 'distribution_only',
+        ]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldReceive('enqueueForArticle')
+            ->once()
+            ->with((int) $article->id)
+            ->andReturn([]);
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $result = app(WorkerExecutionService::class)->executeTask((int) $task->id);
+
+        $this->assertSame((int) $article->id, $result['article_id']);
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertSame('auto_approved', $article->fresh()->review_status);
+        $this->assertNull($article->fresh()->published_at);
+    }
+
     /**
      * @param  array<string, mixed>  $articleOverrides
+     * @param  array<string, mixed>  $taskOverrides
      * @return array{Task, Article}
      */
-    private function createTaskArticle(array $articleOverrides = []): array
+    private function createTaskArticle(array $articleOverrides = [], array $taskOverrides = []): array
     {
-        $task = Task::query()->create([
+        $task = Task::query()->create(array_merge([
             'name' => 'Risk worker task',
             'status' => 'active',
             'schedule_enabled' => 1,
             'publish_interval' => 3600,
             'publish_scope' => 'local_and_distribution',
             'next_publish_at' => now()->subMinute(),
-        ]);
+        ], $taskOverrides));
         $category = Category::query()->create([
             'name' => 'Worker risk',
             'slug' => 'worker-risk-'.uniqid(),

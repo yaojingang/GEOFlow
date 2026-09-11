@@ -8,8 +8,10 @@ use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\SensitiveWord;
+use App\Models\Task;
 use App\Services\GeoFlow\ArticleRiskGate;
 use App\Services\GeoFlow\ArticleRiskScanner;
+use App\Services\GeoFlow\DistributionOrchestrator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
@@ -277,6 +279,188 @@ class AdminArticleRiskWorkflowTest extends TestCase
         $this->assertSame($this->admin->id, $latestScan->admin_id);
         $this->assertFalse($latestScan->is($previousScan));
         $this->assertSame(2, $article->riskScans()->count());
+    }
+
+    public function test_distribution_only_article_update_stays_private_and_enters_distribution(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Admin distribution only task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'distribution_only',
+            'ai_quality_enabled' => false,
+        ]);
+        $article = $this->createArticle([
+            'task_id' => $task->id,
+            'review_status' => 'approved',
+        ]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldReceive('enqueueForArticle')->once()->andReturn([]);
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->actingAs($this->admin, 'admin')
+            ->put(route('admin.articles.update', ['articleId' => $article->id]), $this->articlePayload([
+                'status' => 'published',
+                'review_status' => 'approved',
+            ]))
+            ->assertRedirect(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertSessionDoesntHaveErrors();
+
+        $article->refresh();
+        $this->assertSame('private', $article->status);
+        $this->assertSame('approved', $article->review_status);
+        $this->assertNull($article->published_at);
+    }
+
+    public function test_distribution_only_explicit_private_update_does_not_enter_distribution(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Admin explicit private task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'distribution_only',
+            'ai_quality_enabled' => false,
+        ]);
+        $article = $this->createArticle([
+            'task_id' => $task->id,
+            'status' => 'private',
+            'review_status' => 'approved',
+        ]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldNotReceive('enqueueForArticle');
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->actingAs($this->admin, 'admin')
+            ->put(route('admin.articles.update', ['articleId' => $article->id]), $this->articlePayload([
+                'status' => 'private',
+                'review_status' => 'approved',
+            ]))
+            ->assertRedirect(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertNull($article->fresh()->published_at);
+    }
+
+    public function test_distribution_only_batch_publish_stays_private_and_enters_distribution(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Admin batch distribution only task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'distribution_only',
+            'ai_quality_enabled' => false,
+        ]);
+        $article = $this->createArticle([
+            'task_id' => $task->id,
+            'review_status' => 'approved',
+        ]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldReceive('enqueueForArticle')->once()->andReturn([]);
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->actingAs($this->admin, 'admin')
+            ->post(route('admin.articles.batch.update-status'), [
+                'article_ids' => [$article->id],
+                'new_status' => 'published',
+            ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $article->refresh();
+        $this->assertSame('private', $article->status);
+        $this->assertSame('approved', $article->review_status);
+        $this->assertNull($article->published_at);
+    }
+
+    public function test_distribution_only_batch_private_status_does_not_enter_distribution(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Admin batch private task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'distribution_only',
+            'ai_quality_enabled' => false,
+        ]);
+        $article = $this->createArticle([
+            'task_id' => $task->id,
+            'status' => 'private',
+            'review_status' => 'approved',
+        ]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldNotReceive('enqueueForArticle');
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->actingAs($this->admin, 'admin')
+            ->post(route('admin.articles.batch.update-status'), [
+                'article_ids' => [$article->id],
+                'new_status' => 'private',
+            ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertNull($article->fresh()->published_at);
+    }
+
+    public function test_distribution_only_batch_review_stays_private_and_enters_distribution(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Admin batch review distribution only task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'distribution_only',
+            'need_review' => 0,
+            'ai_quality_enabled' => false,
+        ]);
+        $article = $this->createArticle(['task_id' => $task->id]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldReceive('enqueueForArticle')->once()->andReturn([]);
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->actingAs($this->admin, 'admin')
+            ->post(route('admin.articles.batch.update-review'), [
+                'article_ids' => [$article->id],
+                'review_status' => 'approved',
+            ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $article->refresh();
+        $this->assertSame('private', $article->status);
+        $this->assertSame('approved', $article->review_status);
+        $this->assertNull($article->published_at);
+    }
+
+    public function test_distribution_only_batch_review_of_private_article_does_not_enter_distribution(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Admin batch private review task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'distribution_only',
+            'need_review' => 1,
+            'ai_quality_enabled' => false,
+        ]);
+        $article = $this->createArticle([
+            'task_id' => $task->id,
+            'status' => 'private',
+        ]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldNotReceive('enqueueForArticle');
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->actingAs($this->admin, 'admin')
+            ->post(route('admin.articles.batch.update-review'), [
+                'article_ids' => [$article->id],
+                'review_status' => 'approved',
+            ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertSame('approved', $article->fresh()->review_status);
+        $this->assertNull($article->fresh()->published_at);
     }
 
     public function test_non_risk_admin_update_preserves_a_fresh_warning_override(): void

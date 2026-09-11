@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\ArticleAiQualityGateException;
 use App\Exceptions\ArticleRiskGateException;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\SensitiveWord;
 use App\Models\Task;
+use App\Services\GeoFlow\ArticlePublicationQualityGate;
 use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Support\GeoFlow\ArticleWorkflow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -105,6 +107,68 @@ class ArticleWorkflowTransitionServiceTest extends TestCase
         $this->assertTrue($guardObservedTask);
         $this->assertSame('published', $transitioned->status);
         $this->assertSame((int) $task->id, (int) $transitioned->task_id);
+    }
+
+    public function test_distribution_only_task_forces_a_publish_transition_to_private(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Distribution only workflow transition',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'distribution_only',
+            'ai_quality_enabled' => false,
+        ]);
+        $article = $this->createArticle([
+            'task_id' => $task->id,
+            'review_status' => 'approved',
+        ]);
+        $this->assertSame('distribution_only', $task->fresh()->publish_scope);
+
+        $transitioned = app(ArticleWorkflowTransitionService::class)->transition(
+            $article,
+            ArticleWorkflow::normalizeState('published', 'approved'),
+            'service_task_publish',
+        );
+
+        $this->assertSame('private', $transitioned->status);
+        $this->assertSame('approved', $transitioned->review_status);
+        $this->assertNull($transitioned->published_at);
+    }
+
+    public function test_ai_quality_rejection_does_not_preserve_invalid_distribution_only_publication(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Distribution only quality rejection',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'distribution_only',
+            'ai_quality_enabled' => false,
+        ]);
+        $article = $this->createArticle([
+            'task_id' => $task->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+        $qualityGate = \Mockery::mock(ArticlePublicationQualityGate::class);
+        $qualityGate->shouldReceive('check')
+            ->once()
+            ->andThrow(new ArticleAiQualityGateException('article_ai_quality_pending', 'Quality pending.'));
+        $service = new ArticleWorkflowTransitionService($qualityGate);
+
+        try {
+            $service->transition(
+                $article,
+                ArticleWorkflow::normalizeState('published', 'approved'),
+                'service_task_publish',
+            );
+            $this->fail('Expected the AI quality gate to reject the transition.');
+        } catch (ArticleAiQualityGateException) {
+            $article->refresh();
+            $this->assertSame('private', $article->status);
+            $this->assertSame('approved', $article->review_status);
+            $this->assertNull($article->published_at);
+        }
     }
 
     /** @param array<string, mixed> $attributes */
