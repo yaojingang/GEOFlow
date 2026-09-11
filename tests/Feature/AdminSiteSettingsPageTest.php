@@ -561,6 +561,137 @@ class AdminSiteSettingsPageTest extends TestCase
         $this->assertTrue($slides[0]['enabled']);
     }
 
+    public function test_article_detail_ads_reject_protocol_relative_url_without_overwriting_existing_setting(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $existingAds = '[{"id":"existing-ad","copy":"Existing copy","button_text":"Existing CTA","button_url":"/existing","enabled":true}]';
+        SiteSetting::query()->create([
+            'setting_key' => 'article_detail_ads',
+            'setting_value' => $existingAds,
+        ]);
+
+        $admin = Admin::query()->create([
+            'username' => 'site_sticky_ads_invalid_admin',
+            'password' => 'secret-123',
+            'email' => 'site-sticky-ads-invalid-admin@example.com',
+            'display_name' => 'Site Sticky Ads Invalid Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.site-settings.index'))
+            ->post(route('admin.site-settings.ads'), [
+                'ads' => [[
+                    'name' => 'Unsafe CTA',
+                    'badge' => 'Featured',
+                    'title' => 'Unsafe title',
+                    'copy' => 'Unsafe copy',
+                    'button_text' => 'Open',
+                    'button_url' => '//evil.example/demo',
+                    'enabled' => '1',
+                ]],
+            ])
+            ->assertRedirect(route('admin.site-settings.index'))
+            ->assertSessionHasErrors();
+
+        $this->assertSame(
+            [__('admin.site_settings.ads.validation_required', ['index' => 1])],
+            session('errors')->all()
+        );
+        $this->assertSame(
+            $existingAds,
+            (string) SiteSetting::query()->where('setting_key', 'article_detail_ads')->value('setting_value')
+        );
+    }
+
+    public function test_article_detail_ads_do_not_treat_an_unsafe_url_as_an_empty_row(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $existingAds = '[{"id":"existing-ad","copy":"Existing copy","button_text":"Existing CTA","button_url":"/existing","enabled":true}]';
+        SiteSetting::query()->create([
+            'setting_key' => 'article_detail_ads',
+            'setting_value' => $existingAds,
+        ]);
+
+        $admin = Admin::query()->create([
+            'username' => 'site_sticky_ads_unsafe_only_admin',
+            'password' => 'secret-123',
+            'email' => 'site-sticky-ads-unsafe-only-admin@example.com',
+            'display_name' => 'Site Sticky Ads Unsafe Only Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->from(route('admin.site-settings.index'))
+            ->post(route('admin.site-settings.ads'), [
+                'ads' => [[
+                    'button_url' => '//evil.example/demo',
+                ]],
+            ])
+            ->assertRedirect(route('admin.site-settings.index'))
+            ->assertSessionHasErrors();
+
+        $this->assertSame(
+            $existingAds,
+            (string) SiteSetting::query()->where('setting_key', 'article_detail_ads')->value('setting_value')
+        );
+    }
+
+    public function test_article_detail_ads_save_relative_and_http_urls_in_normalized_form(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $admin = Admin::query()->create([
+            'username' => 'site_sticky_ads_admin',
+            'password' => 'secret-123',
+            'email' => 'site-sticky-ads-admin@example.com',
+            'display_name' => 'Site Sticky Ads Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.ads'), [
+                'ads' => [
+                    [
+                        'id' => 'relative-ad',
+                        'name' => 'Relative CTA',
+                        'badge' => 'Internal',
+                        'title' => 'Internal offer',
+                        'copy' => 'Read the internal offer.',
+                        'button_text' => 'Read',
+                        'button_url' => 'offers/demo',
+                        'enabled' => '1',
+                    ],
+                    [
+                        'id' => 'external-ad',
+                        'name' => 'External CTA',
+                        'badge' => 'Partner',
+                        'title' => 'Partner offer',
+                        'copy' => 'Read the partner offer.',
+                        'button_text' => 'Visit',
+                        'button_url' => 'https://partner.example/demo',
+                        'enabled' => '1',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.site-settings.index'))
+            ->assertSessionHasNoErrors();
+
+        $savedAds = json_decode(
+            (string) SiteSetting::query()->where('setting_key', 'article_detail_ads')->value('setting_value'),
+            true
+        );
+
+        $this->assertIsArray($savedAds);
+        $this->assertSame('/offers/demo', $savedAds[0]['button_url']);
+        $this->assertSame('https://partner.example/demo', $savedAds[1]['button_url']);
+    }
+
     public function test_article_detail_text_ads_can_be_saved_updated_and_deleted_without_touching_sticky_ads(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);

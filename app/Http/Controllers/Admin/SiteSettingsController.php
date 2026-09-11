@@ -9,6 +9,7 @@ use App\Services\Admin\SiteThemeReplicationService;
 use App\Support\AdminBasePathManager;
 use App\Support\AdminWeb;
 use App\Support\Site\ArticleTextAdPicker;
+use App\Support\Site\CtaTargetUrlNormalizer;
 use App\Support\Site\HomepageModuleBuilder;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeCatalog;
@@ -378,11 +379,12 @@ class SiteSettingsController extends Controller
             $title = trim((string) ($postedAd['title'] ?? ''));
             $copy = trim((string) ($postedAd['copy'] ?? ''));
             $buttonText = trim((string) ($postedAd['button_text'] ?? ''));
-            $buttonUrl = $this->normalizeCtaTargetUrl((string) ($postedAd['button_url'] ?? ''));
+            $rawButtonUrl = trim((string) ($postedAd['button_url'] ?? ''));
+            $buttonUrl = CtaTargetUrlNormalizer::normalize($rawButtonUrl);
             $enabled = ! empty($postedAd['enabled']);
             $id = trim((string) ($postedAd['id'] ?? ''));
 
-            if ($name === '' && $badge === '' && $title === '' && $copy === '' && $buttonText === '' && $buttonUrl === '') {
+            if ($name === '' && $badge === '' && $title === '' && $copy === '' && $buttonText === '' && $rawButtonUrl === '') {
                 continue;
             }
 
@@ -927,7 +929,7 @@ class SiteSettingsController extends Controller
 
             $imageUrl = $this->normalizePublicImageUrl((string) ($postedSlide['image_url'] ?? ''));
             $title = trim((string) ($postedSlide['title'] ?? ''));
-            $linkUrl = $this->normalizeCtaTargetUrl((string) ($postedSlide['link_url'] ?? ''));
+            $linkUrl = CtaTargetUrlNormalizer::normalize((string) ($postedSlide['link_url'] ?? ''));
             $enabled = ! empty($postedSlide['enabled']);
 
             if ($imageUrl === '' && $title === '' && $linkUrl === '') {
@@ -972,27 +974,6 @@ class SiteSettingsController extends Controller
         }
 
         return '';
-    }
-
-    /**
-     * 归一化广告按钮链接，兼容相对路径与完整 URL。
-     */
-    private function normalizeCtaTargetUrl(string $url): string
-    {
-        $normalized = trim($url);
-        if ($normalized === '') {
-            return '';
-        }
-
-        if (str_starts_with($normalized, '/')) {
-            return $normalized;
-        }
-
-        if (preg_match('#^https?://#i', $normalized) === 1) {
-            return $normalized;
-        }
-
-        return '/'.ltrim($normalized, '/');
     }
 
     /**
