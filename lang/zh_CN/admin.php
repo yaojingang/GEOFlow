@@ -3102,6 +3102,7 @@ return [
                 'recently_sampled_hint' => '近 7 天已发起过采集的关键词',
                 'selection_counter' => '已选 :count/:cap 个',
                 'select_all_hint_overflow' => '本库超过 :cap 个 关键词，已自动按列表顺序取前 :cap 个',
+                'select_all_clear' => '取消选择',
             ],
             'detect_button' => 'AI 自动识别竞品',
             'detect_queued' => '已派发 AI 竞品识别任务，完成后新竞品自动加入名单（标注 AI）。',

@@ -439,8 +439,56 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         $response->assertSee('AI 可见度');
         $response->assertSee('冷门长尾词');
         $response->assertSee('data-ai-visibility-select-all', false);
+        $response->assertSee('data-ai-visibility-select-all-clear-label', false);
+        $response->assertSee(__('admin.analytics.ai_visibility.collect.select_all_clear'), false);
         $response->assertSee('data-ai-visibility-counter', false);
         $response->assertSee('data-ai-visibility-global-counter', false);
+        $response->assertSee('GEOFlow 内容工程');
+        $response->assertSee('value="1"', false);
+        $response->assertSee('value="2"', false);
+        $response->assertSee('value="3"', false);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_collect_panel_disables_recently_sampled_checkboxes_so_they_are_not_resubmitted(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        config()->set('geoflow.site_name', 'GEOFlow');
+        config()->set('geoflow.site_url', 'https://geoflow.example.com');
+        $this->configureAiVisibilityApis();
+
+        $library = KeywordLibrary::query()->create(['name' => 'GEOFlow 关键词库']);
+        $freshKeyword = Keyword::query()->create(['library_id' => $library->id, 'keyword' => 'AI 可见度']);
+        $staleKeyword = Keyword::query()->create(['library_id' => $library->id, 'keyword' => 'GEOFlow 内容工程']);
+
+        $this->completedRun(
+            keyword: 'GEOFlow 内容工程',
+            providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+            answer: 'GEOFlow 在内容工程场景中表现良好。',
+            sentiment: 'positive',
+            completedAt: '2026-07-09 09:00:00',
+            sources: [],
+        );
+
+        $response = $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.analytics.ai-visibility'))
+            ->assertOk();
+
+        $response->assertSee('name="keyword_ids[]" value="'.((string) $staleKeyword->id).'"', false);
+        $response->assertSee('name="keyword_ids[]" value="'.((string) $freshKeyword->id).'"', false);
+        $response->assertSee('data-ai-visibility-select-all-clear-label', false);
+        $response->assertSee(__('admin.analytics.ai_visibility.collect.select_all_clear'), false);
+
+        $content = $response->getContent();
+        $inputPattern = function (int $id): string {
+            return '/<input[^>]*value="'.((string) $id).'"[^>]*>/';
+        };
+        $disabledAttrPattern = '/\s+disabled(?:\s*=\s*"[^"]*")?\s*(?:\/|>(?!\s*<\/input>))/';
+        $this->assertSame(1, preg_match($inputPattern($staleKeyword->id), $content, $staleMatch), 'Stale input must be rendered');
+        $this->assertSame(1, preg_match($inputPattern($freshKeyword->id), $content, $freshMatch), 'Fresh input must be rendered');
+        $this->assertSame(1, preg_match($disabledAttrPattern, $staleMatch[0]), 'Stale keyword checkbox should carry the disabled attribute');
+        $this->assertSame(0, preg_match($disabledAttrPattern, $freshMatch[0]), 'Fresh keyword checkbox must not be disabled');
 
         Carbon::setTestNow();
     }
