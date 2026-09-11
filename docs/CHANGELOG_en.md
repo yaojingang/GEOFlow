@@ -4,6 +4,12 @@ This document tracks user-facing updates in the public repository. For future Gi
 
 ## 2026-09-11
 
+### Local reverse-proxy origin fidelity
+
+- Fixed local Docker gateway handling when a host reverse proxy terminates TLS, so admin forms and redirects retain the public HTTPS scheme and port.
+- Local Compose now trusts only its direct Nginx caller by default and validates forwarded schemes and ports. Subdirectory deployments use `GEOFLOW_FORWARDED_PREFIX` as the fixed public prefix, overriding the client-supplied header.
+- Upgrade note: root Compose deployments that previously relied only on an outer proxy to send `X-Forwarded-Prefix` must add the fixed prefix to `.env` before rebuilding the `web` container.
+
 ### Idempotent WordPress distribution
 
 - WordPress distribution now reuses the known remote post ID for each article and channel. Saving unchanged content skips delivery, while content or channel changes update the same remote post.
