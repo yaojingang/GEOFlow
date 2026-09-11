@@ -22,6 +22,31 @@ final class InfrastructureGatewayConfigurationTest extends TestCase
         self::assertStringNotContainsString("\n  horizon:\n", $compose);
     }
 
+    public function test_fresh_checkout_configuration_matches_the_documented_local_gateway(): void
+    {
+        $localEnvironment = $this->read('.env.example');
+        $productionEnvironment = $this->read('.env.prod.example');
+        $readme = $this->read('README.md');
+
+        self::assertStringContainsString('APP_URL=http://localhost:18080', $localEnvironment);
+        self::assertStringContainsString('SITE_URL="${APP_URL}"', $localEnvironment);
+        self::assertStringContainsString('APP_PORT=18080', $localEnvironment);
+        self::assertStringContainsString('ADMIN_BASE_PATH=geo_admin', $localEnvironment);
+        self::assertStringContainsString('GEOFLOW_PRIMARY_HOSTS=localhost', $localEnvironment);
+        self::assertStringContainsString('REVERB_HOST=localhost', $localEnvironment);
+        self::assertStringContainsString('REVERB_PORT=18080', $localEnvironment);
+        self::assertStringContainsString('REVERB_SCHEME=http', $localEnvironment);
+        self::assertStringContainsString('REVERB_ALLOWED_ORIGINS=localhost', $localEnvironment);
+        self::assertStringContainsString('http://localhost:18080', $readme);
+        self::assertStringContainsString('http://localhost:18080/geo_admin/login', $readme);
+
+        self::assertStringContainsString('APP_URL=https://your-domain.com', $productionEnvironment);
+        self::assertStringContainsString(
+            'GEOFLOW_PRIMARY_HOSTS=your-domain.com,www.your-domain.com',
+            $productionEnvironment,
+        );
+    }
+
     public function test_local_nginx_serves_fingerprinted_assets_and_same_origin_reverb(): void
     {
         $nginx = $this->read('docker/nginx/local.conf');
