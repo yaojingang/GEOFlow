@@ -52,6 +52,7 @@ services:
       AUTO_FIX_STORAGE_PERMISSIONS: "${AUTO_FIX_STORAGE_PERMISSIONS:-true}"
       AUTO_INIT_ONCE: "true"
       GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED: "true"
+      TRUSTED_PROXIES: "${TRUSTED_PROXIES:-REMOTE_ADDR}"
     # 交给 entrypoint 执行自动初始化（生成 APP_KEY / migrate / geoflow:install）
     command: ["php", "artisan", "about"]
     volumes:
@@ -69,6 +70,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      TRUSTED_PROXIES: "${TRUSTED_PROXIES:-REMOTE_ADDR}"
     command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080", "--no-reload"]
     volumes:
       - ./:/var/www/html
@@ -82,11 +84,13 @@ services:
   web:
     image: nginx:1.27-alpine
     container_name: geoflow-web
+    environment:
+      GEOFLOW_FORWARDED_PREFIX: "${GEOFLOW_FORWARDED_PREFIX:-}"
     ports:
       - "127.0.0.1:${APP_PORT:-18080}:80"
     volumes:
       - ./:/var/www/html:ro
-      - ./docker/nginx/local.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/nginx/local.conf:/etc/nginx/templates/default.conf.template:ro
     depends_on:
       app:
         condition: service_started
