@@ -425,6 +425,26 @@ class ManualPublicationServiceTest extends TestCase
 
         $this->assertSame('https://example.com/b', $updated->publication_payload['source_url']);
         $this->assertArrayNotHasKey('publication_payload_extras', $updated->getAttributes());
+
+        $token = $admin->createToken('Retry browser', [
+            'browser-operations:read', 'browser-operations:execute',
+        ])->accessToken;
+        $inProgress = $service->transition($updated, ManualPublication::STATUS_IN_PROGRESS, 2, $admin);
+        $inProgress->forceFill([
+            'browser_claimed_by_token_id' => $token->id,
+            'browser_claimed_at' => now(),
+            'browser_last_seen_at' => now(),
+        ])->save();
+
+        $this->travel(11)->minutes();
+        $reopened = $service->transition($inProgress, ManualPublication::STATUS_READY, 3, $admin);
+
+        $this->assertSame('zhihu_answer', $reopened->publication_payload['target_action']);
+        $this->assertTrue($reopened->publication_payload['append_source_link']);
+        $this->assertSame('https://example.com/b', $reopened->publication_payload['source_url']);
+        $this->assertCount(1, $reopened->publication_payload['images']);
+        $this->assertSame('https://example.com/1.jpg', $reopened->publication_payload['images'][0]['url']);
+        $this->assertArrayNotHasKey('publication_payload_extras', $reopened->getAttributes());
     }
 
     private function admin(string $role = 'admin'): Admin

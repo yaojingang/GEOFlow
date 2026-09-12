@@ -61,6 +61,9 @@ class ManualPublicationService
             throw new DomainException((string) __('admin.manual_publications.error.claimed_immutable'));
         }
 
+        $data['publication_payload_extras'] = $data['publication_payload_extras']
+            ?? Arr::only((array) ($manualPublication->publication_payload ?? []), ['images', 'append_source_link', 'source_url']);
+
         $prepared = $this->prepare($data, $manualPublication);
         $this->ensureReadyRequirements($prepared + ['status' => (string) $manualPublication->status]);
         $prepared['duplicate_warning_count'] = $this->duplicateDetector
@@ -149,6 +152,10 @@ class ManualPublicationService
                 $updates['publication_payload'] = $this->publicationPayloadBuilder->build(array_merge(
                     $current->getAttributes(),
                     $updates,
+                    ['publication_payload_extras' => Arr::only(
+                        (array) ($current->publication_payload ?? []),
+                        ['images', 'append_source_link', 'source_url'],
+                    )],
                 ));
             }
 
