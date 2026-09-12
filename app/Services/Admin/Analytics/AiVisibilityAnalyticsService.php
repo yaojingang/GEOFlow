@@ -5,6 +5,7 @@ namespace App\Services\Admin\Analytics;
 use App\Data\Ai\SystemAiIdentity;
 use App\Models\AiVisibilityRun;
 use App\Models\AiVisibilitySource;
+use App\Models\AiVisibilityTopic;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityConfigurationResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -56,7 +57,7 @@ class AiVisibilityAnalyticsService
                 ->orderByRaw('COALESCE(rank, 999999) asc')
                 ->orderBy('id')])
             ->whereIn('id', $sampledRunIds)
-            ->select('id', 'keyword', 'provider_type', 'answer_text', 'analysis_json', 'completed_at', 'created_at')
+            ->select('id', 'keyword', 'provider_type', 'ai_visibility_topic_id', 'answer_text', 'analysis_json', 'completed_at', 'created_at')
             ->get()
             ->map(fn (AiVisibilityRun $run): array => $this->analyzeRunForKpis($run, $brandAliases, $ownedHosts));
 
@@ -98,7 +99,7 @@ class AiVisibilityAnalyticsService
                 ->orderByRaw('COALESCE(rank, 999999) asc')
                 ->orderBy('id')])
             ->whereIn('id', $sampledRunIds)
-            ->select('id', 'keyword', 'provider_type', 'provider_key', 'model_id', 'answer_text', 'analysis_json', 'completed_at', 'created_at')
+            ->select('id', 'keyword', 'provider_type', 'provider_key', 'model_id', 'ai_visibility_topic_id', 'answer_text', 'analysis_json', 'completed_at', 'created_at')
             ->orderBy('created_at')
             ->orderBy('id')
             ->get();
@@ -112,6 +113,7 @@ class AiVisibilityAnalyticsService
         $dailyKeywordMetrics = $this->dailyKeywordMetrics($analyzedRuns);
         $kpis = $this->kpis($dailyKeywordMetrics);
         $sourcePreferences = $this->sourcePreferences($analyzedRuns);
+        $topicNames = $this->topicNames();
         $todayRuns = $this->periodRunsQuery(now()->copy()->startOfDay(), now()->copy()->endOfDay(), $filter);
         $todayRunCount = (int) (clone $todayRuns)->count();
         $todayCompletedRunCount = (int) (clone $todayRuns)
@@ -158,9 +160,9 @@ class AiVisibilityAnalyticsService
             'keywords' => $this->keywordMetrics($dailyKeywordMetrics),
             'terms' => $this->termCloud($analyzedRuns),
             'sources' => $sourcePreferences,
-            'source_distribution' => $this->sourceDistribution($analyzedRuns),
+            'source_distribution' => $this->sourceDistribution($analyzedRuns, $topicNames),
             'attention_sources' => $this->attentionSources($sourcePreferences),
-            'competitors' => $this->competitorEvidence($analyzedRuns),
+            'competitors' => $this->competitorEvidence($analyzedRuns, $topicNames),
             'latest_runs' => $this->latestRuns($analyzedRuns),
         ];
     }
@@ -178,6 +180,7 @@ class AiVisibilityAnalyticsService
                     });
             })
             ->when($filter !== null && $filter->keyword !== '', fn (Builder $query) => $query->where('keyword', $filter->keyword))
+            ->when($filter !== null && $filter->topicId > 0, fn (Builder $query) => $query->where('ai_visibility_topic_id', $filter->topicId))
             ->when($filter !== null && $filter->provider !== 'all', fn (Builder $query) => $query->where('provider_type', $filter->provider));
     }
 
@@ -363,6 +366,7 @@ class AiVisibilityAnalyticsService
             'provider_type' => (string) $run->provider_type,
             'provider_key' => (string) $run->provider_key,
             'model_id' => (string) $run->model_id,
+            'topic_id' => $run->ai_visibility_topic_id === null ? 0 : (int) $run->ai_visibility_topic_id,
             'answer_text' => $answerText,
             'answer_mentions_brand' => $answerMentionsBrand,
             'brand_visible' => $answerMentionsBrand || $brandSourceRanks->contains(fn (int $rank): bool => $rank <= 3),
@@ -684,20 +688,27 @@ class AiVisibilityAnalyticsService
             ->all();
     }
 
-    private function sourceDistribution(Collection $runs): array
+    /**
+     * @param  Collection<int, array<string, mixed>>  $runs
+     * @param  array<int, string>  $topicNames
+     * @return list<array<string, mixed>>
+     */
+    private function sourceDistribution(Collection $runs, array $topicNames = []): array
     {
         $rows = [];
         foreach ($runs as $run) {
+            $topicName = (string) ($topicNames[(int) ($run['topic_id'] ?? 0)] ?? '未归类');
             foreach ($run['sources'] as $source) {
                 $name = (string) ($source['site_name'] ?: $source['domain'] ?: __('admin.growth_center.ai_visibility.unknown_source'));
-                $rows[$name] ??= ['name' => $name, 'count' => 0, 'domains' => [], 'authority' => []];
-                $rows[$name]['count']++;
+                $key = $topicName.'|'.$name;
+                $rows[$key] ??= ['name' => $name, 'topic' => $topicName, 'count' => 0, 'domains' => [], 'authority' => []];
+                $rows[$key]['count']++;
                 if ($source['domain'] !== '') {
-                    $rows[$name]['domains'][$source['domain']] = true;
+                    $rows[$key]['domains'][$source['domain']] = true;
                 }
                 $label = (string) ($source['authority_label'] ?? '');
                 if ($label !== '') {
-                    $rows[$name]['authority'][$label] = ($rows[$name]['authority'][$label] ?? 0) + 1;
+                    $rows[$key]['authority'][$label] = ($rows[$key]['authority'][$label] ?? 0) + 1;
                 }
             }
         }
@@ -711,26 +722,45 @@ class AiVisibilityAnalyticsService
         })->sortByDesc('count')->values()->take(20)->all();
     }
 
-    private function competitorEvidence(Collection $runs): array
+    /**
+     * @param  Collection<int, array<string, mixed>>  $runs
+     * @param  array<int, string>  $topicNames
+     * @return list<array<string, mixed>>
+     */
+    private function competitorEvidence(Collection $runs, array $topicNames = []): array
     {
         $rows = [];
         foreach ($runs as $run) {
+            $topicName = (string) ($topicNames[(int) ($run['topic_id'] ?? 0)] ?? '未归类');
             foreach (($run['analysis']['competitors'] ?? []) as $competitor) {
                 if (! is_array($competitor) || trim((string) ($competitor['name'] ?? '')) === '') {
                     continue;
                 }
                 $name = trim((string) $competitor['name']);
-                $rows[$name] ??= ['name' => $name, 'mention_count' => 0, 'evidence' => []];
+                $key = $topicName.'|'.$name;
+                $rows[$key] ??= ['name' => $name, 'topic' => $topicName, 'mention_count' => 0, 'evidence' => []];
                 foreach (($competitor['evidence'] ?? []) as $evidence) {
                     if (is_array($evidence) && trim((string) ($evidence['url'] ?? '')) !== '') {
-                        $rows[$name]['evidence'][(string) $evidence['url']] = $evidence;
+                        $rows[$key]['evidence'][(string) $evidence['url']] = $evidence;
                     }
                 }
-                $rows[$name]['mention_count'] = count($rows[$name]['evidence']);
+                $rows[$key]['mention_count'] = count($rows[$key]['evidence']);
             }
         }
 
         return collect($rows)->map(fn (array $row): array => [...$row, 'evidence' => array_values($row['evidence'])])->sortByDesc('mention_count')->values()->take(20)->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function topicNames(): array
+    {
+        if (! Schema::hasTable('ai_visibility_topics')) {
+            return [];
+        }
+
+        return AiVisibilityTopic::query()->pluck('name', 'id')->all();
     }
 
     /**

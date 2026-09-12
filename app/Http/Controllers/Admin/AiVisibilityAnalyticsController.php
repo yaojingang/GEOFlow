@@ -110,6 +110,9 @@ class AiVisibilityAnalyticsController extends Controller
                     AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
                     AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
                 ],
+                'visibilityTopics' => Schema::hasTable('ai_visibility_topics')
+                    ? AiVisibilityTopic::query()->orderBy('name')->get(['id', 'name'])
+                    : collect(),
             ],
             'aiVisibilityOverview' => $this->analytics->overview($filter),
             'selectedRun' => $this->selectedRun($request),

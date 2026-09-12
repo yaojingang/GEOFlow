@@ -559,8 +559,129 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_source_distribution_and_competitor_evidence_do_not_merge_rows_across_topics(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        $topicA = AiVisibilityTopic::query()->create([
+            'name' => '主题 Alpha',
+            'description' => '主题 A',
+        ]);
+        $topicB = AiVisibilityTopic::query()->create([
+            'name' => '主题 Beta',
+            'description' => '主题 B',
+        ]);
+        $cases = [
+            ['keyword' => 'Alpha 关键词', 'topicId' => (int) $topicA->id],
+            ['keyword' => 'Beta 关键词', 'topicId' => (int) $topicB->id],
+            ['keyword' => '未归类关键词', 'topicId' => null],
+        ];
+        foreach ($cases as $index => $case) {
+            $this->completedRun(
+                keyword: $case['keyword'],
+                providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+                answer: '竞品甲在该主题下被提及。',
+                sentiment: 'neutral',
+                completedAt: sprintf('2026-07-10 09:%02d:00', $index),
+                sources: [
+                    ['title' => '示例站点', 'domain' => 'example.com', 'rank' => 1, 'snippet' => '示例信源。'],
+                ],
+                topicId: $case['topicId'],
+                competitors: [
+                    ['name' => '竞品甲', 'evidence' => [
+                        ['url' => 'https://competitor.example.com/evidence-'.$index],
+                    ]],
+                ],
+            );
+        }
+
+        $overview = app(AiVisibilityAnalyticsService::class)->overview(AiVisibilityAnalyticsFilter::fromRequest([
+            'ai_preset' => 'custom',
+            'ai_date_from' => '2026-07-10',
+            'ai_date_to' => '2026-07-10',
+        ]));
+
+        $sourceRows = collect($overview['source_distribution'])->where('name', 'example.com')->values();
+        $this->assertCount(3, $sourceRows);
+        $this->assertSame(
+            ['主题 Alpha', '主题 Beta', '未归类'],
+            $sourceRows->pluck('topic')->sort()->values()->all(),
+        );
+        $this->assertSame(3, (int) $sourceRows->sum('count'));
+
+        $competitorRows = collect($overview['competitors'])->where('name', '竞品甲')->values();
+        $this->assertCount(3, $competitorRows);
+        $this->assertSame(
+            ['主题 Alpha', '主题 Beta', '未归类'],
+            $competitorRows->pluck('topic')->sort()->values()->all(),
+        );
+        $this->assertSame(3, (int) $competitorRows->sum('mention_count'));
+
+        Carbon::setTestNow();
+    }
+
+    public function test_ai_topic_filter_narrows_analytics_runs_and_panels(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        $topicA = AiVisibilityTopic::query()->create([
+            'name' => '主题 Alpha',
+            'description' => '主题 A',
+        ]);
+        $topicB = AiVisibilityTopic::query()->create([
+            'name' => '主题 Beta',
+            'description' => '主题 B',
+        ]);
+        foreach ([
+            ['keyword' => 'Alpha 关键词', 'topicId' => (int) $topicA->id],
+            ['keyword' => 'Beta 关键词', 'topicId' => (int) $topicB->id],
+        ] as $index => $case) {
+            $this->completedRun(
+                keyword: $case['keyword'],
+                providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+                answer: '竞品甲在该主题下被提及。',
+                sentiment: 'neutral',
+                completedAt: sprintf('2026-07-10 09:%02d:00', $index),
+                sources: [
+                    ['title' => '示例站点', 'domain' => 'example.com', 'rank' => 1, 'snippet' => '示例信源。'],
+                ],
+                topicId: $case['topicId'],
+                competitors: [
+                    ['name' => '竞品甲', 'evidence' => [
+                        ['url' => 'https://competitor.example.com/evidence-'.$index],
+                    ]],
+                ],
+            );
+        }
+
+        $this->assertSame(0, AiVisibilityAnalyticsFilter::fromRequest([])->topicId);
+        $this->assertSame(0, AiVisibilityAnalyticsFilter::fromRequest(['ai_topic' => 'all'])->topicId);
+        $this->assertSame(0, AiVisibilityAnalyticsFilter::fromRequest(['ai_topic' => 'abc'])->topicId);
+        $this->assertSame((int) $topicA->id, AiVisibilityAnalyticsFilter::fromRequest(['ai_topic' => (string) $topicA->id])->topicId);
+
+        $overview = app(AiVisibilityAnalyticsService::class)->overview(AiVisibilityAnalyticsFilter::fromRequest([
+            'ai_preset' => 'custom',
+            'ai_date_from' => '2026-07-10',
+            'ai_date_to' => '2026-07-10',
+            'ai_topic' => (string) $topicA->id,
+        ]));
+
+        $this->assertSame(1, $overview['polling']['runs']);
+        $this->assertSame(1, $overview['polling']['sampled_runs']);
+        $this->assertSame(
+            ['主题 Alpha'],
+            collect($overview['source_distribution'])->pluck('topic')->unique()->values()->all(),
+        );
+        $this->assertSame(
+            ['主题 Alpha'],
+            collect($overview['competitors'])->pluck('topic')->unique()->values()->all(),
+        );
+        $this->assertSame('Alpha 关键词', $overview['keywords'][0]['keyword']);
+
+        Carbon::setTestNow();
+    }
+
     /**
      * @param  list<array{title: string, domain: string, rank: int, snippet: string}>  $sources
+     * @param  list<array<string, mixed>>  $competitors
      */
     private function completedRun(
         string $keyword,
@@ -569,6 +690,8 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         string $sentiment,
         string $completedAt,
         array $sources,
+        ?int $topicId = null,
+        array $competitors = [],
     ): AiVisibilityRun {
         $run = AiVisibilityRun::query()->create([
             'keyword' => $keyword,
@@ -578,7 +701,10 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             'model_id' => 'test-model',
             'status' => AiVisibilityRun::STATUS_COMPLETED,
             'answer_text' => $answer,
-            'analysis_json' => ['sentiment' => $sentiment],
+            'ai_visibility_topic_id' => $topicId,
+            'analysis_json' => $competitors === []
+                ? ['sentiment' => $sentiment]
+                : ['sentiment' => $sentiment, 'competitors' => $competitors],
             'started_at' => Carbon::parse($completedAt)->subSeconds(20),
             'completed_at' => Carbon::parse($completedAt),
             'created_at' => Carbon::parse($completedAt),
