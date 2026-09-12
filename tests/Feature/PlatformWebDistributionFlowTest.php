@@ -373,6 +373,158 @@ class PlatformWebDistributionFlowTest extends TestCase
         $this->assertSame('extension_reported_failure', (string) $distribution->last_error_message);
     }
 
+    public function test_real_extension_receipt_updates_distribution_via_record_receipt(): void
+    {
+        [$article, $channel] = $this->fixtures('first');
+        $orchestrator = app(DistributionOrchestrator::class);
+        $ids = $orchestrator->enqueueForArticle($article);
+        $orchestrator->process(ArticleDistribution::query()->findOrFail($ids[0]));
+        $distribution = ArticleDistribution::query()->findOrFail($ids[0]);
+        $publication = ManualPublication::query()
+            ->where('source_distribution_id', (int) $distribution->id)
+            ->firstOrFail();
+        $admin = Admin::query()->findOrFail((int) $publication->assigned_admin_id);
+        $token = $admin->createToken('Receipt Chrome', [
+            'browser-operations:read', 'browser-operations:execute',
+        ])->plainTextToken;
+
+        $this->withHeaders($this->extensionHeaders($token) + [
+            'X-Idempotency-Key' => 'receipt-bridge-claim-1',
+        ])->postJson('/api/v1/manual-publications/'.$publication->id.'/claim', [
+            'revision' => (int) $publication->revision,
+        ])->assertOk()
+            ->assertJsonPath('data.publication.status', ManualPublication::STATUS_IN_PROGRESS);
+
+        $this->withHeaders($this->extensionHeaders($token) + [
+            'X-Idempotency-Key' => 'receipt-bridge-complete-1',
+        ])->postJson('/api/v1/manual-publications/'.$publication->id.'/receipt', [
+            'revision' => (int) $publication->revision + 1,
+            'outcome' => 'completed',
+            'completion_url' => 'https://mp.toutiao.com/profile_v4/graph/articles/detail/9',
+            'adapter_version' => '0.1.0',
+            'target_origin' => 'https://mp.toutiao.com',
+            'started_at' => now()->subMinute()->toIso8601String(),
+            'finished_at' => now()->toIso8601String(),
+        ])->assertOk()
+            ->assertJsonPath('data.publication.status', ManualPublication::STATUS_COMPLETED);
+
+        $distribution = $distribution->fresh();
+        $this->assertSame('synced', (string) $distribution->status);
+        $this->assertSame(
+            'https://mp.toutiao.com/profile_v4/graph/articles/detail/9',
+            (string) $distribution->remote_url,
+        );
+        $this->assertNull($distribution->last_error_message);
+        $this->assertDatabaseHas('distribution_logs', [
+            'event' => 'platform_web_receipt',
+            'article_distribution_id' => (int) $distribution->id,
+            'level' => 'info',
+        ]);
+    }
+
+    public function test_failed_receipt_marks_distribution_failed_via_record_receipt(): void
+    {
+        [$article, $channel] = $this->fixtures('first');
+        $orchestrator = app(DistributionOrchestrator::class);
+        $ids = $orchestrator->enqueueForArticle($article);
+        $orchestrator->process(ArticleDistribution::query()->findOrFail($ids[0]));
+        $distribution = ArticleDistribution::query()->findOrFail($ids[0]);
+        $publication = ManualPublication::query()
+            ->where('source_distribution_id', (int) $distribution->id)
+            ->firstOrFail();
+        $admin = Admin::query()->findOrFail((int) $publication->assigned_admin_id);
+        $token = $admin->createToken('Receipt Chrome', [
+            'browser-operations:read', 'browser-operations:execute',
+        ])->plainTextToken;
+
+        $this->withHeaders($this->extensionHeaders($token) + [
+            'X-Idempotency-Key' => 'receipt-bridge-claim-2',
+        ])->postJson('/api/v1/manual-publications/'.$publication->id.'/claim', [
+            'revision' => (int) $publication->revision,
+        ])->assertOk();
+
+        $this->withHeaders($this->extensionHeaders($token) + [
+            'X-Idempotency-Key' => 'receipt-bridge-fail-2',
+        ])->postJson('/api/v1/manual-publications/'.$publication->id.'/receipt', [
+            'revision' => (int) $publication->revision + 1,
+            'outcome' => 'failed',
+            'adapter_version' => '0.1.0',
+            'target_origin' => 'https://mp.toutiao.com',
+            'finished_at' => now()->toIso8601String(),
+            'error_code' => 'login_required',
+        ])->assertOk()
+            ->assertJsonPath('data.publication.status', ManualPublication::STATUS_FAILED);
+
+        $distribution = $distribution->fresh();
+        $this->assertSame('failed', (string) $distribution->status);
+        $this->assertSame('login_required', (string) $distribution->last_error_message);
+        $this->assertNull($distribution->remote_url);
+        $this->assertDatabaseHas('distribution_logs', [
+            'event' => 'platform_web_receipt',
+            'article_distribution_id' => (int) $distribution->id,
+            'level' => 'error',
+        ]);
+    }
+
+    public function test_bridge_failure_does_not_break_receipt(): void
+    {
+        [$article, $channel] = $this->fixtures('first');
+        $orchestrator = app(DistributionOrchestrator::class);
+        $ids = $orchestrator->enqueueForArticle($article);
+        $orchestrator->process(ArticleDistribution::query()->findOrFail($ids[0]));
+        $distribution = ArticleDistribution::query()->findOrFail($ids[0]);
+        $publication = ManualPublication::query()
+            ->where('source_distribution_id', (int) $distribution->id)
+            ->firstOrFail();
+        $admin = Admin::query()->findOrFail((int) $publication->assigned_admin_id);
+        $token = $admin->createToken('Receipt Chrome', [
+            'browser-operations:read', 'browser-operations:execute',
+        ])->plainTextToken;
+        $this->partialMock(PlatformWebDistributionBridge::class, function ($mock): void {
+            $mock->shouldReceive('handleReceipt')->andThrow(new \RuntimeException('bridge exploded'));
+        });
+
+        $this->withHeaders($this->extensionHeaders($token) + [
+            'X-Idempotency-Key' => 'receipt-bridge-claim-3',
+        ])->postJson('/api/v1/manual-publications/'.$publication->id.'/claim', [
+            'revision' => (int) $publication->revision,
+        ])->assertOk();
+
+        $this->withHeaders($this->extensionHeaders($token) + [
+            'X-Idempotency-Key' => 'receipt-bridge-complete-3',
+        ])->postJson('/api/v1/manual-publications/'.$publication->id.'/receipt', [
+            'revision' => (int) $publication->revision + 1,
+            'outcome' => 'completed',
+            'completion_url' => 'https://mp.toutiao.com/profile_v4/graph/articles/detail/10',
+            'adapter_version' => '0.1.0',
+            'target_origin' => 'https://mp.toutiao.com',
+            'started_at' => now()->subMinute()->toIso8601String(),
+            'finished_at' => now()->toIso8601String(),
+        ])->assertOk()
+            ->assertJsonPath('data.publication.status', ManualPublication::STATUS_COMPLETED);
+
+        $this->assertSame(
+            ManualPublication::STATUS_COMPLETED,
+            (string) $publication->fresh()->status,
+        );
+        $distribution = $distribution->fresh();
+        $this->assertSame('awaiting_extension', (string) $distribution->status);
+        $this->assertDatabaseMissing('distribution_logs', [
+            'event' => 'platform_web_receipt',
+            'article_distribution_id' => (int) $distribution->id,
+        ]);
+    }
+
+    /** @return array<string,string> */
+    private function extensionHeaders(string $plainToken): array
+    {
+        return [
+            'X-GEOFlow-Browser-Protocol' => '1',
+            'X-GEOFlow-Client-Version' => '0.1.0',
+            'Authorization' => 'Bearer '.$plainToken,
+        ];
+    }
+
     public function test_source_link_extra_flows_when_channel_opts_in(): void
     {
         [$article, $channelA] = $this->fixtures('first', ['append_source_link' => true]);

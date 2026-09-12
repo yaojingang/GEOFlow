@@ -11,15 +11,20 @@ use App\Models\ManualPublication;
 use App\Models\ManualPublicationAccount;
 use App\Models\ManualPublicationTransition;
 use App\Services\GeoFlow\ArticlePublicationQualityGate;
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebDistributionBridge;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 final class ManualPublicationBrowserService
 {
     public const STALE_AFTER_MINUTES = 10;
 
-    public function __construct(private readonly ArticlePublicationQualityGate $publicationQualityGate) {}
+    public function __construct(
+        private readonly ArticlePublicationQualityGate $publicationQualityGate,
+        private readonly PlatformWebDistributionBridge $platformWebBridge,
+    ) {}
 
     public function queue(Admin $admin, int $tokenId, int $perPage): LengthAwarePaginator
     {
@@ -203,6 +208,19 @@ final class ManualPublicationBrowserService
                 $resultNote,
                 $transitionedAt,
             );
+
+            // platform_web 桥接：扩展回执落定工单终态后写回分发行。
+            // 桥接失败绝不能让回执 HTTP 调用失败——对账命令（Task 7）会重推漏掉的回执。
+            if ($publication->source_distribution_id !== null) {
+                try {
+                    $this->platformWebBridge->handleReceipt($publication->refresh());
+                } catch (\Throwable $e) {
+                    Log::warning('platform_web 回执桥接失败，将由对账命令兜底。', [
+                        'manual_publication_id' => (int) $publication->getKey(),
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
 
             return $publication->refresh()->load(['account:id,account_name,platform,profile_url', 'persona:id,name']);
         });
