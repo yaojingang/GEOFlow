@@ -8,6 +8,7 @@ use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
 use App\Models\AiVisibilitySource;
 use App\Models\AiVisibilityTopic;
+use App\Models\AiVisibilityTopicKeyword;
 use App\Models\SiteSetting;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsFilter;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsService;
@@ -141,6 +142,113 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             'keyword' => 'GEOFlow AI 可见性',
             'ai_visibility_topic_id' => (int) $topic->id,
             'keyword_hash' => AiVisibilityKeywordNormalizer::hash('GEOFlow AI 可见性'),
+        ]);
+    }
+
+    public function test_assign_topic_attaches_run_and_registers_keyword_variant(): void
+    {
+        $topic = AiVisibilityTopic::query()->create([
+            'name' => '归类主题 A',
+            'description' => '未归类问题归类目标',
+        ]);
+        $run = $this->completedRun(
+            keyword: 'GEOFlow 未归类问题',
+            providerType: AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            answer: 'GEOFlow 可见。',
+            sentiment: 'neutral',
+            completedAt: '2026-07-10 09:00:00',
+            sources: [],
+        );
+        $run->update(['keyword_hash' => AiVisibilityKeywordNormalizer::hash('GEOFlow 未归类问题')]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.analytics.ai-visibility.assign-topic'), [
+                'run_id' => (int) $run->id,
+                'topic_id' => (int) $topic->id,
+            ])
+            ->assertRedirect(route('admin.analytics.ai-visibility', ['ai_run' => $run->id]));
+
+        $this->assertDatabaseHas('ai_visibility_runs', [
+            'id' => (int) $run->id,
+            'ai_visibility_topic_id' => (int) $topic->id,
+        ]);
+        $this->assertDatabaseHas('ai_visibility_topic_keywords', [
+            'keyword_hash' => AiVisibilityKeywordNormalizer::hash('GEOFlow 未归类问题'),
+            'keyword' => 'GEOFlow 未归类问题',
+            'ai_visibility_topic_id' => (int) $topic->id,
+        ]);
+    }
+
+    public function test_assign_topic_is_idempotent_and_rebinds_variant_to_new_topic(): void
+    {
+        $topicA = AiVisibilityTopic::query()->create([
+            'name' => '归类主题 A',
+            'description' => '初始归类',
+        ]);
+        $topicB = AiVisibilityTopic::query()->create([
+            'name' => '归类主题 B',
+            'description' => '重新归类',
+        ]);
+        $run = $this->completedRun(
+            keyword: 'GEOFlow 重复归类',
+            providerType: AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            answer: 'GEOFlow 可见。',
+            sentiment: 'neutral',
+            completedAt: '2026-07-10 09:00:00',
+            sources: [],
+        );
+        $run->update(['keyword_hash' => AiVisibilityKeywordNormalizer::hash('GEOFlow 重复归类')]);
+        $admin = $this->admin();
+        $assign = fn (int $topicId) => $this->actingAs($admin, 'admin')
+            ->post(route('admin.analytics.ai-visibility.assign-topic'), [
+                'run_id' => (int) $run->id,
+                'topic_id' => $topicId,
+            ]);
+
+        $assign((int) $topicA->id)->assertRedirect();
+        $assign((int) $topicA->id)->assertRedirect();
+        $assign((int) $topicB->id)->assertRedirect(route('admin.analytics.ai-visibility', ['ai_run' => $run->id]));
+
+        $this->assertDatabaseHas('ai_visibility_runs', [
+            'id' => (int) $run->id,
+            'ai_visibility_topic_id' => (int) $topicB->id,
+        ]);
+        $this->assertSame(1, AiVisibilityTopicKeyword::query()->count());
+        $this->assertDatabaseHas('ai_visibility_topic_keywords', [
+            'keyword_hash' => AiVisibilityKeywordNormalizer::hash('GEOFlow 重复归类'),
+            'ai_visibility_topic_id' => (int) $topicB->id,
+        ]);
+    }
+
+    public function test_assign_topic_skips_binding_for_punctuation_only_keywords(): void
+    {
+        $topic = AiVisibilityTopic::query()->create([
+            'name' => '归类主题 C',
+            'description' => '标点关键词不落绑定',
+        ]);
+        $run = $this->completedRun(
+            keyword: '!!!',
+            providerType: AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            answer: 'GEOFlow 可见。',
+            sentiment: 'neutral',
+            completedAt: '2026-07-10 09:00:00',
+            sources: [],
+        );
+        $run->update(['keyword_hash' => AiVisibilityKeywordNormalizer::hash('!!!')]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.analytics.ai-visibility.assign-topic'), [
+                'run_id' => (int) $run->id,
+                'topic_id' => (int) $topic->id,
+            ])
+            ->assertRedirect(route('admin.analytics.ai-visibility', ['ai_run' => $run->id]));
+
+        $this->assertDatabaseHas('ai_visibility_runs', [
+            'id' => (int) $run->id,
+            'ai_visibility_topic_id' => (int) $topic->id,
+        ]);
+        $this->assertDatabaseMissing('ai_visibility_topic_keywords', [
+            'keyword_hash' => AiVisibilityKeywordNormalizer::hash('!!!'),
         ]);
     }
 

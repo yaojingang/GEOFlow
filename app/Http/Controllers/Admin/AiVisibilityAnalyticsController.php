@@ -6,9 +6,11 @@ use App\Data\Ai\SystemAiIdentity;
 use App\Http\Controllers\Controller;
 use App\Models\AiVisibilityRun;
 use App\Models\AiVisibilityTopic;
+use App\Models\AiVisibilityTopicKeyword;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsFilter;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsService;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityConfigurationResolver;
+use App\Services\GeoFlow\AiVisibility\AiVisibilityKeywordNormalizer;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityService;
 use App\Services\GeoFlow\AiVisibility\AiVisibilitySourceData;
 use App\Support\AdminWeb;
@@ -69,6 +71,24 @@ class AiVisibilityAnalyticsController extends Controller
         }
 
         return redirect()->route('admin.analytics.ai-visibility', ['ai_run' => $run->id])->with('message', '搜索完成');
+    }
+
+    public function assignTopic(Request $request): RedirectResponse
+    {
+        $payload = $request->validate([
+            'run_id' => ['required', 'integer', 'exists:ai_visibility_runs,id'],
+            'topic_id' => ['required', 'integer', 'exists:ai_visibility_topics,id'],
+        ]);
+        $run = AiVisibilityRun::query()->findOrFail((int) $payload['run_id']);
+        $run->update(['ai_visibility_topic_id' => (int) $payload['topic_id']]);
+        if ($run->keyword_hash !== null && $run->keyword_hash !== AiVisibilityKeywordNormalizer::hash('')) {
+            AiVisibilityTopicKeyword::query()->updateOrCreate(
+                ['keyword_hash' => $run->keyword_hash],
+                ['ai_visibility_topic_id' => (int) $payload['topic_id'], 'keyword' => $run->keyword],
+            );
+        }
+
+        return redirect()->route('admin.analytics.ai-visibility', ['ai_run' => $run->id])->with('message', '已归类');
     }
 
     public function __invoke(Request $request): View

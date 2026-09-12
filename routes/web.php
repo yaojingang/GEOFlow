@@ -165,6 +165,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('traffic', TrafficAnalyticsController::class)->name('traffic');
             Route::get('ai-visibility', AiVisibilityAnalyticsController::class)->name('ai-visibility');
             Route::post('ai-visibility/search', [AiVisibilityAnalyticsController::class, 'search'])->middleware('throttle:admin-sensitive')->name('ai-visibility.search');
+            Route::post('ai-visibility/assign-topic', [AiVisibilityAnalyticsController::class, 'assignTopic'])->middleware('throttle:admin-sensitive')->name('ai-visibility.assign-topic');
             Route::get('leads', LeadAnalyticsController::class)->name('leads');
             Route::get('distribution', DistributionAnalyticsController::class)
                 ->middleware('admin.super')
