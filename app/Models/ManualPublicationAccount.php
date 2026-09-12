@@ -26,6 +26,12 @@ class ManualPublicationAccount extends Model
 
     public const PLATFORM_LINKEDIN = 'linkedin';
 
+    public const PLATFORM_TOUTIAO = 'toutiao';
+
+    public const PLATFORM_SOHU = 'sohu';
+
+    public const PLATFORM_NETEASE = 'netease';
+
     public const PLATFORM_CUSTOM = 'custom';
 
     public const PLATFORMS = [
@@ -38,6 +44,9 @@ class ManualPublicationAccount extends Model
         self::PLATFORM_REDDIT,
         self::PLATFORM_X,
         self::PLATFORM_LINKEDIN,
+        self::PLATFORM_TOUTIAO,
+        self::PLATFORM_SOHU,
+        self::PLATFORM_NETEASE,
         self::PLATFORM_CUSTOM,
     ];
 
