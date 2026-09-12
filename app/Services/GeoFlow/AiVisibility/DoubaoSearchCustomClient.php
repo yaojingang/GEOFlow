@@ -59,23 +59,60 @@ final class DoubaoSearchCustomClient
      */
     private function buildPayload(string $query, array $options): array
     {
+        $legacy = ! array_key_exists('mode', $options);
+        $mode = strtolower((string) ($options['mode'] ?? 'custom')) === 'global' ? 'global' : 'custom';
+        $sites = $this->pipeList($options['sites'] ?? null);
+        $blockHosts = $this->pipeList($options['block_hosts'] ?? null);
+        $contentFormats = strtolower((string) ($options['content_formats'] ?? 'text'));
+        $contentFormats = in_array($contentFormats, ['text', 'markdown'], true) ? $contentFormats : 'text';
+        if ($legacy) {
+            return array_filter([
+                'Query' => $query,
+                'SearchType' => $options['search_type'] ?? 'web',
+                'Count' => max(1, min(20, (int) ($options['count'] ?? config('geoflow.ai_visibility.default_search_count', 10)))),
+                'NeedSummary' => $options['need_summary'] ?? true,
+                'AuthInfoLevel' => $options['auth_info_level'] ?? null,
+                'Filter' => array_filter([
+                    'NeedContent' => $options['need_content'] ?? true, 'NeedUrl' => $options['need_url'] ?? true,
+                    'Sites' => is_array($options['sites'] ?? null) ? $options['sites'] : null,
+                    'BlockHosts' => is_array($options['block_hosts'] ?? null) ? $options['block_hosts'] : null,
+                    'TimeRange' => $options['time_range'] ?? null, 'ContentFormats' => $options['content_formats'] ?? 'Markdown',
+                ], static fn (mixed $value): bool => $value !== null && $value !== ''),
+            ], static fn (mixed $value): bool => $value !== null && $value !== '' && $value !== []);
+        }
         $filter = array_filter([
             'NeedContent' => $options['need_content'] ?? true,
             'NeedUrl' => $options['need_url'] ?? true,
-            'Sites' => $options['sites'] ?? null,
-            'BlockHosts' => $options['block_hosts'] ?? null,
+            'Sites' => $sites !== '' ? $sites : null,
+            'BlockHosts' => $blockHosts !== '' ? $blockHosts : null,
             'TimeRange' => $options['time_range'] ?? null,
-            'ContentFormats' => $options['content_formats'] ?? 'Markdown',
+            'AuthInfoLevel' => isset($options['auth_info_level']) && $options['auth_info_level'] !== '' ? (int) $options['auth_info_level'] : null,
+            'Industry' => $options['industry'] ?? null,
+            'ContentFormats' => $contentFormats,
+            'SummaryLength' => isset($options['summary_length']) ? (int) $options['summary_length'] : null,
+            'ImageCount' => isset($options['image_count']) ? (int) $options['image_count'] : null,
         ], static fn (mixed $value): bool => $value !== null && $value !== '');
 
         return array_filter([
             'Query' => $query,
             'SearchType' => $options['search_type'] ?? 'web',
-            'Count' => max(1, min(20, (int) ($options['count'] ?? config('geoflow.ai_visibility.default_search_count', 10)))),
+            'Count' => max(1, min($mode === 'global' ? 20 : 50, (int) ($options['count'] ?? config('geoflow.ai_visibility.default_search_count', 10)))),
             'NeedSummary' => $options['need_summary'] ?? true,
-            'AuthInfoLevel' => $options['auth_info_level'] ?? null,
             'Filter' => $filter,
+            'QueryControl' => ['QueryRewrite' => (bool) ($options['query_rewrite'] ?? false)],
         ], static fn (mixed $value): bool => $value !== null && $value !== '' && $value !== []);
+    }
+
+    private function pipeList(mixed $value): string
+    {
+        if (is_string($value)) {
+            return collect(explode('|', $value))->map(fn (string $item): string => trim($item))->filter()->unique()->implode('|');
+        }
+        if (! is_array($value)) {
+            return '';
+        }
+
+        return collect($value)->filter(fn (mixed $item): bool => is_scalar($item))->map(fn (mixed $item): string => trim((string) $item))->filter()->unique()->implode('|');
     }
 
     private function endpoint(AiSourceProvider $provider): string

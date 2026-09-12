@@ -109,6 +109,52 @@ class AiVisibilityServiceTest extends TestCase
             && ($request['Filter']['BlockHosts'] ?? null) === ['blocked.example']);
     }
 
+    public function test_custom_search_builds_the_documented_filter_and_query_control_payload(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://open.feedcoopapi.com/search_api/web_search' => Http::response(['Result' => ['WebResults' => []]])]);
+
+        $provider = $this->createSearchProvider();
+        app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, 'GEOFlow', [
+            'mode' => 'custom',
+            'count' => 50,
+            'query_rewrite' => true,
+            'time_range' => 'OneMonth',
+            'industry' => 'finance',
+            'sites' => ['toutiao.com', 'zhonghua.com'],
+            'block_hosts' => ['spam.example'],
+            'auth_info_level' => 1,
+            'content_formats' => 'markdown',
+            'summary_length' => 1200,
+            'image_count' => 4,
+        ]);
+
+        Http::assertSent(fn ($request): bool => $request['Count'] === 50
+            && ($request['QueryControl']['QueryRewrite'] ?? null) === true
+            && ($request['Filter']['TimeRange'] ?? null) === 'OneMonth'
+            && ($request['Filter']['Industry'] ?? null) === 'finance'
+            && ($request['Filter']['Sites'] ?? null) === 'toutiao.com|zhonghua.com'
+            && ($request['Filter']['BlockHosts'] ?? null) === 'spam.example'
+            && ($request['Filter']['AuthInfoLevel'] ?? null) === 1
+            && ($request['Filter']['ContentFormats'] ?? null) === 'markdown');
+        $request = Http::recorded()[0][0];
+        $this->assertSame(1200, $request['Filter']['SummaryLength']);
+        $this->assertSame(4, $request['Filter']['ImageCount']);
+    }
+
+    public function test_global_search_caps_the_result_count_at_twenty(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://open.feedcoopapi.com/search_api/web_search' => Http::response(['Result' => ['WebResults' => []]])]);
+
+        app(AiVisibilityService::class)->runDoubaoSearchCustom($this->createSearchProvider(), 'GEOFlow', [
+            'mode' => 'global',
+            'count' => 50,
+        ]);
+
+        Http::assertSent(fn ($request): bool => $request['Count'] === 20);
+    }
+
     public function test_it_persists_doubao_ark_responses_answer_and_sources(): void
     {
         Http::preventStrayRequests();

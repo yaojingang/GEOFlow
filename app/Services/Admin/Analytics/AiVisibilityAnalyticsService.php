@@ -122,6 +122,10 @@ class AiVisibilityAnalyticsService
             ->selectRaw('COUNT(DISTINCT LOWER(TRIM(keyword))) as aggregate')
             ->toBase()
             ->value('aggregate') ?? 0);
+        $latestCompletedAt = $sampledRuns
+            ->pluck('completed_at')
+            ->filter()
+            ->max();
 
         return [
             'ready' => true,
@@ -148,12 +152,15 @@ class AiVisibilityAnalyticsService
                 'today_completed_runs' => $todayCompletedRunCount,
                 'today_keyword_count' => $todayKeywordCount,
                 'today_target_samples' => $todayKeywordCount * self::DAILY_SAMPLE_TARGET,
+                'latest_completed_at' => $latestCompletedAt,
             ],
             'trend' => $this->trend($dailyKeywordMetrics, $start, $days),
             'keywords' => $this->keywordMetrics($dailyKeywordMetrics),
             'terms' => $this->termCloud($analyzedRuns),
             'sources' => $sourcePreferences,
+            'source_distribution' => $this->sourceDistribution($analyzedRuns),
             'attention_sources' => $this->attentionSources($sourcePreferences),
+            'competitors' => $this->competitorEvidence($analyzedRuns),
             'latest_runs' => $this->latestRuns($analyzedRuns),
         ];
     }
@@ -188,6 +195,7 @@ class AiVisibilityAnalyticsService
             'summary',
             'content_excerpt',
             'rank',
+            'authority_level',
         ];
     }
 
@@ -247,12 +255,15 @@ class AiVisibilityAnalyticsService
                 'today_completed_runs' => 0,
                 'today_keyword_count' => 0,
                 'today_target_samples' => 0,
+                'latest_completed_at' => null,
             ],
             'trend' => $this->trend(collect(), $start, $days),
             'keywords' => [],
             'terms' => [],
             'sources' => [],
+            'source_distribution' => [],
             'attention_sources' => [],
+            'competitors' => [],
             'latest_runs' => [],
         ];
     }
@@ -327,6 +338,8 @@ class AiVisibilityAnalyticsService
                     'url' => trim((string) $source->url),
                     'domain' => $domain,
                     'site_name' => trim((string) $source->site_name),
+                    'authority_level' => trim((string) $source->authority_level),
+                    'authority_label' => $this->authorityLabel($source->authority_level),
                     'rank' => $rank,
                     'brand_mentioned' => $brandMentioned,
                     'text' => $brandText,
@@ -365,6 +378,7 @@ class AiVisibilityAnalyticsService
                 'rank' => $source['rank'],
                 'terms' => $this->extractTerms($source['term_text'], $brandAliases),
             ])->all(),
+            'analysis' => is_array($run->analysis_json) ? $run->analysis_json : [],
             'created_at' => $run->created_at?->toDateTimeString(),
         ];
     }
@@ -670,6 +684,55 @@ class AiVisibilityAnalyticsService
             ->all();
     }
 
+    private function sourceDistribution(Collection $runs): array
+    {
+        $rows = [];
+        foreach ($runs as $run) {
+            foreach ($run['sources'] as $source) {
+                $name = (string) ($source['site_name'] ?: $source['domain'] ?: __('admin.growth_center.ai_visibility.unknown_source'));
+                $rows[$name] ??= ['name' => $name, 'count' => 0, 'domains' => [], 'authority' => []];
+                $rows[$name]['count']++;
+                if ($source['domain'] !== '') {
+                    $rows[$name]['domains'][$source['domain']] = true;
+                }
+                $label = (string) ($source['authority_label'] ?? '');
+                if ($label !== '') {
+                    $rows[$name]['authority'][$label] = ($rows[$name]['authority'][$label] ?? 0) + 1;
+                }
+            }
+        }
+
+        return collect($rows)->map(function (array $row): array {
+            $row['domains'] = array_keys($row['domains']);
+            arsort($row['authority']);
+            $row['top_authority'] = (string) (array_key_first($row['authority']) ?? '');
+
+            return $row;
+        })->sortByDesc('count')->values()->take(20)->all();
+    }
+
+    private function competitorEvidence(Collection $runs): array
+    {
+        $rows = [];
+        foreach ($runs as $run) {
+            foreach (($run['analysis']['competitors'] ?? []) as $competitor) {
+                if (! is_array($competitor) || trim((string) ($competitor['name'] ?? '')) === '') {
+                    continue;
+                }
+                $name = trim((string) $competitor['name']);
+                $rows[$name] ??= ['name' => $name, 'mention_count' => 0, 'evidence' => []];
+                foreach (($competitor['evidence'] ?? []) as $evidence) {
+                    if (is_array($evidence) && trim((string) ($evidence['url'] ?? '')) !== '') {
+                        $rows[$name]['evidence'][(string) $evidence['url']] = $evidence;
+                    }
+                }
+                $rows[$name]['mention_count'] = count($rows[$name]['evidence']);
+            }
+        }
+
+        return collect($rows)->map(fn (array $row): array => [...$row, 'evidence' => array_values($row['evidence'])])->sortByDesc('mention_count')->values()->take(20)->all();
+    }
+
     /**
      * @param  Collection<int, array<string, mixed>>  $runs
      * @return list<array<string, mixed>>
@@ -680,6 +743,7 @@ class AiVisibilityAnalyticsService
             ->sortByDesc('created_at')
             ->take(5)
             ->map(fn (array $run): array => [
+                'id' => $run['id'],
                 'keyword' => $run['keyword'],
                 'provider_type' => $run['provider_type'],
                 'date' => $run['date'],
@@ -687,6 +751,9 @@ class AiVisibilityAnalyticsService
                 'top1' => $run['top1'],
                 'top3' => $run['top3'],
                 'sentiment' => $run['sentiment'],
+                'best_brand_rank' => $run['best_brand_rank'],
+                'answer_excerpt' => Str::limit(preg_replace('/\s+/u', ' ', $run['answer_text']) ?: '', 180),
+                'source_count' => count($run['sources']),
             ])
             ->values()
             ->all();
@@ -921,6 +988,13 @@ class AiVisibilityAnalyticsService
         }
 
         return $this->normalizeHost($domain);
+    }
+
+    private function authorityLabel(mixed $level): string
+    {
+        return match ((string) $level) {
+            '1' => '非常权威', '2' => '正常权威', '3' => '一般权威', '4' => '一般不权威', default => ''
+        };
     }
 
     private function normalizeHost(string $host): string

@@ -54,7 +54,7 @@ final class DeepSeekAnalysisClient
         $providerName = OpenAiRuntimeProvider::registerProvider('ai_visibility_deepseek', $driver, $providerUrl, $apiKey);
         $maxTokens = (int) ($options['max_tokens'] ?? config('geoflow.ai_visibility.default_analysis_max_tokens', 4096));
         $agent = new MarkdownContentWriterAgent(
-            instructions: '你是 GEO/AI 可见性分析助手。请基于输入的 AI 回答和信源做可执行分析，明确区分事实、推断和投放建议。',
+            instructions: '你是 GEO/AI 可见性分析助手。请基于输入信源识别竞品同行：必须列出信源中提到的所有竞品品牌（通常不止一个），不要只挑一个，也不要遗漏。输出严格 JSON：{"competitors":[{"name":"","aliases":[],"confidence":0.0,"evidence":[{"url":"","reason":""}]}]}。evidence.url 必须逐字复制输入信源 URL，禁止改写、截断、增删参数或编造；信源中确实提到但找不到对应 URL 的竞品也要列出，evidence 使用空数组。没有可靠竞品时返回空数组。',
             maxTokens: $maxTokens > 0 ? $maxTokens : null,
         );
 

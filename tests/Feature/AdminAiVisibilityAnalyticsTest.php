@@ -63,6 +63,9 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             ->get(route('admin.analytics.ai-visibility'))
             ->assertOk()
             ->assertSee(__('admin.growth_center.ai_visibility.title'))
+            ->assertSee(__('admin.growth_center.ai_visibility.status_title'))
+            ->assertSee(__('admin.growth_center.ai_visibility.valid_samples'))
+            ->assertSee(__('admin.growth_center.ai_visibility.last_updated'))
             ->assertSee(__('admin.growth_center.ai_visibility.kpi.visibility'))
             ->assertSee(__('admin.growth_center.ai_visibility.trend_title'))
             ->assertSee(__('admin.growth_center.ai_visibility.term_cloud_title'))
@@ -87,9 +90,26 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             ->assertSee('GEOFlow 内容工程')
             ->assertSee('AI 信源投放')
             ->assertSee('ranking.example.com')
-            ->assertSee(__('admin.growth_center.ai_visibility.action.content_gap'));
+            ->assertSee(__('admin.growth_center.ai_visibility.action.content_gap'))
+            ->assertSee('data-ai-visibility-section="keywords"', false)
+            ->assertSee('data-ai-visibility-section="sources"', false)
+            ->assertSee('data-ai-visibility-section="samples"', false)
+            ->assertSee(__('admin.growth_center.ai_visibility.sample_basis', ['count' => 3]))
+            ->assertDontSee('data-analytics-series="samples"', false);
 
         Carbon::setTestNow();
+    }
+
+    public function test_ai_visibility_page_exposes_search_workspace_and_evidence_contract(): void
+    {
+        $this->configureAiVisibilityApis();
+        $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.analytics.ai-visibility'))
+            ->assertOk()
+            ->assertSee('data-ai-visibility-search-workspace', false)
+            ->assertSee(route('admin.analytics.ai-visibility.search'), false)
+            ->assertSee('data-doubao-mode', false)
+            ->assertSee('开始搜索');
     }
 
     public function test_growth_center_collapses_ai_visibility_module_until_search_api_is_configured(): void
@@ -264,6 +284,40 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         $this->assertCount(5, array_unique($retrievedRunIds));
         $this->assertSame(0.0, $overview['kpis']['brand_visibility']);
         $this->assertSame(0.0, $overview['kpis']['top1_rate']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_latest_update_time_stays_within_the_selected_visibility_period(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        config()->set('geoflow.site_name', 'GEOFlow');
+        config()->set('geoflow.site_url', 'https://geoflow.example.com');
+
+        $this->completedRun(
+            keyword: '范围内关键词',
+            providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+            answer: 'GEOFlow 可见。',
+            sentiment: 'positive',
+            completedAt: '2026-07-10 09:00:00',
+            sources: [],
+        );
+        $this->completedRun(
+            keyword: '范围外关键词',
+            providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+            answer: 'GEOFlow 可见。',
+            sentiment: 'positive',
+            completedAt: '2026-07-11 09:00:00',
+            sources: [],
+        );
+
+        $overview = app(AiVisibilityAnalyticsService::class)->overview(AiVisibilityAnalyticsFilter::fromRequest([
+            'ai_preset' => 'custom',
+            'ai_date_from' => '2026-07-10',
+            'ai_date_to' => '2026-07-10',
+        ]));
+
+        $this->assertSame('2026-07-10 09:00:00', (string) $overview['polling']['latest_completed_at']);
 
         Carbon::setTestNow();
     }
