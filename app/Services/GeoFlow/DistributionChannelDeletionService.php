@@ -13,12 +13,17 @@ use App\Models\HostedSiteAllocationRequest;
 use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
 use App\Models\Task;
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebDistributionBridge;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class DistributionChannelDeletionService
 {
+    public function __construct(
+        private readonly PlatformWebDistributionBridge $platformWebDistributionBridge,
+    ) {}
+
     public function isSchemaReady(): bool
     {
         return Schema::hasTable((new DistributionChannelOperation)->getTable());
@@ -233,6 +238,26 @@ class DistributionChannelDeletionService
                     'last_error_message' => __('admin.distribution.delete.queued_cancelled_error'),
                     'updated_at' => now(),
                 ]);
+            // awaiting_extension 行与排队作业同样处理：失败落定并联动取消挂起的扩展发布工单。
+            $awaitingExtensionIds = ArticleDistribution::query()
+                ->where('distribution_channel_id', (int) $lockedChannel->id)
+                ->where('status', 'awaiting_extension')
+                ->pluck('id')
+                ->map(static fn ($id): int => (int) $id)
+                ->all();
+            ArticleDistribution::query()
+                ->where('distribution_channel_id', (int) $lockedChannel->id)
+                ->where('status', 'awaiting_extension')
+                ->update([
+                    'status' => 'failed',
+                    'next_retry_at' => null,
+                    'last_error_message' => __('admin.distribution.delete.queued_cancelled_error'),
+                    'updated_at' => now(),
+                ]);
+            if ($awaitingExtensionIds !== []) {
+                $this->platformWebDistributionBridge
+                    ->cancelWorkOrdersForDistributions($awaitingExtensionIds, '渠道删除，扩展发布工单已取消。');
+            }
 
             return $lockedChannel->fresh();
         });

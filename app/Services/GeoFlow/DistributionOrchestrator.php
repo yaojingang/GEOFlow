@@ -373,13 +373,15 @@ class DistributionOrchestrator
                         return null;
                     }
 
-                    // platform_web 严禁重发第一层：同平台（任意 platform_web 渠道）已有 synced 分发行时跳过该渠道。
+                    // platform_web 严禁重发第一层：同平台（任意 platform_web 渠道）存在未落定的分发行
+                    // （synced/awaiting_extension/sending/outcome_unknown，不含 queued，以免阻断同渠道
+                    // 失败后的重新入队）时跳过该渠道。
                     if ($lockedChannel->isPlatformWeb()) {
                         $platform = (string) $lockedChannel->resolvedPlatformWebConfig()['platform'];
                         $syncedExists = ArticleDistribution::query()
                             ->where('article_id', (int) $articleModel->id)
                             ->where('action', $action)
-                            ->where('status', 'synced')
+                            ->whereIn('status', ['synced', 'awaiting_extension', 'sending', 'outcome_unknown'])
                             ->whereHas('channel', fn ($query) => $query
                                 ->where('channel_type', DistributionChannel::TYPE_PLATFORM_WEB)
                                 ->where('channel_config->platform', $platform))
@@ -959,6 +961,12 @@ class DistributionOrchestrator
 
     public function enqueueChannelContentRefresh(DistributionChannel $channel): int
     {
+        // platform_web 渠道由 Chrome 扩展代发布，没有可刷新的站点内容，直接跳过，
+        // 避免把 awaiting_extension/failed 分发行改写成 action=update。
+        if ($channel->isPlatformWeb()) {
+            return 0;
+        }
+
         $channelId = (int) $channel->id;
         $count = 0;
         ArticleDistribution::query()
@@ -1127,18 +1135,47 @@ class DistributionOrchestrator
             ? null
             : hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
 
-        [$distribution, $channel] = $this->claimImmediateAction($distribution, $action, $payloadHash);
+        [$distribution, $channel, $priorStatus, $priorAction] = $this->claimImmediateAction($distribution, $action, $payloadHash);
 
         $this->channelOperationLeaseService->run(
             $channel,
             'article_'.$action,
-            function (DistributionChannel $lockedChannel) use ($distribution, $action, $payload, $article): void {
+            function (DistributionChannel $lockedChannel) use ($distribution, $action, $payload, $article, $priorStatus, $priorAction): void {
                 $publisher = $this->publisherManager->forChannel($lockedChannel);
                 $response = $action === 'delete'
                     ? $publisher->delete($distribution)
                     : $publisher->update($distribution, $payload);
 
                 $responseMeta = is_array($response['remote_meta'] ?? null) ? $response['remote_meta'] : [];
+                // platform_web 等发布器通过 supported=false 声明不支持该操作：
+                // 恢复领取前状态并留痕，绝不标记 synced（否则会造成“假同步”）。
+                if (($response['supported'] ?? true) === false) {
+                    if ((string) $priorStatus !== 'sending') {
+                        ArticleDistribution::query()
+                            ->whereKey((int) $distribution->id)
+                            ->where('status', 'sending')
+                            ->update([
+                                'status' => $priorStatus,
+                                'action' => $priorAction,
+                                'updated_at' => now(),
+                            ]);
+                    }
+                    $this->log(
+                        'warning',
+                        'platform_web 渠道不支持该操作，已保留原分发状态。',
+                        (int) $lockedChannel->id,
+                        (int) $distribution->id,
+                        (int) $article->id,
+                        [
+                            'event' => 'platform_web_action_unsupported',
+                            'action' => $action,
+                            'reason' => (string) ($responseMeta['reason'] ?? ''),
+                        ],
+                    );
+
+                    return;
+                }
+
                 $saved = DB::transaction(function () use ($distribution, $response, $responseMeta, $action): bool {
                     $article = Article::query()
                         ->whereKey((int) $distribution->article_id)
@@ -1201,7 +1238,7 @@ class DistributionOrchestrator
     }
 
     /**
-     * @return array{ArticleDistribution,DistributionChannel}
+     * @return array{ArticleDistribution,DistributionChannel,string,string}
      */
     private function claimImmediateAction(ArticleDistribution $candidate, string $action, ?string $payloadHash): array
     {
@@ -1240,6 +1277,8 @@ class DistributionOrchestrator
                 throw new \RuntimeException($message);
             }
 
+            $priorStatus = (string) $distribution->status;
+            $priorAction = (string) $distribution->action;
             $distribution->forceFill([
                 'action' => $action,
                 'status' => 'sending',
@@ -1255,7 +1294,7 @@ class DistributionOrchestrator
                 ),
             ])->save();
 
-            return [$distribution, $channel];
+            return [$distribution, $channel, $priorStatus, $priorAction];
         });
     }
 

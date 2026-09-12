@@ -40,11 +40,12 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
         $config = $channel->resolvedPlatformWebConfig();
         $platform = (string) $config['platform'];
 
-        // 严禁重发第二层：同平台任意 platform_web 渠道已 synced 的分发行存在则直接拦截。
+        // 严禁重发第二层：同平台任意 platform_web 渠道存在未落定的分发行（synced/awaiting_extension/
+        // sending/outcome_unknown）则直接拦截。awaiting_extension 可能持续数小时，必须与 synced 同等对待。
         $syncedExists = ArticleDistribution::query()
             ->where('article_id', (int) $distribution->article_id)
             ->where('action', (string) $distribution->action)
-            ->where('status', 'synced')
+            ->whereIn('status', ['synced', 'awaiting_extension', 'sending', 'outcome_unknown'])
             ->where('id', '!=', (int) $distribution->id)
             ->whereHas('channel', fn ($query) => $query
                 ->where('channel_type', DistributionChannel::TYPE_PLATFORM_WEB)
@@ -98,7 +99,13 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
 
         // 无工单 → 创建 ready 工单并绑定分发行。
         $actor = $this->actorFor($channel);
-        $account = ManualPublicationAccount::query()->findOrFail((int) $config['manual_publication_account_id']);
+        $accountId = $config['manual_publication_account_id'];
+        $account = $accountId === null
+            ? null
+            : ManualPublicationAccount::query()->find((int) $accountId);
+        if (! $account instanceof ManualPublicationAccount) {
+            throw new RuntimeException('platform_web 渠道未绑定有效的平台账号。');
+        }
         $article = $distribution->article()->withTrashed()->firstOrFail();
         $publication = $this->manualPublicationService->create([
             'type' => ManualPublication::TYPE_POST,
@@ -192,6 +199,11 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
         $actor = Admin::query()->find((int) $channel->created_by_admin_id);
         if (! $actor instanceof Admin) {
             throw new RuntimeException('platform_web 渠道缺少有效的创建管理员，无法创建发布工单。');
+        }
+        // 工单重开（failed→ready）走 ManualPublicationPolicy::reopen，要求超级管理员；创建工单的
+        // assigned_admin_id 也指向该管理员。此处前置校验，避免到重试路径才失败。
+        if (! $actor->isSuperAdmin()) {
+            throw new RuntimeException('platform_web 渠道创建管理员必须为超级管理员。');
         }
 
         return $actor;

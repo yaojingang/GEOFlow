@@ -20,6 +20,7 @@ use App\Models\TaskRun;
 use App\Models\TaskSchedule;
 use App\Models\TitleLibrary;
 use App\Services\Admin\AdminAiModelAccessResolver;
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebDistributionBridge;
 use App\Support\GeoFlow\AiQualityRetrievalMode;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
@@ -56,6 +57,7 @@ class TaskLifecycleService
         private TaskRunData $taskRunData,
         private AdminAiModelAccessResolver $adminAiModelAccessResolver,
         private ?TaskActivationGuard $taskActivationGuard = null,
+        private ?PlatformWebDistributionBridge $platformWebDistributionBridge = null,
     ) {}
 
     /** @return array{items:list<array<string,mixed>>,pagination:array{page:int,per_page:int,total:int,total_pages:int}} */
@@ -826,6 +828,25 @@ class TaskLifecycleService
                     'last_error_message' => '任务已删除，待执行分发已取消。',
                     'updated_at' => now(),
                 ]);
+            $awaitingExtensionIds = ArticleDistribution::query()
+                ->whereIn('article_id', $articleIds)
+                ->where('status', 'awaiting_extension')
+                ->pluck('id')
+                ->map(static fn ($id): int => (int) $id)
+                ->all();
+            ArticleDistribution::query()
+                ->whereIn('article_id', $articleIds)
+                ->where('status', 'awaiting_extension')
+                ->update([
+                    'status' => 'failed',
+                    'next_retry_at' => null,
+                    'last_error_message' => '任务已删除，等待扩展回执的分发已取消。',
+                    'updated_at' => now(),
+                ]);
+            if ($awaitingExtensionIds !== []) {
+                ($this->platformWebDistributionBridge ?? app(PlatformWebDistributionBridge::class))
+                    ->cancelWorkOrdersForDistributions($awaitingExtensionIds, '任务已删除，扩展发布工单已取消。');
+            }
             ArticleDistribution::query()
                 ->whereIn('article_id', $articleIds)
                 ->where('status', 'sending')

@@ -14,6 +14,7 @@ use App\Models\ManualPublicationAccount;
 use App\Models\ManualPublicationPersona;
 use App\Models\Task;
 use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebDistributionBridge;
+use App\Services\GeoFlow\DistributionChannelDeletionService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionPublisherManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -85,9 +86,154 @@ class PlatformWebDistributionFlowTest extends TestCase
         ]);
     }
 
-    public function test_publisher_level_guard_throws_for_synced_platform_via_different_channel(): void
+    public function test_enqueue_guard_blocks_reenqueue_while_distribution_awaits_extension(): void
+    {
+        [$article, $channel] = $this->fixtures('first');
+        $orchestrator = app(DistributionOrchestrator::class);
+        $ids = $orchestrator->enqueueForArticle($article);
+        $orchestrator->process(ArticleDistribution::query()->findOrFail($ids[0]));
+        $distribution = ArticleDistribution::query()->findOrFail($ids[0]);
+        $this->assertSame('awaiting_extension', (string) $distribution->status);
+
+        $secondIds = $orchestrator->enqueueForArticle($article->fresh());
+
+        $this->assertSame([], $secondIds);
+        $this->assertSame('awaiting_extension', (string) $distribution->fresh()->status);
+        $this->assertSame(
+            1,
+            ManualPublication::query()->where('source_distribution_id', (int) $distribution->id)->count(),
+        );
+        $this->assertDatabaseHas('distribution_logs', [
+            'event' => 'platform_publish_blocked_duplicate',
+            'distribution_channel_id' => (int) $channel->id,
+        ]);
+    }
+
+    public function test_awaiting_extension_on_channel_a_blocks_publisher_for_channel_b(): void
     {
         [$article, $channelA] = $this->fixtures('first');
+        $admin = Admin::query()->firstOrFail();
+        $accountB = $this->createAccount($admin, '平台B账号');
+        $channelB = $this->createPlatformWebChannel($admin, $accountB, 'Channel B');
+        $article->task->distributionChannels()->attach($channelB->id, [
+            'trigger' => 'after_local_publish',
+            'remote_status' => 'follow_local',
+            'failure_policy' => 'ignore_distribution_failure',
+            'max_attempts' => 3,
+            'sort_order' => 2,
+        ]);
+
+        $orchestrator = app(DistributionOrchestrator::class);
+        $ids = $orchestrator->enqueueForArticleTargets($article->fresh(), [$channelA->id, $channelB->id], []);
+        $orchestrator->process(ArticleDistribution::query()->findOrFail($ids[0]));
+        $distributionB = ArticleDistribution::query()->findOrFail($ids[1]);
+
+        $this->expectException(PlatformPublishBlockedException::class);
+        $this->expectExceptionMessage('同平台严禁重发');
+        app(DistributionPublisherManager::class)->forChannel($channelB)->publish($distributionB->fresh(), []);
+    }
+
+    public function test_bridge_ignores_non_terminal_work_order_receipt_and_preserves_awaiting_extension(): void
+    {
+        [$article, $channel] = $this->fixtures('first');
+        $orchestrator = app(DistributionOrchestrator::class);
+        $ids = $orchestrator->enqueueForArticle($article);
+        $orchestrator->process(ArticleDistribution::query()->findOrFail($ids[0]));
+        $distribution = ArticleDistribution::query()->findOrFail($ids[0]);
+        $publication = ManualPublication::query()
+            ->where('source_distribution_id', (int) $distribution->id)
+            ->firstOrFail();
+        // 模拟工单被重开（陈旧回执场景）：工单回到 ready，随后回执不应覆盖现状。
+        $publication->forceFill(['status' => ManualPublication::STATUS_READY])->save();
+
+        app(PlatformWebDistributionBridge::class)->handleReceipt($publication->fresh());
+
+        $distribution = $distribution->fresh();
+        $this->assertSame('awaiting_extension', (string) $distribution->status);
+        $this->assertDatabaseMissing('distribution_logs', [
+            'event' => 'platform_web_receipt',
+            'article_distribution_id' => (int) $distribution->id,
+        ]);
+
+        // 已 synced 的分发行同样拒绝回执写回（只接受 awaiting_extension/sending/outcome_unknown）。
+        $distribution->forceFill(['status' => 'synced'])->save();
+        $publication->forceFill([
+            'status' => ManualPublication::STATUS_FAILED,
+            'execution_receipt' => ['error_code' => 'late_failure'],
+        ])->save();
+        app(PlatformWebDistributionBridge::class)->handleReceipt($publication->fresh());
+
+        $this->assertSame('synced', (string) $distribution->fresh()->status);
+    }
+
+    public function test_content_refresh_skips_platform_web_channels(): void
+    {
+        [$article, $channel] = $this->fixtures('first');
+        $orchestrator = app(DistributionOrchestrator::class);
+        $ids = $orchestrator->enqueueForArticle($article);
+        $orchestrator->process(ArticleDistribution::query()->findOrFail($ids[0]));
+        $distribution = ArticleDistribution::query()->findOrFail($ids[0]);
+
+        $count = $orchestrator->enqueueChannelContentRefresh($channel);
+
+        $this->assertSame(0, $count);
+        $distribution = $distribution->fresh();
+        $this->assertSame('awaiting_extension', (string) $distribution->status);
+        $this->assertSame('publish', (string) $distribution->action);
+    }
+
+    public function test_unsupported_update_action_restores_status_and_logs(): void
+    {
+        [$article, $channel] = $this->fixtures('first');
+        $orchestrator = app(DistributionOrchestrator::class);
+        $ids = $orchestrator->enqueueForArticle($article);
+        $orchestrator->process(ArticleDistribution::query()->findOrFail($ids[0]));
+        $distribution = ArticleDistribution::query()->findOrFail($ids[0]);
+        $distribution->forceFill(['status' => 'synced'])->save();
+
+        $orchestrator->updateRemoteArticle($distribution->fresh());
+
+        $distribution = $distribution->fresh();
+        $this->assertSame('synced', (string) $distribution->status);
+        $this->assertNotSame('update', (string) $distribution->action);
+        $this->assertDatabaseHas('distribution_logs', [
+            'event' => 'platform_web_action_unsupported',
+            'article_distribution_id' => (int) $distribution->id,
+        ]);
+    }
+
+    public function test_channel_deletion_cancels_awaiting_extension_distribution_and_work_order(): void
+    {
+        [$article, $channel] = $this->fixtures('first');
+        $orchestrator = app(DistributionOrchestrator::class);
+        $ids = $orchestrator->enqueueForArticle($article);
+        $orchestrator->process(ArticleDistribution::query()->findOrFail($ids[0]));
+        $distribution = ArticleDistribution::query()->findOrFail($ids[0]);
+        $publication = ManualPublication::query()
+            ->where('source_distribution_id', (int) $distribution->id)
+            ->firstOrFail();
+
+        app(DistributionChannelDeletionService::class)->prepare($channel);
+
+        $distribution = $distribution->fresh();
+        $this->assertSame('failed', (string) $distribution->status);
+        $this->assertSame(
+            __('admin.distribution.delete.queued_cancelled_error'),
+            (string) $distribution->last_error_message,
+        );
+
+        $publication = $publication->fresh();
+        $this->assertSame(ManualPublication::STATUS_CANCELLED, (string) $publication->status);
+        $this->assertSame('渠道删除，扩展发布工单已取消。', (string) $publication->result_note);
+        $this->assertDatabaseHas('manual_publication_transitions', [
+            'manual_publication_id' => (int) $publication->id,
+            'from_status' => ManualPublication::STATUS_READY,
+            'to_status' => ManualPublication::STATUS_CANCELLED,
+        ]);
+    }
+
+    public function test_publisher_level_guard_throws_for_synced_platform_via_different_channel(): void
+    {        [$article, $channelA] = $this->fixtures('first');
         $admin = Admin::query()->firstOrFail();
         $accountB = $this->createAccount($admin, '平台B账号');
         $channelB = $this->createPlatformWebChannel($admin, $accountB, 'Channel B');
@@ -198,8 +344,12 @@ class PlatformWebDistributionFlowTest extends TestCase
     {
         [$article, $channelA] = $this->fixtures('first', ['append_source_link' => true]);
         $admin = Admin::query()->firstOrFail();
-        $accountB = $this->createAccount($admin, '无来源链接账号');
-        $channelB = $this->createPlatformWebChannel($admin, $accountB, 'Channel B', ['append_source_link' => false]);
+        // 不同平台（sohu）避免触发同平台严禁重发守卫；两个渠道各自绑定对应平台账号。
+        $accountB = $this->createAccount($admin, '无来源链接账号', ManualPublicationAccount::PLATFORM_SOHU);
+        $channelB = $this->createPlatformWebChannel($admin, $accountB, 'Channel B', [
+            'platform' => 'sohu',
+            'append_source_link' => false,
+        ]);
         $article->task->distributionChannels()->attach($channelB->id, [
             'trigger' => 'after_local_publish',
             'remote_status' => 'follow_local',
@@ -315,7 +465,7 @@ class PlatformWebDistributionFlowTest extends TestCase
         return [$article, $channel];
     }
 
-    private function createAccount(Admin $admin, string $name): ManualPublicationAccount
+    private function createAccount(Admin $admin, string $name, string $platform = ManualPublicationAccount::PLATFORM_TOUTIAO): ManualPublicationAccount
     {
         $persona = ManualPublicationPersona::query()->create([
             'name' => 'GEOFlow 专家',
@@ -327,7 +477,7 @@ class PlatformWebDistributionFlowTest extends TestCase
 
         return ManualPublicationAccount::query()->create([
             'persona_id' => $persona->getKey(),
-            'platform' => ManualPublicationAccount::PLATFORM_TOUTIAO,
+            'platform' => $platform,
             'account_name' => $name,
             'profile_url' => 'https://mp.toutiao.com/profile/geoflow',
             'created_by_admin_id' => $admin->getKey(),

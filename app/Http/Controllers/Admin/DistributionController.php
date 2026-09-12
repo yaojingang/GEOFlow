@@ -765,6 +765,9 @@ class DistributionController extends Controller
             if ((string) $distribution->status === 'outcome_unknown') {
                 return 'outcome_unknown';
             }
+            if ((string) $distribution->status === 'awaiting_extension') {
+                return 'awaiting_extension';
+            }
 
             $distribution->forceFill([
                 'status' => 'queued',
@@ -799,6 +802,10 @@ class DistributionController extends Controller
         }
         if ($result === 'outcome_unknown') {
             return back()->withErrors(__('admin.distribution.message.outcome_unknown_retry_blocked'));
+        }
+        if ($result === 'awaiting_extension') {
+            // 等待扩展回执的分发行不能重新入队（同平台严禁重发；回执会写回状态）。
+            return back()->withErrors('分发正在等待 Chrome 扩展回执，暂不能重新入队。');
         }
         if ($result !== 'queued') {
             return back()->withErrors(__('admin.distribution.delete.channel_unavailable_error'));
