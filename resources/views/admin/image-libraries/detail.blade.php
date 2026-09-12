@@ -209,6 +209,15 @@
                                         {{ $imageUrl }}
                                     </a>
                                 </div>
+                                <form method="POST" action="{{ route('admin.image-libraries.images.tags', ['libraryId' => (int) $library->id, 'imageId' => (int) $image->id]) }}" class="border-t border-gray-100 bg-white p-2">
+                                    @csrf
+                                    @method('PUT')
+                                    <label for="image-tags-{{ (int) $image->id }}" class="text-[11px] font-medium text-gray-500">{{ __('admin.image_detail.remark_label') }}</label>
+                                    <textarea id="image-tags-{{ (int) $image->id }}" name="tags" rows="2" maxlength="500" placeholder="{{ __('admin.image_detail.remark_placeholder') }}" class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200/50">{{ (string) ($image->tags ?? '') }}</textarea>
+                                    <button type="submit" class="mt-1 inline-flex min-h-7 w-full items-center justify-center rounded-md bg-green-600 px-2 py-1 text-[11px] font-semibold text-white transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-green-700 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2">
+                                        {{ __('admin.common.save') }}
+                                    </button>
+                                </form>
                             </div>
                         @endforeach
                     </div>

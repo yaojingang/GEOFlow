@@ -4659,6 +4659,8 @@ return [
         'dimensions_label' => 'Dimensions',
         'size_label' => 'Size',
         'url_label' => 'Image URL',
+        'remark_label' => 'Remark (AI image matching)',
+        'remark_placeholder' => 'Describe the image so AI can place it intelligently in generated articles',
         'uploading' => 'Uploading...',
         'error' => [
             'select_images' => 'Please choose images to upload',
@@ -4675,6 +4677,7 @@ return [
             'delete_cleanup_partial' => ', but :count files could not be removed from disk',
             'delete_error' => 'Delete failed: :message',
             'update_success' => 'Image library updated successfully',
+            'tags_update_success' => 'Image remark updated',
             'update_failed' => 'Update failed',
             'update_error' => 'Update failed: :message',
         ],

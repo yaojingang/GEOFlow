@@ -4719,6 +4719,8 @@ return [
         'dimensions_label' => '尺寸',
         'size_label' => '大小',
         'url_label' => '图片 URL',
+        'remark_label' => '备注（AI 配图参考）',
+        'remark_placeholder' => '描述图片内容，AI 生成文章时会据此智能选图',
         'uploading' => '上传中...',
         'error' => [
             'select_images' => '请选择要上传的图片',
@@ -4735,6 +4737,7 @@ return [
             'delete_cleanup_partial' => '，但有 :count 个文件未能从磁盘清理',
             'delete_error' => '删除失败: :message',
             'update_success' => '图片库信息更新成功',
+            'tags_update_success' => '图片备注已更新',
             'update_failed' => '更新失败',
             'update_error' => '更新失败: :message',
         ],

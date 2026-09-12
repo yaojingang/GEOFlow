@@ -4,14 +4,14 @@ namespace App\Services\GeoFlow;
 
 final class ArticleContentPromptRenderer
 {
-    public function renderForEditor(string $title, string $keyword, ?string $promptContent, string $knowledgeContext = ''): string
+    public function renderForEditor(string $title, string $keyword, ?string $promptContent, string $knowledgeContext = '', string $imageContext = ''): string
     {
-        return $this->render($title, $keyword, $promptContent, $knowledgeContext);
+        return $this->render($title, $keyword, $promptContent, $knowledgeContext, $imageContext);
     }
 
-    public function renderForWorker(string $title, string $keyword, ?string $promptContent, string $knowledgeContext = ''): string
+    public function renderForWorker(string $title, string $keyword, ?string $promptContent, string $knowledgeContext = '', string $imageContext = ''): string
     {
-        return $this->render($title, $keyword, $promptContent, $knowledgeContext);
+        return $this->render($title, $keyword, $promptContent, $knowledgeContext, $imageContext);
     }
 
     /**
@@ -22,6 +22,7 @@ final class ArticleContentPromptRenderer
         string $keyword,
         ?string $promptContent,
         string $knowledgeContext,
+        string $imageContext = '',
     ): string {
         $prompt = trim((string) $promptContent);
         $isFallbackPrompt = false;
@@ -33,16 +34,23 @@ final class ArticleContentPromptRenderer
 
         $hasExplicitContextVariables = $isFallbackPrompt || $this->promptHasKnownContextVariables($prompt);
         $hasExplicitKnowledgeVariable = $this->promptHasContextVariable($prompt, 'knowledge');
+        $hasExplicitImageVariable = $this->promptHasContextVariable($prompt, 'images');
         $renderedPrompt = $this->renderPromptTemplate($prompt, [
             'title' => $title,
             'keyword' => $keyword,
             'knowledge' => $knowledgeContext,
+            'images' => $imageContext,
         ]);
 
         if (! $hasExplicitContextVariables) {
-            $renderedPrompt = $this->appendSmartPromptContext($renderedPrompt, $title, $keyword, $knowledgeContext, $isEnglish);
-        } elseif (! $hasExplicitKnowledgeVariable) {
-            $renderedPrompt = $this->appendKnowledgeContext($renderedPrompt, $knowledgeContext, $isEnglish);
+            $renderedPrompt = $this->appendSmartPromptContext($renderedPrompt, $title, $keyword, $knowledgeContext, $imageContext, $isEnglish);
+        } else {
+            if (! $hasExplicitKnowledgeVariable) {
+                $renderedPrompt = $this->appendKnowledgeContext($renderedPrompt, $knowledgeContext, $isEnglish);
+            }
+            if (! $hasExplicitImageVariable) {
+                $renderedPrompt = $this->appendImageContext($renderedPrompt, $imageContext, $isEnglish);
+            }
         }
 
         $finalInstructions = array_values(array_filter([
@@ -55,8 +63,8 @@ final class ArticleContentPromptRenderer
 
     private function promptHasKnownContextVariables(string $prompt): bool
     {
-        return preg_match('/\{\{\s*(title|keyword|knowledge)\s*\}\}/iu', $prompt) === 1
-            || preg_match('/\{\{#if\s+(title|keyword|knowledge)\s*\}\}/iu', $prompt) === 1;
+        return preg_match('/\{\{\s*(title|keyword|knowledge|images)\s*\}\}/iu', $prompt) === 1
+            || preg_match('/\{\{#if\s+(title|keyword|knowledge|images)\s*\}\}/iu', $prompt) === 1;
     }
 
     private function promptHasContextVariable(string $prompt, string $name): bool
@@ -68,7 +76,7 @@ final class ArticleContentPromptRenderer
     }
 
     /**
-     * @param  array{title:string, keyword:string, knowledge:string}  $context
+     * @param  array{title:string, keyword:string, knowledge:string, images:string}  $context
      */
     private function renderPromptTemplate(string $prompt, array $context): string
     {
@@ -92,7 +100,7 @@ final class ArticleContentPromptRenderer
     }
 
     /**
-     * @param  array{title:string, keyword:string, knowledge:string}  $context
+     * @param  array{title:string, keyword:string, knowledge:string, images:string}  $context
      */
     private function promptContextValue(string $name, array $context): string
     {
@@ -100,16 +108,17 @@ final class ArticleContentPromptRenderer
             'title' => $context['title'],
             'keyword' => $context['keyword'],
             'knowledge' => $context['knowledge'],
+            'images' => $context['images'],
             default => '',
         };
     }
 
     private function isKnownPromptContextName(string $name): bool
     {
-        return in_array(mb_strtolower($name, 'UTF-8'), ['title', 'keyword', 'knowledge'], true);
+        return in_array(mb_strtolower($name, 'UTF-8'), ['title', 'keyword', 'knowledge', 'images'], true);
     }
 
-    private function appendSmartPromptContext(string $prompt, string $title, string $keyword, string $knowledgeContext, bool $isEnglish): string
+    private function appendSmartPromptContext(string $prompt, string $title, string $keyword, string $knowledgeContext, string $imageContext, bool $isEnglish): string
     {
         if ($isEnglish) {
             $lines = [
@@ -123,6 +132,7 @@ final class ArticleContentPromptRenderer
                 $lines[] = '- Reference knowledge:';
                 $lines[] = $knowledgeContext;
             }
+            $lines = $this->appendImageContextLines($lines, $imageContext, true);
 
             return trim($prompt)."\n\n".implode("\n", $lines);
         }
@@ -138,6 +148,7 @@ final class ArticleContentPromptRenderer
             $lines[] = '- 参考知识：';
             $lines[] = $knowledgeContext;
         }
+        $lines = $this->appendImageContextLines($lines, $imageContext, false);
 
         return trim($prompt)."\n\n".implode("\n", $lines);
     }
@@ -153,6 +164,52 @@ final class ArticleContentPromptRenderer
         }
 
         return trim($prompt)."\n\n【参考知识】\n".$knowledgeContext;
+    }
+
+    private function appendImageContext(string $prompt, string $imageContext, bool $isEnglish): string
+    {
+        if (trim($imageContext) === '') {
+            return trim($prompt);
+        }
+
+        return trim($prompt)."\n\n".$this->imageContextBlock($imageContext, $isEnglish);
+    }
+
+    /**
+     * @param  list<string>  $lines
+     * @return list<string>
+     */
+    private function appendImageContextLines(array $lines, string $imageContext, bool $isEnglish): array
+    {
+        if (trim($imageContext) === '') {
+            return $lines;
+        }
+
+        $lines[] = $isEnglish ? '- Available images:' : '- 可用配图（备注 | URL）：';
+
+        return [...$lines, $this->imageInsertionInstruction($isEnglish), $imageContext];
+    }
+
+    private function imageContextBlock(string $imageContext, bool $isEnglish): string
+    {
+        if ($isEnglish) {
+            return "Available images (remark | URL):\n"
+                .$this->imageInsertionInstruction(true)."\n"
+                .$imageContext;
+        }
+
+        return "【可用配图】（格式：备注 | URL）\n"
+            .$this->imageInsertionInstruction(false)."\n"
+            .$imageContext;
+    }
+
+    private function imageInsertionInstruction(bool $isEnglish): string
+    {
+        if ($isEnglish) {
+            return 'Image usage rule: when one of the listed images genuinely matches a section of the article, insert it right after that paragraph as Markdown in the exact form ![the remark](the URL), copying the URL verbatim. Insert at most one image per major section and never reuse the same image twice. If none of the images fit, do not insert any image, and never invent image URLs that are not listed.';
+        }
+
+        return '配图使用规则：如果某张候选图与正文某部分内容确实相关，就在该段落后插入 Markdown 图片，格式必须严格为「![该图备注](该图URL)」，URL 原样复制，不要改动；每个大章节最多插一张，同一张图不要重复使用。如果没有合适的图片，就不要插入任何图片，也绝对不要编造列表之外的图片地址。';
     }
 
     private function finalPromptInstruction(bool $isEnglish): string

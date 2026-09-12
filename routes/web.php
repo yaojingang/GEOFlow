@@ -460,6 +460,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::get('{libraryId}/images/upload', [ImageLibraryController::class, 'createImageUpload'])->name('images.create');
                 Route::post('{libraryId}/images/upload', [ImageLibraryController::class, 'uploadImages'])->name('images.upload');
                 Route::post('{libraryId}/images/delete', [ImageLibraryController::class, 'destroyImages'])->name('images.delete');
+                Route::put('{libraryId}/images/{imageId}/tags', [ImageLibraryController::class, 'updateImageTags'])
+                    ->name('images.tags')
+                    ->whereNumber('imageId');
                 Route::put('{libraryId}/detail', [ImageLibraryController::class, 'updateFromDetail'])->name('detail.update');
                 Route::put('{libraryId}', [ImageLibraryController::class, 'update'])->name('update');
                 Route::post('{libraryId}/delete', [ImageLibraryController::class, 'destroy'])->name('delete');

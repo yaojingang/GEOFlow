@@ -197,6 +197,28 @@ class ImageLibraryController extends Controller
     }
 
     /**
+     * 更新单张图片的备注（供 AI 生成文章时智能选图参考）。
+     */
+    public function updateImageTags(Request $request, int $libraryId, int $imageId): RedirectResponse
+    {
+        ImageLibrary::query()->whereKey($libraryId)->firstOrFail();
+
+        $payload = $request->validate([
+            'tags' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $image = Image::query()
+            ->where('library_id', $libraryId)
+            ->whereKey($imageId)
+            ->firstOrFail();
+        $image->update([
+            'tags' => trim((string) ($payload['tags'] ?? '')),
+        ]);
+
+        return back()->with('message', __('admin.image_detail.message.tags_update_success'));
+    }
+
+    /**
      * 删除图片（支持单条/批量）。
      */
     public function destroyImages(Request $request, int $libraryId): RedirectResponse

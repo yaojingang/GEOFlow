@@ -4225,6 +4225,8 @@ return array_replace_recursive($base, [
         'dimensions_label' => 'Dimensões',
         'size_label' => 'Tamanho',
         'url_label' => 'URL da Imagem',
+        'remark_label' => 'Observação (usada pela IA para imagens)',
+        'remark_placeholder' => 'Descreva a imagem para que a IA a posicione nos artigos gerados',
         'uploading' => 'Enviando...',
         'error' => [
             'select_images' => 'Escolha imagens para enviar',
@@ -4241,6 +4243,7 @@ return array_replace_recursive($base, [
             'delete_cleanup_partial' => ', mas :count arquivos não puderam ser removidos do disco',
             'delete_error' => 'Falha ao excluir: :message',
             'update_success' => 'Biblioteca de imagens atualizada com sucesso',
+            'tags_update_success' => 'Observação da imagem atualizada',
             'update_failed' => 'Falha ao atualizar',
             'update_error' => 'Falha ao atualizar: :message',
         ],
