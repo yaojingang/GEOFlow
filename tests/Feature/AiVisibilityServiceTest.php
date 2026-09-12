@@ -422,6 +422,42 @@ class AiVisibilityServiceTest extends TestCase
         $this->assertSame(AiVisibilityKeywordNormalizer::hash('全新关键词'), $run->keyword_hash);
     }
 
+    public function test_it_keeps_search_and_analysis_runs_in_the_same_topic(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'LogId' => 'log_combined_topic',
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+        MarkdownContentWriterAgent::fake(['分析完成'])->preventStrayPrompts();
+
+        $provider = $this->createSearchProvider();
+        $model = $this->createAiModel();
+        $this->bindModel(AiVisibilityConfigurationResolver::DEEPSEEK_MODEL_SETTING_KEY, $model);
+        $topic = AiVisibilityTopic::query()->create([
+            'name' => '组合流程主题',
+        ]);
+
+        ['search_run' => $searchRun, 'analysis_run' => $analysisRun] = app(AiVisibilityService::class)
+            ->runDoubaoSearchThenDeepSeekAnalysis(
+                SystemAiIdentity::visibilityCollection(),
+                $provider,
+                $model,
+                'GEOFlow AI 可见性',
+                searchOptions: [],
+                analysisOptions: [],
+                topic: $topic,
+            );
+
+        $this->assertSame(AiVisibilityRun::STATUS_COMPLETED, $searchRun->status);
+        $this->assertSame(AiVisibilityRun::STATUS_COMPLETED, $analysisRun->status);
+        $this->assertNotNull($searchRun->ai_visibility_topic_id);
+        $this->assertSame((int) $topic->id, (int) $searchRun->ai_visibility_topic_id);
+        $this->assertSame($searchRun->ai_visibility_topic_id, $analysisRun->ai_visibility_topic_id);
+    }
+
     private function createSearchProvider(array $overrides = []): AiSourceProvider
     {
         return AiSourceProvider::query()->create(array_merge([

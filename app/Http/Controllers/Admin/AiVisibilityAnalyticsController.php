@@ -42,11 +42,12 @@ class AiVisibilityAnalyticsController extends Controller
             'sites' => preg_split('/[|,\r\n]+/', (string) ($payload['sites'] ?? ''), -1, PREG_SPLIT_NO_EMPTY),
             'block_hosts' => preg_split('/[|,\r\n]+/', (string) ($payload['block_hosts'] ?? ''), -1, PREG_SPLIT_NO_EMPTY),
         ]);
+        $topic = $payload['topic_id'] ? AiVisibilityTopic::find((int) $payload['topic_id']) : null;
         $run = $this->visibility->runDoubaoSearchCustom(
             $provider,
             (string) $payload['query'],
             $options,
-            $payload['topic_id'] ? AiVisibilityTopic::find((int) $payload['topic_id']) : null,
+            $topic,
         );
         if ((bool) ($payload['competitor_analysis'] ?? false)) {
             $model = $this->configuration->deepSeekModel(SystemAiIdentity::forVisibilityCollection());
@@ -60,7 +61,7 @@ class AiVisibilityAnalyticsController extends Controller
                     metadata: is_array($source->metadata_json) ? $source->metadata_json : [],
                 ))->values()->all();
                 try {
-                    $this->visibility->runDeepSeekAnalysis(SystemAiIdentity::forVisibilityCollection(), $model, (string) $payload['query'], '识别搜索结果中提到的全部竞品同行（完整列出，不要只挑一个），并按约定 JSON 输出证据；找不到信源 URL 的竞品也请列出。', $sources);
+                    $this->visibility->runDeepSeekAnalysis(SystemAiIdentity::forVisibilityCollection(), $model, (string) $payload['query'], '识别搜索结果中提到的全部竞品同行（完整列出，不要只挑一个），并按约定 JSON 输出证据；找不到信源 URL 的竞品也请列出。', $sources, topic: $topic);
                 } catch (\Throwable) {
                     // Search results remain available even if optional analysis is unavailable.
                 }
