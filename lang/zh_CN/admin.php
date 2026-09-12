@@ -3270,6 +3270,7 @@ return [
             'period_label' => ':start 至 :end',
             'advanced_filters' => '自定义时间与高级筛选',
             'clear_filters' => '清除筛选',
+            'workspace_open' => '采集工作台',
             'overview_label' => '总览',
             'keywords_label' => '关键词',
             'sources_label' => '信源',

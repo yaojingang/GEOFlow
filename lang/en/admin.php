@@ -3210,6 +3210,7 @@ return [
             'period_label' => ':start to :end',
             'advanced_filters' => 'Custom dates and advanced filters',
             'clear_filters' => 'Clear filters',
+            'workspace_open' => 'Collection workspace',
             'overview_label' => 'Overview',
             'keywords_label' => 'Keywords',
             'sources_label' => 'Sources',

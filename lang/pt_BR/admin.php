@@ -6731,6 +6731,7 @@ return array_replace_recursive($base, [
             'empty_title' => 'Ainda não há amostras de coleta IA',
             'empty_desc' => 'Configure uma API DeepSeek ou Doubao e execute a coleta de palavras-chave para gerar a análise.',
             'unknown_source' => 'Fonte desconhecida',
+            'workspace_open' => 'Estação de coleta',
             'kpi' => [
                 'visibility' => 'Visibilidade da Marca',
                 'top1' => 'Top 1',
