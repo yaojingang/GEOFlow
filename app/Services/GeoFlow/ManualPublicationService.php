@@ -47,7 +47,10 @@ class ManualPublicationService
             }
             $prepared['duplicate_warning_count'] = $this->duplicateDetector->find($prepared)->count();
 
-            $publication = ManualPublication::query()->create(Arr::except($prepared, ['publication_payload_extras']));
+            $publication = ManualPublication::query()->create(
+                // extras 仅用于构建 payload，不落库
+                Arr::except($prepared, ['publication_payload_extras'])
+            );
             $this->recordTransition($publication, null, $initialStatus, $creator);
 
             return $publication->refresh();
@@ -61,8 +64,9 @@ class ManualPublicationService
             throw new DomainException((string) __('admin.manual_publications.error.claimed_immutable'));
         }
 
+        // publication_payload_extras 是临时键（不落库）：传入值优先；缺省时从既有 payload 回填三个 extras 键，避免状态流转重建 payload 时丢失。持久化前经 Arr::except 剥离。
         $data['publication_payload_extras'] = $data['publication_payload_extras']
-            ?? Arr::only((array) ($manualPublication->publication_payload ?? []), ['images', 'append_source_link', 'source_url']);
+            ?? Arr::only((array) ($manualPublication->publication_payload ?? []), PublicationPayloadBuilder::EXTRA_KEYS);
 
         $prepared = $this->prepare($data, $manualPublication);
         $this->ensureReadyRequirements($prepared + ['status' => (string) $manualPublication->status]);
@@ -74,7 +78,9 @@ class ManualPublicationService
         }
         $prepared['updated_at'] = now();
         $prepared['revision'] = $expectedRevision + 1;
-        $persisted = Arr::except($prepared, ['publication_payload_extras']);
+        $persisted =
+            // extras 仅用于构建 payload，不落库
+            Arr::except($prepared, ['publication_payload_extras']);
         $casted = (new ManualPublication)->forceFill($persisted);
         $databaseUpdates = Arr::only($casted->getAttributes(), array_keys($persisted));
 
@@ -149,12 +155,13 @@ class ManualPublicationService
                 $updates['browser_claimed_by_token_id'] = null;
                 $updates['browser_claimed_at'] = null;
                 $updates['browser_last_seen_at'] = null;
+                // publication_payload_extras 是临时键（不落库）：传入值优先；缺省时从既有 payload 回填三个 extras 键，避免状态流转重建 payload 时丢失。持久化前经 Arr::except 剥离。
                 $updates['publication_payload'] = $this->publicationPayloadBuilder->build(array_merge(
                     $current->getAttributes(),
                     $updates,
                     ['publication_payload_extras' => Arr::only(
                         (array) ($current->publication_payload ?? []),
-                        ['images', 'append_source_link', 'source_url'],
+                        PublicationPayloadBuilder::EXTRA_KEYS,
                     )],
                 ));
             }

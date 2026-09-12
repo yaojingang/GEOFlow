@@ -9,6 +9,9 @@ use Illuminate\Support\Arr;
 
 final class PublicationPayloadBuilder
 {
+    /** 构建进 payload 的 extras 键，同时也是状态流转回填时从既有 payload 提取的键。 */
+    public const EXTRA_KEYS = ['images', 'append_source_link', 'source_url'];
+
     /** @param array<string,mixed> $attributes
      * @return array<string,mixed>
      */
