@@ -3051,6 +3051,11 @@ return [
         'ai_visibility' => [
             'keyword' => '关键词',
             'provider' => '提供商',
+            'topic' => '主题',
+            'topic_all' => '全部主题',
+            'topic_uncategorized' => '不归类',
+            'assign_topic' => '归入主题',
+            'uncategorized' => '未归类',
             'recent_samples' => '最近采样',
             'visible' => '可见',
             'not_visible' => '未见',

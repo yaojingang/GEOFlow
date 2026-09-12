@@ -3003,6 +3003,11 @@ return [
         'ai_visibility' => [
             'keyword' => 'Keyword',
             'provider' => 'Provider',
+            'topic' => 'Topic',
+            'topic_all' => 'All topics',
+            'topic_uncategorized' => 'Uncategorized',
+            'assign_topic' => 'Assign to topic',
+            'uncategorized' => 'Uncategorized',
             'recent_samples' => 'Recent samples',
             'visible' => 'Visible',
             'not_visible' => 'Not visible',

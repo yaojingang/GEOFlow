@@ -117,6 +117,49 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             ->assertSee('开始搜索');
     }
 
+    public function test_ai_visibility_page_renders_topic_selector_and_assignment_ui(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        $this->configureAiVisibilityApis();
+        $topic = AiVisibilityTopic::query()->create([
+            'name' => '渲染主题 Alpha',
+            'description' => '主题 A',
+        ]);
+        $run = $this->completedRun(
+            keyword: 'GEOFlow 渲染归类',
+            providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+            answer: 'GEOFlow 可见。',
+            sentiment: 'neutral',
+            completedAt: '2026-07-10 09:00:00',
+            sources: [
+                ['title' => '示例站点', 'domain' => 'example.com', 'rank' => 1, 'snippet' => '示例信源。'],
+            ],
+        );
+        $admin = $this->admin();
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.analytics.ai-visibility', ['ai_run' => $run->id]))
+            ->assertOk()
+            ->assertSee('<select id="ai-topic" name="ai_topic"', false)
+            ->assertSee(__('admin.analytics.ai_visibility.topic_all'))
+            ->assertSee('<select id="doubao-topic" name="topic_id"', false)
+            ->assertSee(__('admin.analytics.ai_visibility.topic_uncategorized'))
+            ->assertSee('<th class="px-3 py-2">'.__('admin.analytics.ai_visibility.topic').'</th>', false)
+            ->assertSee('渲染主题 Alpha')
+            ->assertSee(route('admin.analytics.ai-visibility.assign-topic'), false)
+            ->assertSee(__('admin.analytics.ai_visibility.assign_topic'));
+
+        $run->update(['ai_visibility_topic_id' => (int) $topic->id]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.analytics.ai-visibility', ['ai_run' => $run->id]))
+            ->assertOk()
+            ->assertSee('渲染主题 Alpha')
+            ->assertDontSee(route('admin.analytics.ai-visibility.assign-topic'), false);
+
+        Carbon::setTestNow();
+    }
+
     public function test_search_creates_a_run_attached_to_the_selected_topic(): void
     {
         $this->configureAiVisibilityApis();

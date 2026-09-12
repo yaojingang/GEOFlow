@@ -60,6 +60,15 @@
                             @endforeach
                         </select>
                     </div>
+                    <div>
+                        <label for="ai-topic" class="mb-1 block text-sm font-medium text-gray-700">{{ __('admin.analytics.ai_visibility.topic') }}</label>
+                        <select id="ai-topic" name="ai_topic" class="block min-h-10 w-full rounded-md border-gray-300 text-sm focus:border-violet-500 focus:ring-violet-500">
+                            <option value="all">{{ __('admin.analytics.ai_visibility.topic_all') }}</option>
+                            @foreach ($filterOptions['visibilityTopics'] as $visibilityTopic)
+                                <option value="{{ $visibilityTopic->id }}" @selected((int) $filters->topicId === (int) $visibilityTopic->id)>{{ $visibilityTopic->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
                 </div>
                 <div class="flex flex-wrap items-center justify-between gap-3" data-ai-visibility-advanced hidden>
                     <a href="{{ route('admin.analytics.ai-visibility') }}" class="text-sm font-medium text-gray-600 underline-offset-4 hover:text-violet-700 hover:underline">{{ __('admin.growth_center.ai_visibility.clear_filters') }}</a>
@@ -87,6 +96,15 @@
                     <div>
                         <label for="doubao-query" class="mb-1 block text-sm font-semibold text-gray-700">搜索问题</label>
                         <input id="doubao-query" name="query" required maxlength="100" value="{{ old('query', $selectedRun?->keyword ?? '') }}" class="block min-h-11 w-full rounded-md border-gray-300 text-sm focus:border-violet-500 focus:ring-violet-500" placeholder="例如：线上托福网课机构有哪些">
+                    </div>
+                    <div>
+                        <label for="doubao-topic" class="mb-1 block text-sm font-semibold text-gray-700">{{ __('admin.analytics.ai_visibility.topic') }}</label>
+                        <select id="doubao-topic" name="topic_id" class="block min-h-10 w-full rounded-md border-gray-300 text-sm focus:border-violet-500 focus:ring-violet-500">
+                            <option value="">{{ __('admin.analytics.ai_visibility.topic_uncategorized') }}</option>
+                            @foreach ($filterOptions['visibilityTopics'] as $visibilityTopic)
+                                <option value="{{ $visibilityTopic->id }}" @selected((string) old('topic_id', (string) $selectedRun?->ai_visibility_topic_id) === (string) $visibilityTopic->id)>{{ $visibilityTopic->name }}</option>
+                            @endforeach
+                        </select>
                     </div>
                     <fieldset>
                         <legend class="mb-2 text-sm font-semibold text-gray-700">搜索版本</legend>
@@ -124,6 +142,27 @@
                     @endif
                 </div>
             </form>
+            @if ($selectedRun)
+                <div class="mt-4 border-t border-slate-200 pt-4" data-ai-visibility-topic-assignment>
+                    @if ($selectedRun->ai_visibility_topic_id)
+                        <p class="text-sm text-gray-600">{{ __('admin.analytics.ai_visibility.topic') }}：<span class="inline-flex items-center rounded-full bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">{{ $selectedRun->topic?->name }}</span></p>
+                    @elseif ($filterOptions['visibilityTopics']->isNotEmpty())
+                        <form method="POST" action="{{ route('admin.analytics.ai-visibility.assign-topic') }}" class="flex flex-wrap items-end gap-3">
+                            @csrf
+                            <input type="hidden" name="run_id" value="{{ $selectedRun->id }}">
+                            <div>
+                                <label for="assign-topic" class="mb-1 block text-sm font-semibold text-gray-700">{{ __('admin.analytics.ai_visibility.topic') }}</label>
+                                <select id="assign-topic" name="topic_id" class="block min-h-10 rounded-md border-gray-300 text-sm focus:border-violet-500 focus:ring-violet-500">
+                                    @foreach ($filterOptions['visibilityTopics'] as $visibilityTopic)
+                                        <option value="{{ $visibilityTopic->id }}">{{ $visibilityTopic->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <button type="submit" class="inline-flex min-h-10 items-center rounded-md bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700">{{ __('admin.analytics.ai_visibility.assign_topic') }}</button>
+                        </form>
+                    @endif
+                </div>
+            @endif
         </section>
 
         @if (! ($ai['configured'] ?? false) && auth('admin')->user()?->isSuperAdmin())
@@ -310,8 +349,8 @@
                     </div>
                 </section>
                 <section class="mt-6 grid gap-6 xl:grid-cols-2" data-ai-visibility-evidence>
-                    <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm"><h3 class="text-lg font-semibold text-gray-950">信源分布</h3><p class="mt-1 text-sm text-gray-500">统计每个信源渠道被收录的结果数量。</p><div class="mt-4 overflow-x-auto"><table class="min-w-full text-sm"><thead class="border-b border-gray-100 text-left text-xs text-gray-500"><tr><th class="px-3 py-2">信源</th><th class="px-3 py-2 text-right">收录数量</th><th class="px-3 py-2">主要权威度</th></tr></thead><tbody class="divide-y divide-gray-100">@forelse(($ai['source_distribution'] ?? []) as $row)<tr><td class="px-3 py-3 font-medium text-gray-900">{{ $row['name'] }}</td><td class="px-3 py-3 text-right font-mono tabular-nums">{{ $row['count'] }}</td><td class="px-3 py-3 text-gray-600">{{ $row['top_authority'] ?: '未标注' }}</td></tr>@empty<tr><td colspan="3" class="px-3 py-8 text-center text-gray-500">暂无信源分布数据</td></tr>@endforelse</tbody></table></div></div>
-                    <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm"><h3 class="text-lg font-semibold text-gray-950">竞品同行清洗</h3><p class="mt-1 text-sm text-gray-500">DeepSeek 仅展示可回溯到原始搜索结果的证据。</p><div class="mt-4 space-y-4">@forelse(($ai['competitors'] ?? []) as $competitor)<article class="rounded-md border border-gray-200 p-4"><div class="flex items-center justify-between gap-3"><h4 class="font-semibold text-gray-900">{{ $competitor['name'] }}</h4>@if(($competitor['mention_count'] ?? 0) > 0)<span class="rounded-full bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">{{ $competitor['mention_count'] }} 条证据</span>@else<span class="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">待复核</span>@endif</div><div class="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">@foreach($competitor['evidence'] as $evidence)<a href="{{ $evidence['url'] }}" target="_blank" rel="noreferrer" class="group block rounded-md border border-gray-100 bg-gray-50 p-3 hover:border-violet-200 hover:bg-violet-50"><div class="flex items-start justify-between gap-3"><span class="line-clamp-2 text-sm font-medium text-gray-900 group-hover:text-violet-800">{{ $evidence['title'] ?: $evidence['domain'] }}</span><i data-lucide="arrow-up-right" class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 group-hover:text-violet-600"></i></div><div class="mt-1 flex flex-wrap gap-x-3 text-xs text-gray-500"><span>{{ $evidence['site_name'] ?: $evidence['domain'] }}</span><span>{{ $evidence['authority_label'] ?: '未标注权威' }}</span><span>排名 #{{ $evidence['rank'] ?: '-' }}</span></div></a>@endforeach @if(($competitor['mention_count'] ?? 0) === 0)<p class="rounded-md bg-amber-50 p-3 text-xs text-amber-700">DeepSeek 提到该竞品但未能回溯到原始搜索结果链接，请人工核实后再采信。</p>@endif</div></article>@empty<p class="rounded-md bg-gray-50 p-4 text-sm text-gray-500">暂无结构化竞品证据，完成一次 DeepSeek 清洗后显示。</p>@endforelse</div></div>
+                    <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm"><h3 class="text-lg font-semibold text-gray-950">信源分布</h3><p class="mt-1 text-sm text-gray-500">统计每个信源渠道被收录的结果数量。</p><div class="mt-4 overflow-x-auto"><table class="min-w-full text-sm"><thead class="border-b border-gray-100 text-left text-xs text-gray-500"><tr><th class="px-3 py-2">信源</th><th class="px-3 py-2 text-right">收录数量</th><th class="px-3 py-2">主要权威度</th><th class="px-3 py-2">{{ __('admin.analytics.ai_visibility.topic') }}</th></tr></thead><tbody class="divide-y divide-gray-100">@forelse(($ai['source_distribution'] ?? []) as $row)<tr><td class="px-3 py-3 font-medium text-gray-900">{{ $row['name'] }}</td><td class="px-3 py-3 text-right font-mono tabular-nums">{{ $row['count'] }}</td><td class="px-3 py-3 text-gray-600">{{ $row['top_authority'] ?: '未标注' }}</td><td class="px-3 py-3 text-gray-600">{{ $row['topic'] ?? __('admin.analytics.ai_visibility.uncategorized') }}</td></tr>@empty<tr><td colspan="4" class="px-3 py-8 text-center text-gray-500">暂无信源分布数据</td></tr>@endforelse</tbody></table></div></div>
+                    <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm"><h3 class="text-lg font-semibold text-gray-950">竞品同行清洗</h3><p class="mt-1 text-sm text-gray-500">DeepSeek 仅展示可回溯到原始搜索结果的证据。</p><div class="mt-4 space-y-4">@forelse(($ai['competitors'] ?? []) as $competitor)<article class="rounded-md border border-gray-200 p-4"><div class="flex items-center justify-between gap-3"><h4 class="font-semibold text-gray-900">{{ $competitor['name'] }}</h4>@if(($competitor['mention_count'] ?? 0) > 0)<span class="rounded-full bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">{{ $competitor['mention_count'] }} 条证据</span>@else<span class="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">待复核</span>@endif<span class="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600">{{ $competitor['topic'] ?? __('admin.analytics.ai_visibility.uncategorized') }}</span></div><div class="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">@foreach($competitor['evidence'] as $evidence)<a href="{{ $evidence['url'] }}" target="_blank" rel="noreferrer" class="group block rounded-md border border-gray-100 bg-gray-50 p-3 hover:border-violet-200 hover:bg-violet-50"><div class="flex items-start justify-between gap-3"><span class="line-clamp-2 text-sm font-medium text-gray-900 group-hover:text-violet-800">{{ $evidence['title'] ?: $evidence['domain'] }}</span><i data-lucide="arrow-up-right" class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 group-hover:text-violet-600"></i></div><div class="mt-1 flex flex-wrap gap-x-3 text-xs text-gray-500"><span>{{ $evidence['site_name'] ?: $evidence['domain'] }}</span><span>{{ $evidence['authority_label'] ?: '未标注权威' }}</span><span>排名 #{{ $evidence['rank'] ?: '-' }}</span></div></a>@endforeach @if(($competitor['mention_count'] ?? 0) === 0)<p class="rounded-md bg-amber-50 p-3 text-xs text-amber-700">DeepSeek 提到该竞品但未能回溯到原始搜索结果链接，请人工核实后再采信。</p>@endif</div></article>@empty<p class="rounded-md bg-gray-50 p-4 text-sm text-gray-500">暂无结构化竞品证据，完成一次 DeepSeek 清洗后显示。</p>@endforelse</div></div>
                 </section>
                 @endif
             </section>
