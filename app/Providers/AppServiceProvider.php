@@ -21,6 +21,8 @@ use App\Services\AiWorkspace\AiWorkspaceModelRuntime;
 use App\Services\GeoFlow\AnonymousUsageTelemetry;
 use App\Services\GeoFlow\ArticleAiQualityWorkerLiveness;
 use App\Services\GeoFlow\ArticleGeoFlowService;
+use App\Services\GeoFlow\AiVisibility\AiVisibilityTermCleaner;
+use App\Services\GeoFlow\AiVisibility\AiVisibilityTermCleanupClient;
 use App\Services\GeoFlow\HorizonMetricsAdapter;
 use App\Services\GeoFlow\JobQueueService;
 use App\Services\GeoFlow\LaravelArticleAiOptimizationRefiner;
@@ -62,6 +64,7 @@ class AppServiceProvider extends ServiceProvider
         $trustedTerminal = Closure::fromCallable(Utils::chooseHandler());
 
         $this->app->bind(HostResolver::class, SystemHostResolver::class);
+        $this->app->bind(AiVisibilityTermCleaner::class, AiVisibilityTermCleanupClient::class);
         $this->app->bind(ArticleAiQualityReviewer::class, LaravelArticleAiQualityReviewer::class);
         $this->app->bind(ArticleAiOptimizationRefiner::class, LaravelArticleAiOptimizationRefiner::class);
         $this->app->bind(AgentClient::class, UnixSocketAgentClient::class);

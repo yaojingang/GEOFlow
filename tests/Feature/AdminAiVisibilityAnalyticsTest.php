@@ -13,6 +13,7 @@ use App\Models\SiteSetting;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsFilter;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsService;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityKeywordNormalizer;
+use App\Services\GeoFlow\AiVisibility\AiVisibilityTermCleaner;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -23,6 +24,14 @@ use Tests\TestCase;
 class AdminAiVisibilityAnalyticsTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // 词云 AI 清洗默认关闭，避免无关测试解析出真实模型绑定后发起网络调用；清洗用例内显式开启。
+        config()->set('geoflow.ai_visibility.term_cleanup_enabled', false);
+    }
 
     public function test_growth_center_renders_ai_visibility_dashboard_from_collected_runs(): void
     {
@@ -598,6 +607,111 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         $this->assertNotContains('deepseek', $terms);
         $this->assertNotContains('cloud', $terms);
         $this->assertNotContains('tencent', $terms);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_ai_visibility_term_cloud_skips_url_and_markup_noise_in_source_content(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        config()->set('geoflow.site_name', 'GEOFlow');
+        config()->set('geoflow.site_url', 'https://geoflow.example.com');
+
+        $this->completedRun(
+            keyword: '高考升学规划',
+            providerType: AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            answer: '高考志愿填报要结合升学规划，雅思成绩也是留学路径的一部分。',
+            sentiment: 'positive',
+            completedAt: '2026-07-10 10:00:00',
+            sources: [
+                [
+                    'title' => '高考志愿填报指南',
+                    'domain' => 'eol.cn',
+                    'rank' => 1,
+                    'snippet' => '详见 https://www.winielts.com/vip/faqpage.html?id=10&hits=3 <script>{"@type":"FAQPage"}</script> s10 咨询。eol.cn 提供雅思备考资料。',
+                ],
+            ],
+        );
+
+        $terms = collect(app(AiVisibilityAnalyticsService::class)->overview()['terms'])
+            ->pluck('term')
+            ->all();
+
+        $this->assertContains('高考', $terms);
+        $this->assertNotContains('winielts', $terms);
+        $this->assertNotContains('faqpage', $terms);
+        $this->assertNotContains('hits', $terms);
+        $this->assertNotContains('eol', $terms);
+        $this->assertNotContains('vip', $terms);
+        $this->assertNotContains('s10', $terms);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_ai_visibility_term_cloud_cleans_candidates_with_system_ai(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        config()->set('geoflow.site_name', 'GEOFlow');
+        config()->set('geoflow.site_url', 'https://geoflow.example.com');
+        config()->set('geoflow.ai_visibility.term_cleanup_enabled', true);
+
+        $this->completedRun(
+            keyword: '雅思备考',
+            providerType: AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            answer: '雅思备考需要关注 ielts 与 winielts 的资料差异。',
+            sentiment: 'positive',
+            completedAt: '2026-07-10 10:00:00',
+            sources: [
+                ['title' => 'ielts 备考指南', 'domain' => 'eol.cn', 'rank' => 1, 'snippet' => 'ielts 与 winielts 的备考资料对比。'],
+            ],
+        );
+
+        $this->mock(AiVisibilityTermCleaner::class, function ($mock): void {
+            $mock->shouldReceive('clean')->once()->andReturn([
+                ['name' => '雅思考试', 'terms' => ['ielts', 'winielts']],
+            ]);
+        });
+
+        $overview = app(AiVisibilityAnalyticsService::class)->overview();
+
+        $this->assertSame('雅思考试', $overview['terms'][0]['term'] ?? null);
+        $this->assertSame(5.0, $overview['terms'][0]['weight'] ?? null);
+
+        // 候选词未变化时走缓存，不再触发第二次 AI 清洗。
+        $cached = app(AiVisibilityAnalyticsService::class)->overview();
+        $this->assertSame('雅思考试', $cached['terms'][0]['term'] ?? null);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_ai_visibility_term_cloud_falls_back_to_heuristics_when_ai_cleanup_fails(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        config()->set('geoflow.site_name', 'GEOFlow');
+        config()->set('geoflow.site_url', 'https://geoflow.example.com');
+        config()->set('geoflow.ai_visibility.term_cleanup_enabled', true);
+
+        $this->completedRun(
+            keyword: '雅思备考',
+            providerType: AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            answer: '雅思备考需要关注 ielts 与 winielts 的资料差异。',
+            sentiment: 'positive',
+            completedAt: '2026-07-10 10:00:00',
+            sources: [
+                ['title' => 'ielts 备考指南', 'domain' => 'eol.cn', 'rank' => 1, 'snippet' => 'ielts 与 winielts 的备考资料对比。'],
+            ],
+        );
+
+        $this->mock(AiVisibilityTermCleaner::class, function ($mock): void {
+            $mock->shouldReceive('clean')->andReturn(null);
+        });
+
+        $overview = app(AiVisibilityAnalyticsService::class)->overview();
+        $terms = collect($overview['terms'])->pluck('term')->all();
+
+        $this->assertContains('ielts', $terms);
+        $this->assertContains('winielts', $terms);
+        $this->assertNotContains('雅思考试', $terms);
 
         Carbon::setTestNow();
     }

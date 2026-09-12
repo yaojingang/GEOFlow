@@ -308,6 +308,12 @@ return [
         'ark_responses_path' => env('GEOFLOW_ARK_RESPONSES_PATH', '/responses'),
         'default_search_count' => max(1, min(20, (int) env('GEOFLOW_AI_VISIBILITY_SEARCH_COUNT', 10))),
         'default_analysis_max_tokens' => max(512, (int) env('GEOFLOW_AI_VISIBILITY_ANALYSIS_MAX_TOKENS', 4096)),
+        // 词云主题 AI 清洗：候选词交由系统分析模型（DeepSeek 分析绑定）归一；关闭后直接使用启发式提取结果。
+        'term_cleanup_enabled' => filter_var(env('GEOFLOW_AI_VISIBILITY_TERM_CLEANUP', true), FILTER_VALIDATE_BOOLEAN),
+        'term_cleanup_timeout' => max(5, min(60, (int) env('GEOFLOW_AI_VISIBILITY_TERM_CLEANUP_TIMEOUT', 20))),
+        'term_cleanup_max_tokens' => max(512, (int) env('GEOFLOW_AI_VISIBILITY_TERM_CLEANUP_MAX_TOKENS', 2048)),
+        'term_cleanup_candidates' => max(10, min(200, (int) env('GEOFLOW_AI_VISIBILITY_TERM_CLEANUP_CANDIDATES', 60))),
+        'term_cleanup_cache_ttl' => max(60, (int) env('GEOFLOW_AI_VISIBILITY_TERM_CLEANUP_CACHE_TTL', 43200)),
     ],
 
     // 本地上传根目录（绝对路径）

@@ -7,9 +7,11 @@ use App\Models\AiVisibilityRun;
 use App\Models\AiVisibilitySource;
 use App\Models\AiVisibilityTopic;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityConfigurationResolver;
+use App\Services\GeoFlow\AiVisibility\AiVisibilityTermCleaner;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -20,6 +22,7 @@ class AiVisibilityAnalyticsService
 
     public function __construct(
         private readonly AiVisibilityConfigurationResolver $configuration,
+        private readonly AiVisibilityTermCleaner $termCleanup,
     ) {}
 
     /**
@@ -576,6 +579,16 @@ class AiVisibilityAnalyticsService
         }
 
         arsort($terms);
+
+        if ($terms === []) {
+            return [];
+        }
+
+        $cleaned = $this->cleanedTopics($terms);
+        if ($cleaned !== null) {
+            return $cleaned;
+        }
+
         $max = max((float) reset($terms), 1.0);
 
         return collect($terms)
@@ -584,6 +597,102 @@ class AiVisibilityAnalyticsService
                 'term' => $term,
                 'weight' => round($weight, 2),
                 'size' => (int) round(12 + (($weight / $max) * 8)),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * 用系统 AI 清洗词云候选主题，结果按候选词签名缓存；
+     * 未启用、模型不可用、清洗失败或清洗结果为空时返回 null，走启发式兜底。
+     *
+     * @param  array<string, float>  $terms
+     * @return list<array<string, mixed>>|null
+     */
+    private function cleanedTopics(array $terms): ?array
+    {
+        if (! filter_var(config('geoflow.ai_visibility.term_cleanup_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
+            return null;
+        }
+
+        $candidates = collect($terms)
+            ->take(max(10, min(200, (int) config('geoflow.ai_visibility.term_cleanup_candidates', 60))))
+            ->all();
+        if ($candidates === []) {
+            return null;
+        }
+
+        $cacheKey = 'geoflow:ai_visibility:term_cloud:'.hash('sha256', (string) json_encode($candidates, JSON_UNESCAPED_UNICODE));
+        $ttl = max(60, (int) config('geoflow.ai_visibility.term_cleanup_cache_ttl', 43200));
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return $cached['ok'] === true ? $cached['topics'] : null;
+        }
+
+        $topics = $this->termCleanup->clean($candidates);
+        if ($topics === null || $topics === []) {
+            // 失败只短缓存，避免数据未变化时每次渲染都等待一次注定失败的 AI 调用。
+            Cache::put($cacheKey, ['ok' => false], min($ttl, 600));
+
+            return null;
+        }
+
+        $shaped = $this->shapeTopics($topics, $terms);
+        if ($shaped === []) {
+            Cache::put($cacheKey, ['ok' => false], min($ttl, 600));
+
+            return null;
+        }
+
+        Cache::put($cacheKey, ['ok' => true, 'topics' => $shaped], $ttl);
+
+        return $shaped;
+    }
+
+    /**
+     * 主题权重取其归属的原始候选词权重之和，每个候选词只计入一次。
+     *
+     * @param  list<array{name: string, terms: list<string>}>  $topics
+     * @param  array<string, float>  $terms
+     * @return list<array<string, mixed>>
+     */
+    private function shapeTopics(array $topics, array $terms): array
+    {
+        $shaped = [];
+
+        foreach ($topics as $topic) {
+            $name = trim((string) ($topic['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+
+            $weight = 0.0;
+            foreach ((array) ($topic['terms'] ?? []) as $source) {
+                $source = (string) $source;
+                if (isset($terms[$source])) {
+                    $weight += (float) $terms[$source];
+                    unset($terms[$source]);
+                }
+            }
+
+            if ($weight <= 0.0) {
+                continue;
+            }
+
+            $shaped[] = ['term' => $name, 'weight' => $weight];
+        }
+
+        usort($shaped, fn (array $left, array $right): int => $right['weight'] <=> $left['weight']);
+
+        $max = (float) ($shaped[0]['weight'] ?? 0.0);
+        $max = max($max, 1.0);
+
+        return collect($shaped)
+            ->take(24)
+            ->map(fn (array $topic): array => [
+                'term' => $topic['term'],
+                'weight' => round((float) $topic['weight'], 2),
+                'size' => (int) round(12 + (((float) $topic['weight'] / $max) * 8)),
             ])
             ->values()
             ->all();
@@ -821,10 +930,20 @@ class AiVisibilityAnalyticsService
      */
     private function extractTerms(string $text, array $brandAliases): array
     {
+        $text = $this->sanitizeTermText($text);
+
         $stopWords = [
             'the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'you', 'are', 'was', 'were', 'api', 'http', 'https', 'top',
-            'www', 'com', 'cn', 'demo', 'example', 'html', 'juejin', 'infoq', 'sspai', 'deepseek', 'doubao', 'tencent', 'cloud',
+            'www', 'com', 'cn', 'net', 'org', 'demo', 'example', 'html', 'htm', 'php', 'asp', 'aspx', 'jsp', 'index', 'default',
+            'juejin', 'infoq', 'sspai', 'deepseek', 'doubao', 'tencent', 'cloud',
+            'will', 'your', 'can', 'has', 'have', 'how', 'what', 'when', 'which', 'who', 'why', 'not', 'but', 'all', 'any', 'also',
+            'more', 'most', 'other', 'some', 'such', 'than', 'then', 'they', 'them', 'their', 'there', 'these', 'those', 'about',
+            'after', 'before', 'between', 'both', 'each', 'only', 'over', 'under', 'very', 'well', 'best', 'get', 'use', 'used',
+            'using', 'new', 'one', 'two', 'three', 'may', 'should', 'would', 'could', 'its', 'our', 'out', 'per', 'via', 'see',
             '以及', '对应', '这个', '相关', '可以', '进行', '通过', '一个', '一些', '包括', '结果', '信息', '数据', '内容', '分析', '信源',
+            '我们', '你们', '他们', '它们', '自己', '什么', '怎么', '为什么', '因为', '所以', '如果', '虽然', '但是', '然后', '于是',
+            '其中', '关于', '对于', '除了', '还有', '这些', '那些', '那个', '可能', '应该', '需要', '能够', '目前', '现在', '时候',
+            '方面', '情况', '并且', '或者', '以及', '不仅', '而且', '不过', '以上', '下面', '如下', '例如', '比如', '一般', '非常',
         ];
         $domainTerms = [
             'AI 搜索', 'AI 可见度', 'AI 营销', 'GEO 运营', 'Top 1', 'Top 3',
@@ -847,8 +966,9 @@ class AiVisibilityAnalyticsService
             }
         }
 
-        preg_match_all('/[A-Za-z][A-Za-z0-9_-]{2,}/u', $text, $matches);
+        preg_match_all('/[A-Za-z][A-Za-z]{2,}/u', $text, $matches);
         $terms = array_merge($terms, $matches[0] ?? []);
+        $terms = array_merge($terms, $this->chineseTerms($text));
 
         return collect($terms)
             ->map(fn (string $term): string => $this->normalizeTerm($term, $domainTerms))
@@ -873,6 +993,78 @@ class AiVisibilityAnalyticsService
             ->sortDesc()
             ->keys()
             ->take(20)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * 清洗用于主题提取的文本：抓取摘要里常混有 URL、HTML 和 JSON-LD，
+     * 直接分词会把域名片段、标签属性当成主题。
+     */
+    private function sanitizeTermText(string $text): string
+    {
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = preg_replace('#<(script|style)\b[^>]*>.*?</\1\s*>#is', ' ', $text) ?? $text;
+        $text = preg_replace('~(?:https?://|www\.)\S+~iu', ' ', $text) ?? $text;
+        $text = preg_replace('~[\w.+-]+@[\w.-]+~u', ' ', $text) ?? $text;
+        $text = preg_replace('/\b[\w-]+(?:\.[\w-]+)+\b/u', ' ', $text) ?? $text;
+        $text = strip_tags($text);
+        $text = preg_replace('/[^\p{L}\p{N}\s]+/u', ' ', $text) ?? $text;
+
+        return preg_replace('/\s+/u', ' ', $text) ?? $text;
+    }
+
+    /**
+     * 无分词库时的中文候选词提取：保留 2-6 字的连续汉字串；长句则取 2 字
+     * 片段（汉语双字词为主），3-4 字片段仅保留文中重复出现过的，过滤常用虚词。
+     *
+     * @return list<string>
+     */
+    private function chineseTerms(string $text): array
+    {
+        static $stopWords = [
+            '的了', '是在', '和与', '及或', '有无', '不为', '对的', '从被', '把让', '向于', '至到', '由以', '而且', '但也',
+            '都还', '就又', '再很', '更最', '太挺', '非常', '十分', '比较', '这些', '那些', '这个', '那个', '我们', '你们',
+            '他们', '它们', '自己', '什么', '怎么', '如何', '为什么', '因为', '所以', '如果', '虽然', '但是', '然后', '于是',
+            '其中', '之一', '关于', '对于', '除了', '以及', '还有', '可以', '可能', '应该', '需要', '能够', '进行', '通过',
+            '一个', '一些', '每次', '目前', '现在', '时候', '方面', '情况', '并且', '或者', '不仅', '不过', '以上',
+            '下面', '如下', '例如', '比如', '一般', '没有', '就是', '还是', '也是', '都是', '的话', '来说', '而言',
+            '相关', '包括', '结果', '信息', '数据', '内容', '分析', '选择', '建议', '问题', '使用', '提供', '支持', '发展',
+        ];
+
+        preg_match_all('/\p{Han}{2,}/u', $text, $matches);
+        $candidates = [];
+
+        foreach ($matches[0] ?? [] as $run) {
+            $length = mb_strlen($run, 'UTF-8');
+            if ($length <= 6) {
+                $candidates[] = $run;
+
+                continue;
+            }
+
+            for ($offset = 0; $offset + 2 <= $length; $offset++) {
+                $candidates[] = mb_substr($run, $offset, 2, 'UTF-8');
+            }
+
+            $counts = [];
+            for ($size = 3; $size <= 4; $size++) {
+                for ($offset = 0; $offset + $size <= $length; $offset++) {
+                    $gram = mb_substr($run, $offset, $size, 'UTF-8');
+                    $counts[$gram] = ($counts[$gram] ?? 0) + 1;
+                }
+            }
+
+            foreach ($counts as $gram => $count) {
+                if ($count >= 2) {
+                    $candidates[] = $gram;
+                }
+            }
+        }
+
+        return collect($candidates)
+            ->filter(fn (string $term): bool => ! in_array($term, $stopWords, true))
+            ->unique()
             ->values()
             ->all();
     }
