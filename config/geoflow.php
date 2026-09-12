@@ -131,6 +131,12 @@ return [
         'sitemap_url_limit' => 50000,
     ],
 
+    // platform_web 渠道（Chrome 扩展代发布）：总开关与工单超时（小时）。
+    'platform_web' => [
+        'enabled' => filter_var(env('GEOFLOW_PLATFORM_WEB_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+        'work_order_timeout_hours' => max(1, (int) env('GEOFLOW_PLATFORM_WEB_TIMEOUT_HOURS', 24)),
+    ],
+
     // 后台入口路径前缀，如 /geo_admin（勿与前台路由冲突）
     'admin_base_path' => '/'.$adminBasePath,
 

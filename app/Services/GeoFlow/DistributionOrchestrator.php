@@ -18,6 +18,7 @@ use App\Services\AiWorkspace\AiWorkspaceDispatchGuard;
 use App\Services\HostedSites\HostedSiteAllocationRequestService;
 use App\Services\HostedSites\HostedSiteAllocator;
 use App\Services\HostedSites\HostedSiteLifecycleService;
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformCatalog;
 use App\Support\GeoFlow\DistributionErrorSanitizer;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -372,6 +373,34 @@ class DistributionOrchestrator
                         return null;
                     }
 
+                    // platform_web 严禁重发第一层：同平台（任意 platform_web 渠道）已有 synced 分发行时跳过该渠道。
+                    if ($lockedChannel->isPlatformWeb()) {
+                        $platform = (string) $lockedChannel->resolvedPlatformWebConfig()['platform'];
+                        $syncedExists = ArticleDistribution::query()
+                            ->where('article_id', (int) $articleModel->id)
+                            ->where('action', $action)
+                            ->where('status', 'synced')
+                            ->whereHas('channel', fn ($query) => $query
+                                ->where('channel_type', DistributionChannel::TYPE_PLATFORM_WEB)
+                                ->where('channel_config->platform', $platform))
+                            ->exists();
+                        if ($syncedExists) {
+                            $this->log(
+                                'warning',
+                                '该文章已成功发布到平台「'.PlatformCatalog::label($platform).'」，同平台严禁重发，已跳过。',
+                                (int) $lockedChannel->id,
+                                null,
+                                (int) $articleModel->id,
+                                [
+                                    'event' => 'platform_publish_blocked_duplicate',
+                                    'platform' => $platform,
+                                ],
+                            );
+
+                            return null;
+                        }
+                    }
+
                     $distribution = ArticleDistribution::query()
                         ->where('article_id', (int) $articleModel->id)
                         ->where('distribution_channel_id', (int) $lockedChannel->id)
@@ -717,6 +746,31 @@ class DistributionOrchestrator
                     $responseMeta = is_array($response['remote_meta'] ?? null) ? $response['remote_meta'] : [];
 
                     $existingMeta = is_array($locked->remote_meta) ? $locked->remote_meta : [];
+
+                    if (! empty($responseMeta['pending_extension'])) {
+                        // platform_web: 工单已创建，等待 Chrome 扩展执行回执
+                        $locked->forceFill([
+                            'status' => 'awaiting_extension',
+                            'remote_id' => is_scalar($response['remote_id'] ?? null) ? (string) $response['remote_id'] : $locked->remote_id,
+                            'remote_meta' => array_replace($existingMeta, $responseMeta),
+                            'last_attempt_at' => now(),
+                            'last_error_message' => null,
+                        ])->save();
+                        $this->log(
+                            'info',
+                            '已创建扩展发布工单，等待 Chrome 扩展执行。',
+                            (int) $lockedChannel->id,
+                            (int) $distribution->id,
+                            (int) $distribution->article_id,
+                            [
+                                'event' => 'platform_web_pending',
+                                'work_order_status' => $responseMeta['work_order_status'] ?? null,
+                            ],
+                        );
+
+                        return ['saved' => true, 'response' => $response];
+                    }
+
                     $locked->forceFill([
                         'status' => 'synced',
                         'remote_id' => is_scalar($response['remote_id'] ?? null) ? (string) $response['remote_id'] : $locked->remote_id,
