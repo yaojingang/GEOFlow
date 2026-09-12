@@ -26,6 +26,8 @@ class AiVisibilityRun extends Model
     protected $fillable = [
         'uuid',
         'keyword',
+        'ai_visibility_topic_id',
+        'keyword_hash',
         'prompt',
         'provider_type',
         'provider_key',
@@ -49,6 +51,7 @@ class AiVisibilityRun extends Model
     {
         return [
             'ai_model_id' => 'integer',
+            'ai_visibility_topic_id' => 'integer',
             'ai_source_provider_id' => 'integer',
             'latency_ms' => 'integer',
             'usage_json' => 'array',
@@ -77,6 +80,11 @@ class AiVisibilityRun extends Model
     public function sourceProvider(): BelongsTo
     {
         return $this->belongsTo(AiSourceProvider::class, 'ai_source_provider_id');
+    }
+
+    public function topic(): BelongsTo
+    {
+        return $this->belongsTo(AiVisibilityTopic::class, 'ai_visibility_topic_id');
     }
 
     public function sources(): HasMany
