@@ -1,8 +1,8 @@
 {
     "id": "geoflow-template-04-red-opinion",
-    "name": "GEOFlow 04 Red Opinion",
+    "name": "GEOFlow 模板 04 · 红色观点",
     "version": "1.0.0",
-    "description": "A concise opinion-led variant with assertive red accents and compact editorial structure. Preserves GEOFlow frontend data contracts and derives from the NetEase News Inspired base theme.",
+    "description": "简练的观点导向主题，红色点缀大胆，编辑结构紧凑。",
     "templates": [
         "layout",
         "home",

@@ -1,8 +1,8 @@
 {
     "id": "geoflow-template-20-research-journal",
-    "name": "GEOFlow 20 Research Journal",
+    "name": "GEOFlow 模板 20 · 学术期刊",
     "version": "1.0.0",
-    "description": "A research-journal variant with teal accents, rigorous article layout, and citation-friendly reading. Preserves GEOFlow frontend data contracts and derives from the NetEase News Inspired base theme.",
+    "description": "研究期刊风格，青色点缀、文章排版严谨，适合引用与深度阅读。",
     "templates": [
         "layout",
         "home",

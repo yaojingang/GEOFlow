@@ -1,8 +1,8 @@
 {
   "id": "toutiao-news-20260426",
-  "name": "Toutiao News Inspired",
+  "name": "头条新闻风格",
   "version": "1.0.0",
-  "description": "A Toutiao-inspired GEOFlow frontend theme with a channel rail, news feed, compact cards, and right-side hot list.",
+  "description": "参考今日头条的 GEOFlow 前端主题，包含频道栏、新闻信息流、紧凑卡片与右侧热点榜。",
   "templates": [
     "layout",
     "home",

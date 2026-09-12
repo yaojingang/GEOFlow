@@ -1,8 +1,8 @@
 {
     "id": "geoflow-template-08-section-blue",
-    "name": "GEOFlow 08 Section Blue",
+    "name": "GEOFlow 模板 08 · 深蓝板块",
     "version": "1.0.0",
-    "description": "A section-led editorial variant with deep blue identity, stacked blocks, and clear content groups. Preserves GEOFlow frontend data contracts and derives from the NetEase News Inspired base theme.",
+    "description": "以板块为主的编辑风格，深蓝色识别度高，堆叠区块与内容分组清晰。",
     "templates": [
         "layout",
         "home",

@@ -1,8 +1,8 @@
 {
     "id": "geoflow-template-07-breaking-red",
-    "name": "GEOFlow 07 Breaking Red",
+    "name": "GEOFlow 模板 07 · 突发红讯",
     "version": "1.0.0",
-    "description": "A breaking-news variant with red-black urgency, bold headings, and fast feed rhythm. Preserves GEOFlow frontend data contracts and derives from the NetEase News Inspired base theme.",
+    "description": "突发新闻风格，红黑配色营造紧迫感，标题醒目、信息流节奏快。",
     "templates": [
         "layout",
         "home",

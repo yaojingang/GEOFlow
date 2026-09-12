@@ -1,12 +1,12 @@
 {
   "id": "apple_support_clone",
-  "name": "Apple Support Inspired",
+  "name": "Apple 支持页风格",
   "version": "1.0.0",
   "mode": "clone",
   "framework": "laravel",
   "geoflow_contract": "site-theme-view-resolver",
   "created_at": "2026-05-30",
-  "description": "Apple.com and Apple Support inspired GEOFlow frontend theme. It keeps GEOFlow routes and article/category data contracts intact.",
+  "description": "参考 Apple 官网与 Apple Support 风格的 GEOFlow 前端主题，保留 GEOFlow 路由与文章、分类数据结构。",
   "source_reference_url": [
     "https://www.apple.com/",
     "https://support.apple.com/en-us/102655",

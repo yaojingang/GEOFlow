@@ -1,8 +1,8 @@
 {
     "id": "geoflow-template-12-saas-gradient",
-    "name": "GEOFlow 12 SaaS Gradient",
+    "name": "GEOFlow 模板 12 · SaaS 渐变",
     "version": "1.0.0",
-    "description": "A crisp SaaS-editorial variant with cool blue accents, clean cards, and product-document clarity. Preserves GEOFlow frontend data contracts and derives from the NetEase News Inspired base theme.",
+    "description": "清爽的 SaaS 编辑风格，冷蓝点缀、卡片干净，兼具产品文档的清晰度。",
     "templates": [
         "layout",
         "home",

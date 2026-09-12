@@ -2,7 +2,7 @@
   "id": "apihot-recommend-20260623",
   "name": "API热点网精选推荐",
   "version": "1.0.0",
-  "description": "A GEOFlow frontend theme for API recommendation portals, with a full static-style recommendation homepage, dynamic latest-article section, and NetEase-derived list/detail page contracts.",
+  "description": "面向 API 推荐站的 GEOFlow 前端主题，提供完整静态风格的推荐首页、动态最新文章区块，以及源自网易风格的文章列表与详情页结构。",
   "templates": [
     "layout",
     "home",

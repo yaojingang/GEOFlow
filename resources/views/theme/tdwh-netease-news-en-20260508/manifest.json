@@ -1,8 +1,8 @@
 {
   "id": "tdwh-netease-news-en-20260508",
-  "name": "TDWH NetEase English",
+  "name": "TDWH 网易英文版",
   "version": "1.0.0",
-  "description": "TDWH site-specific English frontend theme forked from NetEase News Inspired. It preserves GEOFlow data contracts while forcing English UI chrome for www.tdwh.com.",
+  "description": "TDWH 站点专用英文前端主题，衍生自网易新闻风格主题，在保留 GEOFlow 数据结构的同时为 www.tdwh.com 强制使用英文界面。",
   "templates": [
     "layout",
     "home",

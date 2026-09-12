@@ -1,8 +1,8 @@
 {
     "id": "geoflow-template-11-product-newsroom",
-    "name": "GEOFlow 11 Product Newsroom",
+    "name": "GEOFlow 模板 11 · 产品新闻室",
     "version": "1.0.0",
-    "description": "A spacious product-newsroom variant with minimal chrome, soft panels, and polished reading focus. Preserves GEOFlow frontend data contracts and derives from the NetEase News Inspired base theme.",
+    "description": "宽敞的产品新闻室风格，界面简洁、面板柔和，阅读聚焦。",
     "templates": [
         "layout",
         "home",

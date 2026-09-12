@@ -1,8 +1,8 @@
 {
     "id": "geoflow-template-16-newsletter-letter",
-    "name": "GEOFlow 16 Newsletter Letter",
+    "name": "GEOFlow 模板 16 · 通讯书信",
     "version": "1.0.0",
-    "description": "A newsletter-style variant with authorial warmth, simple modules, and letter-like spacing. Preserves GEOFlow frontend data contracts and derives from the NetEase News Inspired base theme.",
+    "description": "Newsletter 书信风格，带有作者温度、模块简单、间距如书信。",
     "templates": [
         "layout",
         "home",

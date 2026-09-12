@@ -1,8 +1,8 @@
 {
     "id": "geoflow-template-13-linear-system",
-    "name": "GEOFlow 13 Linear System",
+    "name": "GEOFlow 模板 13 · 极简系统",
     "version": "1.0.0",
-    "description": "A quiet product-system variant with slate surfaces, precise borders, and operational clarity. Preserves GEOFlow frontend data contracts and derives from the NetEase News Inspired base theme.",
+    "description": "安静的产品系统风格，石板灰表面、精准边框、操作清晰。",
     "templates": [
         "layout",
         "home",

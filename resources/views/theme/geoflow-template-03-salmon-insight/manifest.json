@@ -1,8 +1,8 @@
 {
     "id": "geoflow-template-03-salmon-insight",
-    "name": "GEOFlow 03 Salmon Insight",
+    "name": "GEOFlow 模板 03 · 暖橙洞察",
     "version": "1.0.0",
-    "description": "A warm business insight variant with paper-toned surfaces and calm analysis pacing. Preserves GEOFlow frontend data contracts and derives from the NetEase News Inspired base theme.",
+    "description": "暖色调商业洞察主题，纸质感表面，分析节奏从容。",
     "templates": [
         "layout",
         "home",
