@@ -7,6 +7,8 @@ use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
 use App\Models\AiVisibilitySource;
+use App\Models\AiVisibilityTopic;
+use App\Models\AiVisibilityTopicKeyword;
 use App\Services\Admin\AiModelUsageAttemptFactory;
 use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\AiWorkspace\AiWorkspaceModelUnavailableException;
@@ -67,7 +69,7 @@ final class AiVisibilityService
     /**
      * @param  array<string,mixed>  $options
      */
-    public function runDoubaoSearchCustom(AiSourceProvider $provider, string $keyword, array $options = []): AiVisibilityRun
+    public function runDoubaoSearchCustom(AiSourceProvider $provider, string $keyword, array $options = [], ?AiVisibilityTopic $topic = null): AiVisibilityRun
     {
         $keyword = $this->normalizeKeyword($keyword);
         $run = $this->createRun([
@@ -77,7 +79,7 @@ final class AiVisibilityService
             'provider_key' => (string) ($provider->provider_key ?? AiSourceProvider::PROVIDER_DOUBAO_SEARCH_CUSTOM),
             'ai_source_provider_id' => (int) $provider->id,
             'locale' => (string) ($options['locale'] ?? 'zh_CN'),
-        ]);
+        ], $topic);
 
         $reservation = null;
         try {
@@ -107,7 +109,7 @@ final class AiVisibilityService
      * @param  list<AiVisibilitySourceData>  $sources
      * @param  array<string,mixed>  $options
      */
-    public function runDeepSeekAnalysis(SystemAiIdentity $identity, AiModel $model, string $keyword, string $prompt, array $sources = [], array $options = []): AiVisibilityRun
+    public function runDeepSeekAnalysis(SystemAiIdentity $identity, AiModel $model, string $keyword, string $prompt, array $sources = [], array $options = [], ?AiVisibilityTopic $topic = null): AiVisibilityRun
     {
         $identity->assertCanCollectVisibility();
         $keyword = $this->normalizeKeyword($keyword);
@@ -123,7 +125,7 @@ final class AiVisibilityService
             'ai_model_id' => (int) $model->id,
             'model_id' => (string) ($model->model_id ?? ''),
             'locale' => (string) ($options['locale'] ?? 'zh_CN'),
-        ]);
+        ], $topic);
 
         return $this->runModelCall(
             identity: $identity,
@@ -153,16 +155,17 @@ final class AiVisibilityService
         ?string $analysisPrompt = null,
         array $searchOptions = [],
         array $analysisOptions = [],
+        ?AiVisibilityTopic $topic = null,
     ): array {
         $identity->assertCanCollectVisibility();
-        $searchRun = $this->runDoubaoSearchCustom($sourceProvider, $keyword, $searchOptions);
+        $searchRun = $this->runDoubaoSearchCustom($sourceProvider, $keyword, $searchOptions, $topic);
         $searchRun->load('sources');
         $sources = $this->sourceDataFromRun($searchRun);
         $prompt = $analysisPrompt !== null && trim($analysisPrompt) !== ''
             ? $analysisPrompt
             : $this->defaultAnalysisPrompt($keyword);
 
-        $analysisRun = $this->runDeepSeekAnalysis($identity, $analysisModel, $keyword, $prompt, $sources, $analysisOptions);
+        $analysisRun = $this->runDeepSeekAnalysis($identity, $analysisModel, $keyword, $prompt, $sources, $analysisOptions, $topic);
 
         return [
             'search_run' => $searchRun->fresh('sources') ?? $searchRun,
@@ -173,8 +176,16 @@ final class AiVisibilityService
     /**
      * @param  array<string,mixed>  $attributes
      */
-    private function createRun(array $attributes): AiVisibilityRun
+    private function createRun(array $attributes, ?AiVisibilityTopic $topic = null): AiVisibilityRun
     {
+        $keyword = (string) $attributes['keyword'];
+        $keywordHash = AiVisibilityKeywordNormalizer::hash($keyword);
+        $attributes['keyword_hash'] = $keywordHash;
+        $attributes['ai_visibility_topic_id'] = $topic?->id
+            ?? ($keywordHash === AiVisibilityKeywordNormalizer::hash('')
+                ? null
+                : AiVisibilityTopicKeyword::query()->where('keyword_hash', $keywordHash)->value('ai_visibility_topic_id'));
+
         return AiVisibilityRun::query()->create(array_replace([
             'status' => AiVisibilityRun::STATUS_RUNNING,
             'started_at' => now(),

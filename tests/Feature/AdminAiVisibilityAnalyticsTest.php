@@ -7,12 +7,16 @@ use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
 use App\Models\AiVisibilitySource;
+use App\Models\AiVisibilityTopic;
 use App\Models\SiteSetting;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsFilter;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsService;
+use App\Services\GeoFlow\AiVisibility\AiVisibilityKeywordNormalizer;
+use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class AdminAiVisibilityAnalyticsTest extends TestCase
@@ -110,6 +114,34 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             ->assertSee(route('admin.analytics.ai-visibility.search'), false)
             ->assertSee('data-doubao-mode', false)
             ->assertSee('开始搜索');
+    }
+
+    public function test_search_creates_a_run_attached_to_the_selected_topic(): void
+    {
+        $this->configureAiVisibilityApis();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'LogId' => 'log_admin_topic_search',
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+        $topic = AiVisibilityTopic::query()->create([
+            'name' => '采集主题',
+            'description' => '搜索采集时选择的主题',
+        ]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.analytics.ai-visibility.search'), [
+                'query' => 'GEOFlow AI 可见性',
+                'topic_id' => (int) $topic->id,
+            ])
+            ->assertRedirect(route('admin.analytics.ai-visibility', ['ai_run' => AiVisibilityRun::query()->firstOrFail()->id]));
+
+        $this->assertDatabaseHas('ai_visibility_runs', [
+            'keyword' => 'GEOFlow AI 可见性',
+            'ai_visibility_topic_id' => (int) $topic->id,
+            'keyword_hash' => AiVisibilityKeywordNormalizer::hash('GEOFlow AI 可见性'),
+        ]);
     }
 
     public function test_growth_center_collapses_ai_visibility_module_until_search_api_is_configured(): void
@@ -466,7 +498,7 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             'name' => 'Doubao Search Custom',
             'provider_key' => AiSourceProvider::PROVIDER_DOUBAO_SEARCH_CUSTOM,
             'endpoint_url' => 'https://open.feedcoopapi.com/search_api/web_search',
-            'api_key' => 'encrypted-doubao-key',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-search-key'),
             'status' => 'active',
             'daily_limit' => 0,
             'used_today' => 0,

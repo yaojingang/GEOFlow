@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Data\Ai\SystemAiIdentity;
 use App\Http\Controllers\Controller;
 use App\Models\AiVisibilityRun;
+use App\Models\AiVisibilityTopic;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsFilter;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsService;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityConfigurationResolver;
@@ -31,6 +32,7 @@ class AiVisibilityAnalyticsController extends Controller
             'summary_length' => ['nullable', 'integer', 'min:100', 'max:4000'], 'image_count' => ['nullable', 'integer', 'min:1', 'max:10'],
             'competitor_analysis' => ['nullable', 'boolean'],
             'sites' => ['nullable', 'string', 'max:1000'], 'block_hosts' => ['nullable', 'string', 'max:500'],
+            'topic_id' => ['nullable', 'integer', 'exists:ai_visibility_topics,id'],
         ]);
         $provider = $this->configuration->searchProvider(SystemAiIdentity::forVisibilityCollection());
         if ($provider === null) {
@@ -40,7 +42,12 @@ class AiVisibilityAnalyticsController extends Controller
             'sites' => preg_split('/[|,\r\n]+/', (string) ($payload['sites'] ?? ''), -1, PREG_SPLIT_NO_EMPTY),
             'block_hosts' => preg_split('/[|,\r\n]+/', (string) ($payload['block_hosts'] ?? ''), -1, PREG_SPLIT_NO_EMPTY),
         ]);
-        $run = $this->visibility->runDoubaoSearchCustom($provider, (string) $payload['query'], $options);
+        $run = $this->visibility->runDoubaoSearchCustom(
+            $provider,
+            (string) $payload['query'],
+            $options,
+            $payload['topic_id'] ? AiVisibilityTopic::find((int) $payload['topic_id']) : null,
+        );
         if ((bool) ($payload['competitor_analysis'] ?? false)) {
             $model = $this->configuration->deepSeekModel(SystemAiIdentity::forVisibilityCollection());
             if ($model !== null) {

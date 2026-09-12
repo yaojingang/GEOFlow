@@ -8,8 +8,11 @@ use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
+use App\Models\AiVisibilityTopic;
+use App\Models\AiVisibilityTopicKeyword;
 use App\Models\SiteSetting;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityConfigurationResolver;
+use App\Services\GeoFlow\AiVisibility\AiVisibilityKeywordNormalizer;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -348,6 +351,75 @@ class AiVisibilityServiceTest extends TestCase
             'reasoning_tokens' => 0,
         ], $run->usage_json);
         $this->assertSame(1, (int) $model->fresh()->used_today);
+    }
+
+    public function test_it_attaches_the_selected_topic_to_a_search_run(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'LogId' => 'log_topic_search',
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+
+        $provider = $this->createSearchProvider();
+        $topic = AiVisibilityTopic::query()->create([
+            'name' => 'AI 可见性主题',
+            'description' => '用于采集归类的主题',
+        ]);
+
+        $run = app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, 'GEOFlow AI 可见性', [], $topic);
+
+        $this->assertSame(AiVisibilityRun::STATUS_COMPLETED, $run->status);
+        $this->assertSame((int) $topic->id, (int) $run->ai_visibility_topic_id);
+        $this->assertSame(AiVisibilityKeywordNormalizer::hash('GEOFlow AI 可见性'), $run->keyword_hash);
+    }
+
+    public function test_it_auto_classifies_runs_by_registered_keyword_hash(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'LogId' => 'log_auto_classify',
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+
+        $provider = $this->createSearchProvider();
+        $topic = AiVisibilityTopic::query()->create([
+            'name' => '自动归类主题',
+        ]);
+        AiVisibilityTopicKeyword::query()->create([
+            'ai_visibility_topic_id' => (int) $topic->id,
+            'keyword' => 'GEOFlow 定价',
+            'keyword_hash' => AiVisibilityKeywordNormalizer::hash('GEOFlow 定价'),
+        ]);
+
+        $run = app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, 'GEOFlow 定价');
+
+        $this->assertSame(AiVisibilityRun::STATUS_COMPLETED, $run->status);
+        $this->assertSame((int) $topic->id, (int) $run->fresh()->ai_visibility_topic_id);
+        $this->assertSame(AiVisibilityKeywordNormalizer::hash('GEOFlow 定价'), $run->keyword_hash);
+    }
+
+    public function test_it_keeps_unregistered_keywords_without_topic_but_records_hash(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'LogId' => 'log_unclassified',
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+
+        $provider = $this->createSearchProvider();
+
+        $run = app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, '全新关键词');
+
+        $this->assertSame(AiVisibilityRun::STATUS_COMPLETED, $run->status);
+        $this->assertNull($run->ai_visibility_topic_id);
+        $this->assertSame(AiVisibilityKeywordNormalizer::hash('全新关键词'), $run->keyword_hash);
     }
 
     private function createSearchProvider(array $overrides = []): AiSourceProvider
