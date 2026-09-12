@@ -47,7 +47,7 @@ class ManualPublicationService
             }
             $prepared['duplicate_warning_count'] = $this->duplicateDetector->find($prepared)->count();
 
-            $publication = ManualPublication::query()->create($prepared);
+            $publication = ManualPublication::query()->create(Arr::except($prepared, ['publication_payload_extras']));
             $this->recordTransition($publication, null, $initialStatus, $creator);
 
             return $publication->refresh();
@@ -71,8 +71,9 @@ class ManualPublicationService
         }
         $prepared['updated_at'] = now();
         $prepared['revision'] = $expectedRevision + 1;
-        $casted = (new ManualPublication)->forceFill($prepared);
-        $databaseUpdates = Arr::only($casted->getAttributes(), array_keys($prepared));
+        $persisted = Arr::except($prepared, ['publication_payload_extras']);
+        $casted = (new ManualPublication)->forceFill($persisted);
+        $databaseUpdates = Arr::only($casted->getAttributes(), array_keys($persisted));
 
         $updated = ManualPublication::query()
             ->whereKey($manualPublication->getKey())
@@ -318,6 +319,7 @@ class ManualPublicationService
             'risk_status' => (string) Arr::get($riskResult, 'status', 'clean'),
             'risk_result' => $riskResult,
             'scheduled_at' => $data['scheduled_at'] ?? null,
+            'publication_payload_extras' => is_array($data['publication_payload_extras'] ?? null) ? $data['publication_payload_extras'] : [],
         ];
     }
 
