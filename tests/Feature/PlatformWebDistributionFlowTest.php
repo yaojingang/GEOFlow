@@ -182,9 +182,42 @@ class PlatformWebDistributionFlowTest extends TestCase
         $this->assertSame('publish', (string) $distribution->action);
     }
 
-    public function test_unsupported_update_action_restores_status_and_logs(): void
+    public function test_unsupported_update_action_restores_full_row_state_for_later_retry(): void
     {
         [$article, $channel] = $this->fixtures('first');
+        $orchestrator = app(DistributionOrchestrator::class);
+        $ids = $orchestrator->enqueueForArticle($article);
+        $orchestrator->process(ArticleDistribution::query()->findOrFail($ids[0]));
+        $distribution = ArticleDistribution::query()->findOrFail($ids[0]);
+        $publication = ManualPublication::query()
+            ->where('source_distribution_id', (int) $distribution->id)
+            ->firstOrFail();
+        // 模拟扩展回执失败落定后的 failed 分发行。
+        $publication->forceFill(['status' => ManualPublication::STATUS_FAILED, 'result_note' => 'boom'])->save();
+        $distribution->forceFill(['status' => 'failed', 'last_error_message' => 'boom'])->save();
+        $payloadHashBefore = (string) $distribution->payload_hash;
+        $idempotencyKeyBefore = (string) $distribution->idempotency_key;
+
+        $orchestrator->updateRemoteArticle($distribution->fresh());
+
+        $distribution = $distribution->fresh();
+        $this->assertSame('failed', (string) $distribution->status);
+        $this->assertSame('publish', (string) $distribution->action);
+        $this->assertSame($payloadHashBefore, (string) $distribution->payload_hash);
+        $this->assertSame($idempotencyKeyBefore, (string) $distribution->idempotency_key);
+        $this->assertSame('boom', (string) $distribution->last_error_message);
+
+        // 重试：载荷摘要校验必须通过（若 payload_hash 未还原会确定性抛“分发载荷摘要校验失败”），
+        // 且发布器应重开 failed 工单。
+        $distribution->forceFill(['status' => 'queued'])->save();
+        $orchestrator->process($distribution->fresh());
+
+        $this->assertSame('awaiting_extension', (string) $distribution->fresh()->status);
+        $this->assertSame('ready', (string) $publication->fresh()->status);
+    }
+
+    public function test_unsupported_update_action_restores_status_and_logs(): void
+    {        [$article, $channel] = $this->fixtures('first');
         $orchestrator = app(DistributionOrchestrator::class);
         $ids = $orchestrator->enqueueForArticle($article);
         $orchestrator->process(ArticleDistribution::query()->findOrFail($ids[0]));

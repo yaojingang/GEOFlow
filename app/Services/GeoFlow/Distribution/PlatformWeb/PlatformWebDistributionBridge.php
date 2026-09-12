@@ -23,8 +23,9 @@ class PlatformWebDistributionBridge
      * 扩展回执写回：工单终态 → 分发行状态。
      *
      * completed → synced；outcome_unknown → outcome_unknown；其余（failed/skipped/cancelled）→ failed。
-     * 防陈旧回执：工单非终态（例如重开后的 ready）时直接忽略；分发行仅在
-     * awaiting_extension/sending/outcome_unknown 时接受写回，避免覆盖 synced/failed 等已定状态。
+     * 防陈旧回执：事务内加锁重读工单最新状态（调用方快照可能过期），非终态（如重开后的 ready）
+     * 直接忽略；分发行仅在 awaiting_extension/sending/outcome_unknown 时接受写回，
+     * 避免覆盖 synced/failed 等已定状态。
      */
     public function handleReceipt(ManualPublication $publication): void
     {
@@ -33,18 +34,7 @@ class PlatformWebDistributionBridge
             return;
         }
 
-        $workOrderStatus = (string) $publication->status;
-        if (! in_array($workOrderStatus, [
-            ManualPublication::STATUS_COMPLETED,
-            ManualPublication::STATUS_FAILED,
-            ManualPublication::STATUS_SKIPPED,
-            ManualPublication::STATUS_CANCELLED,
-            ManualPublication::STATUS_OUTCOME_UNKNOWN,
-        ], true)) {
-            return;
-        }
-
-        DB::transaction(function () use ($sourceDistributionId, $publication, $workOrderStatus): void {
+        DB::transaction(function () use ($sourceDistributionId, $publication): void {
             $distribution = ArticleDistribution::query()
                 ->whereKey((int) $sourceDistributionId)
                 ->lockForUpdate()
@@ -54,15 +44,33 @@ class PlatformWebDistributionBridge
                 return;
             }
 
+            $current = ManualPublication::query()
+                ->whereKey((int) $publication->getKey())
+                ->lockForUpdate()
+                ->first();
+            if (! $current instanceof ManualPublication) {
+                return;
+            }
+            $workOrderStatus = (string) $current->status;
+            if (! in_array($workOrderStatus, [
+                ManualPublication::STATUS_COMPLETED,
+                ManualPublication::STATUS_FAILED,
+                ManualPublication::STATUS_SKIPPED,
+                ManualPublication::STATUS_CANCELLED,
+                ManualPublication::STATUS_OUTCOME_UNKNOWN,
+            ], true)) {
+                return;
+            }
+
             $distributionStatus = match ($workOrderStatus) {
                 ManualPublication::STATUS_COMPLETED => 'synced',
                 ManualPublication::STATUS_OUTCOME_UNKNOWN => 'outcome_unknown',
                 default => 'failed',
             };
 
-            $receipt = is_array($publication->execution_receipt) ? $publication->execution_receipt : [];
+            $receipt = is_array($current->execution_receipt) ? $current->execution_receipt : [];
             $errorCode = trim((string) ($receipt['error_code'] ?? ''));
-            $resultNote = trim((string) ($publication->result_note ?? ''));
+            $resultNote = trim((string) ($current->result_note ?? ''));
             $lastErrorMessage = $distributionStatus === 'synced'
                 ? null
                 : ($errorCode !== ''
@@ -71,8 +79,8 @@ class PlatformWebDistributionBridge
 
             $distribution->forceFill([
                 'status' => $distributionStatus,
-                'remote_id' => (string) $publication->getKey(),
-                'remote_url' => $distributionStatus === 'synced' ? $publication->completion_url : null,
+                'remote_id' => (string) $current->getKey(),
+                'remote_url' => $distributionStatus === 'synced' ? $current->completion_url : null,
                 'last_attempt_at' => now(),
                 'last_error_message' => $lastErrorMessage,
             ])->save();
@@ -83,10 +91,10 @@ class PlatformWebDistributionBridge
                 'article_id' => (int) $distribution->article_id,
                 'level' => $distributionStatus === 'synced' ? 'info' : 'error',
                 'event' => 'platform_web_receipt',
-                'message' => '扩展发布工单 #'.$publication->getKey().' 已回执：'.$workOrderStatus,
+                'message' => '扩展发布工单 #'.$current->getKey().' 已回执：'.$workOrderStatus,
                 'context' => [
                     'work_order_status' => $workOrderStatus,
-                    'completion_url' => $publication->completion_url,
+                    'completion_url' => $current->completion_url,
                 ],
                 'created_at' => now(),
             ]);

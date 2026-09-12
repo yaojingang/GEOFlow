@@ -1135,12 +1135,23 @@ class DistributionOrchestrator
             ? null
             : hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
 
-        [$distribution, $channel, $priorStatus, $priorAction] = $this->claimImmediateAction($distribution, $action, $payloadHash);
+        [$distribution, $channel, $priorStatus, $priorAction, $priorPayloadHash, $priorIdempotencyKey, $priorLastErrorMessage] =
+            $this->claimImmediateAction($distribution, $action, $payloadHash);
 
         $this->channelOperationLeaseService->run(
             $channel,
             'article_'.$action,
-            function (DistributionChannel $lockedChannel) use ($distribution, $action, $payload, $article, $priorStatus, $priorAction): void {
+            function (DistributionChannel $lockedChannel) use (
+                $distribution,
+                $action,
+                $payload,
+                $article,
+                $priorStatus,
+                $priorAction,
+                $priorPayloadHash,
+                $priorIdempotencyKey,
+                $priorLastErrorMessage,
+            ): void {
                 $publisher = $this->publisherManager->forChannel($lockedChannel);
                 $response = $action === 'delete'
                     ? $publisher->delete($distribution)
@@ -1151,12 +1162,18 @@ class DistributionOrchestrator
                 // 恢复领取前状态并留痕，绝不标记 synced（否则会造成“假同步”）。
                 if (($response['supported'] ?? true) === false) {
                     if ((string) $priorStatus !== 'sending') {
+                        // 完整恢复领取前状态：除 status/action 外，领取时覆盖的 payload_hash、
+                        // idempotency_key、last_error_message 也必须还原，否则后续 process()
+                        // 的载荷摘要校验会确定性失败。attempt_count 保留（诚实的尝试计数）。
                         ArticleDistribution::query()
                             ->whereKey((int) $distribution->id)
                             ->where('status', 'sending')
                             ->update([
                                 'status' => $priorStatus,
                                 'action' => $priorAction,
+                                'payload_hash' => $priorPayloadHash,
+                                'idempotency_key' => $priorIdempotencyKey,
+                                'last_error_message' => $priorLastErrorMessage,
                                 'updated_at' => now(),
                             ]);
                     }
@@ -1238,7 +1255,7 @@ class DistributionOrchestrator
     }
 
     /**
-     * @return array{ArticleDistribution,DistributionChannel,string,string}
+     * @return array{ArticleDistribution,DistributionChannel,string,string,?string,string,?string}
      */
     private function claimImmediateAction(ArticleDistribution $candidate, string $action, ?string $payloadHash): array
     {
@@ -1279,6 +1296,9 @@ class DistributionOrchestrator
 
             $priorStatus = (string) $distribution->status;
             $priorAction = (string) $distribution->action;
+            $priorPayloadHash = $distribution->payload_hash === null ? null : (string) $distribution->payload_hash;
+            $priorIdempotencyKey = $distribution->idempotency_key === null ? null : (string) $distribution->idempotency_key;
+            $priorLastErrorMessage = $distribution->last_error_message === null ? null : (string) $distribution->last_error_message;
             $distribution->forceFill([
                 'action' => $action,
                 'status' => 'sending',
@@ -1294,7 +1314,7 @@ class DistributionOrchestrator
                 ),
             ])->save();
 
-            return [$distribution, $channel, $priorStatus, $priorAction];
+            return [$distribution, $channel, $priorStatus, $priorAction, $priorPayloadHash, $priorIdempotencyKey, $priorLastErrorMessage];
         });
     }
 
