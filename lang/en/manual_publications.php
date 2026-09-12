@@ -46,7 +46,8 @@ return [
     ],
     'platform' => [
         'zhihu' => 'Zhihu', 'xiaohongshu' => 'Xiaohongshu', 'weibo' => 'Weibo', 'wechat' => 'WeChat Official Account',
-        'douyin' => 'Douyin', 'bilibili' => 'Bilibili', 'reddit' => 'Reddit', 'x' => 'X', 'linkedin' => 'LinkedIn', 'custom' => 'Custom platform',
+        'douyin' => 'Douyin', 'bilibili' => 'Bilibili', 'reddit' => 'Reddit', 'x' => 'X', 'linkedin' => 'LinkedIn',
+        'toutiao' => 'Toutiao', 'sohu' => 'Sohu', 'netease' => 'NetEase', 'custom' => 'Custom platform',
     ],
     'filter' => [
         'all' => 'All', 'status' => 'Status', 'type' => 'Type', 'platform' => 'Platform', 'assignee' => 'Assignee',
