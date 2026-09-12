@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformCatalog;
 use App\Support\Site\ArticleTextAdPicker;
 use App\Support\Site\HomepageModuleBuilder;
 use App\Support\Site\SiteSettingsBag;
@@ -16,6 +17,8 @@ class DistributionChannel extends Model
     public const TYPE_GEOFLOW_AGENT = 'geoflow_agent';
 
     public const TYPE_HOSTED_SITE = 'hosted_site';
+
+    public const TYPE_PLATFORM_WEB = 'platform_web';
 
     public const STATUS_ACTIVE = 'active';
 
@@ -428,7 +431,7 @@ class DistributionChannel extends Model
     {
         $type = (string) ($this->channel_type ?? 'geoflow_agent');
 
-        return in_array($type, ['geoflow_agent', 'wordpress_rest', 'generic_http_api', self::TYPE_HOSTED_SITE], true) ? $type : 'geoflow_agent';
+        return in_array($type, ['geoflow_agent', 'wordpress_rest', 'generic_http_api', self::TYPE_HOSTED_SITE, self::TYPE_PLATFORM_WEB], true) ? $type : 'geoflow_agent';
     }
 
     public function isGeoFlowAgent(): bool
@@ -449,6 +452,11 @@ class DistributionChannel extends Model
     public function isHostedSite(): bool
     {
         return $this->channelType() === self::TYPE_HOSTED_SITE;
+    }
+
+    public function isPlatformWeb(): bool
+    {
+        return $this->channelType() === self::TYPE_PLATFORM_WEB;
     }
 
     /**
@@ -538,6 +546,32 @@ class DistributionChannel extends Model
             'generic_remote_id_path' => trim((string) ($stored['generic_remote_id_path'] ?? 'id')),
             'generic_remote_url_path' => trim((string) ($stored['generic_remote_url_path'] ?? 'url')),
             'generic_payload_wrapper' => in_array($payloadWrapper, ['none', 'data'], true) ? $payloadWrapper : 'none',
+        ];
+    }
+
+    /**
+     * @return array{
+     *   platform:string,
+     *   manual_publication_account_id:int|null,
+     *   execution_mode:string,
+     *   editor_url:string,
+     *   append_source_link:bool
+     * }
+     */
+    public function resolvedPlatformWebConfig(): array
+    {
+        $config = is_array($this->channel_config) ? $this->channel_config : [];
+        $platform = (string) ($config['platform'] ?? '');
+        if (! PlatformCatalog::isSupported($platform)) {
+            $platform = 'toutiao';
+        }
+
+        return [
+            'platform' => $platform,
+            'manual_publication_account_id' => isset($config['manual_publication_account_id']) ? (int) $config['manual_publication_account_id'] : null,
+            'execution_mode' => 'draft', // Phase 1 固定草稿模式；auto 为 Phase 3 交付，默认关闭
+            'editor_url' => PlatformCatalog::editorUrl($platform, $config['editor_url'] ?? null),
+            'append_source_link' => (bool) ($config['append_source_link'] ?? false),
         ];
     }
 
