@@ -141,7 +141,7 @@ final class ManualPublicationBrowserService
         array $receipt,
         string $clientVersion,
     ): ManualPublication {
-        return DB::transaction(function () use ($admin, $tokenId, $publicationId, $revision, $receipt, $clientVersion): ManualPublication {
+        [$publication, $hasSourceDistribution] = DB::transaction(function () use ($admin, $tokenId, $publicationId, $revision, $receipt, $clientVersion): array {
             $publication = $this->lockVisible($admin, $publicationId);
             $this->assertRevision($publication, $revision);
             $this->assertClaimOwner($publication, $tokenId);
@@ -209,21 +209,27 @@ final class ManualPublicationBrowserService
                 $transitionedAt,
             );
 
-            // platform_web 桥接：扩展回执落定工单终态后写回分发行。
-            // 桥接失败绝不能让回执 HTTP 调用失败——对账命令（Task 7）会重推漏掉的回执。
-            if ($publication->source_distribution_id !== null) {
-                try {
-                    $this->platformWebBridge->handleReceipt($publication->refresh());
-                } catch (\Throwable $e) {
-                    Log::warning('platform_web 回执桥接失败，将由对账命令兜底。', [
-                        'manual_publication_id' => (int) $publication->getKey(),
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
+            $publication = $publication->refresh()->load(['account:id,account_name,platform,profile_url', 'persona:id,name']);
 
-            return $publication->refresh()->load(['account:id,account_name,platform,profile_url', 'persona:id,name']);
+            return [$publication, $publication->source_distribution_id !== null];
         });
+
+        // platform_web 桥接：扩展回执落定工单终态后写回分发行。必须在事务提交之后执行——
+        // 桥接若在事务内失败（死锁/序列化失败等会中止顶层事务），回执整体会被回滚，
+        // 扩展将收到 5xx。桥接自身会加锁重读工单最新状态，非终态自动跳过；
+        // 提交与桥接之间的崩溃由对账命令（Task 7）兜底重推。
+        if ($hasSourceDistribution) {
+            try {
+                $this->platformWebBridge->handleReceipt($publication);
+            } catch (\Throwable $e) {
+                Log::warning('platform_web 回执桥接失败，将由对账命令兜底。', [
+                    'manual_publication_id' => (int) $publication->getKey(),
+                    'error' => $e::class.': '.$e->getMessage(),
+                ]);
+            }
+        }
+
+        return $publication;
     }
 
     private function lockVisible(Admin $admin, int $publicationId): ManualPublication
