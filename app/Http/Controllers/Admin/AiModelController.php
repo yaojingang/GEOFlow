@@ -485,9 +485,8 @@ class AiModelController extends Controller
                 }
                 $reservation = null;
 
-                $workspaceConnection = $request->boolean('workspace_check')
-                    ? $this->workspaceConnectionStatus->forAdmin(Admin::query()->findOrFail($snapshot->adminId))
-                    : null;
+                $workspaceConnection = $this->workspaceConnectionStatus
+                    ->forAdmin(Admin::query()->findOrFail($snapshot->adminId));
 
                 return $this->modelTestResponse(
                     true,
@@ -497,7 +496,7 @@ class AiModelController extends Controller
                     (string) $result['endpoint'],
                     (int) $result['http_status'],
                     [
-                        'workspace_ready' => $workspaceConnection['ready'] ?? true,
+                        'workspace_ready' => $workspaceConnection['ready'],
                         'workspace_connection' => $workspaceConnection,
                         'readiness_status' => (string) $result['readiness_status'],
                         'readiness_profile' => (array) $result['profile'],

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\LeadForm;
 use App\Models\SiteSetting;
 use App\Services\Admin\SiteThemeReplicationService;
+use App\Services\AiWorkspace\AiWorkspaceRuntimeStatus;
 use App\Support\AdminBasePathManager;
 use App\Support\AdminWeb;
 use App\Support\Site\ArticleTextAdPicker;
@@ -38,7 +39,7 @@ class SiteSettingsController extends Controller
     /**
      * 网站设置页面。
      */
-    public function index(): View
+    public function index(AiWorkspaceRuntimeStatus $aiWorkspaceRuntimeStatus): View
     {
         $settings = $this->loadSettings();
         $canManageProtectedWorkflows = auth('admin')->user()?->canManageProtectedWorkflows() === true;
@@ -59,6 +60,7 @@ class SiteSettingsController extends Controller
             'homepageModuleCount' => count($this->parseHomepageModules((string) ($settings['homepage_modules'] ?? '[]'))),
             'articleDetailAds' => $this->parseArticleDetailAds((string) ($settings['article_detail_ads'] ?? '[]')),
             'articleDetailTextAds' => $this->parseArticleDetailTextAds((string) ($settings['article_detail_text_ads'] ?? '[]')),
+            'aiWorkspaceRuntime' => $aiWorkspaceRuntimeStatus->snapshot(),
         ]);
     }
 

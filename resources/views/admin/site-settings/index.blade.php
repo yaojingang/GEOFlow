@@ -79,8 +79,17 @@
             [
                 'title' => __('admin.ui_v3.system_management'),
                 'desc' => __('admin.ui_v3.system_management_hint'),
-                'columns' => 'lg:grid-cols-3',
+                'columns' => 'md:grid-cols-2 xl:grid-cols-4',
                 'items' => [
+                    [
+                        'title' => __('admin.site_settings.ai_workspace_runtime.title'),
+                        'desc' => __('admin.site_settings.ai_workspace_runtime.module_desc'),
+                        'href' => '#site-settings-ai-workspace',
+                        'target' => 'site-settings-ai-workspace',
+                        'icon' => 'sparkles',
+                        'iconClass' => 'bg-indigo-50 text-indigo-600 ring-indigo-100',
+                        'action' => __('admin.site_settings.open_section'),
+                    ],
                     [
                         'title' => __('admin.ui_v3.users_permissions'),
                         'desc' => __('admin.ui_v3.user_settings_hint'),
@@ -178,6 +187,77 @@
                     </div>
                 @endforeach
             </div>
+
+        @if ($canManageProtectedWorkflows ?? false)
+        <details id="site-settings-ai-workspace" class="mb-6 overflow-hidden rounded-lg bg-white shadow group" @if ($errors->has('enabled')) open @endif>
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-gray-200 px-6 py-5 [&::-webkit-details-marker]:hidden">
+                <div class="flex min-w-0 items-start gap-4">
+                    <span class="hidden h-10 w-10 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100 sm:inline-flex">
+                        <i data-lucide="sparkles" class="h-5 w-5" aria-hidden="true"></i>
+                    </span>
+                    <div class="min-w-0 max-w-3xl">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h3 class="text-lg font-medium text-gray-900">{{ __('admin.site_settings.ai_workspace_runtime.title') }}</h3>
+                            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold {{ ($aiWorkspaceRuntime['effective_enabled'] ?? false) ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-gray-100 text-gray-700 ring-1 ring-gray-200' }}">
+                                {{ ($aiWorkspaceRuntime['effective_enabled'] ?? false) ? __('admin.site_settings.ai_workspace_runtime.status_enabled') : __('admin.site_settings.ai_workspace_runtime.status_disabled') }}
+                            </span>
+                        </div>
+                        <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.site_settings.ai_workspace_runtime.description') }}</p>
+                    </div>
+                </div>
+                <i data-lucide="chevron-down" class="h-5 w-5 shrink-0 text-gray-400 transition-transform duration-200 group-open:rotate-180" aria-hidden="true"></i>
+            </summary>
+            <div class="px-6 py-6">
+                <form method="POST" action="{{ route('admin.site-settings.ai-workspace.update') }}" class="space-y-5">
+                    @csrf
+                    <input type="hidden" name="enabled" value="0">
+
+                    <div class="rounded-lg border border-gray-200 bg-gray-50/70 p-4 sm:p-5">
+                        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div class="max-w-2xl">
+                                <p class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.ai_workspace_runtime.switch_label') }}</p>
+                                <p id="ai-workspace-runtime-help" class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.site_settings.ai_workspace_runtime.switch_help') }}</p>
+                            </div>
+                            <label class="inline-flex min-h-11 cursor-pointer items-center gap-3 self-start rounded-md px-1 focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 sm:self-auto">
+                                <input
+                                    id="ai-workspace-runtime-enabled"
+                                    type="checkbox"
+                                    name="enabled"
+                                    value="1"
+                                    class="peer sr-only"
+                                    aria-label="{{ __('admin.site_settings.ai_workspace_runtime.switch_label') }}"
+                                    aria-describedby="ai-workspace-runtime-help"
+                                    data-ai-workspace-runtime-toggle
+                                    @checked(old('enabled', $aiWorkspaceRuntime['preferred_enabled'] ?? false))
+                                >
+                                <span class="relative h-7 w-12 rounded-full bg-gray-300 transition-colors after:absolute after:left-1 after:top-1 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-blue-600 peer-checked:after:translate-x-5" aria-hidden="true"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    @if ($aiWorkspaceRuntime['forced_disabled'] ?? false)
+                        <div class="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900" role="status">
+                            <i data-lucide="shield-alert" class="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true"></i>
+                            <p>{{ __('admin.site_settings.ai_workspace_runtime.forced_disabled') }}</p>
+                        </div>
+                    @endif
+
+                    <div class="flex flex-col gap-3 border-t border-gray-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="text-sm leading-6 text-gray-500">
+                            <p>{{ __('admin.site_settings.ai_workspace_runtime.impact') }}</p>
+                            <p class="mt-1 text-xs">
+                                {{ ($aiWorkspaceRuntime['source'] ?? 'environment_default') === 'site_setting' ? __('admin.site_settings.ai_workspace_runtime.source_site_setting') : __('admin.site_settings.ai_workspace_runtime.source_environment') }}
+                            </p>
+                        </div>
+                        <button type="submit" class="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 active:scale-[.98]">
+                            <i data-lucide="save" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                            {{ __('admin.site_settings.ai_workspace_runtime.save') }}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </details>
+        @endif
 
         <details id="site-settings-basic" class="mb-6 bg-white shadow rounded-lg overflow-hidden group">
             <summary class="px-6 py-5 border-b border-gray-200 flex items-center justify-between gap-4 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
@@ -1096,24 +1176,48 @@
 @push('scripts')
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            const openSiteSettingsTarget = function (targetId, behavior) {
+                const target = targetId ? document.getElementById(targetId) : null;
+
+                if (!target) {
+                    return false;
+                }
+
+                if (target instanceof HTMLDetailsElement) {
+                    target.open = true;
+                }
+
+                target.scrollIntoView({ behavior: behavior || 'smooth', block: 'start' });
+
+                return true;
+            };
+
             document.querySelectorAll('[data-site-settings-target]').forEach(function (trigger) {
                 trigger.addEventListener('click', function (event) {
                     const targetId = trigger.getAttribute('data-site-settings-target');
-                    const target = targetId ? document.getElementById(targetId) : null;
 
-                    if (!target) {
+                    if (!openSiteSettingsTarget(targetId, 'smooth')) {
                         return;
                     }
 
                     event.preventDefault();
-                    target.open = true;
-                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
                     if (window.history && window.history.pushState) {
                         window.history.pushState(null, '', '#' + targetId);
                     }
                 });
             });
+
+            const openHashTarget = function () {
+                const targetId = window.location.hash.slice(1);
+
+                if (targetId !== '') {
+                    openSiteSettingsTarget(targetId, 'auto');
+                }
+            };
+
+            openHashTarget();
+            window.addEventListener('hashchange', openHashTarget);
         });
     </script>
 

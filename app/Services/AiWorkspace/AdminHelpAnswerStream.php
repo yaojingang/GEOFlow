@@ -34,6 +34,7 @@ final readonly class AdminHelpAnswerStream
         private AdminHelpResponder $responder,
         private AiWorkspaceExecutionAccessGuard $executionGuard,
         private AiExecutionErrorSanitizer $errorSanitizer,
+        private AiWorkspaceRuntimeStatus $runtimeStatus,
     ) {}
 
     public function respond(Admin $admin, AiConversation $conversation, string $question): StreamedResponse
@@ -154,7 +155,7 @@ final readonly class AdminHelpAnswerStream
             report(new RuntimeException($this->errorSanitizer->sanitize($exception)));
             $readiness = ['ready' => false, 'reason' => __('admin.ai_workspace.ai_unavailable')];
         }
-        if (! (bool) config('ai-workspace.runtime_enabled', false) || ! $readiness['ready']) {
+        if (! $this->runtimeStatus->enabled() || ! $readiness['ready']) {
             yield $this->errorEvent(
                 'ai_unavailable',
                 (string) ($readiness['reason'] ?? __('admin.ai_workspace.ai_unavailable')),

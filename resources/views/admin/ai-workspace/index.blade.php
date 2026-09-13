@@ -51,7 +51,9 @@
                             @if ($assistantConnection['test_url'])
                                 <button type="button" data-ai-connection-check data-test-url="{{ $assistantConnection['test_url'] }}" disabled>{{ __('admin.ai_workspace.connection_check') }}</button>
                             @endif
-                            <a href="{{ \App\Support\AdminWeb::routePath('admin.ai-models.index') }}">{{ __('admin.ai_workspace.connection_settings') }}</a>
+                            @if ($assistantConnection['settings_url'])
+                                <a href="{{ $assistantConnection['settings_url'] }}" @if(str_contains($assistantConnection['settings_url'], '#site-settings-ai-workspace')) data-ai-runtime-settings @endif>{{ $assistantConnection['settings_label'] }}</a>
+                            @endif
                         </div>
                     </div>
                 @endunless

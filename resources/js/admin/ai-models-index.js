@@ -170,7 +170,12 @@ export function initializeAiModelsIndex(root, options = {}) {
         elements.httpStatus.textContent = meta.http_status == null ? (labels.unknown || '-') : String(meta.http_status);
         elements.duration.textContent = String(labels.milliseconds || '__DURATION__').replace('__DURATION__', String(meta.duration_ms ?? 0));
         elements.modelType.textContent = meta.model_type === 'embedding' ? (labels.embedding || 'Embedding') : (labels.chat || 'Chat');
-        elements.workspace.textContent = meta.workspace_ready === true ? (labels.workspaceReady || '') : (labels.workspaceBasic || '');
+        const workspaceMessage = typeof meta.workspace_connection?.message === 'string'
+            ? meta.workspace_connection.message.trim()
+            : '';
+        elements.workspace.textContent = meta.workspace_ready === true
+            ? (labels.workspaceReady || '')
+            : (workspaceMessage || labels.workspaceBasic || '');
         announce(labels.successTitle, state.result.message);
     };
 

@@ -36,6 +36,7 @@ final readonly class AiWorkflowEngine
         private AiWorkspaceRealtimeService $realtime,
         private AiConversationRepository $conversations,
         private AiWorkspaceExecutionAccessGuard $executionGuard,
+        private AiWorkspaceRuntimeStatus $runtimeStatus,
     ) {}
 
     public function prepare(
@@ -469,7 +470,7 @@ final readonly class AiWorkflowEngine
     public function process(string $runId, ?string $workerToken = null): void
     {
         $workerToken ??= (string) Str::uuid7();
-        if (! (bool) config('ai-workspace.runtime_enabled', false)) {
+        if (! $this->runtimeStatus->enabled()) {
             $this->stopForDisabledRuntime($runId);
 
             return;
@@ -544,7 +545,7 @@ final readonly class AiWorkflowEngine
 
                 return;
             }
-            if (! (bool) config('ai-workspace.runtime_enabled', false)) {
+            if (! $this->runtimeStatus->enabled()) {
                 $this->stopForDisabledRuntime((string) $run->id);
 
                 return;
@@ -1580,7 +1581,7 @@ final readonly class AiWorkflowEngine
             if ($currentAdmin instanceof Admin) {
                 try {
                     $currentCapability = $this->registry->get((string) $lockedStep->capability_key);
-                    $canContinue = (bool) config('ai-workspace.runtime_enabled', false)
+                    $canContinue = $this->runtimeStatus->enabled()
                         && $currentCapability->allows($currentAdmin)
                         && $currentCapability->isExecutable()
                         && hash_equals($currentCapability->version, (string) $lockedStep->capability_version);
@@ -1936,7 +1937,7 @@ final readonly class AiWorkflowEngine
         $admin = Admin::query()->whereKey($run->admin_id)->where('status', 'active')->lockForUpdate()->first();
         $lockedRun = AiWorkspaceRun::query()->lockForUpdate()->findOrFail($run->id);
         $lockedStep = AiWorkspaceStep::query()->lockForUpdate()->findOrFail($step->id);
-        if (! (bool) config('ai-workspace.runtime_enabled', false)
+        if (! $this->runtimeStatus->enabled()
             || ! $admin instanceof Admin
             || $lockedRun->state !== 'running'
             || trim((string) $lockedRun->execution_lease_token) === ''
