@@ -26,6 +26,7 @@ final readonly class TaskCreationAnswerStream
         private AiWorkspaceExecutionAccessGuard $access,
         private AiWorkspaceModelReadiness $readiness,
         private AiExecutionErrorSanitizer $errors,
+        private AiWorkspaceRuntimeStatus $runtimeStatus,
     ) {}
 
     public function respond(Admin $admin, AiConversation $conversation, string $prompt, array $input): StreamedResponse
@@ -144,7 +145,7 @@ final readonly class TaskCreationAnswerStream
     private function assertRuntimeBoundary(): void
     {
         $connection = config('ai.conversations.connection');
-        if (! (bool) config('ai-workspace.runtime_enabled', false)
+        if (! $this->runtimeStatus->enabled()
             || (is_string($connection) && $connection !== '' && $connection !== config('database.default'))) {
             throw new AiWorkspaceRuntimeGuardException(__('admin.ai_workspace.ai_unavailable'));
         }

@@ -319,6 +319,34 @@ test('opens immediately, counts real wait time, sends one CSRF-protected request
     assert.equal(requests.length, 1);
 });
 
+test('shows the effective workspace reason when the model protocol passes but the workspace is disabled', async () => {
+    const view = fixture(async () => ({
+        ok: true,
+        status: 200,
+        async json() {
+            return {
+                success: true,
+                message: 'Connection healthy',
+                meta: {
+                    http_status: 200,
+                    duration_ms: 324,
+                    model_type: 'chat',
+                    workspace_ready: false,
+                    workspace_connection: { ready: false, message: 'Workspace is disabled by the administrator' },
+                },
+            };
+        },
+    }));
+
+    view.button.dispatch('click');
+    await flush();
+
+    assert.equal(
+        view.elements.get('[data-ai-model-test-workspace]').textContent,
+        'Workspace is disabled by the administrator',
+    );
+});
+
 test('closing a pending test keeps the request running and does not force the dialog open again', async () => {
     let resolveRequest;
     let requestCount = 0;

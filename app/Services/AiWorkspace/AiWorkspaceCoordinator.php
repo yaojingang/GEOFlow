@@ -39,6 +39,7 @@ final readonly class AiWorkspaceCoordinator
         private AiWorkspaceContextEnvelopeBuilder $contextEnvelopeBuilder,
         private AiWorkspaceReadOnlyAgentCoordinator $readOnlyAgents,
         private AiWorkspaceExecutionAccessGuard $executionGuard,
+        private AiWorkspaceRuntimeStatus $runtimeStatus,
     ) {}
 
     public function createRun(
@@ -203,7 +204,7 @@ final readonly class AiWorkspaceCoordinator
         if (! $run instanceof AiWorkspaceRun) {
             return;
         }
-        if (! (bool) config('ai-workspace.runtime_enabled', false)) {
+        if (! $this->runtimeStatus->enabled()) {
             $this->stopResolution($runId, $leaseOwner, 'runtime_disabled', 'AI 工作台运行时已关闭。');
 
             return;
@@ -1043,7 +1044,7 @@ final readonly class AiWorkspaceCoordinator
 
     private function assertResolutionExecutionAllowed(AiWorkspaceRun $run, Admin $admin, bool $requireModel = true): void
     {
-        if (! (bool) config('ai-workspace.runtime_enabled', false)) {
+        if (! $this->runtimeStatus->enabled()) {
             throw new RuntimeException('AI 工作台运行时已关闭。');
         }
         $context = $this->executionGuard->contextFromResolutionRun(
@@ -1252,7 +1253,7 @@ final readonly class AiWorkspaceCoordinator
         AiWorkspaceExecutionContext $context,
         AiWorkspaceModelExecutionReceipt $receipt,
     ): void {
-        if (! (bool) config('ai-workspace.runtime_enabled', false)) {
+        if (! $this->runtimeStatus->enabled()) {
             throw new RuntimeException('AI 工作台运行时已关闭。');
         }
 

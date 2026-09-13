@@ -23,6 +23,7 @@ final readonly class AiIntentResolver
         private AiCapabilityRegistry $registry,
         private AiWorkspaceModelRuntime $runtime,
         private AiExecutionErrorSanitizer $errorSanitizer,
+        private AiWorkspaceRuntimeStatus $runtimeStatus,
     ) {}
 
     public function resolve(
@@ -35,7 +36,7 @@ final readonly class AiIntentResolver
             return $this->fromRules($prompt);
         }
 
-        if ((bool) config('ai-workspace.runtime_enabled', false)) {
+        if ($this->runtimeStatus->enabled()) {
             $modelCompletion = null;
             try {
                 $resolution = $this->fromModel($this->runtime->resolveIntent(

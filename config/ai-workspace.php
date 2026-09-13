@@ -2,6 +2,7 @@
 
 return [
     'runtime_enabled' => filter_var(env('GEOFLOW_AI_WORKSPACE_RUNTIME_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+    'force_disabled' => filter_var(env('GEOFLOW_AI_WORKSPACE_FORCE_DISABLED', false), FILTER_VALIDATE_BOOLEAN),
     'retention_days' => max(1, (int) env('GEOFLOW_AI_WORKSPACE_RETENTION_DAYS', 90)),
     'global_concurrency' => max(1, (int) env('GEOFLOW_AI_WORKSPACE_GLOBAL_CONCURRENCY', 10)),
     'concurrency_cache_store' => env('GEOFLOW_AI_WORKSPACE_CONCURRENCY_CACHE_STORE', 'redis'),

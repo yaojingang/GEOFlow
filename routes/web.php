@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\AiVisibilityAnalyticsController;
 use App\Http\Controllers\Admin\AiWorkspaceApiController;
 use App\Http\Controllers\Admin\AiWorkspaceController;
 use App\Http\Controllers\Admin\AiWorkspaceKnowledgeMediaController;
+use App\Http\Controllers\Admin\AiWorkspaceRuntimeSettingsController;
 use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\ApiTokenController;
 use App\Http\Controllers\Admin\ArticleAiOptimizationController;
@@ -628,6 +629,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('homepage-modules/preset', [SiteSettingsController::class, 'applyHomepageModulePreset'])->name('homepage-modules.preset');
             Route::post('homepage-modules/import', [SiteSettingsController::class, 'importHomepageModuleDesign'])->name('homepage-modules.import');
             Route::middleware('admin.super')->group(function () {
+                Route::post('ai-workspace', AiWorkspaceRuntimeSettingsController::class)
+                    ->middleware('throttle:admin-sensitive')
+                    ->name('ai-workspace.update');
                 Route::prefix('theme-packages')->name('theme-packages.')->group(function (): void {
                     Route::post('exports', [SiteThemePackageController::class, 'export'])->middleware('throttle:admin-sensitive')->name('exports.store');
                     Route::get('exports/{token}', [SiteThemePackageController::class, 'download'])->where('token', '[A-Za-z0-9]{40}')->name('exports.download');

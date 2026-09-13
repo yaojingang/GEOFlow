@@ -72,6 +72,7 @@ class AdminAiModelsPageTest extends TestCase
 
     public function test_super_admin_chat_test_verifies_streaming_and_enables_the_help_assistant(): void
     {
+        config()->set('ai-workspace.runtime_enabled', true);
         AdminHelpAssistant::fake(['流式能力调用可用。'])->preventStrayPrompts();
         $model = $this->createAiModel('chat');
         $superAdmin = $this->createAdmin();
@@ -142,6 +143,7 @@ class AdminAiModelsPageTest extends TestCase
 
     public function test_super_admin_chat_test_records_observed_streaming_failure_before_plain_text_fallback(): void
     {
+        config()->set('ai-workspace.runtime_enabled', true);
         AdminHelpAssistant::fake([
             new TextResponse('', new Usage(7, 3), new Meta('fake', 'test-chat-model')),
             '普通文本调用可用。',
@@ -175,6 +177,7 @@ class AdminAiModelsPageTest extends TestCase
 
     public function test_super_admin_chat_test_rejects_a_stream_error_after_partial_text(): void
     {
+        config()->set('ai-workspace.runtime_enabled', true);
         config()->set('ai-workspace.model_attempt_timeout_seconds', 7);
         $gateway = InterruptedStreamingFakeTextGateway::install(
             AdminHelpAssistant::class,
