@@ -34,6 +34,7 @@ use App\Services\GeoFlow\ArticleRiskScanner;
 use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\HostedSites\HostedSiteArticleFingerprintService;
+use App\Services\Site\SiteUrlGenerator;
 use App\Support\Admin\ArticleAiQualityProgressPresenter;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\AiQualityRetrievalMode;
@@ -82,6 +83,7 @@ class ArticleController extends Controller
         private readonly AiQualityAuditService $aiQualityAuditService,
         private readonly ArticleGeoFlowService $articleGeoFlowService,
         private readonly AdminAiModelAccessResolver $adminAiModelAccessResolver,
+        private readonly SiteUrlGenerator $siteUrls,
     ) {}
 
     /**
@@ -111,6 +113,7 @@ class ArticleController extends Controller
             'articleBatchRoutes' => $this->articleBatchRoutes($isTrashView),
             'articleExportMaxArticles' => ArticleMarkdownExportService::MAX_ARTICLES,
             'canCreateManualPublication' => $this->canCreateManualPublication($request),
+            'siteUrls' => $this->siteUrls,
         ]);
     }
 
@@ -787,9 +790,7 @@ class ArticleController extends Controller
             $adminId = $this->authenticatedAdminId($request);
             $gateRejection = DB::transaction(function () use (&$article, $payload, $workflowState, $adminId, $runAiQualityAfterSave, $canManageProtectedWorkflows): ArticleRiskGateException|ArticleAiQualityGateException|null {
                 $lockedArticle = Article::query()->whereKey($article->id)->lockForUpdate()->firstOrFail();
-                $slug = $payload['title'] === $lockedArticle->title
-                    ? $lockedArticle->slug
-                    : ArticleWorkflow::generateUniqueSlug($payload['title'], (int) $lockedArticle->id);
+                $slug = $lockedArticle->slug;
                 $excerpt = $payload['excerpt'] !== '' ? $payload['excerpt'] : mb_substr(strip_tags($payload['content']), 0, 200, 'UTF-8');
                 $currentRiskHash = $this->articleRiskScanner->contentHash([
                     'title' => $lockedArticle->title,

@@ -14,7 +14,7 @@
             'dateModified' => optional($article->updated_at ?? $article->published_at ?? $article->created_at)->toAtomString(),
             'mainEntityOfPage' => [
                 $schemaAtType => 'WebPage',
-                $schemaAtId => $canonicalUrl ?? route('site.article', $article->slug),
+                $schemaAtId => $canonicalUrl ?? $siteUrls->article($article),
             ],
             'author' => [
                 $schemaAtType => 'Person',
@@ -110,7 +110,7 @@
                     </div>
                     <div class="ne-related-grid">
                         @foreach($relatedArticles as $related)
-                            <a href="{{ route('site.article', $related->slug) }}" class="ne-related-card">
+                            <a href="{{ $siteUrls->article($related) }}" class="ne-related-card">
                                 <span class="ne-related-index">{{ $loop->iteration }}</span>
                                 <span>{{ $related->title }}</span>
                             </a>
@@ -128,7 +128,7 @@
                     </div>
                     <div class="ne-hot-list">
                         @foreach($relatedArticles as $related)
-                            <a href="{{ route('site.article', $related->slug) }}" class="ne-hot-item">
+                            <a href="{{ $siteUrls->article($related) }}" class="ne-hot-item">
                                 <span class="ne-hot-index">{{ $loop->iteration }}</span>
                                 <span>{{ $related->title }}</span>
                             </a>

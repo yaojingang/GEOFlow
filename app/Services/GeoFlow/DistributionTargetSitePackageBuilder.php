@@ -67,6 +67,7 @@ class DistributionTargetSitePackageBuilder
             'seo_description_template' => $siteSettings['seo_description_template'],
             'featured_limit' => $siteSettings['featured_limit'],
             'per_page' => $siteSettings['per_page'],
+            'article_permalink_policy' => $siteSettings['article_permalink_policy'],
             'homepage_style' => $siteSettings['homepage_style'] ?? [],
             'homepage_modules' => $siteSettings['homepage_modules'] ?? [],
             'home_carousel_slides' => $siteSettings['home_carousel_slides'] ?? [],
@@ -75,6 +76,7 @@ class DistributionTargetSitePackageBuilder
             'active_theme' => (string) ($channel->template_key ?? ''),
             'front_mode' => $frontMode,
             'package_version' => (string) config('geoflow.app_version', ''),
+            'timezone' => (string) config('app.timezone', 'UTC'),
             'static_publish_enabled' => $staticPublishEnabled,
             'domain' => (string) $channel->domain,
             'public_base_url' => rtrim((string) $channel->endpoint_url, '/'),
@@ -99,6 +101,7 @@ class DistributionTargetSitePackageBuilder
             ."    'seo_description_template' => ".var_export($config['seo_description_template'], true).",\n"
             ."    'featured_limit' => ".$config['featured_limit'].",\n"
             ."    'per_page' => ".$config['per_page'].",\n"
+            ."    'article_permalink_policy' => ".var_export($config['article_permalink_policy'], true).",\n"
             ."    'homepage_style' => ".var_export($config['homepage_style'], true).",\n"
             ."    'homepage_modules' => ".var_export($config['homepage_modules'], true).",\n"
             ."    'home_carousel_slides' => ".var_export($config['home_carousel_slides'], true).",\n"
@@ -107,6 +110,7 @@ class DistributionTargetSitePackageBuilder
             ."    'active_theme' => ".var_export($config['active_theme'], true).",\n"
             ."    'front_mode' => ".var_export($config['front_mode'], true).",\n"
             ."    'package_version' => ".var_export($config['package_version'], true).",\n"
+            ."    'timezone' => ".var_export($config['timezone'], true).",\n"
             ."    'static_publish_enabled' => ".($config['static_publish_enabled'] ? 'true' : 'false').",\n"
             ."    'domain' => ".var_export($config['domain'], true).",\n"
             ."    'public_base_url' => ".var_export($config['public_base_url'], true).",\n"
@@ -142,6 +146,7 @@ PHP;
         return <<<'HTACCESS'
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    RewriteRule ^article(?:/.*)?$ index.php [L,QSA]
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule ^ index.php [L]
@@ -703,6 +708,29 @@ function siteSettingsFile(array $config): string
     return storageRoot($config).'/site-settings.json';
 }
 
+function activeSiteStateFile(array $config): string
+{
+    return storageRoot($config).'/active-site-state.json';
+}
+
+function readActiveSiteState(array $config): ?array
+{
+    $file = activeSiteStateFile($config);
+    if (! is_file($file)) {
+        return null;
+    }
+
+    $state = json_decode((string) file_get_contents($file), true);
+    if (! is_array($state)
+        || (int) ($state['schema_version'] ?? 0) !== 1
+        || ! is_array($state['settings'] ?? null)
+        || ! is_array($state['manifest'] ?? null)) {
+        return null;
+    }
+
+    return $state;
+}
+
 function imageAssetsDir(array $config): string
 {
     return staticRoot($config).'/assets/images';
@@ -1084,6 +1112,231 @@ function normalizeHomeCarouselSlides(mixed $slides): array
     return $normalized;
 }
 
+function articlePermalinkDefaultPolicy(): array
+{
+    return [
+        'schema_version' => 1,
+        'revision' => 0,
+        'current_pattern' => '/article/{slug}',
+        'activated_at' => null,
+        'history' => [],
+    ];
+}
+
+function normalizeArticlePermalinkPattern(string $pattern): string
+{
+    $pattern = trim($pattern);
+    if ($pattern !== '/') {
+        $pattern = rtrim($pattern, '/');
+    }
+    if ($pattern === '' || $pattern === '/' || ! str_starts_with($pattern, '/') || strlen($pattern) > 160) {
+        throw new InvalidArgumentException('invalid_article_permalink_pattern');
+    }
+    if (preg_match('/[?#\\\\\x00-\x1F\x7F]/', $pattern) === 1 || str_contains($pattern, '://') || str_contains($pattern, '//')) {
+        throw new InvalidArgumentException('invalid_article_permalink_characters');
+    }
+
+    $segments = explode('/', ltrim($pattern, '/'));
+    if (count($segments) > 8 || in_array('', $segments, true) || in_array('.', $segments, true) || in_array('..', $segments, true)) {
+        throw new InvalidArgumentException('invalid_article_permalink_segments');
+    }
+
+    preg_match_all('/\{([a-z]+)\}/', $pattern, $matches);
+    $tokens = array_values($matches[1] ?? []);
+    $allowedTokens = ['slug', 'id', 'category', 'year', 'month', 'day'];
+    if (count($tokens) !== count(array_unique($tokens)) || array_diff($tokens, $allowedTokens) !== []) {
+        throw new InvalidArgumentException('invalid_article_permalink_tokens');
+    }
+    if (! in_array('slug', $tokens, true) && ! in_array('id', $tokens, true)) {
+        throw new InvalidArgumentException('article_permalink_locator_required');
+    }
+    if (preg_match('/\}\s*\{/', $pattern) === 1) {
+        throw new InvalidArgumentException('article_permalink_token_separator_required');
+    }
+
+    $literals = preg_replace('/\{[a-z]+\}/', '', $pattern);
+    if (! is_string($literals) || str_contains($literals, '{') || str_contains($literals, '}') || preg_match('/[^a-z0-9._\/-]/', $literals) === 1) {
+        throw new InvalidArgumentException('invalid_article_permalink_literals');
+    }
+    if (count($segments) === 1 && str_contains($segments[0], '{slug}') && ! str_ends_with($segments[0], '.html')) {
+        throw new InvalidArgumentException('root_article_slug_requires_html_suffix');
+    }
+
+    $firstSegmentParts = preg_split('/(\{[a-z]+\})/', $segments[0], -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY) ?: [];
+    $firstSegmentRegex = '';
+    foreach ($firstSegmentParts as $part) {
+        if (preg_match('/^\{([a-z]+)\}$/', $part, $matches) === 1) {
+            $firstSegmentRegex .= '(?:'.match ((string) $matches[1]) {
+                'id' => '[1-9][0-9]*',
+                'year' => '[0-9]{4}',
+                'month' => '0[1-9]|1[0-2]',
+                'day' => '0[1-9]|[12][0-9]|3[01]',
+                'slug', 'category' => '[^/?#]+',
+            }.')';
+        } else {
+            $firstSegmentRegex .= preg_quote($part, '~');
+        }
+    }
+    foreach ([
+        '_boost', '_debugbar', 'about', 'api', 'app', 'archive', 'assets', 'broadcasting', 'build',
+        'category', 'config.php', 'css', 'favicon.ico', 'forms', 'geoflow-agent', 'horizon',
+        'images', 'index.php', 'js', 'livewire', 'llms.txt', 'robots.txt', 'sanctum',
+        'sitemap.txt', 'sitemap.xml', 'sitemaps', 'storage', 'themes', 'up', 'vendor',
+    ] as $reservedPath) {
+        if (preg_match('~\A'.$firstSegmentRegex.'\z~D', $reservedPath) === 1) {
+            throw new InvalidArgumentException('reserved_article_permalink_path');
+        }
+    }
+
+    return $pattern;
+}
+
+function normalizeArticlePermalinkPolicy(mixed $policy): array
+{
+    $default = articlePermalinkDefaultPolicy();
+    if (! is_array($policy) || (int) ($policy['schema_version'] ?? 1) !== 1) {
+        return $default;
+    }
+
+    try {
+        $current = normalizeArticlePermalinkPattern((string) ($policy['current_pattern'] ?? $default['current_pattern']));
+        $history = [];
+        foreach ((array) ($policy['history'] ?? []) as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $historicalPattern = normalizeArticlePermalinkPattern((string) ($item['pattern'] ?? ''));
+            if ($historicalPattern === $current || isset($history[$historicalPattern])) {
+                continue;
+            }
+            $history[$historicalPattern] = [
+                'pattern' => $historicalPattern,
+                'retired_at' => (string) ($item['retired_at'] ?? ''),
+            ];
+        }
+
+        return [
+            'schema_version' => 1,
+            'revision' => max(0, (int) ($policy['revision'] ?? 0)),
+            'current_pattern' => $current,
+            'activated_at' => isset($policy['activated_at']) ? (string) $policy['activated_at'] : null,
+            'history' => array_values($history),
+        ];
+    } catch (Throwable) {
+        return $default;
+    }
+}
+
+function articlePermalinkPatterns(array $policy): array
+{
+    $patterns = [(string) $policy['current_pattern']];
+    foreach ((array) ($policy['history'] ?? []) as $item) {
+        if (is_array($item) && is_string($item['pattern'] ?? null)) {
+            $patterns[] = $item['pattern'];
+        }
+    }
+    $patterns[] = '/article/{slug}';
+
+    return array_values(array_unique($patterns));
+}
+
+function articlePermalinkTokens(string $pattern): array
+{
+    preg_match_all('/\{([a-z]+)\}/', $pattern, $matches);
+
+    return array_values($matches[1] ?? []);
+}
+
+function articlePermalinkValues(array $article, string $timezone = 'UTC'): array
+{
+    $date = null;
+    try {
+        $date = new DateTimeImmutable((string) ($article['created_at'] ?? $article['published_at'] ?? $article['updated_at'] ?? ''));
+        $date = $date->setTimezone(new DateTimeZone($timezone !== '' ? $timezone : 'UTC'));
+    } catch (Throwable) {
+        $date = null;
+    }
+
+    return [
+        'slug' => (string) ($article['slug'] ?? ''),
+        'id' => (string) ($article['id'] ?? ''),
+        'category' => articleCategorySlug($article),
+        'year' => $date?->format('Y') ?? '',
+        'month' => $date?->format('m') ?? '',
+        'day' => $date?->format('d') ?? '',
+    ];
+}
+
+function renderArticlePermalinkPattern(string $pattern, array $article, string $timezone = 'UTC'): string
+{
+    $pattern = normalizeArticlePermalinkPattern($pattern);
+    $values = articlePermalinkValues($article, $timezone);
+    foreach (articlePermalinkTokens($pattern) as $token) {
+        $value = trim((string) ($values[$token] ?? ''));
+        if ($value === '') {
+            throw new InvalidArgumentException('missing_article_permalink_value_'.$token);
+        }
+        $pattern = str_replace('{'.$token.'}', rawurlencode($value), $pattern);
+    }
+
+    return $pattern;
+}
+
+function articlePermalinkPath(array $config, array $article): string
+{
+    $settings = siteSettings($config);
+    $policy = normalizeArticlePermalinkPolicy($settings['article_permalink_policy'] ?? null);
+
+    return renderArticlePermalinkPattern(
+        (string) $policy['current_pattern'],
+        $article,
+        (string) ($config['timezone'] ?? 'UTC'),
+    );
+}
+
+function matchArticlePermalinkPattern(string $pattern, string $path): ?array
+{
+    try {
+        $pattern = normalizeArticlePermalinkPattern($pattern);
+    } catch (Throwable) {
+        return null;
+    }
+
+    $parts = preg_split('/(\{[a-z]+\})/', $pattern, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY) ?: [];
+    $tokens = [];
+    $regex = '';
+    foreach ($parts as $part) {
+        if (preg_match('/^\{([a-z]+)\}$/', $part, $matches) === 1) {
+            $token = (string) $matches[1];
+            $tokens[] = $token;
+            $regex .= match ($token) {
+                'id' => '(?P<id>[1-9][0-9]*)',
+                'year' => '(?P<year>[0-9]{4})',
+                'month' => '(?P<month>0[1-9]|1[0-2])',
+                'day' => '(?P<day>0[1-9]|[12][0-9]|3[01])',
+                'slug' => '(?P<slug>[^/?#]+)',
+                'category' => '(?P<category>[^/?#]+)',
+            };
+        } else {
+            $regex .= preg_quote($part, '~');
+        }
+    }
+    if (preg_match('/%(?![0-9A-Fa-f]{2})/', $path) === 1 || preg_match('~\A'.$regex.'\z~Du', $path, $matches) !== 1) {
+        return null;
+    }
+
+    $values = [];
+    foreach ($tokens as $token) {
+        $value = rawurldecode((string) ($matches[$token] ?? ''));
+        if ($value === '' || ! mb_check_encoding($value, 'UTF-8') || preg_match('/[\x00-\x1F\x7F\\\\\/?#]/u', $value) === 1 || in_array($value, ['.', '..'], true)) {
+            return null;
+        }
+        $values[$token] = $value;
+    }
+
+    return $values;
+}
+
 function normalizeSiteSettings(array $settings, array $config = []): array
 {
     $siteName = trim((string) ($settings['site_name'] ?? $config['site_name'] ?? 'GEOFlow Target Site'));
@@ -1103,6 +1356,7 @@ function normalizeSiteSettings(array $settings, array $config = []): array
         'seo_description_template' => trim((string) ($settings['seo_description_template'] ?? $config['seo_description_template'] ?? '{description}')),
         'featured_limit' => min(100, max(1, (int) ($settings['featured_limit'] ?? $config['featured_limit'] ?? 6))),
         'per_page' => min(200, max(1, (int) ($settings['per_page'] ?? $config['per_page'] ?? 12))),
+        'article_permalink_policy' => normalizeArticlePermalinkPolicy($settings['article_permalink_policy'] ?? $config['article_permalink_policy'] ?? null),
         'homepage_style' => normalizeHomepageStyle($settings['homepage_style'] ?? $config['homepage_style'] ?? []),
         'homepage_modules' => normalizeHomepageModules($settings['homepage_modules'] ?? $config['homepage_modules'] ?? [], false),
         'home_carousel_slides' => normalizeHomeCarouselSlides($settings['home_carousel_slides'] ?? $config['home_carousel_slides'] ?? []),
@@ -1117,12 +1371,21 @@ function normalizeSiteSettings(array $settings, array $config = []): array
 
 function siteSettings(array $config): array
 {
+    if (is_array($config['_runtime_site_settings'] ?? null)) {
+        return normalizeSiteSettings($config['_runtime_site_settings'], $config);
+    }
+
     $settings = $config;
-    $settingsFile = siteSettingsFile($config);
-    if (is_file($settingsFile)) {
-        $decoded = json_decode((string) file_get_contents($settingsFile), true);
-        if (is_array($decoded)) {
-            $settings = array_merge($settings, $decoded);
+    $activeState = readActiveSiteState($config);
+    if (is_array($activeState)) {
+        $settings = array_merge($settings, (array) $activeState['settings']);
+    } else {
+        $settingsFile = siteSettingsFile($config);
+        if (is_file($settingsFile)) {
+            $decoded = json_decode((string) file_get_contents($settingsFile), true);
+            if (is_array($decoded)) {
+                $settings = array_merge($settings, $decoded);
+            }
         }
     }
 
@@ -1682,7 +1945,7 @@ function staticSitePath(array $config, string $path): string
         return ($basePath !== '' ? $basePath : '').'/';
     }
 
-    return ($basePath !== '' ? $basePath : '').$path.'/';
+    return ($basePath !== '' ? $basePath : '').$path;
 }
 
 function frontSitePath(array $config, string $path): string
@@ -1753,131 +2016,372 @@ function writeStaticFile(array $config, string $relativePath, string $html): voi
     $file = staticRoot($config).'/'.$relativePath;
     $directory = dirname($file);
     if (! is_dir($directory) && ! mkdir($directory, 0755, true) && ! is_dir($directory)) {
-        jsonResponse(500, ['ok' => false, 'error' => 'static_directory_not_writable', 'path' => $relativePath]);
+        throw new RuntimeException('static_directory_not_writable');
     }
-    if (file_put_contents($file, $html) === false) {
-        jsonResponse(500, ['ok' => false, 'error' => 'static_file_not_writable', 'path' => $relativePath]);
-    }
+    writeAtomicFile($file, $html, 'static_file_not_writable');
 }
 
 function writeJsonFile(string $file, array $payload, string $error): void
 {
     $directory = dirname($file);
     if (! is_dir($directory) && ! mkdir($directory, 0755, true) && ! is_dir($directory)) {
-        jsonResponse(500, ['ok' => false, 'error' => $error]);
+        throw new RuntimeException($error);
     }
 
     $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
-    if (! is_string($json) || file_put_contents($file, $json) === false) {
-        jsonResponse(500, ['ok' => false, 'error' => $error]);
+    if (! is_string($json)) {
+        throw new RuntimeException($error);
+    }
+
+    writeAtomicFile($file, $json, $error);
+}
+
+function writeActiveSiteState(array $config, array $settings, array $manifest): void
+{
+    writeJsonFile(activeSiteStateFile($config), [
+        'schema_version' => 1,
+        'activated_at' => gmdate('c'),
+        'settings' => $settings,
+        'manifest' => $manifest,
+    ], 'active_site_state_not_writable');
+}
+
+function mirrorActiveSiteState(array $config, array $settings, array $manifest): void
+{
+    try {
+        writeJsonFile(siteSettingsFile($config), $settings, 'site_settings_not_writable');
+        writeJsonFile(staticManifestFile($config), $manifest, 'static_manifest_not_writable');
+    } catch (Throwable $exception) {
+        error_log('GEOFlow Agent compatibility state mirror failed: '.get_class($exception));
     }
 }
 
-function removeStaticArticle(array $config, string $slug): void
+function captureFileSnapshot(string $file): array
+{
+    if (! is_file($file)) {
+        return ['exists' => false, 'contents' => ''];
+    }
+
+    $contents = file_get_contents($file);
+    if (! is_string($contents)) {
+        throw new RuntimeException('static_file_snapshot_failed');
+    }
+
+    return ['exists' => true, 'contents' => $contents];
+}
+
+function restoreFileSnapshot(string $file, array $snapshot): void
+{
+    if (! (bool) ($snapshot['exists'] ?? false)) {
+        if (is_file($file)) {
+            @unlink($file);
+        }
+
+        return;
+    }
+
+    writeAtomicFile($file, (string) ($snapshot['contents'] ?? ''), 'static_file_restore_failed');
+}
+
+function writeAtomicFile(string $file, string $contents, string $error): void
+{
+    $directory = dirname($file);
+    if (! is_dir($directory) && ! mkdir($directory, 0755, true) && ! is_dir($directory)) {
+        throw new RuntimeException($error);
+    }
+
+    $temporary = $file.'.tmp-'.bin2hex(random_bytes(6));
+    if (file_put_contents($temporary, $contents, LOCK_EX) === false || ! rename($temporary, $file)) {
+        @unlink($temporary);
+        throw new RuntimeException($error);
+    }
+}
+
+function staticManifestFile(array $config): string
+{
+    return storageRoot($config).'/static-manifest.json';
+}
+
+function readStaticManifest(array $config): array
+{
+    $activeState = readActiveSiteState($config);
+    if (is_array($activeState) && is_array($activeState['manifest'] ?? null)) {
+        return $activeState['manifest'];
+    }
+
+    $file = staticManifestFile($config);
+    if (! is_file($file)) {
+        return ['schema_version' => 1, 'revision' => 0, 'entries' => []];
+    }
+
+    $manifest = json_decode((string) file_get_contents($file), true);
+
+    return is_array($manifest) && is_array($manifest['entries'] ?? null)
+        ? $manifest
+        : ['schema_version' => 1, 'revision' => 0, 'entries' => []];
+}
+
+function staticArticleCacheRelativePath(string $requestPath, int $revision): string
+{
+    return 'static-cache/r'.$revision.'/'.hash('sha256', $requestPath).'.html';
+}
+
+function writeStaticCacheFile(array $config, string $relativePath, string $html): void
+{
+    if (! str_starts_with($relativePath, 'static-cache/') || str_contains($relativePath, '..')) {
+        throw new RuntimeException('invalid_static_cache_path');
+    }
+
+    writeAtomicFile(storageRoot($config).'/'.$relativePath, $html, 'static_cache_not_writable');
+}
+
+function retireLegacyStaticArticle(array $config, string $slug): void
 {
     if ($slug === '') {
         return;
     }
 
-    $directory = staticRoot($config).'/article/'.safeFileName($slug);
-    $file = $directory.'/index.html';
-    if (is_file($file)) {
-        @unlink($file);
-    }
-    if (is_dir($directory)) {
-        @rmdir($directory);
-    }
-}
-
-function removeStaticDirectory(string $directory): void
-{
-    if (! is_dir($directory) || is_link($directory)) {
+    $legacyDirectory = staticRoot($config).'/article/'.safeFileName($slug);
+    $legacyFile = $legacyDirectory.'/index.html';
+    if (! is_file($legacyFile)) {
         return;
     }
 
-    $entries = scandir($directory);
-    if (! is_array($entries)) {
+    $retiredDirectory = storageRoot($config).'/retired-static';
+    if (! is_dir($retiredDirectory) && ! mkdir($retiredDirectory, 0755, true) && ! is_dir($retiredDirectory)) {
+        error_log('GEOFlow Agent could not create the retired static file directory.');
+
         return;
     }
 
-    foreach ($entries as $entry) {
-        if ($entry === '.' || $entry === '..') {
-            continue;
-        }
+    $retiredFile = $retiredDirectory.'/'.gmdate('YmdHis').'-'.safeFileName($slug).'-'.bin2hex(random_bytes(4)).'.html';
+    if (! @rename($legacyFile, $retiredFile)) {
+        error_log('GEOFlow Agent could not retire a legacy static article.');
 
-        $path = $directory.'/'.$entry;
-        if (is_dir($path) && ! is_link($path)) {
-            removeStaticDirectory($path);
-        } elseif (is_file($path) || is_link($path)) {
-            @unlink($path);
-        }
+        return;
     }
 
-    @rmdir($directory);
+    if (is_dir($legacyDirectory)) {
+        @rmdir($legacyDirectory);
+    }
 }
 
-function pruneStaticArticlePages(array $config, array $activeSlugs): int
+function pruneStaticCache(array $config, array $previousManifest, array $nextManifest): int
 {
-    $articleRoot = staticRoot($config).'/article';
-    if (! is_dir($articleRoot)) {
-        return 0;
-    }
-
-    $active = [];
-    foreach ($activeSlugs as $slug) {
-        $safeSlug = safeFileName((string) $slug);
-        if ($safeSlug !== '') {
-            $active[$safeSlug] = true;
-        }
-    }
-
-    $entries = scandir($articleRoot);
-    if (! is_array($entries)) {
-        return 0;
-    }
-
+    $nextFiles = array_fill_keys(array_values((array) ($nextManifest['entries'] ?? [])), true);
     $removed = 0;
-    foreach ($entries as $entry) {
-        if ($entry === '.' || $entry === '..' || isset($active[$entry])) {
+    foreach (array_values((array) ($previousManifest['entries'] ?? [])) as $relativePath) {
+        if (! is_string($relativePath) || isset($nextFiles[$relativePath]) || ! str_starts_with($relativePath, 'static-cache/')) {
             continue;
         }
-
-        $path = $articleRoot.'/'.$entry;
-        if (! is_dir($path) || is_link($path)) {
-            continue;
+        $file = storageRoot($config).'/'.$relativePath;
+        if (is_file($file) && @unlink($file)) {
+            $removed++;
         }
-
-        removeStaticDirectory($path);
-        $removed++;
     }
 
     return $removed;
 }
 
-function rebuildStaticSite(array $config): array
+function assertArticlePermalinkPathsUnambiguous(array $config, array $policy): void
 {
-    if (! staticPublishEnabled($config)) {
+    $articles = loadArticles($config);
+    $paths = [];
+    $articleIds = [];
+    $slugOwners = [];
+    $timezone = (string) ($config['timezone'] ?? 'UTC');
+    $patterns = articlePermalinkPatterns($policy);
+    foreach ($articles as $article) {
+        $articleId = (int) ($article['id'] ?? 0);
+        if ($articleId < 1) {
+            continue;
+        }
+        $articleIds[$articleId] = true;
+        $knownSlugs = array_values(array_unique([
+            (string) ($article['slug'] ?? ''),
+            ...array_values(array_filter(array_map('strval', (array) ($article['slug_history'] ?? [])))),
+        ]));
+        foreach ($knownSlugs as $slug) {
+            if ($slug === '') {
+                continue;
+            }
+            if (isset($slugOwners[$slug]) && $slugOwners[$slug] !== $articleId) {
+                throw new RuntimeException('article_permalink_slug_conflict');
+            }
+            $slugOwners[$slug] = $articleId;
+        }
+        foreach ($patterns as $pattern) {
+            $patternSlugs = in_array('slug', articlePermalinkTokens($pattern), true)
+                ? $knownSlugs
+                : [(string) ($article['slug'] ?? '')];
+            foreach ($patternSlugs as $slug) {
+                $pathArticle = $article;
+                $pathArticle['slug'] = $slug;
+                $path = renderArticlePermalinkPattern($pattern, $pathArticle, $timezone);
+                if (isset($paths[$path]) && $paths[$path] !== $articleId) {
+                    throw new RuntimeException('article_permalink_path_conflict');
+                }
+                $paths[$path] = $articleId;
+            }
+        }
+    }
+
+    foreach (array_keys($paths) as $path) {
+        $matchedArticleIds = [];
+        foreach ($patterns as $pattern) {
+            $values = matchArticlePermalinkPattern($pattern, $path);
+            if ($values === null) {
+                continue;
+            }
+            $articleId = isset($values['id'])
+                ? (int) $values['id']
+                : (int) ($slugOwners[(string) ($values['slug'] ?? '')] ?? 0);
+            if ($articleId > 0 && isset($articleIds[$articleId])) {
+                $matchedArticleIds[$articleId] = true;
+            }
+        }
+        if (count($matchedArticleIds) > 1) {
+            throw new RuntimeException('article_permalink_path_conflict');
+        }
+    }
+}
+
+function rebuildStaticSite(array $config, ?array $settingsOverride = null, bool $activate = true): array
+{
+    $runtimeConfig = $config;
+    if ($settingsOverride !== null) {
+        $runtimeConfig['_runtime_site_settings'] = $settingsOverride;
+    }
+    $settings = siteSettings($runtimeConfig);
+    $policy = normalizeArticlePermalinkPolicy($settings['article_permalink_policy'] ?? null);
+    assertArticlePermalinkPathsUnambiguous($runtimeConfig, $policy);
+    if (! staticPublishEnabled($runtimeConfig)) {
         return ['enabled' => false, 'articles' => 0];
     }
 
-    writeStaticFile($config, 'index.html', renderHomePageHtml($config));
-    writeStaticFile($config, 'llms.txt', renderLlmsText($config));
-    writeStaticFile($config, 'sitemap.txt', renderSitemapText($config));
-
+    $previousManifest = readStaticManifest($config);
+    $manifest = [
+        'schema_version' => 1,
+        'revision' => (int) $policy['revision'],
+        'pattern' => (string) $policy['current_pattern'],
+        'generated_at' => gmdate('c'),
+        'entries' => [],
+    ];
+    $homeHtml = renderHomePageHtml($runtimeConfig);
+    $llmsText = renderLlmsText($runtimeConfig);
+    $sitemapText = renderSitemapText($runtimeConfig);
     $count = 0;
-    $activeSlugs = [];
-    foreach (loadArticles($config) as $article) {
+    foreach (loadArticles($runtimeConfig) as $article) {
         $slug = (string) ($article['slug'] ?? '');
         if ($slug === '') {
             continue;
         }
-        $activeSlugs[] = $slug;
-        writeStaticFile($config, 'article/'.safeFileName($slug).'/index.html', renderArticlePageHtml($config, $slug));
+        $requestPath = articlePermalinkPath($runtimeConfig, $article);
+        $cachePath = staticArticleCacheRelativePath($requestPath, (int) $policy['revision']);
+        writeStaticCacheFile($config, $cachePath, renderArticlePageHtml($runtimeConfig, $slug));
+        $manifest['entries'][$requestPath] = $cachePath;
         $count++;
     }
-    $removed = pruneStaticArticlePages($config, $activeSlugs);
 
-    return ['enabled' => true, 'articles' => $count, 'removed' => $removed];
+    $build = [
+        'enabled' => true,
+        'articles' => $count,
+        'manifest_revision' => (int) $policy['revision'],
+        '_manifest' => $manifest,
+        '_previous_manifest' => $previousManifest,
+        '_home_html' => $homeHtml,
+        '_llms_text' => $llmsText,
+        '_sitemap_text' => $sitemapText,
+        '_article_slugs' => array_values(array_filter(array_map(
+            static fn (array $article): string => (string) ($article['slug'] ?? ''),
+            loadArticles($runtimeConfig),
+        ))),
+    ];
+    if (! $activate) {
+        return $build;
+    }
+
+    return activateStaticSiteBuild($config, $build);
+}
+
+function activateStaticSiteBuild(array $config, array $build, ?array $settingsOverride = null): array
+{
+    $settings = normalizeSiteSettings($settingsOverride ?? siteSettings($config), $config);
+    if (! (bool) ($build['enabled'] ?? false)) {
+        $manifest = readStaticManifest($config);
+        writeActiveSiteState($config, $settings, $manifest);
+        mirrorActiveSiteState($config, $settings, $manifest);
+
+        return ['enabled' => false, 'articles' => 0];
+    }
+
+    $publicFiles = [
+        staticRoot($config).'/index.html',
+        staticRoot($config).'/llms.txt',
+        staticRoot($config).'/sitemap.txt',
+    ];
+    $snapshots = [];
+    foreach ($publicFiles as $file) {
+        $snapshots[$file] = captureFileSnapshot($file);
+    }
+
+    $manifest = (array) ($build['_manifest'] ?? []);
+    try {
+        writeStaticFile($config, 'index.html', (string) ($build['_home_html'] ?? ''));
+        writeStaticFile($config, 'llms.txt', (string) ($build['_llms_text'] ?? ''));
+        writeStaticFile($config, 'sitemap.txt', (string) ($build['_sitemap_text'] ?? ''));
+        writeActiveSiteState($config, $settings, $manifest);
+    } catch (Throwable $exception) {
+        foreach (array_reverse($publicFiles) as $file) {
+            try {
+                restoreFileSnapshot($file, $snapshots[$file]);
+            } catch (Throwable) {
+                // The original activation failure remains the actionable error.
+            }
+        }
+
+        throw $exception;
+    }
+
+    mirrorActiveSiteState($config, $settings, $manifest);
+    $removed = pruneStaticCache(
+        $config,
+        (array) ($build['_previous_manifest'] ?? []),
+        $manifest,
+    );
+    foreach ((array) ($build['_article_slugs'] ?? []) as $slug) {
+        retireLegacyStaticArticle($config, (string) $slug);
+    }
+
+    return [
+        'enabled' => true,
+        'articles' => (int) ($build['articles'] ?? 0),
+        'removed' => $removed,
+        'manifest_revision' => (int) ($build['manifest_revision'] ?? 0),
+    ];
+}
+
+function serveStaticArticle(array $config, string $requestPath): bool
+{
+    if (! staticPublishEnabled($config)) {
+        return false;
+    }
+
+    $manifest = readStaticManifest($config);
+    $relativePath = $manifest['entries'][$requestPath] ?? null;
+    if (! is_string($relativePath) || ! str_starts_with($relativePath, 'static-cache/') || str_contains($relativePath, '..')) {
+        return false;
+    }
+    $file = storageRoot($config).'/'.$relativePath;
+    if (! is_file($file)) {
+        return false;
+    }
+
+    http_response_code(200);
+    header('Content-Type: text/html; charset=utf-8');
+    readfile($file);
+
+    return true;
 }
 
 function ensureStorage(array $config): void
@@ -2051,6 +2555,84 @@ function findArticle(array $config, string $slug): ?array
     }
 
     return null;
+}
+
+function findArticleByPermalinkValues(array $config, array $values): ?array
+{
+    $id = isset($values['id']) ? (int) $values['id'] : null;
+    $slug = isset($values['slug']) ? (string) $values['slug'] : '';
+    foreach (loadArticles($config) as $article) {
+        if ($id !== null && (int) ($article['id'] ?? 0) === $id) {
+            return $article;
+        }
+        if ($id === null && $slug !== '' && (string) ($article['slug'] ?? '') === $slug) {
+            return $article;
+        }
+        if ($id === null && $slug !== '' && in_array($slug, (array) ($article['slug_history'] ?? []), true)) {
+            return $article;
+        }
+    }
+
+    return null;
+}
+
+function resolveArticlePermalink(array $config, string $path): ?array
+{
+    if (strlen($path) > 2048
+        || ! str_starts_with($path, '/')
+        || str_contains($path, '\\')
+        || str_contains($path, '//')
+        || preg_match('/%(?![0-9A-Fa-f]{2})/', $path) === 1
+        || preg_match('/%(?:2f|5c)/i', $path) === 1) {
+        return null;
+    }
+
+    $settings = siteSettings($config);
+    $policy = normalizeArticlePermalinkPolicy($settings['article_permalink_policy'] ?? null);
+    $matchingPath = $path !== '/' ? rtrim($path, '/') : $path;
+    $candidates = [];
+    $sources = [];
+    foreach (articlePermalinkPatterns($policy) as $position => $pattern) {
+        $values = matchArticlePermalinkPattern($pattern, $matchingPath);
+        if ($values === null) {
+            continue;
+        }
+        $article = findArticleByPermalinkValues($config, $values);
+        if (! is_array($article)) {
+            continue;
+        }
+        $articleId = (int) ($article['id'] ?? 0);
+        if ($articleId < 1) {
+            continue;
+        }
+        $candidates[$articleId] = $article;
+        $sources[$articleId] ??= $position === 0
+            ? 'current_permalink'
+            : ($pattern === '/article/{slug}' ? 'legacy_pattern' : 'retired_pattern');
+    }
+
+    if (count($candidates) !== 1) {
+        return null;
+    }
+
+    $articleId = (int) array_key_first($candidates);
+    $article = $candidates[$articleId];
+    try {
+        $canonicalPath = renderArticlePermalinkPattern(
+            (string) $policy['current_pattern'],
+            $article,
+            (string) ($config['timezone'] ?? 'UTC'),
+        );
+    } catch (Throwable) {
+        return null;
+    }
+
+    return [
+        'article' => $article,
+        'canonical_path' => $canonicalPath,
+        'is_canonical' => hash_equals($canonicalPath, $path),
+        'source' => (string) ($sources[$articleId] ?? 'current_permalink'),
+    ];
 }
 
 function articleCategoryName(array $article): string
@@ -2297,7 +2879,7 @@ function renderHomepageArticleCard(array $config, array $article): void
     }
 
     $title = (string) ($article['title'] ?? 'Untitled Article');
-    $url = frontSitePath($config, '/article/'.rawurlencode($slug));
+    $url = frontSitePath($config, articlePermalinkPath($config, $article));
     $summary = articleSummary($article, 120);
     echo '<article class="homepage-article-card">';
     echo '<h3><a href="'.h($url).'">'.h($title).'</a></h3>';
@@ -2480,7 +3062,7 @@ function renderHomePage(array $config): void
         $category = is_array($article['category'] ?? null) ? (string) ($article['category']['name'] ?? '默认分类') : '默认分类';
         $publishedAt = substr((string) ($article['published_at'] ?? $article['updated_at'] ?? ''), 0, 10);
         $summary = (string) ($article['excerpt'] ?? $article['meta_description'] ?? '');
-        $articleUrl = frontSitePath($config, '/article/'.rawurlencode($slug));
+        $articleUrl = frontSitePath($config, articlePermalinkPath($config, $article));
         echo '<article class="card"><div class="meta"><span class="chip">'.h($category).'</span><span>'.h($publishedAt).'</span></div>';
         echo '<h2><a href="'.h($articleUrl).'">'.h($title).'</a></h2>';
         echo '<p class="summary">'.h($summary !== '' ? $summary : mb_substr(strip_tags((string) ($article['content'] ?? '')), 0, 160)).'</p>';
@@ -2509,7 +3091,7 @@ function renderApparelHomePage(array $config, array $settings): void
     echo '<div class="asi-shell asi-page">';
 
     if ($lead) {
-        $leadUrl = frontSitePath($config, '/article/'.rawurlencode((string) ($lead['slug'] ?? '')));
+        $leadUrl = frontSitePath($config, articlePermalinkPath($config, $lead));
         echo '<section class="asi-hero"><article class="asi-lead">';
         renderApparelVisual($config, $lead, 'asi-lead-visual', articleCategoryName($lead));
         echo '<div class="asi-lead-copy"><div class="asi-kicker">Lead Analysis</div><h1><a href="'.h($leadUrl).'">'.h((string) ($lead['title'] ?? 'Untitled Article')).'</a></h1>';
@@ -2517,7 +3099,7 @@ function renderApparelHomePage(array $config, array $settings): void
         echo '<aside class="asi-hero-rail"><section class="asi-briefing"><span>Today\'s Briefing</span><strong>'.h((string) ($settings['site_subtitle'] ?: 'Buyers are rebalancing sourcing maps as cost, speed and compliance collide.')).'</strong><div><small>Daily market note</small><small>'.h(date('H:i T')).'</small></div></section>';
         echo '<section class="asi-headline-stack">';
         foreach ($headlines as $headline) {
-            $url = frontSitePath($config, '/article/'.rawurlencode((string) ($headline['slug'] ?? '')));
+            $url = frontSitePath($config, articlePermalinkPath($config, $headline));
             echo '<article class="asi-mini-story">';
             renderApparelVisual($config, $headline, 'asi-mini-visual');
             echo '<div><h2><a href="'.h($url).'">'.h((string) ($headline['title'] ?? 'Untitled Article')).'</a></h2><div class="asi-meta"><span>'.h(articleCategoryName($headline)).'</span><time>'.h(articleDate($headline, 'M j')).'</time></div></div></article>';
@@ -2543,7 +3125,7 @@ function renderApparelHomePage(array $config, array $settings): void
 
 function renderApparelVisual(array $config, array $article, string $class, string $badge = ''): void
 {
-    $url = frontSitePath($config, '/article/'.rawurlencode((string) ($article['slug'] ?? '')));
+    $url = frontSitePath($config, articlePermalinkPath($config, $article));
     $title = (string) ($article['title'] ?? 'Untitled Article');
     $image = articleImageUrl($article);
     $initial = mb_strtoupper(mb_substr(articleCategoryName($article), 0, 1));
@@ -2561,7 +3143,7 @@ function renderApparelVisual(array $config, array $article, string $class, strin
 
 function renderApparelArticleCard(array $config, array $article): void
 {
-    $url = frontSitePath($config, '/article/'.rawurlencode((string) ($article['slug'] ?? '')));
+    $url = frontSitePath($config, articlePermalinkPath($config, $article));
     echo '<article class="asi-card">';
     renderApparelVisual($config, $article, 'asi-card-visual');
     echo '<div class="asi-card-copy"><div class="asi-meta"><span>'.h(articleCategoryName($article)).'</span><time>'.h(articleDate($article, 'M j, Y')).'</time></div>';
@@ -2581,7 +3163,7 @@ function renderApparelSidebar(array $config, array $settings, array $articles): 
     }
     echo '</section><section class="asi-panel"><div class="asi-panel-head"><h2>Editor Picks</h2></div><div class="asi-rank-list">';
     foreach (array_slice($articles, 0, 6) as $index => $article) {
-        $url = frontSitePath($config, '/article/'.rawurlencode((string) ($article['slug'] ?? '')));
+        $url = frontSitePath($config, articlePermalinkPath($config, $article));
         echo '<a class="asi-rank-item" href="'.h($url).'"><span>'.($index + 1).'</span><strong>'.h((string) ($article['title'] ?? 'Untitled Article')).'</strong></a>';
     }
     echo '</div></section></aside>';
@@ -2621,7 +3203,7 @@ function renderFashionHomePage(array $config, array $settings): void
     if ($featured !== []) {
         echo '<section class="fashion-section"><div class="fashion-section-head"><h2>Vanguard Choice</h2><span>Curated Highlights</span></div>';
         $first = $featured[0];
-        $firstUrl = frontSitePath($config, '/article/'.rawurlencode((string) ($first['slug'] ?? '')));
+        $firstUrl = frontSitePath($config, articlePermalinkPath($config, $first));
         $firstImage = articleImageUrl($first);
         echo '<div class="fashion-feature-grid"><article class="fashion-feature-card">';
         if ($firstImage !== '') {
@@ -2632,7 +3214,7 @@ function renderFashionHomePage(array $config, array $settings): void
         echo '<p>'.h(articleSummary($first, 220)).'</p><div><time>'.h(substr((string) ($first['published_at'] ?? $first['updated_at'] ?? ''), 0, 10)).'</time><a href="'.h($firstUrl).'">Read Analysis</a></div></div></article>';
         echo '<div class="fashion-feature-side">';
         foreach (array_slice($featured, 1, 2) as $item) {
-            $url = frontSitePath($config, '/article/'.rawurlencode((string) ($item['slug'] ?? '')));
+            $url = frontSitePath($config, articlePermalinkPath($config, $item));
             $category = is_array($item['category'] ?? null) ? (string) ($item['category']['name'] ?? 'Insight') : 'Insight';
             echo '<article><div><span>'.h($category).'</span><time>'.h(substr((string) ($item['published_at'] ?? $item['updated_at'] ?? ''), 0, 10)).'</time></div>';
             echo '<h3><a href="'.h($url).'">'.h((string) ($item['title'] ?? 'Untitled Article')).'</a></h3><p>'.h(articleSummary($item, 120)).'</p><a href="'.h($url).'">Read Report</a></article>';
@@ -2654,7 +3236,7 @@ function renderFashionHomePage(array $config, array $settings): void
 function renderFashionArticleCard(array $config, array $article): void
 {
     $slug = (string) ($article['slug'] ?? '');
-    $url = frontSitePath($config, '/article/'.rawurlencode($slug));
+    $url = frontSitePath($config, articlePermalinkPath($config, $article));
     $title = (string) ($article['title'] ?? 'Untitled Article');
     $image = articleImageUrl($article);
     $category = is_array($article['category'] ?? null) ? (string) ($article['category']['name'] ?? 'Insight') : 'Insight';
@@ -2689,7 +3271,7 @@ function renderArticlePage(array $config, string $slug): void
     $category = is_array($article['category'] ?? null) ? (string) ($article['category']['name'] ?? '默认分类') : '默认分类';
     $publishedAt = substr((string) ($article['published_at'] ?? $article['updated_at'] ?? ''), 0, 10);
     $settings = siteSettings($config);
-    $articleUrl = frontSiteUrl($config, '/article/'.rawurlencode($slug));
+    $articleUrl = frontSiteUrl($config, articlePermalinkPath($config, $article));
     $articleDescription = articleMetaDescription($article);
     pageHeader($config, $title, [
         'description' => $articleDescription,
@@ -2719,7 +3301,7 @@ function renderArticlePage(array $config, string $slug): void
         "@type"=>"BreadcrumbList",
         "itemListElement"=>[
             ["@type"=>"ListItem", "position"=>1, "name"=>"首页", "item"=>frontSiteUrl($config, '/')],
-            ["@type"=>"ListItem", "position"=>2, "name"=>$title, "item"=>frontSiteUrl($config, '/article/'.rawurlencode($slug))],
+            ["@type"=>"ListItem", "position"=>2, "name"=>$title, "item"=>$articleUrl],
         ],
     ]);
     $themeClass = themeClass($settings);
@@ -2812,7 +3394,7 @@ function renderLlmsText(array $config): string
             if ($summary === '') {
                 $summary = textMapLine(mb_substr(strip_tags((string) ($article['content'] ?? '')), 0, 180));
             }
-            $line = '- '.($title !== '' ? $title : $slug).' - '.frontSiteUrl($config, '/article/'.rawurlencode($slug));
+            $line = '- '.($title !== '' ? $title : $slug).' - '.frontSiteUrl($config, articlePermalinkPath($config, $article));
             if ($summary !== '') {
                 $line .= ' - '.$summary;
             }
@@ -2829,7 +3411,7 @@ function renderSitemapText(array $config): string
     foreach (loadArticles($config) as $article) {
         $slug = (string) ($article['slug'] ?? '');
         if ($slug !== '') {
-            $urls[] = frontSiteUrl($config, '/article/'.rawurlencode($slug));
+            $urls[] = frontSiteUrl($config, articlePermalinkPath($config, $article));
         }
     }
 
@@ -2862,7 +3444,7 @@ function handleFrontendCapabilities(array $config, string $method, string $path,
     jsonResponse(200, [
         'ok' => true,
         'service' => 'geoflow-target-site',
-        'capability_version' => '1.2',
+        'capability_version' => '1.3',
         'package_version' => (string) ($config['package_version'] ?? ''),
         'event' => $verified['event'],
         'active_theme' => activeTheme($settings),
@@ -2877,10 +3459,13 @@ function handleFrontendCapabilities(array $config, string $method, string $path,
             'home_carousel_slides_count' => count($carouselSlides),
             'article_text_ads_count' => count($articleTextAds),
             'homepage_style_keys' => array_keys($homepageStyle),
+            'article_permalink_revision' => (int) ($settings['article_permalink_policy']['revision'] ?? 0),
+            'article_permalink_pattern' => (string) ($settings['article_permalink_policy']['current_pattern'] ?? '/article/{slug}'),
         ],
         'supported_modules' => frontendSupportedModules(),
         'supported_routes' => [
             '/',
+            '{article_permalink_policy}',
             '/article/{slug}',
             '/llms.txt',
             '/sitemap.txt',
@@ -2891,6 +3476,10 @@ function handleFrontendCapabilities(array $config, string $method, string $path,
         'supports_homepage_style' => true,
         'supports_home_carousel_slides' => true,
         'supports_article_text_ads' => true,
+        'supports_article_permalink_policy' => true,
+        'article_permalink_schema_versions' => [1],
+        'current_article_permalink_revision' => (int) ($settings['article_permalink_policy']['revision'] ?? 0),
+        'current_article_permalink_pattern' => (string) ($settings['article_permalink_policy']['current_pattern'] ?? '/article/{slug}'),
         'supports_static_generation' => ! empty($config['static_publish_enabled']),
     ]);
 }
@@ -2914,7 +3503,7 @@ function handleArticlePublish(array $config, string $method, string $path, strin
     $response = [
         'ok' => true,
         'remote_id' => 'geoflow-'.$slug,
-        'remote_url' => frontSiteUrl($config, '/article/'.rawurlencode($slug)),
+        'remote_url' => frontSiteUrl($config, articlePermalinkPath($config, $article)),
     ];
 
     writeJsonFile($file, [
@@ -2948,12 +3537,19 @@ function handleArticleUpdate(array $config, string $method, string $path, string
         jsonResponse(422, ['ok' => false, 'error' => 'missing_slug']);
     }
 
+    $previousArticle = findArticle($config, $pathSlug);
+    $slugHistory = is_array($previousArticle['slug_history'] ?? null) ? $previousArticle['slug_history'] : [];
+    if ($pathSlug !== '' && $pathSlug !== $slug) {
+        $slugHistory[] = $pathSlug;
+    }
+    $article['slug_history'] = array_values(array_unique(array_filter(array_map('strval', $slugHistory))));
+
     $file = storageDir($config).'/'.safeFileName($slug).'.json';
     $response = [
         'ok' => true,
         'updated' => true,
         'remote_id' => 'geoflow-'.$slug,
-        'remote_url' => frontSiteUrl($config, '/article/'.rawurlencode($slug)),
+        'remote_url' => frontSiteUrl($config, articlePermalinkPath($config, $article)),
     ];
 
     writeJsonFile($file, [
@@ -2963,7 +3559,17 @@ function handleArticleUpdate(array $config, string $method, string $path, string
         'response' => $response,
     ], 'article_storage_not_writable');
 
+    if ($pathSlug !== '' && $pathSlug !== $slug) {
+        $previousFile = storageDir($config).'/'.safeFileName($pathSlug).'.json';
+        if (is_file($previousFile)) {
+            @unlink($previousFile);
+        }
+    }
+
     $response['static'] = rebuildStaticSite($config);
+    if ($pathSlug !== '' && $pathSlug !== $slug) {
+        retireLegacyStaticArticle($config, $pathSlug);
+    }
 
     jsonResponse(200, $response);
 }
@@ -2987,8 +3593,8 @@ function handleArticleDelete(array $config, string $method, string $path, string
     if (is_file($file)) {
         @unlink($file);
     }
-    removeStaticArticle($config, $slug);
     $static = rebuildStaticSite($config);
+    retireLegacyStaticArticle($config, $slug);
 
     jsonResponse(200, [
         'ok' => true,
@@ -3010,23 +3616,76 @@ function handleSiteSettingsUpdate(array $config, string $method, string $path, s
         jsonResponse(422, ['ok' => false, 'error' => 'invalid_settings_payload']);
     }
 
+    $incomingPolicy = $payload['settings']['article_permalink_policy'] ?? null;
+    if (is_array($incomingPolicy)) {
+        try {
+            if ((int) ($incomingPolicy['schema_version'] ?? 1) !== 1) {
+                throw new InvalidArgumentException('unsupported_article_permalink_schema');
+            }
+            normalizeArticlePermalinkPattern((string) ($incomingPolicy['current_pattern'] ?? ''));
+            foreach ((array) ($incomingPolicy['history'] ?? []) as $historyItem) {
+                if (! is_array($historyItem)) {
+                    throw new InvalidArgumentException('invalid_article_permalink_history');
+                }
+                normalizeArticlePermalinkPattern((string) ($historyItem['pattern'] ?? ''));
+            }
+        } catch (Throwable) {
+            jsonResponse(422, ['ok' => false, 'error' => 'invalid_article_permalink_policy']);
+        }
+    }
+
     ensureStorage($config);
+    $currentSettings = siteSettings($config);
+    $currentPolicy = normalizeArticlePermalinkPolicy($currentSettings['article_permalink_policy'] ?? null);
     $settings = normalizeSiteSettings($payload['settings'], $config);
-    writeJsonFile(siteSettingsFile($config), $settings, 'site_settings_not_writable');
-    $static = rebuildStaticSite($config);
+    $nextPolicy = normalizeArticlePermalinkPolicy($settings['article_permalink_policy'] ?? null);
+    $expectedRevision = isset($payload['expected_article_permalink_revision'])
+        ? (int) $payload['expected_article_permalink_revision']
+        : (int) $currentPolicy['revision'];
+    if ($expectedRevision !== (int) $currentPolicy['revision']) {
+        jsonResponse(409, [
+            'ok' => false,
+            'error' => 'article_permalink_revision_conflict',
+            'current_article_permalink_revision' => (int) $currentPolicy['revision'],
+        ]);
+    }
+    if ((int) $nextPolicy['revision'] < (int) $currentPolicy['revision']
+        || ((int) $nextPolicy['revision'] === (int) $currentPolicy['revision']
+            && (string) $nextPolicy['current_pattern'] !== (string) $currentPolicy['current_pattern'])) {
+        jsonResponse(409, [
+            'ok' => false,
+            'error' => 'stale_article_permalink_policy',
+            'current_article_permalink_revision' => (int) $currentPolicy['revision'],
+        ]);
+    }
+
+    try {
+        $staticBuild = rebuildStaticSite($config, $settings, false);
+        $static = activateStaticSiteBuild($config, $staticBuild, $settings);
+    } catch (Throwable $exception) {
+        jsonResponse(500, [
+            'ok' => false,
+            'error' => 'site_settings_activation_failed',
+            'message' => $exception->getMessage(),
+        ]);
+    }
 
     jsonResponse(200, [
         'ok' => true,
         'updated' => true,
         'site_name' => $settings['site_name'],
         'active_theme' => $settings['active_theme'],
+        'article_permalink_revision' => (int) $nextPolicy['revision'],
+        'article_permalink_pattern' => (string) $nextPolicy['current_pattern'],
         'static' => $static,
     ]);
 }
 
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
-$path = parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
-$path = is_string($path) && $path !== '' ? rtrim($path, '/') : '/';
+$rawRequestPath = parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
+$rawRequestPath = is_string($rawRequestPath) && $rawRequestPath !== '' ? $rawRequestPath : '/';
+$requestHadTrailingSlash = $rawRequestPath !== '/' && str_ends_with($rawRequestPath, '/');
+$path = rtrim($rawRequestPath, '/') ?: '/';
 $path = normalizeRequestPath($config, $path === '' ? '/' : $path);
 $body = file_get_contents('php://input');
 $body = is_string($body) ? $body : '';
@@ -3061,9 +3720,34 @@ if ($method === 'GET' && $path === '/llms.txt') {
 if ($method === 'GET' && $path === '/sitemap.txt') {
     textResponse(renderSitemapText($config));
 }
-if ($method === 'GET' && str_starts_with($path, '/article/')) {
-    renderArticlePage($config, rawurldecode(substr($path, 9)));
-    exit;
+if (in_array($method, ['GET', 'HEAD'], true)) {
+    $resolution = resolveArticlePermalink($config, $path);
+    if (is_array($resolution)) {
+        $canonicalPath = (string) $resolution['canonical_path'];
+        if (! (bool) $resolution['is_canonical'] || $requestHadTrailingSlash) {
+            $query = parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_QUERY);
+            $target = frontSitePath($config, $canonicalPath);
+            if (is_string($query) && $query !== '') {
+                $target .= '?'.$query;
+            }
+            http_response_code(301);
+            header('Cache-Control: public, max-age=3600, s-maxage=300');
+            header('Location: '.$target);
+            exit;
+        }
+
+        if ($method === 'HEAD') {
+            ob_start();
+            renderArticlePage($config, (string) ($resolution['article']['slug'] ?? ''));
+            ob_end_clean();
+            exit;
+        }
+        if (serveStaticArticle($config, $canonicalPath)) {
+            exit;
+        }
+        renderArticlePage($config, (string) ($resolution['article']['slug'] ?? ''));
+        exit;
+    }
 }
 
 http_response_code(404);

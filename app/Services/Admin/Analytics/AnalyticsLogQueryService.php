@@ -2,6 +2,8 @@
 
 namespace App\Services\Admin\Analytics;
 
+use App\Models\Article;
+use App\Services\Site\SiteUrlGenerator;
 use App\Support\Analytics\TrafficClassifier;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
@@ -10,6 +12,8 @@ use Illuminate\Support\Facades\Schema;
 
 class AnalyticsLogQueryService
 {
+    public function __construct(private readonly SiteUrlGenerator $siteUrls) {}
+
     /**
      * @return array<string, mixed>
      */
@@ -215,11 +219,23 @@ class AnalyticsLogQueryService
             return $paths;
         }
 
-        return array_map(fn (array $article): array => [
-            'path' => $article['slug'] !== '' ? '/article/'.$article['slug'] : '/article/'.$article['article_id'],
-            'views' => $article['views'],
-            'unique_ip' => $article['unique_ip'],
-        ], $topArticles);
+        $articles = Article::query()
+            ->with('category')
+            ->whereKey(array_column($topArticles, 'article_id'))
+            ->get()
+            ->keyBy('id');
+
+        return array_map(function (array $summary) use ($articles): array {
+            $article = $articles->get($summary['article_id']);
+
+            return [
+                'path' => $article instanceof Article
+                    ? (string) parse_url($this->siteUrls->article($article), PHP_URL_PATH)
+                    : (string) parse_url($this->siteUrls->article($summary['slug'] !== '' ? $summary['slug'] : (string) $summary['article_id']), PHP_URL_PATH),
+                'views' => $summary['views'],
+                'unique_ip' => $summary['unique_ip'],
+            ];
+        }, $topArticles);
     }
 
     private function excludedSourceRows(AnalyticsLogFilter $logFilter, AnalyticsFilter $contentFilter): int

@@ -16,7 +16,7 @@
             'dateModified' => optional($article->updated_at ?? $article->published_at ?? $article->created_at)->toAtomString(),
             'mainEntityOfPage' => [
                 $schemaAtType => 'WebPage',
-                $schemaAtId => $canonicalUrl ?? route('site.article', $article->slug),
+                $schemaAtId => $canonicalUrl ?? $siteUrls->article($article),
             ],
             'author' => [
                 $schemaAtType => 'Person',
@@ -109,7 +109,7 @@
                 <ul class="ent-related__list">
                     @foreach($relatedArticles->take(5) as $related)
                         <li>
-                            <a href="{{ route('site.article', $related->slug) }}">
+                            <a href="{{ $siteUrls->article($related) }}">
                                 <strong>{{ $related->title }}</strong>
                             </a>
                         </li>

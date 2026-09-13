@@ -1,6 +1,15 @@
 # GEOFlow Changelog
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
+## 2026-09-12
+
+### Article permalink rules
+
+- Site settings now provide six permalink presets and constrained custom patterns built from `{slug}`, `{id}`, `{category}`, `{year}`, `{month}`, and `{day}`.
+- Activation uses a check-and-preview confirmation flow with a downloadable migration map. Historical patterns, old slugs, old categories, mismatched dates, and `/article/{slug}` compatibility URLs redirect once to the current canonical URL.
+- Canonical metadata, Open Graph, JSON-LD, internal article links, sitemaps, view analytics, and first-party hosted-site remote URLs now share the same permalink generator.
+- First-party hosted sites can use independent policies. GEOFlow Agent target packages now advertise capability 1.3 with dynamic matching, a private static manifest, atomic activation, and Apache, Nginx, and BaoTa fallbacks.
+
 
 ## 2026-09-11
 

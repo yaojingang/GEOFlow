@@ -86,7 +86,7 @@ class SiteThemePreviewController extends Controller
                     $sitePath === 'about' => app(AboutController::class)->index(),
                     $sitePath === 'archive' => app(ArchiveController::class)->index(),
                     str_starts_with($sitePath, 'category/') => app(CategoryController::class)->show(substr($sitePath, 9)),
-                    str_starts_with($sitePath, 'article/') => app(ArticleController::class)->show(substr($sitePath, 8)),
+                    str_starts_with($sitePath, 'article/') => app(ArticleController::class)->show($siteRequest),
                     default => app(ArchiveController::class)->month(...array_slice(explode('/', $sitePath), 1)),
                 };
                 foreach ($page->getData() as $value) {

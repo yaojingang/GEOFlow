@@ -762,6 +762,11 @@
       "name": "2026_09_08_094502_add_task_draft_to_ai_conversations",
       "sha256": "a0b77e05ee6d8d4aed9a32baf1cac3a204ea5f70dcd3f0fd965f7b00b1261910",
       "online": false
+    },
+    {
+      "name": "2026_09_12_220500_create_article_slug_histories_table",
+      "sha256": "ef8c891aff97bc636561238dd6829d9109da8e720a8c6cd7e7adf9e5297f31db",
+      "online": false
     }
   ],
   "compatibility": {

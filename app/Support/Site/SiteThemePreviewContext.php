@@ -85,7 +85,10 @@ final class SiteThemePreviewContext
 
     public function urlForPath(string $path): ?string
     {
-        if (! $this->isActive() || preg_match('~\A/(?:\?(?:.*)|(?:about|archive(?:/[0-9]{4}/[0-9]{2})?|(?:category|article)/[^/?#]+)(?:[?#].*)?)?\z~D', $path) !== 1) {
+        if (! $this->isActive()
+            || ! str_starts_with($path, '/')
+            || str_starts_with($path, '//')
+            || preg_match('/[\x00-\x1F\x7F]/', $path) === 1) {
             return null;
         }
 

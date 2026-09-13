@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\DB;
 
 final class HostedSitePublishFailureService
 {
+    public function __construct(private readonly HostedSiteUrlGenerator $hostedUrls) {}
+
     public function record(
         ArticleDistribution $candidate,
         string $safeMessage,
@@ -62,7 +64,7 @@ final class HostedSitePublishFailureService
                     'remote_id' => (string) $assignment->id,
                     'remote_url' => $action === 'delete'
                         ? null
-                        : 'https://'.$profile->hostname.'/article/'.$article?->slug,
+                        : ($article instanceof Article ? $this->hostedUrls->article($profile, $article) : null),
                     'remote_meta' => array_replace($remoteMeta, [
                         'hosted_site_profile_id' => (int) $profile->id,
                         'assignment_status' => (string) $assignment->status,

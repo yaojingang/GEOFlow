@@ -93,5 +93,74 @@
                 <button type="submit" class="inline-flex min-h-10 items-center rounded-md bg-blue-600 px-5 py-2 text-sm font-medium text-white transition-transform active:scale-[.96] hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">保存站点</button>
             </div>
         </form>
+
+        @if ($isEdit)
+            <section class="bg-white px-5 py-6 shadow-sm sm:px-7" aria-labelledby="hosted-permalink-title">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h2 id="hosted-permalink-title" class="text-base font-semibold text-gray-900">{{ __('article_permalink.title') }}</h2>
+                            <span class="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">revision {{ $articlePermalinkPolicy->revision }}</span>
+                        </div>
+                        <p class="mt-2 text-sm leading-6 text-gray-600">{{ __('article_permalink.hosted_scope', ['hostname' => $profile->hostname, 'pattern' => $articlePermalinkPolicy->currentPattern]) }}</p>
+                    </div>
+                </div>
+
+                <form method="POST" action="{{ route('admin.distribution.hosted-sites.article-permalink.preview', $channel) }}" class="mt-5 space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                    @csrf
+                    <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        @foreach ($articlePermalinkPresets as $preset)
+                            <label class="flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 bg-white p-3 hover:border-violet-300">
+                                <input type="radio" value="{{ $preset['pattern'] }}" class="mt-1 border-gray-300 text-violet-600 focus:ring-violet-500" data-hosted-permalink-preset @checked(($articlePermalinkPreview['pattern'] ?? $articlePermalinkPolicy->currentPattern) === $preset['pattern'])>
+                                <span><span class="block text-sm font-medium text-gray-900">{{ __($preset['name']) }}</span><code class="mt-1 block text-xs text-gray-600">{{ $preset['pattern'] }}</code></span>
+                            </label>
+                        @endforeach
+                    </div>
+                    <div>
+                        <label for="hosted-permalink-pattern" class="block text-sm font-medium text-gray-700">{{ __('article_permalink.custom_template') }}</label>
+                        <input id="hosted-permalink-pattern" name="pattern" required maxlength="160" value="{{ old('pattern', $articlePermalinkPreview['pattern'] ?? $articlePermalinkPolicy->currentPattern) }}" class="mt-1 block w-full rounded-md border-gray-300 font-mono text-sm shadow-sm focus:border-violet-500 focus:ring-violet-500">
+                        @error('pattern')<p class="mt-2 text-sm text-red-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div class="flex justify-end">
+                        <button type="submit" class="inline-flex min-h-10 items-center rounded-md bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 active:scale-[.98]">{{ __('article_permalink.preview_action') }}</button>
+                    </div>
+                </form>
+
+                @if (is_array($articlePermalinkPreview ?? null))
+                    <div class="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <p class="text-sm text-emerald-900">{{ __('article_permalink.hosted_preview_summary', ['articles' => $articlePermalinkPreview['affected_articles']]) }}</p>
+                            <div class="flex flex-wrap gap-2">
+                                <a href="{{ route('admin.distribution.hosted-sites.article-permalink.migration-map', ['hostedSite' => $channel, 'preview_credential' => $articlePermalinkPreview['credential']]) }}" class="inline-flex min-h-10 items-center rounded-md border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 active:scale-[.98]">{{ __('article_permalink.download_migration_map') }}</a>
+                                <form method="POST" action="{{ route('admin.distribution.hosted-sites.article-permalink.activate', $channel) }}">
+                                    @csrf
+                                    <input type="hidden" name="preview_credential" value="{{ $articlePermalinkPreview['credential'] }}">
+                                    <button type="submit" class="inline-flex min-h-10 items-center rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 active:scale-[.98]">{{ __('article_permalink.activate_action') }}</button>
+                                </form>
+                            </div>
+                        </div>
+                        @foreach ($articlePermalinkPreview['examples'] ?? [] as $example)
+                            <div class="mt-3 grid grid-cols-1 gap-1 rounded-md bg-white p-3 text-xs md:grid-cols-2 md:gap-3">
+                                <code class="break-all text-gray-500">{{ $example['current_path'] }}</code>
+                                <code class="break-all font-semibold text-emerald-800">{{ $example['preview_path'] }}</code>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+            </section>
+        @endif
     </div>
 @endsection
+
+@push('scripts')
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const pattern = document.getElementById('hosted-permalink-pattern');
+            document.querySelectorAll('[data-hosted-permalink-preset]').forEach(function (preset) {
+                preset.addEventListener('change', function () {
+                    if (pattern && preset.checked) pattern.value = preset.value;
+                });
+            });
+        });
+    </script>
+@endpush

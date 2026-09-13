@@ -232,7 +232,7 @@
                     </div>
                     <div class="geo-home-module__articles">
                         @foreach($moduleArticles as $moduleArticle)
-                            <a href="{{ route('site.article', $moduleArticle->slug) }}" class="geo-home-module__article">
+                            <a href="{{ $siteUrls->article($moduleArticle) }}" class="geo-home-module__article">
                                 <span>{{ $moduleArticle->title }}</span>
                                 @if(!empty($moduleArticle->published_at))
                                     <time>{{ $moduleArticle->published_at->format('m-d') }}</time>

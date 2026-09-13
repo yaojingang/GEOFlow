@@ -86,6 +86,11 @@ class Article extends Model
         return $this->hasMany(ArticleImage::class, 'article_id');
     }
 
+    public function slugHistories(): HasMany
+    {
+        return $this->hasMany(ArticleSlugHistory::class);
+    }
+
     public function reviews(): HasMany
     {
         return $this->hasMany(ArticleReview::class, 'article_id');

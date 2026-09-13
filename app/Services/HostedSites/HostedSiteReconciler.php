@@ -13,7 +13,10 @@ use Illuminate\Support\Facades\DB;
 
 final class HostedSiteReconciler
 {
-    public function __construct(private readonly HostedSiteAllocator $allocator) {}
+    public function __construct(
+        private readonly HostedSiteAllocator $allocator,
+        private readonly HostedSiteUrlGenerator $hostedUrls,
+    ) {}
 
     /** @return array{pending:int,reserved:int,stale_sending:int,feature_paused:int,dispatched:int,repaired:int} */
     public function reconcile(int $limit = 500, bool $dryRun = false): array
@@ -339,7 +342,7 @@ final class HostedSiteReconciler
                 $distribution->forceFill([
                     'status' => 'synced',
                     'remote_id' => (string) $assignment->id,
-                    'remote_url' => 'https://'.$profile->hostname.'/article/'.$article->slug,
+                    'remote_url' => $this->hostedUrls->article($profile, $article),
                     'remote_meta' => array_replace($remoteMeta, [
                         'hosted_site_profile_id' => (int) $profile->id,
                         'assignment_status' => HostedSiteArticleAssignment::STATUS_PUBLISHED,

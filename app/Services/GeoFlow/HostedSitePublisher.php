@@ -10,6 +10,7 @@ use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
 use App\Models\Task;
 use App\Services\HostedSites\HostedSiteContentFingerprint;
+use App\Services\HostedSites\HostedSiteUrlGenerator;
 use App\Services\Site\HostedSiteResolver;
 use App\Support\GeoFlow\ArticleWorkflow;
 use Carbon\CarbonImmutable;
@@ -21,6 +22,7 @@ final class HostedSitePublisher implements DistributionPublisherInterface
     public function __construct(
         private readonly HostedSiteContentFingerprint $fingerprints,
         private readonly HostedSiteResolver $resolver,
+        private readonly HostedSiteUrlGenerator $hostedUrls,
     ) {}
 
     public function health(DistributionChannel $channel): array
@@ -193,7 +195,7 @@ final class HostedSitePublisher implements DistributionPublisherInterface
 
         [$profile, $assignment, $article] = $result;
         $this->resolver->invalidate($profile->hostname);
-        $url = 'https://'.$profile->hostname.'/article/'.$article->slug;
+        $url = $this->hostedUrls->article($profile, $article);
 
         return [
             'remote_id' => (string) $assignment->id,

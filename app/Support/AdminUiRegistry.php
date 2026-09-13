@@ -360,7 +360,9 @@ final class AdminUiRegistry
             'download' => [
                 'admin.leads.export', 'admin.manual-publications.export',
                 'admin.articles.batch.export-markdown.download',
+                'admin.distribution.hosted-sites.article-permalink.migration-map',
                 'admin.site-settings.theme-replications.package', 'admin.site-settings.theme-packages.exports.download',
+                'admin.site-settings.article-permalink.migration-map',
                 'admin.system-updates.updater.download',
             ],
             'binary' => ['admin.ai-workspace.media.show'],

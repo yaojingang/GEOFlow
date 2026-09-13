@@ -6,6 +6,7 @@ use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
 use App\Services\Outbound\SafeOutboundHttpClient;
+use App\Support\Site\ArticlePermalinkPolicy;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Response;
 use RuntimeException;
@@ -163,10 +164,27 @@ class DistributionHttpClient
         }
 
         $path = '/geoflow-agent/v1/site-settings';
+        $settings ??= $channel->targetSiteSettingsPayload();
+        $policy = ArticlePermalinkPolicy::fromRaw($settings[ArticlePermalinkPolicy::SETTING_KEY] ?? null);
+        $capabilities = $channel->frontendCapabilitiesCache();
+        if ($policy->currentPattern !== ArticlePermalinkPolicy::DEFAULT_PATTERN
+            && (! $capabilities['supports_article_permalink_policy']
+                || ! in_array(1, $capabilities['article_permalink_schema_versions'], true))) {
+            throw new RuntimeException(__('article_permalink.errors.agent_capability_required'));
+        }
 
-        return $this->sendChannelSignedJson($channel, $secret, $path, 'site.settings.update', $idempotencyKey ?: 'site-settings-channel-'.(int) $channel->id.'-'.time(), [
-            'settings' => $settings ?? $channel->targetSiteSettingsPayload(),
+        $result = $this->sendChannelSignedJson($channel, $secret, $path, 'site.settings.update', $idempotencyKey ?: 'site-settings-channel-'.(int) $channel->id.'-'.time(), [
+            'settings' => $settings,
+            'expected_article_permalink_revision' => (int) $capabilities['current_article_permalink_revision'],
         ], '目标站点设置同步');
+
+        if (isset($result['article_permalink_revision'])) {
+            $capabilities['current_article_permalink_revision'] = max(0, (int) $result['article_permalink_revision']);
+            $capabilities['current_article_permalink_pattern'] = trim((string) ($result['article_permalink_pattern'] ?? $policy->currentPattern));
+            $channel->fillFrontendCapabilitiesCache($capabilities)->save();
+        }
+
+        return $result;
     }
 
     /**

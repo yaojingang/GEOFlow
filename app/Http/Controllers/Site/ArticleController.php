@@ -4,14 +4,16 @@ namespace App\Http\Controllers\Site;
 
 use App\Http\Controllers\Controller;
 use App\Models\Article;
+use App\Services\Site\ArticlePermalinkService;
 use App\Services\Site\SiteScopedArticleQuery;
 use App\Services\Site\SiteUrlGenerator;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\ArticleStickyAdPicker;
 use App\Support\Site\ArticleTextAdPicker;
 use App\Support\Site\SiteSettingsBag;
-use App\Support\Site\SiteThemePreviewContext;
 use App\Support\Site\SiteThemeViewResolver;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -23,22 +25,40 @@ class ArticleController extends Controller
     public function __construct(
         private readonly SiteScopedArticleQuery $siteArticles,
         private readonly SiteUrlGenerator $urls,
+        private readonly ArticlePermalinkService $articlePermalinks,
     ) {}
 
-    public function show(string $slug): View
+    public function resolve(Request $request): View|RedirectResponse
     {
-        $article = $this->siteArticles->query()
-            ->where('slug', $slug)
-            ->with(['category', 'author'])
-            ->first();
-
-        if (! $article instanceof Article) {
+        if (! in_array($request->method(), ['GET', 'HEAD'], true)) {
             throw new NotFoundHttpException(__('site.article_not_found'));
         }
 
-        if (! app(SiteThemePreviewContext::class)->isActive()) {
-            $article->increment('view_count');
-            $article->refresh();
+        return $this->show($request);
+    }
+
+    public function show(Request $request): View|RedirectResponse
+    {
+        $requestPath = (string) parse_url($request->getRequestUri(), PHP_URL_PATH);
+        $resolution = $this->articlePermalinks->resolve($requestPath);
+        if ($resolution === null) {
+            throw new NotFoundHttpException(__('site.article_not_found'));
+        }
+        $article = $resolution->article;
+        $request->attributes->set('article_permalink.article_id', (int) $article->id);
+        $request->attributes->set('article_permalink.source', $resolution->source);
+        $request->attributes->set('article_permalink.reason', $resolution->reason);
+
+        if (! $resolution->isCanonical) {
+            $target = $this->urls->url($resolution->canonicalPath);
+            $query = $request->getQueryString();
+            if (is_string($query) && $query !== '') {
+                $target .= '?'.$query;
+            }
+
+            return redirect()->to($target, 301)->withHeaders([
+                'Cache-Control' => 'public, max-age=3600, s-maxage=300',
+            ]);
         }
 
         $map = SiteSettingsBag::all();
@@ -61,11 +81,12 @@ class ArticleController extends Controller
         $tags = $this->keywordTags((string) $article->keywords);
 
         $related = $this->siteArticles->query()
+            ->with('category')
             ->where('category_id', $article->category_id)
             ->whereKeyNot($article->id)
             ->inRandomOrder()
             ->limit(6)
-            ->get(['id', 'title', 'slug']);
+            ->get(['id', 'title', 'slug', 'category_id', 'created_at']);
 
         $pageTitle = (string) $article->title;
         $pageDescription = $excerptPlain !== '' ? $excerptPlain : ArticleHtmlPresenter::cardSummary($article, 160);

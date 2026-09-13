@@ -10,6 +10,7 @@ use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
 use App\Models\LeadForm;
 use App\Models\Task;
+use App\Support\Site\ArticlePermalinkPolicy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -219,6 +220,25 @@ class HostedSitePublicRenderingTest extends TestCase
             ->assertSee('Automatically approved article');
         $this->get('http://alpha.sites.test/article/'.$article->slug)
             ->assertOk();
+    }
+
+    public function test_hosted_archive_uses_the_site_article_scope_and_permalink_policy(): void
+    {
+        $policy = ArticlePermalinkPolicy::defaults()->activate('/news/{year}/{slug}.html')->toArray();
+        [, $hostedArticle] = $this->siteFixture('alpha', 'Alpha Site', 'Alpha archive article', [
+            ArticlePermalinkPolicy::SETTING_KEY => $policy,
+        ]);
+        $primaryArticle = $this->articleFixture('Primary archive article', 'primary-archive-article', 'published');
+        $year = $hostedArticle->published_at->format('Y');
+        $month = $hostedArticle->published_at->format('m');
+
+        $this->get('http://alpha.sites.test/archive/'.$year.'/'.$month)
+            ->assertOk()
+            ->assertSee('Alpha archive article')
+            ->assertSee('/news/'.$hostedArticle->created_at->format('Y').'/'.$hostedArticle->slug.'.html', false)
+            ->assertDontSee('Primary archive article');
+
+        $this->assertNotNull($primaryArticle->id);
     }
 
     public function test_hosted_storage_assets_are_served_only_after_host_resolution(): void

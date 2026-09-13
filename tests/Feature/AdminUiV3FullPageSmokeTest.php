@@ -156,7 +156,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
 
         $this->assertCount(3, $routesByClassification->get('special', collect()));
         $this->assertCount(3, $routesByClassification->get('redirect', collect()));
-        $this->assertCount(6, $routesByClassification->get('download', collect()));
+        $this->assertCount(8, $routesByClassification->get('download', collect()));
         $this->assertCount(14, $routesByClassification->get('endpoint', collect()));
 
         $this->get(route('admin.login'))
@@ -439,6 +439,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             'admin.distribution.delete' => ['channelId' => $channel->id],
             'admin.distribution.edit' => ['channelId' => $channel->id],
             'admin.distribution.hosted-sites.edit' => ['hostedSite' => $hostedChannel->id],
+            'admin.distribution.hosted-sites.article-permalink.migration-map' => ['hostedSite' => $hostedChannel->id],
             'admin.distribution.hosted-sites.show' => ['hostedSite' => $hostedChannel->id],
             'admin.distribution.show' => ['channelId' => $channel->id],
             'admin.distribution.sync-settings.preview' => ['channelId' => $channel->id],

@@ -9,6 +9,7 @@ use App\Models\Category;
 use App\Models\LeadForm;
 use App\Models\SiteSetting;
 use App\Services\Admin\SiteThemePackageService;
+use App\Support\Site\ArticlePermalinkPolicy;
 use App\Support\Site\InstalledSiteThemeRepository;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeCatalog;
@@ -81,6 +82,30 @@ class InstalledSiteThemeTest extends TestCase
         $this->get($this->frame().'?search=sample&page=2')->assertOk()->assertSee('Sample article')->assertDontSee('Another sample')->assertDontSee('Unrelated result');
         $this->post($this->frame('about'))->assertStatus(405);
         $this->get($this->frame('geo_admin'))->assertNotFound();
+    }
+
+    public function test_custom_permalink_warns_when_an_installed_theme_is_active(): void
+    {
+        $this->install();
+        $this->setting('active_theme', self::ID);
+        $this->setting(ArticlePermalinkPolicy::SETTING_KEY, json_encode([
+            'schema_version' => 1,
+            'revision' => 1,
+            'current_pattern' => '/{slug}.html',
+            'activated_at' => now()->toIso8601String(),
+            'history' => [],
+        ], JSON_UNESCAPED_SLASHES));
+        $admin = Admin::query()->create([
+            'username' => 'installed-theme-permalink',
+            'password' => 'fixture-password',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.site-settings.index'))
+            ->assertOk()
+            ->assertSee('当前安装主题可能仍生成旧版文章链接');
     }
 
     public function test_missing_pages_fall_back_and_installed_assets_survive_new_application_services(): void

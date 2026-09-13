@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Site;
 
 use App\Http\Controllers\Controller;
 use App\Models\HostedSiteProfile;
+use App\Services\Site\ArticlePermalinkService;
 use App\Services\Site\SiteScopedArticleQuery;
 use App\Services\Site\SiteUrlGenerator;
 use App\Support\Site\CurrentSite;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Response;
 
 final class SiteDiscoveryController extends Controller
@@ -15,6 +17,7 @@ final class SiteDiscoveryController extends Controller
         private readonly CurrentSite $currentSite,
         private readonly SiteScopedArticleQuery $siteArticles,
         private readonly SiteUrlGenerator $urls,
+        private readonly ArticlePermalinkService $articlePermalinks,
     ) {}
 
     public function robots(): Response
@@ -41,11 +44,11 @@ final class SiteDiscoveryController extends Controller
         $urls = [];
         if ($this->indexingAllowed()) {
             $urls[] = ['loc' => $this->urls->home(), 'lastmod' => null];
-            $articles = $this->siteArticles->query()
+            $articles = $this->withPermalinkRelations($this->siteArticles->query())
                 ->orderByDesc('published_at')
                 ->orderByDesc('id')
                 ->limit(5000)
-                ->get(['id', 'slug', 'updated_at']);
+                ->get(['id', 'slug', 'category_id', 'created_at', 'updated_at']);
             foreach ($articles as $article) {
                 $urls[] = [
                     'loc' => $this->urls->article($article),
@@ -84,12 +87,12 @@ final class SiteDiscoveryController extends Controller
             $urlLimit = $this->sitemapUrlLimit();
             $offset = max(0, (($page - 1) * $urlLimit) - 1);
             $limit = $urlLimit - ($page === 1 ? 1 : 0);
-            $articles = $this->siteArticles->query()
+            $articles = $this->withPermalinkRelations($this->siteArticles->query())
                 ->orderByDesc('published_at')
                 ->orderByDesc('id')
                 ->offset($offset)
                 ->limit($limit)
-                ->get(['id', 'slug', 'updated_at']);
+                ->get(['id', 'slug', 'category_id', 'created_at', 'updated_at']);
             foreach ($articles as $article) {
                 $urls[] = [
                     'loc' => $this->urls->article($article),
@@ -147,6 +150,15 @@ final class SiteDiscoveryController extends Controller
     private function hostedSitemapPageCount(int $articleCount): int
     {
         return max(1, (int) ceil(($articleCount + 1) / $this->sitemapUrlLimit()));
+    }
+
+    private function withPermalinkRelations(Builder $query): Builder
+    {
+        if ($this->articlePermalinks->currentPatternUses('category')) {
+            $query->with('category:id,slug');
+        }
+
+        return $query;
     }
 
     private function sitemapUrlLimit(): int

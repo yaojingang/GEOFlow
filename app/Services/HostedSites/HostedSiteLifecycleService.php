@@ -11,6 +11,7 @@ use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
 use App\Services\Site\HostedSiteResolver;
 use App\Support\GeoFlow\ArticleWorkflow;
+use App\Support\Site\ArticlePermalinkPolicy;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeCatalog;
 use Carbon\CarbonImmutable;
@@ -593,11 +594,17 @@ final class HostedSiteLifecycleService
             'featured_limit',
             'per_page',
             'homepage_style',
+            ArticlePermalinkPolicy::SETTING_KEY,
         ];
         $settings = array_intersect_key(
             $existing ?? SiteSettingsBag::primaryAll(),
             array_flip($safeKeys)
         );
+        if ($existing === null) {
+            $settings[ArticlePermalinkPolicy::SETTING_KEY] = ArticlePermalinkPolicy::fromRaw(
+                $settings[ArticlePermalinkPolicy::SETTING_KEY] ?? null
+            )->toArray();
+        }
 
         return array_filter(array_replace($settings, [
             'site_name' => trim((string) ($payload['name'] ?? '')),

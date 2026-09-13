@@ -39,6 +39,7 @@ class DistributionRewriteRuleGenerator
     RewriteRule ^(?:config\.php|nginx\.example\.conf|nginx\.rewrite\.conf|bt\.rewrite\.conf)$ - [F,L]
     RewriteRule ^storage/ - [F,L]
     RewriteRule ^public/ - [L]
+    RewriteRule ^article(?:/.*)?$ index.php [L,QSA]
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule ^ index.php [L]
@@ -51,6 +52,7 @@ HTACCESS;
         $basePath = self::basePathForEndpoint((string) $channel->endpoint_url);
         $location = $basePath === '' ? '/' : $basePath.'/';
         $index = $basePath === '' ? '/index.php' : $basePath.'/index.php';
+        $prefixPattern = $basePath === '' ? '/' : self::nginxPathPattern($basePath).'/';
         $protected = $basePath === ''
             ? '^/(config\\.php|nginx\\.example\\.conf|nginx\\.rewrite\\.conf|bt\\.rewrite\\.conf|storage/)'
             : '^'.self::nginxPathPattern($basePath).'/(config\\.php|nginx\\.example\\.conf|nginx\\.rewrite\\.conf|bt\\.rewrite\\.conf|storage/)';
@@ -68,6 +70,10 @@ location ~ {$protected} {
 }
 
 {$slashRedirect}location = {$location} {
+    rewrite ^ {$index} last;
+}
+
+location ~ ^{$prefixPattern}article(?:/.*)?$ {
     rewrite ^ {$index} last;
 }
 
@@ -90,6 +96,9 @@ NGINX;
 rewrite {$homePattern} {$index} last;
 rewrite ^{$prefixPattern}(geoflow-agent/.*)$ {$index}/\$1 last;
 rewrite ^{$prefixPattern}(article/.*)$ {$index}/\$1 last;
+if (!-e \$request_filename) {
+    rewrite ^{$prefixPattern}(.+)$ {$index}/\$1 last;
+}
 NGINX;
     }
 

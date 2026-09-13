@@ -237,13 +237,13 @@ BLADE;
         <div class="rep-chip">{{ __('site.home_featured_badge') }}</div>
     @endif
     <h2>
-        <a href="{{ route('site.article', $article->slug) }}">{{ $article->title }}</a>
+        <a href="{{ $siteUrls->article($article) }}">{{ $article->title }}</a>
     </h2>
     @if($article->category)
         <div class="rep-meta">{{ $article->category->name }}</div>
     @endif
     <p class="rep-summary">{{ $cardSummaries[$article->id] ?? '' }}</p>
-    <a class="rep-link" href="{{ route('site.article', $article->slug) }}">{{ __('site.home_read_more') }}</a>
+    <a class="rep-link" href="{{ $siteUrls->article($article) }}">{{ __('site.home_read_more') }}</a>
 </article>
 BLADE;
     }

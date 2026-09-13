@@ -1242,6 +1242,12 @@ class DistributionController extends Controller
             function (DistributionChannel $lockedChannel): array {
                 try {
                     $result = $this->publisherManager->forChannel($lockedChannel)->syncSiteSettings($lockedChannel);
+                    if (isset($result['article_permalink_revision'])) {
+                        $capabilities = $lockedChannel->frontendCapabilitiesCache();
+                        $capabilities['current_article_permalink_revision'] = (int) $result['article_permalink_revision'];
+                        $capabilities['current_article_permalink_pattern'] = (string) ($result['article_permalink_pattern'] ?? '');
+                        $lockedChannel->fillFrontendCapabilitiesCache($capabilities)->save();
+                    }
                     $this->distributionOrchestrator->log(
                         'info',
                         '目标站点设置已同步',

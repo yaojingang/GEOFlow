@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow;
 
 use App\Models\DistributionChannel;
+use App\Support\Site\ArticlePermalinkPolicy;
 use App\Support\Site\HomepageModuleBuilder;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeCatalog;
@@ -215,11 +216,12 @@ class FrontendExperienceInspector
     {
         return [
             'surface' => 'geoflow_agent_target_package',
-            'capability_version' => '1.2',
+            'capability_version' => '1.3',
             'supports_first_party_frontend' => true,
             'supported_modules' => HomepageModuleBuilder::TYPES,
             'supported_routes' => [
                 '/',
+                '{article_permalink_policy}',
                 '/article/{slug}',
                 '/llms.txt',
                 '/sitemap.txt',
@@ -230,6 +232,8 @@ class FrontendExperienceInspector
             'supports_homepage_style' => true,
             'supports_home_carousel_slides' => true,
             'supports_article_text_ads' => true,
+            'supports_article_permalink_policy' => true,
+            'article_permalink_schema_versions' => [1],
             'supports_static_generation' => true,
         ];
     }
@@ -332,6 +336,10 @@ class FrontendExperienceInspector
             'supports_homepage_style' => (bool) ($capabilities['supports_homepage_style'] ?? false),
             'supports_home_carousel_slides' => (bool) ($capabilities['supports_home_carousel_slides'] ?? false),
             'supports_article_text_ads' => (bool) ($capabilities['supports_article_text_ads'] ?? false),
+            'supports_article_permalink_policy' => (bool) ($capabilities['supports_article_permalink_policy'] ?? false),
+            'article_permalink_schema_versions' => is_array($capabilities['article_permalink_schema_versions'] ?? null) ? $capabilities['article_permalink_schema_versions'] : [],
+            'current_article_permalink_revision' => (int) ($capabilities['current_article_permalink_revision'] ?? ($settings['article_permalink_revision'] ?? 0)),
+            'current_article_permalink_pattern' => (string) ($capabilities['current_article_permalink_pattern'] ?? ($settings['article_permalink_pattern'] ?? '')),
             'supports_static_generation' => (bool) ($capabilities['supports_static_generation'] ?? false),
             'agent_base_url' => (string) ($capabilities['agent_base_url'] ?? ''),
         ]);
@@ -433,6 +441,19 @@ class FrontendExperienceInspector
                     'requires_confirmation' => true,
                 ];
             }
+        }
+
+        $policy = ArticlePermalinkPolicy::fromRaw($payload[ArticlePermalinkPolicy::SETTING_KEY] ?? null);
+        if ($policy->currentPattern !== ArticlePermalinkPolicy::DEFAULT_PATTERN
+            && (! (bool) ($remoteTarget['supports_article_permalink_policy'] ?? false)
+                || ! in_array(1, (array) ($remoteTarget['article_permalink_schema_versions'] ?? []), true))) {
+            $warnings[] = [
+                'code' => 'supports_article_permalink_policy',
+                'area' => 'remote_support',
+                'severity' => 'warning',
+                'message' => __('article_permalink.errors.agent_policy_unsupported'),
+                'requires_confirmation' => true,
+            ];
         }
 
         $remoteFrontMode = (string) ($remoteTarget['front_mode'] ?? '');
