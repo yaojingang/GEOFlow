@@ -67,7 +67,7 @@ class EnterpriseKnowledgeController extends Controller
             'description' => ['nullable', 'string', 'max:1000'],
             'content' => ['nullable', 'string'],
             'enterprise_files' => ['nullable', 'array', 'max:10'],
-            'enterprise_files.*' => ['file', File::types(['txt', 'md', 'markdown', 'docx'])->max(8 * 1024)],
+            'enterprise_files.*' => ['file', File::types(['txt', 'md', 'markdown', 'docx', 'pdf', 'ppt', 'pptx'])->max(8 * 1024)],
         ], [
             'enterprise_files.max' => __('admin.enterprise_knowledge.error.files_limit'),
         ]);

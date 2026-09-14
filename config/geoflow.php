@@ -273,6 +273,11 @@ return [
     ],
     // 统一出站安全网关：仅此处列出的精确 host:port 可连接私网地址；不支持通配符或路径。
     'outbound_private_targets' => array_values(array_filter(array_map('trim', explode(',', (string) env('GEOFLOW_OUTBOUND_PRIVATE_TARGETS', ''))), static fn (string $target): bool => $target !== '')),
+    // 出口代理：仅当 GEOFLOW_OUTBOUND_PROXY 与 GEOFLOW_OUTBOUND_PROXY_HOSTS 同时配置时才生效；
+    // host 支持精确（jshh.com）、后缀（*.jshh.com）、通配（* / . 三选一代表全部）。
+    // 仅 GEOFlow 公网出站会走代理；私网目标由 outbound_private_targets 控制，永远直连。
+    'outbound_proxy_url' => env('GEOFLOW_OUTBOUND_PROXY'),
+    'outbound_proxy_hosts' => (string) env('GEOFLOW_OUTBOUND_PROXY_HOSTS', ''),
     'outbound_json_max_bytes' => max(1, (int) env('GEOFLOW_OUTBOUND_JSON_MAX_BYTES', 4 * 1024 * 1024)),
     'outbound_ai_max_bytes' => max(1, (int) env('GEOFLOW_OUTBOUND_AI_MAX_BYTES', 8 * 1024 * 1024)),
     'outbound_import_max_bytes' => max(1, (int) env('GEOFLOW_OUTBOUND_IMPORT_MAX_BYTES', 5 * 1024 * 1024)),
