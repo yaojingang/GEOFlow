@@ -9,7 +9,7 @@
             $schemaItems[] = [
                 $schemaAtType => 'ListItem',
                 'position' => count($schemaItems) + 1,
-                'url' => route('site.article', $schemaArticle->slug),
+                'url' => $siteUrls->article($schemaArticle),
                 'name' => $schemaArticle->title,
             ];
         }
@@ -87,7 +87,7 @@
                 @if($homepageHotArticles->isNotEmpty())
                     <div class="tt-hot-carousel" data-hot-carousel>
                         @foreach($homepageHotArticles as $hotArticle)
-                            <a href="{{ route('site.article', $hotArticle->slug) }}" class="tt-breaking {{ $loop->first ? 'is-active' : '' }}" data-hot-slide>
+                            <a href="{{ $siteUrls->article($hotArticle) }}" class="tt-breaking {{ $loop->first ? 'is-active' : '' }}" data-hot-slide>
                                 <strong>{{ __('site.home_hot_badge') }}</strong>
                                 <span>{{ $hotArticle->title }}</span>
                             </a>

@@ -1,6 +1,30 @@
 @extends('site.layout')
 
 @push('head')
+    @php
+        $schemaAtContext = chr(64).'context';
+        $schemaAtType = chr(64).'type';
+        $articleSchema = [
+            $schemaAtContext => 'https://schema.org',
+            $schemaAtType => 'Article',
+            'headline' => $article->title,
+            'description' => $pageDescription,
+            'datePublished' => optional($article->published_at ?? $article->created_at)->toAtomString(),
+            'dateModified' => optional($article->updated_at ?? $article->published_at ?? $article->created_at)->toAtomString(),
+            'mainEntityOfPage' => $canonicalUrl,
+            'author' => [
+                $schemaAtType => 'Person',
+                'name' => $article->author?->name ?? $siteTitle,
+            ],
+            'publisher' => [
+                $schemaAtType => 'Organization',
+                'name' => $siteTitle,
+            ],
+            'articleSection' => $article->category?->name,
+            'keywords' => $tags,
+        ];
+    @endphp
+    <x-json-ld :data="$articleSchema" />
 @endpush
 
 @section('content')
@@ -83,7 +107,7 @@
                                     {{ $index + 1 }}
                                 </span>
                                 <div class="flex-1 min-w-0">
-                                    <a href="{{ route('site.article', $related->slug) }}" class="related-article-link block text-gray-900 hover:text-blue-600 transition-colors duration-200 font-medium leading-relaxed text-base mb-1">
+                                    <a href="{{ $siteUrls->article($related) }}" class="related-article-link block text-gray-900 hover:text-blue-600 transition-colors duration-200 font-medium leading-relaxed text-base mb-1">
                                         {{ $related->title }}
                                     </a>
                                 </div>

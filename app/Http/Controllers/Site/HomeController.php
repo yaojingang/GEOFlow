@@ -10,6 +10,7 @@ use App\Services\Site\SiteScopedArticleQuery;
 use App\Services\Site\SiteUrlGenerator;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\CurrentSite;
+use App\Support\Site\FriendLinkSettings;
 use App\Support\Site\HomepageModuleBuilder;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeViewResolver;
@@ -27,6 +28,7 @@ class HomeController extends Controller
         private readonly SiteScopedArticleQuery $siteArticles,
         private readonly SiteUrlGenerator $urls,
         private readonly CurrentSite $currentSite,
+        private readonly FriendLinkSettings $friendLinkSettings,
     ) {}
 
     public function index(Request $request): View
@@ -178,6 +180,8 @@ class HomeController extends Controller
             'homepageStyle' => $homepageStyle,
             'leadForms' => $leadForms,
             'showHomepageModules' => $showHomepageModules,
+            'friendLinks' => $showHomepageModules && $this->currentSite->isResolved() && $this->currentSite->isPrimary()
+                ? $this->friendLinkSettings->visibleLinks() : [],
             'viewTitle' => $viewTitle,
             'pageTitle' => $pageTitle,
             'pageDescription' => $pageDescription,

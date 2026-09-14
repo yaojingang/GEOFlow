@@ -13,7 +13,7 @@
             $schemaItems[] = [
                 $schemaAtType => 'ListItem',
                 'position' => count($schemaItems) + 1,
-                'url' => route('site.article', $schemaArticle->slug),
+                'url' => $siteUrls->article($schemaArticle),
                 'name' => $schemaArticle->title,
             ];
         }

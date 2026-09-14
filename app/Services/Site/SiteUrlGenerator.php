@@ -4,12 +4,17 @@ namespace App\Services\Site;
 
 use App\Models\Article;
 use App\Models\Category;
+use App\Support\Site\ArticlePermalinkPolicy;
 use App\Support\Site\CurrentSite;
 use App\Support\Site\SiteThemePreviewContext;
+use Illuminate\Support\Facades\Log;
 
 final class SiteUrlGenerator
 {
-    public function __construct(private readonly CurrentSite $currentSite) {}
+    public function __construct(
+        private readonly CurrentSite $currentSite,
+        private readonly ArticlePermalinkService $articlePermalinks,
+    ) {}
 
     public function home(array $query = []): string
     {
@@ -32,9 +37,17 @@ final class SiteUrlGenerator
 
     public function article(Article|string $article): string
     {
-        $slug = $article instanceof Article ? $article->slug : $article;
+        if ($article instanceof Article) {
+            return $this->url($this->articlePermalinks->path($article));
+        }
 
-        return $this->url('/article/'.rawurlencode((string) $slug));
+        if ($this->articlePermalinks->policy()->currentPattern !== ArticlePermalinkPolicy::DEFAULT_PATTERN) {
+            Log::warning('A slug-only article URL call used the permanent compatibility path.', [
+                'slug' => $article,
+            ]);
+        }
+
+        return $this->url('/article/'.rawurlencode($article));
     }
 
     public function form(string $slug): string

@@ -500,7 +500,7 @@
                                 $primaryRemoteLink = $remoteViewLinks->first();
                                 $localArticleUrl = null;
                                 if ((string) $article->status === 'published' && trim((string) $article->slug) !== '') {
-                                    $localArticleUrl = route('site.article', ['slug' => (string) $article->slug]);
+                                    $localArticleUrl = $siteUrls->article($article);
                                 }
                                 $primaryPublishedLink = $primaryRemoteLink;
                                 if ($primaryPublishedLink === null && $localArticleUrl !== null) {

@@ -15,6 +15,8 @@ use App\Models\Category;
 use App\Models\DistributionChannel;
 use App\Models\KnowledgeBase;
 use App\Models\Task;
+use App\Services\Site\UrlChangeGuard;
+use App\Services\Site\UrlChangeInspector;
 use App\Support\Admin\ArticleAiQualityProgressPresenter;
 use App\Support\GeoFlow\AiQualityRetrievalMode;
 use App\Support\GeoFlow\ArticleWorkflow;
@@ -36,6 +38,7 @@ class ArticleGeoFlowService
         private readonly ArticleAiQualityConfigurationService $articleAiQualityConfigurationService,
         private readonly AiQualityAuditService $aiQualityAuditService,
         private readonly DistributionOrchestrator $distributionOrchestrator,
+        private readonly ArticleSlugRegistry $articleSlugRegistry,
     ) {}
 
     public function listArticles(int $page = 1, int $perPage = 20, array $filters = []): array
@@ -112,6 +115,7 @@ class ArticleGeoFlowService
             $workflowState,
         ): array {
             $this->lockActiveTaskReference($normalized['task_id']);
+            $this->ensureSlugAvailable($slug);
             $article = Article::query()->create([
                 'title' => $normalized['title'],
                 'slug' => $slug,
@@ -127,6 +131,7 @@ class ArticleGeoFlowService
                 'is_ai_generated' => $normalized['is_ai_generated'],
                 'published_at' => $fallbackWorkflowState['published_at'],
             ]);
+            app(UrlChangeInspector::class)->assertArticleCompatible($article);
             $qualityPolicy = $this->articleAiQualityPolicyResolver->resolve($article);
             $article->forceFill([
                 'ai_quality_required_at_creation' => (bool) ($qualityPolicy['required'] ?? false),
@@ -435,6 +440,7 @@ class ArticleGeoFlowService
 
     public function updateArticle(int $articleId, array $data, int $auditAdminId): array
     {
+        app(UrlChangeGuard::class)->article(Article::query()->findOrFail($articleId), $data, Admin::query()->find($auditAdminId));
         $existing = $this->getArticleRecord($articleId);
         $normalized = $this->normalizeUpdateInput($data, $existing);
         if (empty($normalized)) {
@@ -478,6 +484,17 @@ class ArticleGeoFlowService
                 ->whereKey($articleId)
                 ->lockForUpdate()
                 ->firstOrFail();
+            if (array_key_exists('task_id', $normalized) && (int) $normalized['task_id'] !== (int) $lockedArticle->task_id) {
+                // Task updates acquire their row before URL revision scopes; keep rebinds in that order.
+                Task::withTrashed()->whereKey(array_filter([$lockedArticle->task_id, $normalized['task_id']]))
+                    ->orderBy('id')->lockForUpdate()->get(['id']);
+            }
+            app(UrlChangeGuard::class)->article($lockedArticle, $normalized, Admin::query()->find($auditAdminId));
+            $newSlug = array_key_exists('slug', $normalized) ? (string) $normalized['slug'] : null;
+            unset($normalized['slug']);
+            if ($newSlug !== null) {
+                $lockedArticle = $this->articleSlugRegistry->change($lockedArticle, $newSlug);
+            }
             $nextPolicyVersion = max(1, (int) $lockedArticle->ai_quality_policy_version);
             if ($hasQualityRelevantChanges) {
                 $nextPolicyVersion++;
@@ -1040,8 +1057,6 @@ class ArticleGeoFlowService
                 $this->ensureSlugAvailable($slug, (int) $existing['id']);
                 $normalized['slug'] = $slug;
             }
-        } elseif (isset($normalized['title']) && $normalized['title'] !== $existing['title']) {
-            $normalized['slug'] = ArticleWorkflow::generateUniqueSlug($normalized['title'], (int) $existing['id']);
         }
 
         if ((bool) ($existing['is_ai_generated'] ?? false)) {
@@ -1126,21 +1141,13 @@ class ArticleGeoFlowService
 
     private function ensureSlugAvailable(string $slug, ?int $excludeId = null): void
     {
-        if (! $this->isSlugAvailable($slug, $excludeId)) {
+        try {
+            $this->articleSlugRegistry->assertAvailable($slug, $excludeId);
+        } catch (ValidationException) {
             throw new ApiException('validation_failed', '参数校验失败', 422, [
                 'field_errors' => ['slug' => 'slug 已存在'],
             ]);
         }
-    }
-
-    private function isSlugAvailable(string $slug, ?int $excludeId = null): bool
-    {
-        $q = Article::withTrashed()->where('slug', $slug);
-        if ($excludeId !== null) {
-            $q->where('id', '!=', $excludeId);
-        }
-
-        return ! $q->exists();
     }
 
     private function nullableInt(mixed $value): ?int

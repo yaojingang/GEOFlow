@@ -23,17 +23,17 @@
             <time datetime="{{ $pub?->toAtomString() }}">{{ $pub?->format('Y-m-d') }}</time>
         </div>
         <h2 class="ne-article-title">
-            <a href="{{ route('site.article', $article->slug) }}">{{ $article->title }}</a>
+            <a href="{{ $siteUrls->article($article) }}">{{ $article->title }}</a>
         </h2>
         @if($summary !== '')
             <p class="ne-article-summary">{{ $summary }}</p>
         @endif
-        <a href="{{ route('site.article', $article->slug) }}" class="ne-card-action">
+        <a href="{{ $siteUrls->article($article) }}" class="ne-card-action">
             {{ __('site.home_read_more') }}
             <i data-lucide="arrow-right" class="w-4 h-4"></i>
         </a>
     </div>
-    <a href="{{ route('site.article', $article->slug) }}" class="ne-thumb" aria-hidden="true">
+    <a href="{{ $siteUrls->article($article) }}" class="ne-thumb" aria-hidden="true">
         {{ $initial }}
     </a>
 </article>

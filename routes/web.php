@@ -25,6 +25,7 @@ use App\Http\Controllers\Admin\ArticleAiOptimizationController;
 use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\ArticleEditorAssetController;
 use App\Http\Controllers\Admin\ArticleEditorAssistantController;
+use App\Http\Controllers\Admin\ArticlePermalinkController;
 use App\Http\Controllers\Admin\AuthorController;
 use App\Http\Controllers\Admin\BrowserClientController;
 use App\Http\Controllers\Admin\BrowserConnectionApprovalController;
@@ -34,7 +35,9 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DistributionAnalyticsController;
 use App\Http\Controllers\Admin\DistributionController;
 use App\Http\Controllers\Admin\EnterpriseKnowledgeController;
+use App\Http\Controllers\Admin\FriendLinkSettingsController;
 use App\Http\Controllers\Admin\HostedSiteController;
+use App\Http\Controllers\Admin\HostedSitePermalinkController;
 use App\Http\Controllers\Admin\ImageLibraryController;
 use App\Http\Controllers\Admin\KeywordLibraryController;
 use App\Http\Controllers\Admin\KnowledgeBaseController;
@@ -59,6 +62,7 @@ use App\Http\Controllers\Admin\SystemUpdaterOperationController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\TitleLibraryController;
 use App\Http\Controllers\Admin\TrafficAnalyticsController;
+use App\Http\Controllers\Admin\UrlChangeController;
 use App\Http\Controllers\Admin\UrlImportController;
 use App\Http\Controllers\Site\AboutController;
 use App\Http\Controllers\Site\ArchiveController;
@@ -69,6 +73,7 @@ use App\Http\Controllers\Site\HostedAssetController;
 use App\Http\Controllers\Site\LeadFormController as SiteLeadFormController;
 use App\Http\Controllers\Site\SiteDiscoveryController;
 use App\Support\AdminUiRegistry;
+use App\Support\Site\ArticlePermalinkPattern;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -264,6 +269,14 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::get('{hostedSite}', [HostedSiteController::class, 'show'])->name('show');
                 Route::get('{hostedSite}/edit', [HostedSiteController::class, 'edit'])->name('edit');
                 Route::put('{hostedSite}', [HostedSiteController::class, 'update'])->name('update');
+                Route::post('{hostedSite}/article-permalink/preview', [HostedSitePermalinkController::class, 'preview'])
+                    ->middleware('throttle:admin-sensitive')
+                    ->name('article-permalink.preview');
+                Route::post('{hostedSite}/article-permalink/activate', [HostedSitePermalinkController::class, 'activate'])
+                    ->middleware('throttle:admin-sensitive')
+                    ->name('article-permalink.activate');
+                Route::get('{hostedSite}/article-permalink/migration-map', [HostedSitePermalinkController::class, 'migrationMap'])
+                    ->name('article-permalink.migration-map');
                 Route::post('{hostedSite}/preflight', [HostedSiteController::class, 'preflight'])->name('preflight');
                 Route::post('{hostedSite}/activate', [HostedSiteController::class, 'activate'])->name('activate');
                 Route::post('{hostedSite}/pause', [HostedSiteController::class, 'pause'])->name('pause');
@@ -620,9 +633,21 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('ai-special-prompts/description', [AiSpecialPromptController::class, 'updateDescription'])->name('ai-special-prompts.description');
         });
 
+        Route::prefix('url-changes')->name('url-changes.')->middleware('admin.super')->group(function (): void {
+            Route::post('/', [UrlChangeController::class, 'store'])->middleware('throttle:admin-sensitive')->name('store');
+            Route::get('{urlChange}', [UrlChangeController::class, 'show'])->whereUuid('urlChange')->name('show');
+            Route::get('{urlChange}/status', [UrlChangeController::class, 'status'])->whereUuid('urlChange')->name('status');
+            Route::get('{urlChange}/articles', [UrlChangeController::class, 'articles'])->whereUuid('urlChange')->name('articles');
+            Route::get('{urlChange}/download', [UrlChangeController::class, 'download'])->whereUuid('urlChange')->name('download');
+            Route::post('{urlChange}/confirm', [UrlChangeController::class, 'confirm'])->middleware('throttle:admin-sensitive')->whereUuid('urlChange')->name('confirm');
+            Route::post('{urlChange}/cancel', [UrlChangeController::class, 'cancel'])->whereUuid('urlChange')->name('cancel');
+        });
+
         Route::prefix('site-settings')->name('site-settings.')->group(function () {
             Route::get('/', [SiteSettingsController::class, 'index'])->name('index');
             Route::post('/', [SiteSettingsController::class, 'update'])->name('update');
+            Route::get('friend-links', [FriendLinkSettingsController::class, 'edit'])->name('friend-links.edit');
+            Route::post('friend-links', FriendLinkSettingsController::class)->name('friend-links.update');
             Route::post('theme', [SiteSettingsController::class, 'updateTheme'])->name('theme');
             Route::get('homepage-modules', [SiteSettingsController::class, 'editHomepageModules'])->name('homepage-modules.edit');
             Route::post('homepage-modules', [SiteSettingsController::class, 'updateHomepageModules'])->name('homepage-modules');
@@ -632,6 +657,14 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::post('ai-workspace', AiWorkspaceRuntimeSettingsController::class)
                     ->middleware('throttle:admin-sensitive')
                     ->name('ai-workspace.update');
+                Route::post('article-permalink/preview', [ArticlePermalinkController::class, 'preview'])
+                    ->middleware('throttle:admin-sensitive')
+                    ->name('article-permalink.preview');
+                Route::post('article-permalink/activate', [ArticlePermalinkController::class, 'activate'])
+                    ->middleware('throttle:admin-sensitive')
+                    ->name('article-permalink.activate');
+                Route::get('article-permalink/migration-map', [ArticlePermalinkController::class, 'migrationMap'])
+                    ->name('article-permalink.migration-map');
                 Route::prefix('theme-packages')->name('theme-packages.')->group(function (): void {
                     Route::post('exports', [SiteThemePackageController::class, 'export'])->middleware('throttle:admin-sensitive')->name('exports.store');
                     Route::get('exports/{token}', [SiteThemePackageController::class, 'download'])->where('token', '[A-Za-z0-9]{40}')->name('exports.download');
@@ -726,6 +759,16 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         });
     });
 });
+
+$reservedPermalinkRoots = implode('|', array_map(
+    static fn (string $segment): string => preg_quote($segment, '~'),
+    ArticlePermalinkPattern::reservedFirstSegments($adminPrefix),
+));
+Route::get('/{permalinkPath}', [SiteArticleController::class, 'resolve'])
+    ->middleware(['site.locale', 'site.view_log'])
+    ->where('permalinkPath', '(?!(?:'.$reservedPermalinkRoots.')(?:/|$)).*')
+    ->fallback()
+    ->name('site.article.resolve');
 
 $adminUiRegistry = app(AdminUiRegistry::class);
 foreach (Route::getRoutes() as $adminRoute) {

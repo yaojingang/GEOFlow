@@ -2,7 +2,7 @@
 
 namespace App\Support\GeoFlow;
 
-use App\Models\Article;
+use App\Services\GeoFlow\ArticleSlugRegistry;
 
 final class ArticleWorkflow
 {
@@ -73,34 +73,6 @@ final class ArticleWorkflow
 
     public static function generateUniqueSlug(string $title, ?int $excludeArticleId = null): string
     {
-        $slug = self::randomSlug(8);
-
-        while (true) {
-            try {
-                $q = Article::withTrashed()->where('slug', $slug);
-                if ($excludeArticleId !== null) {
-                    $q->where('id', '!=', $excludeArticleId);
-                }
-
-                if (! $q->exists()) {
-                    return $slug;
-                }
-
-                $slug = self::randomSlug(8);
-            } catch (\Throwable) {
-                return self::randomSlug(8);
-            }
-        }
-    }
-
-    private static function randomSlug(int $length): string
-    {
-        $characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
-        $slug = '';
-        for ($i = 0; $i < $length; $i++) {
-            $slug .= $characters[random_int(0, strlen($characters) - 1)];
-        }
-
-        return $slug;
+        return app(ArticleSlugRegistry::class)->generate($excludeArticleId);
     }
 }

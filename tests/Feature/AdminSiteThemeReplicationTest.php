@@ -6,9 +6,11 @@ use App\Jobs\IterateSiteThemeReplicationJob;
 use App\Jobs\RunSiteThemeReplicationJob;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\SiteSetting;
 use App\Models\SiteThemeReplication;
 use App\Models\SiteThemeReplicationLog;
 use App\Models\SiteThemeReplicationVersion;
+use App\Services\Admin\SiteThemePackageService;
 use App\Services\Admin\SiteThemeReplication\ThemeComplianceGuard;
 use App\Services\Admin\SiteThemeReplication\ThemeReplicationPackagePathGuard;
 use App\Services\Admin\SiteThemeReplication\ThemeReplicationPackageService;
@@ -17,8 +19,10 @@ use App\Services\Admin\SiteThemeReplication\ThemeReplicationStorageGuard;
 use App\Services\Admin\SiteThemeReplication\ThemeReplicationStorageLock;
 use App\Services\Admin\SiteThemeReplication\ThemeScaffoldWriter;
 use App\Services\Admin\SiteThemeReplicationService;
+use App\Support\Site\SiteSettingsBag;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -1775,6 +1779,48 @@ class AdminSiteThemeReplicationTest extends TestCase
 </body>
 </html>
 HTML;
+    }
+
+    public function test_generated_theme_packages_include_friend_links_and_render_after_installation(): void
+    {
+        Storage::fake('local');
+        Http::fake(['https://example.com/*' => Http::response($this->referenceHtml('Reference Page'), 200)]);
+        $id = 'generated-friends-'.bin2hex(random_bytes(6));
+        $views = resource_path('views/theme/'.$id);
+        $assets = public_path('themes/'.$id);
+        $this->assertDirectoryDoesNotExist($views);
+        $this->assertDirectoryDoesNotExist($assets);
+        $replication = $this->runReadyReplication($id);
+        $this->assertSame(SiteThemeReplication::STATUS_READY, $replication->status);
+        $version = $replication->versions()->latest('version')->firstOrFail();
+        $footer = Storage::disk('local')->get($version->draft_views_path.'/partials/footer.blade.php');
+        $this->assertStringContainsString("@include('site.partials.friend-links')", $footer);
+        $service = app(SiteThemePackageService::class);
+        try {
+            // Review packages remain non-installable. Prepare the generated files as a
+            // reviewed theme fixture, then use the standard export/install contract.
+            foreach ($version->files_json['files'] as $record) {
+                $destination = str_starts_with($record['path'], 'views/')
+                    ? $views.'/'.substr($record['path'], 6) : $assets.'/'.substr($record['path'], 7);
+                File::ensureDirectoryExists(dirname($destination));
+                file_put_contents($destination, Storage::disk('local')->get($record['storage_path']));
+            }
+            $export = $service->export($id, 1);
+        } finally {
+            File::deleteDirectory($views);
+            File::deleteDirectory($assets);
+        }
+        $download = $service->download(1, $export['token']);
+        $report = $service->inspect(new UploadedFile($download['path'], 'theme.zip', 'application/zip', null, true), 1);
+        $this->assertContains('site.partials.friend-links', $report['package']['requires']['views']);
+        $service->install(1, $report['token'], true);
+        SiteSetting::query()->updateOrCreate(['setting_key' => 'active_theme'], ['setting_value' => $id]);
+        SiteSetting::query()->create(['setting_key' => 'friend_links', 'setting_value' => json_encode([
+            'enabled' => true, 'links' => [['name' => 'Generated friend', 'url' => 'https://example.com/generated-friend',
+                'sort_order' => 0, 'enabled' => true, 'target' => '_blank', 'relationship' => 'regular']],
+        ])]);
+        SiteSettingsBag::forget();
+        $this->get('/')->assertOk()->assertSee('Generated friend')->assertSee('assets/css/friend-links.css');
     }
 
     private function runReadyReplication(string $themeId): SiteThemeReplication

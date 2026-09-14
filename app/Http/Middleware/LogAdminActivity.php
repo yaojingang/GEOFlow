@@ -32,7 +32,7 @@ class LogAdminActivity
             $response = $next($request);
         } catch (Throwable $exception) {
             $route = (string) $request->route()?->getName();
-            if ($admin instanceof Admin && ! $request->isMethod('GET') && Str::startsWith($route, 'admin.site-settings.theme-packages.')) {
+            if ($admin instanceof Admin && ! $request->isMethod('GET') && (Str::startsWith($route, ['admin.site-settings.theme-packages.', 'admin.url-changes.']) || str_contains($route, '.article-permalink.'))) {
                 AdminActivityLogger::logFromRequest($request, $admin, $route.':failed', [
                     'success' => false,
                     'http_status' => $exception instanceof ValidationException ? $exception->status
@@ -77,6 +77,7 @@ class LogAdminActivity
                 'password', 'password_confirmation', 'package_password',
                 'current_password', 'current_admin_password', 'updater_authorization_code',
                 'new_password', 'confirm_password',
+                'credential', 'preview_credential', 'confirmation',
             ])));
         $explicitDetails = $request->attributes->get('admin_activity_details');
         if (is_array($explicitDetails) && ! $isKnowledgeFacts) {

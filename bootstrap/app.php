@@ -33,6 +33,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Exception\SuspiciousOperationException;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -46,6 +47,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->trimStrings(except: ['friend_links.links.*.url']);
         $middleware->prepend(LimitArticleMarkdownExportRequestSize::class);
         $middleware->trustHosts(static function (): array {
             $patterns = [];
@@ -99,6 +101,9 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->dontFlash([
+            'credential',
+            'preview_credential',
+            'confirmation',
             'api_key',
             'package_password',
             'current_password',
@@ -179,6 +184,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (Throwable $e, Request $request) {
             if (! $request->is('api/*') || $e instanceof ApiException) {
                 return null;
+            }
+
+            if ($e instanceof ValidationException) {
+                $rid = (string) ($request->attributes->get('request_id') ?? Str::uuid()->toString());
+
+                return ApiResponse::error('validation_failed', $e->getMessage(), $rid, 422, ['errors' => $e->errors()])->withHeaders(['X-Request-Id' => $rid]);
             }
 
             $hostRejected = $e instanceof SuspiciousOperationException

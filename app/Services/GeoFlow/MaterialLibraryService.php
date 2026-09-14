@@ -19,6 +19,7 @@ use App\Models\Task;
 use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Services\AiWorkspace\SystemKnowledgeBaseManager;
+use App\Services\Site\UrlChangeGuard;
 use App\Support\LibraryImportPolicy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -702,8 +703,8 @@ class MaterialLibraryService
             $this->ensureUniqueCategoryName($name, (int) $row->id);
             $updates['name'] = $name;
         }
-        if (array_key_exists('slug', $data) || array_key_exists('name', $updates)) {
-            $updates['slug'] = $this->buildCategorySlug($updates['name'] ?? (string) $row->name, (string) ($data['slug'] ?? $row->slug ?? ''), (int) $row->id);
+        if (array_key_exists('slug', $data) && (string) $data['slug'] !== (string) $row->slug) {
+            app(UrlChangeGuard::class)->category($row, (string) ($data['slug'] ?? ''));
         }
         if (array_key_exists('description', $data)) {
             $updates['description'] = $this->optionalString($data, 'description');
@@ -1023,6 +1024,7 @@ class MaterialLibraryService
 
     private function deleteCategory(int $id): void
     {
+        $category = Category::query()->whereKey($id)->lockForUpdate()->firstOrFail();
         $articleCount = Article::withTrashed()->where('category_id', $id)->count();
         $taskCount = Task::withTrashed()->where('fixed_category_id', $id)->count();
         if ($articleCount > 0 || $taskCount > 0) {
@@ -1031,7 +1033,8 @@ class MaterialLibraryService
                 'task_count' => $taskCount,
             ]);
         }
-        Category::query()->whereKey($id)->delete();
+        app(CategorySlugRegistry::class)->rememberDeleted($category);
+        $category->delete();
     }
 
     private function deleteAuthor(int $id): void
@@ -1275,27 +1278,14 @@ class MaterialLibraryService
 
     private function buildCategorySlug(string $name, string $rawSlug = '', int $excludeId = 0): string
     {
-        $source = trim($rawSlug) !== '' ? trim($rawSlug) : trim($name);
-        $slug = mb_strtolower($source, 'UTF-8');
-        $slug = preg_replace('/[^a-z0-9]+/i', '-', $slug) ?: '';
-        $slug = trim((string) $slug, '-');
-        if ($slug === '') {
-            $slug = 'cat-'.substr(md5($name), 0, 8);
+        $registry = app(CategorySlugRegistry::class);
+        if (trim($rawSlug) === '') {
+            return $registry->generate($name, $excludeId > 0 ? $excludeId : null);
         }
+        $slug = $registry->normalize($rawSlug);
+        $registry->assertAvailable($slug, $excludeId > 0 ? $excludeId : null);
 
-        $baseSlug = $slug;
-        $counter = 2;
-        while (true) {
-            $query = Category::query()->where('slug', $slug);
-            if ($excludeId > 0) {
-                $query->where('id', '!=', $excludeId);
-            }
-            if (! $query->exists()) {
-                return $slug;
-            }
-            $slug = $baseSlug.'-'.$counter;
-            $counter++;
-        }
+        return $slug;
     }
 
     /**

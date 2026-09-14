@@ -112,6 +112,8 @@
         'admin.ai-models.index' => 'ai_config',
         'admin.ai-source-providers.index' => 'ai_config',
         'admin.ai-prompts' => 'ai_config',
+        'admin.site-settings.friend-links.edit' => 'site_settings',
+        'admin.site-settings.friend-links.update' => 'site_settings',
         'admin.site-settings.sensitive-words' => 'site_settings',
         'admin.site-settings.sensitive-words.store' => 'site_settings',
         'admin.site-settings.sensitive-words.delete' => 'site_settings',

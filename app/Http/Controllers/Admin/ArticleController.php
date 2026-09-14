@@ -34,6 +34,9 @@ use App\Services\GeoFlow\ArticleRiskScanner;
 use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\HostedSites\HostedSiteArticleFingerprintService;
+use App\Services\Site\SiteUrlGenerator;
+use App\Services\Site\UrlChangeGuard;
+use App\Services\Site\UrlChangeInspector;
 use App\Support\Admin\ArticleAiQualityProgressPresenter;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\AiQualityRetrievalMode;
@@ -82,6 +85,7 @@ class ArticleController extends Controller
         private readonly AiQualityAuditService $aiQualityAuditService,
         private readonly ArticleGeoFlowService $articleGeoFlowService,
         private readonly AdminAiModelAccessResolver $adminAiModelAccessResolver,
+        private readonly SiteUrlGenerator $siteUrls,
     ) {}
 
     /**
@@ -111,6 +115,7 @@ class ArticleController extends Controller
             'articleBatchRoutes' => $this->articleBatchRoutes($isTrashView),
             'articleExportMaxArticles' => ArticleMarkdownExportService::MAX_ARTICLES,
             'canCreateManualPublication' => $this->canCreateManualPublication($request),
+            'siteUrls' => $this->siteUrls,
         ]);
     }
 
@@ -509,6 +514,7 @@ class ArticleController extends Controller
                     'is_featured' => (bool) ($payload['is_featured'] ?? false),
                 ]);
 
+                app(UrlChangeInspector::class)->assertArticleCompatible($article);
                 if ($sourceTitle) {
                     Title::query()->whereKey((int) $sourceTitle->id)->update([
                         'used_count' => DB::raw('COALESCE(used_count,0)+1'),
@@ -582,6 +588,7 @@ class ArticleController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'isEdit' => true,
             'articleId' => $articleId,
+            'urlProtectedCategoryIds' => app(UrlChangeGuard::class)->protectedCategoryIds($article),
             'articleForm' => [
                 'title' => (string) $article->title,
                 'excerpt' => (string) ($article->excerpt ?? ''),
@@ -775,6 +782,7 @@ class ArticleController extends Controller
         $runAiQualityAfterSave = $request->boolean('run_ai_quality_after_save');
         $article = Article::query()->whereKey($articleId)->firstOrFail();
         $payload = $this->validateArticleForm($request, true, (bool) $article->is_ai_generated);
+        app(UrlChangeGuard::class)->article($article, $payload, $request->user('admin'));
         $canManageProtectedWorkflows = $request->user('admin')?->canManageProtectedWorkflows() === true;
 
         $workflowState = ArticleWorkflow::normalizeState(
@@ -787,9 +795,8 @@ class ArticleController extends Controller
             $adminId = $this->authenticatedAdminId($request);
             $gateRejection = DB::transaction(function () use (&$article, $payload, $workflowState, $adminId, $runAiQualityAfterSave, $canManageProtectedWorkflows): ArticleRiskGateException|ArticleAiQualityGateException|null {
                 $lockedArticle = Article::query()->whereKey($article->id)->lockForUpdate()->firstOrFail();
-                $slug = $payload['title'] === $lockedArticle->title
-                    ? $lockedArticle->slug
-                    : ArticleWorkflow::generateUniqueSlug($payload['title'], (int) $lockedArticle->id);
+                app(UrlChangeGuard::class)->article($lockedArticle, $payload, Admin::query()->find($adminId));
+                $slug = $lockedArticle->slug;
                 $excerpt = $payload['excerpt'] !== '' ? $payload['excerpt'] : mb_substr(strip_tags($payload['content']), 0, 200, 'UTF-8');
                 $currentRiskHash = $this->articleRiskScanner->contentHash([
                     'title' => $lockedArticle->title,
@@ -1088,7 +1095,7 @@ class ArticleController extends Controller
         $query->with([
             'task:id,name,need_review,ai_quality_enabled',
             'author:id,name',
-            'category:id,name',
+            'category:id,name,slug',
             'latestAiQualityCheck' => fn ($qualityQuery) => $qualityQuery->select([
                 'article_ai_quality_checks.id',
                 'article_ai_quality_checks.article_id',

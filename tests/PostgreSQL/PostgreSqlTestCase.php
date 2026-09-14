@@ -2,6 +2,7 @@
 
 namespace Tests\PostgreSQL;
 
+use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class PostgreSqlTestCase extends BaseTestCase
@@ -13,9 +14,18 @@ abstract class PostgreSqlTestCase extends BaseTestCase
         }
 
         parent::setUp();
-        config()->set('database.default', 'pgsql');
-        config()->set('queue.default', 'null');
-        config()->set('geoflow.hosted_sites.enabled', true);
-        config()->set('geoflow.hosted_sites.root_domains', ['sites.test']);
+    }
+
+    public function createApplication()
+    {
+        $app = parent::createApplication();
+
+        /** @var Application $app */
+        $app['config']->set('database.default', 'pgsql');
+        $app['config']->set('queue.default', 'null');
+        $app['config']->set('geoflow.hosted_sites.enabled', true);
+        $app['config']->set('geoflow.hosted_sites.root_domains', ['sites.test']);
+
+        return $app;
     }
 }

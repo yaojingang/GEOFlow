@@ -238,7 +238,7 @@
 @endphp
 
 @section('content')
-    <div class="px-4 sm:px-0">
+    <div class="px-4 sm:px-0" @if($isEdit) data-url-category-guard data-original-category="{{ (string) ($articleForm['category_id'] ?? '') }}" data-protected-categories="{{ json_encode($urlProtectedCategoryIds ?? []) }}" data-has-unsaved-input="{{ session()->hasOldInput('title') ? '1' : '0' }}" @endif>
         <div class="flex items-center space-x-4 mb-6">
             <a href="{{ route('admin.articles.index') }}" aria-label="{{ __('admin.common.back') }}" class="text-gray-400 hover:text-gray-600">
                 <i data-lucide="arrow-left" class="w-5 h-5"></i>
@@ -1498,6 +1498,18 @@
                                         <option value="{{ (int) $category['id'] }}" @selected($formData['category_id'] === (string) $category['id'])>{{ $category['name'] }}</option>
                                     @endforeach
                                 </select>
+                                @if ($isEdit && ($urlProtectedCategoryIds ?? []) !== [])
+                                    <div class="mt-3 space-y-3 rounded-md bg-amber-50 p-3 text-sm leading-6 text-amber-950" data-url-category-warning tabindex="-1" hidden>
+                                        <p>{{ __('url_change.ui.article_move_help') }}</p>
+                                        <button type="button" class="min-h-10 font-semibold underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-blue-600" data-url-category-restore>{{ __('url_change.ui.restore_category') }}</button>
+                                        @if (auth('admin')->user()?->isSuperAdmin())
+                                            <button type="submit" form="article-url-category-check" class="min-h-10 rounded-lg border border-amber-300 bg-white px-3 py-2 text-left font-semibold text-amber-900 active:scale-[.96] disabled:opacity-50" data-url-category-check disabled>{{ __('url_change.ui.article_move') }}</button>
+                                        @else
+                                            <p>{{ __('url_change.ui.permission') }}</p>
+                                        @endif
+                                    </div>
+                                    <noscript><p class="mt-2 text-sm leading-6 text-amber-900">{{ __('url_change.ui.no_js') }}</p></noscript>
+                                @endif
                             </div>
                             <div>
                                 <label for="author_id" class="block text-sm font-medium text-gray-700">{{ __($i18nRoot.'.field.author') }} *</label>
@@ -1542,6 +1554,11 @@
                 </div>
             </div>
         </form>
+        @if ($isEdit && ($urlProtectedCategoryIds ?? []) !== [] && auth('admin')->user()?->isSuperAdmin())
+            <form id="article-url-category-check" method="POST" action="{{ route('admin.url-changes.store') }}" data-url-category-form>
+                @csrf<input type="hidden" name="operation" value="article_category"><input type="hidden" name="target_id" value="{{ (int) $articleId }}"><input type="hidden" name="value" value="" data-url-category-value>
+            </form>
+        @endif
         @if(! $isEdit)
             <div id="article-title-picker-modal" class="fixed inset-0 z-[80] hidden items-center justify-center p-4 sm:p-6" aria-hidden="true">
                 <div class="absolute inset-0 bg-[rgba(15,23,42,0.48)]" data-title-picker-close></div>

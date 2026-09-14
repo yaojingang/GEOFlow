@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\HostedSiteProfile;
+use App\Services\Site\ArticlePermalinkService;
 use App\Support\Site\CurrentSite;
 use Closure;
 use Illuminate\Http\Request;
@@ -12,7 +13,10 @@ class EnforceCurrentSiteSurface
 {
     public const ACTIVATION_HEADER = 'X-GEOFlow-Hosted-Activation';
 
-    public function __construct(private readonly CurrentSite $currentSite) {}
+    public function __construct(
+        private readonly CurrentSite $currentSite,
+        private readonly ArticlePermalinkService $articlePermalinks,
+    ) {}
 
     /**
      * Handle an incoming request.
@@ -83,9 +87,10 @@ class EnforceCurrentSiteSurface
             return true;
         }
 
-        return preg_match('#^/(?:category|article|forms)/[a-zA-Z0-9_-]+$#', $path) === 1
+        return preg_match('#^/(?:category|article|forms)/[a-zA-Z0-9_.-]+$#', $path) === 1
             || preg_match('#^/archive/[0-9]{4}/[0-9]{2}$#', $path) === 1
-            || preg_match('#^/sitemaps/[a-zA-Z0-9._-]+$#', $path) === 1;
+            || preg_match('#^/sitemaps/[a-zA-Z0-9._-]+$#', $path) === 1
+            || $this->articlePermalinks->matchesKnownPattern($path);
     }
 
     private function activationProbePending(Request $request, HostedSiteProfile $profile): bool

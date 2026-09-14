@@ -23,17 +23,17 @@
             <time datetime="{{ $pub?->toAtomString() }}">{{ $pub?->format('Y-m-d') }}</time>
         </div>
         <h2 class="tt-article-title">
-            <a href="{{ route('site.article', $article->slug) }}">{{ $article->title }}</a>
+            <a href="{{ $siteUrls->article($article) }}">{{ $article->title }}</a>
         </h2>
         @if($summary !== '')
             <p class="tt-article-summary">{{ $summary }}</p>
         @endif
-        <a href="{{ route('site.article', $article->slug) }}" class="tt-card-action">
+        <a href="{{ $siteUrls->article($article) }}" class="tt-card-action">
             {{ __('site.home_read_more') }}
             <i data-lucide="arrow-right" class="w-4 h-4"></i>
         </a>
     </div>
-    <a href="{{ route('site.article', $article->slug) }}" class="tt-thumb" aria-hidden="true">
+    <a href="{{ $siteUrls->article($article) }}" class="tt-thumb" aria-hidden="true">
         {{ $initial }}
     </a>
 </article>

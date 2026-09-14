@@ -24,7 +24,7 @@
         </div>
         <div class="ne-hot-list">
             @forelse($sidebarArticles as $hotArticle)
-                <a href="{{ route('site.article', $hotArticle->slug) }}" class="ne-hot-item">
+                <a href="{{ $siteUrls->article($hotArticle) }}" class="ne-hot-item">
                     <span class="ne-hot-index">{{ $loop->iteration }}</span>
                     <span>{{ $hotArticle->title }}</span>
                 </a>

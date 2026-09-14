@@ -35,6 +35,7 @@ use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Services\Outbound\SecureHttpFactory;
 use App\Services\Outbound\SystemHostResolver;
 use App\Services\Site\HostedSiteResolver;
+use App\Services\Site\SiteUrlGenerator;
 use App\Services\SystemUpdater\UnixSocketAgentClient;
 use App\Support\AdminUiRegistry;
 use App\Support\Site\CurrentSite;
@@ -93,6 +94,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(TaskLifecycleService::class);
         $this->app->singleton(ArticleGeoFlowService::class);
         $this->app->scoped(CurrentSite::class);
+        $this->app->scoped(SiteUrlGenerator::class);
         $this->app->scoped(SiteThemePreviewContext::class);
         $this->app->singleton(HostedSiteResolver::class);
         $this->app->singleton(AiWorkspaceModelRuntime::class);
@@ -104,6 +106,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        View::composer(['site.*', 'theme.*'], function ($view): void {
+            $view->with('siteUrls', app(SiteUrlGenerator::class));
+        });
         $this->assertHostedSiteConfiguration();
         Event::listen(WorkerStarting::class, function (WorkerStarting $event): void {
             app(ArticleAiQualityWorkerLiveness::class)->record((string) $event->connectionName, (string) $event->queue);

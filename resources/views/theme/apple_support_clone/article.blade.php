@@ -57,7 +57,7 @@
                 <ol class="as-related-list">
                     @foreach($relatedArticles as $related)
                         <li>
-                            <a href="{{ route('site.article', $related->slug) }}">{{ $related->title }}</a>
+                            <a href="{{ $siteUrls->article($related) }}">{{ $related->title }}</a>
                         </li>
                     @endforeach
                 </ol>
