@@ -11,14 +11,14 @@
 @endphp
 
 @section('content')
-    <div class="mx-auto max-w-4xl space-y-6 px-4 sm:px-0">
+    <div class="mx-auto max-w-4xl space-y-6 px-4 sm:px-0" data-url-separate-editor data-has-unsaved-input="{{ session()->hasOldInput('name') ? '1' : '0' }}">
         <div>
             <a href="{{ $isEdit ? route('admin.distribution.hosted-sites.show', $channel) : route('admin.distribution.hosted-sites.index') }}" class="inline-flex min-h-10 items-center text-sm font-medium text-gray-500 hover:text-gray-800 focus-visible:ring-2 focus-visible:ring-blue-500">返回托管站点</a>
             <h1 class="text-2xl font-bold text-gray-900">{{ $isEdit ? '编辑托管站点' : '创建托管站点' }}</h1>
             <p class="mt-1 text-sm leading-6 text-gray-600">新站点会以暂停、维护、禁止索引和待质量检查状态保存。</p>
         </div>
 
-        <form method="POST" action="{{ $isEdit ? route('admin.distribution.hosted-sites.update', $channel) : route('admin.distribution.hosted-sites.store') }}" class="space-y-8">
+        <form method="POST" action="{{ $isEdit ? route('admin.distribution.hosted-sites.update', $channel) : route('admin.distribution.hosted-sites.store') }}" class="space-y-8" data-url-source-form>
             @csrf
             @if ($isEdit) @method('PUT') @endif
 
@@ -106,47 +106,43 @@
                     </div>
                 </div>
 
-                <form method="POST" action="{{ route('admin.distribution.hosted-sites.article-permalink.preview', $channel) }}" class="mt-5 space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <p class="mt-3 text-sm leading-6 text-gray-600">{{ __('url_change.ui.stable') }}</p>
+                <details class="mt-5" @if($errors->has('pattern') || session('url_change_draft_restored')) open @endif><summary class="min-h-10 cursor-pointer text-sm font-semibold text-blue-700">{{ __('url_change.ui.edit_rule') }}</summary>
+                <form method="POST" action="{{ route('admin.distribution.hosted-sites.article-permalink.preview', $channel) }}" class="mt-5 space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4" data-url-separate-check>
                     @csrf
+                    <fieldset @disabled(! auth('admin')->user()?->isSuperAdmin()) class="space-y-4">
                     <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                         @foreach ($articlePermalinkPresets as $preset)
                             <label class="flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 bg-white p-3 hover:border-violet-300">
-                                <input type="radio" value="{{ $preset['pattern'] }}" class="mt-1 border-gray-300 text-violet-600 focus:ring-violet-500" data-hosted-permalink-preset @checked(($articlePermalinkPreview['pattern'] ?? $articlePermalinkPolicy->currentPattern) === $preset['pattern'])>
-                                <span><span class="block text-sm font-medium text-gray-900">{{ __($preset['name']) }}</span><code class="mt-1 block text-xs text-gray-600">{{ $preset['pattern'] }}</code></span>
+                                <input type="radio" name="permalink_preset" value="{{ $preset['pattern'] }}" class="mt-1 border-gray-300 text-violet-600 focus:ring-violet-500" data-hosted-permalink-preset @checked(($articlePermalinkPolicy->currentPattern) === $preset['pattern'])>
+                                <span><span class="block text-sm font-medium text-gray-900">{{ __($preset['name']) }}</span><code class="mt-1 block break-all text-xs text-gray-600">{{ $preset['pattern'] }}</code></span>
                             </label>
                         @endforeach
                     </div>
                     <div>
                         <label for="hosted-permalink-pattern" class="block text-sm font-medium text-gray-700">{{ __('article_permalink.custom_template') }}</label>
-                        <input id="hosted-permalink-pattern" name="pattern" required maxlength="160" value="{{ old('pattern', $articlePermalinkPreview['pattern'] ?? $articlePermalinkPolicy->currentPattern) }}" class="mt-1 block w-full rounded-md border-gray-300 font-mono text-sm shadow-sm focus:border-violet-500 focus:ring-violet-500">
-                        @error('pattern')<p class="mt-2 text-sm text-red-600">{{ $message }}</p>@enderror
+                        <input id="hosted-permalink-pattern" name="pattern" required maxlength="160" value="{{ old('pattern', $articlePermalinkPolicy->currentPattern) }}" class="mt-1 block w-full rounded-md border-gray-300 font-mono text-sm shadow-sm focus:border-violet-500 focus:ring-violet-500" aria-describedby="hosted-permalink-help @error('pattern') hosted-permalink-error @enderror" @error('pattern') aria-invalid="true" @enderror>
+                        <p id="hosted-permalink-help" class="mt-2 text-xs leading-5 text-gray-600">
+                            {{ __('article_permalink.format_help') }}
+                            <span class="font-medium text-violet-700">{{ __('article_permalink.format_example') }}</span>
+                        </p>
+                        @error('pattern')
+                            <p id="hosted-permalink-error" class="mt-3 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-sm leading-6 text-red-700" role="alert">
+                                <i data-lucide="circle-alert" class="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true"></i>
+                                <span>{{ $message }}</span>
+                            </p>
+                        @enderror
                     </div>
                     <div class="flex justify-end">
-                        <button type="submit" class="inline-flex min-h-10 items-center rounded-md bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 active:scale-[.98]">{{ __('article_permalink.preview_action') }}</button>
+                        <button type="submit" class="inline-flex min-h-10 items-center rounded-md bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 active:scale-[.98] disabled:opacity-50" data-url-separate-submit disabled>{{ __('url_change.ui.check') }}</button>
                     </div>
+                    <p class="text-xs leading-5 text-gray-600">{{ __('url_change.ui.check_hint') }}</p>
+                    <p class="text-sm leading-6 text-amber-900" data-url-unsaved-hint hidden>{{ __('url_change.ui.save_first') }}</p>
+                    <p class="text-xs leading-5 text-amber-900" data-url-separate-nojs>{{ __('url_change.ui.no_js') }}</p>
+                    </fieldset>
                 </form>
+                </details>
 
-                @if (is_array($articlePermalinkPreview ?? null))
-                    <div class="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <p class="text-sm text-emerald-900">{{ __('article_permalink.hosted_preview_summary', ['articles' => $articlePermalinkPreview['affected_articles']]) }}</p>
-                            <div class="flex flex-wrap gap-2">
-                                <a href="{{ route('admin.distribution.hosted-sites.article-permalink.migration-map', ['hostedSite' => $channel, 'preview_credential' => $articlePermalinkPreview['credential']]) }}" class="inline-flex min-h-10 items-center rounded-md border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 active:scale-[.98]">{{ __('article_permalink.download_migration_map') }}</a>
-                                <form method="POST" action="{{ route('admin.distribution.hosted-sites.article-permalink.activate', $channel) }}">
-                                    @csrf
-                                    <input type="hidden" name="preview_credential" value="{{ $articlePermalinkPreview['credential'] }}">
-                                    <button type="submit" class="inline-flex min-h-10 items-center rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 active:scale-[.98]">{{ __('article_permalink.activate_action') }}</button>
-                                </form>
-                            </div>
-                        </div>
-                        @foreach ($articlePermalinkPreview['examples'] ?? [] as $example)
-                            <div class="mt-3 grid grid-cols-1 gap-1 rounded-md bg-white p-3 text-xs md:grid-cols-2 md:gap-3">
-                                <code class="break-all text-gray-500">{{ $example['current_path'] }}</code>
-                                <code class="break-all font-semibold text-emerald-800">{{ $example['preview_path'] }}</code>
-                            </div>
-                        @endforeach
-                    </div>
-                @endif
             </section>
         @endif
     </div>

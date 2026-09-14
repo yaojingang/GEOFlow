@@ -1,5 +1,6 @@
 import '../css/admin-ui-v3-stability.css';
 import '../css/admin-action-dialog.css';
+import '../css/admin-url-change.css';
 import './pwa';
 import './admin/action-dialog';
 import './admin/ui-v3-shell';
@@ -18,6 +19,7 @@ const loadPageModule = (selector, loader) => {
 };
 
 loadPageModule('#article-create-assistant', () => import('./admin/article-create-assistant'));
+loadPageModule('[data-url-change-report], [data-url-category-guard], [data-url-separate-editor]', () => import('./admin/url-change'));
 loadPageModule('[data-copy-target]', () => import('./admin/manual-publications'));
 loadPageModule('[data-analytics-log-chart], [data-analytics-trend], [data-analytics-filter-form]', () => import('./admin/analytics'));
 loadPageModule('[data-system-updater-auto-reload], [data-system-updater-copy], [data-system-updater-error-dialog], [data-system-updater-authorized-action]', () => import('./admin/system-updates'));

@@ -1,14 +1,17 @@
 <?php
 
 return [
-    'title' => '文章固定链接',
+    'title' => '自定义文章链接',
+    'description' => '统一管理文章详情页地址、历史规则和迁移清单。',
     'current_rule' => '当前规范规则为 :pattern。旧规则和旧 slug 会用 301 跳转到当前地址。',
     'last_activated' => '最近启用：:time',
     'download_migration_map' => '下载 URL 迁移清单',
     'installed_theme_warning' => '当前安装主题可能仍生成旧版文章链接。旧链接会保持可访问并以 301 到达规范地址；建议检查主题首页、分类页和文章页链接。',
     'choose_preset' => '选择预设规则',
     'custom_template' => '自定义模板',
-    'token_help' => '可用令牌：{slug}、{id}、{category}、{year}、{month}、{day}。模板必须包含 {slug} 或 {id}。',
+    'token_help' => '可用令牌：{slug}、{id}、{category}、{year}、{month}、{day}。模板必须包含 {slug} 或 {id}；{category} 位于首段时，分类 slug 不能占用系统保留入口。',
+    'format_help' => '路径层级请直接使用 / 分隔，令牌前后不要留空格。',
+    'format_example' => '例如 /{category}/{slug} 会生成 /ai-news/hello-world。',
     'preview_action' => '检查并预览',
     'preview_passed' => '检查通过',
     'preview_summary' => '将影响 :articles 篇可访问文章；结构化设置中发现 :links 条旧格式链接。',
@@ -22,6 +25,7 @@ return [
 
     'presets' => [
         'default' => '默认短链',
+        'root_category' => '分类短链（推荐）',
         'html' => 'HTML 短链',
         'id_slug' => 'ID + slug',
         'category' => '分类层级',
@@ -44,11 +48,13 @@ return [
         'unsupported_token' => '不支持固定链接令牌 {:token}。',
         'duplicate_token' => '固定链接令牌 {:token} 只能使用一次。',
         'invalid_token' => '固定链接模板包含无效令牌。',
-        'invalid_literal' => '固定文字只允许小写字母、数字、短横线、下划线和点。',
+        'invalid_whitespace' => '模板中包含空白字符（空格、制表符或换行）。请删除多余空白，路径层级直接用 / 分隔；分类与文章两层地址请填写 /{category}/{slug}。',
+        'invalid_literal' => '模板中的固定文字包含不支持的字符。令牌以外只允许小写英文字母（a-z）、数字（0-9）、短横线（-）、下划线（_）、点（.）和路径分隔符（/）。',
         'locator_required' => '固定链接模板必须包含 {slug} 或 {id}。',
         'token_separator_required' => '相邻令牌之间需要固定分隔符。',
         'root_slug_suffix_required' => '根级 slug 模板需要使用 .html 固定后缀。',
         'reserved_path' => '固定链接模板与保留入口 /:path 冲突。',
+        'category_reserved_path' => '分类 slug :slug 占用了保留入口 /:path，请先修改该分类 slug。',
         'slug_invalid' => 'slug 必须是 1 至 255 字节的合法单一路径段。',
         'slug_unavailable' => 'slug 已被当前文章或历史地址占用。',
         'article_conflict' => '文章 #:article：:message',

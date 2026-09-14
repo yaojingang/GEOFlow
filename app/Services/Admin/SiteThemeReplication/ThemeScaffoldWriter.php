@@ -222,6 +222,7 @@ BLADE;
         return <<<'BLADE'
 <footer class="rep-footer">
     <div class="rep-shell">
+        @include('site.partials.friend-links')
         <div>{{ $siteTitle ?? config('app.name') }}</div>
         @include('site.partials.footer-filing')
     </div>

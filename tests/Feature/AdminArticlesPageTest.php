@@ -16,6 +16,8 @@ use App\Models\SiteSetting;
 use App\Models\Task;
 use App\Services\GeoFlow\ArticleRiskScanner;
 use App\Support\AdminWeb;
+use App\Support\Site\ArticlePermalinkPolicy;
+use App\Support\Site\SiteSettingsBag;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\App;
@@ -958,6 +960,47 @@ class AdminArticlesPageTest extends TestCase
             ->assertSee(__('admin.articles.action.view_local'))
             ->assertSee(route('site.article', ['slug' => (string) $article->slug]), false)
             ->assertDontSee(route('site.article', ['slug' => 'draft-local-view-button-article']), false);
+    }
+
+    public function test_article_list_renders_local_link_with_root_category_permalink(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'articles_category_permalink_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-category-permalink@example.com',
+            'display_name' => 'Articles Category Permalink Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $category = Category::query()->create([
+            'name' => '分类固定链接',
+            'slug' => 'category-permalink',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+        Article::query()->create([
+            'title' => '分类固定链接文章',
+            'slug' => 'category-permalink-article',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+        $policy = ArticlePermalinkPolicy::defaults()->activate('/{category}/{slug}');
+        SiteSetting::query()->create([
+            'setting_key' => ArticlePermalinkPolicy::SETTING_KEY,
+            'setting_value' => json_encode($policy->toArray(), JSON_THROW_ON_ERROR),
+        ]);
+        SiteSettingsBag::forget();
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.articles.index'))
+            ->assertOk()
+            ->assertSee('/category-permalink/category-permalink-article', false);
     }
 
     public function test_article_batch_urls_are_relative_when_app_url_differs_from_origin(): void

@@ -12,6 +12,7 @@ use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
 use App\Models\Task;
 use App\Services\GeoFlow\ArticlePublicationQualityGate;
+use App\Services\Site\UrlChangeInspector;
 use App\Support\GeoFlow\ArticleWorkflow;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -22,6 +23,7 @@ final class HostedSiteAllocator
     public function __construct(
         private readonly HostedSiteContentFingerprint $fingerprints,
         private readonly ArticlePublicationQualityGate $publicationQualityGate,
+        private readonly UrlChangeInspector $urlChanges,
     ) {}
 
     public function allocate(HostedSiteAllocationRequest $candidate): ?HostedSiteArticleAssignment
@@ -170,6 +172,8 @@ final class HostedSiteAllocator
                     ),
                     'assigned_at' => now(),
                 ]);
+
+                $this->urlChanges->assertArticleCompatible($article);
 
                 $distribution = ArticleDistribution::query()->create([
                     'article_id' => (int) $article->id,

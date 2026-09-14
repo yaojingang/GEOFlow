@@ -9,6 +9,7 @@ use App\Models\Category;
 use App\Models\LeadForm;
 use App\Models\SiteSetting;
 use App\Services\Admin\SiteThemePackageService;
+use App\Services\GeoFlow\CategorySlugRegistry;
 use App\Support\Site\ArticlePermalinkPolicy;
 use App\Support\Site\InstalledSiteThemeRepository;
 use App\Support\Site\SiteSettingsBag;
@@ -82,6 +83,34 @@ class InstalledSiteThemeTest extends TestCase
         $this->get($this->frame().'?search=sample&page=2')->assertOk()->assertSee('Sample article')->assertDontSee('Another sample')->assertDontSee('Unrelated result');
         $this->post($this->frame('about'))->assertStatus(405);
         $this->get($this->frame('geo_admin'))->assertNotFound();
+    }
+
+    public function test_historical_category_preview_redirects_within_the_frame_and_restores_context(): void
+    {
+        $this->install();
+        $article = $this->article();
+        app(CategorySlugRegistry::class)->change($article->category, 'current-category');
+        $admin = Admin::query()->create(['username' => 'previewer', 'password' => 'fixture-password', 'role' => 'super_admin', 'status' => 'active']);
+        $originalUrl = route('site.about');
+        $router = Route::getFacadeRoot();
+        $views = DB::table('view_logs')->count();
+
+        $response = $this->actingAs($admin, 'admin')->get($this->frame('category/general').'?page=2')
+            ->assertStatus(302)
+            ->assertRedirect($this->frame('category/current-category').'?page=2')
+            ->assertHeader('X-Robots-Tag', 'noindex, nofollow')
+            ->assertHeader('Cache-Control', 'no-store, private');
+
+        $this->assertFalse(app(SiteThemePreviewContext::class)->isActive());
+        $this->assertSame($originalUrl, route('site.about'));
+        $this->assertSame($router, Route::getFacadeRoot());
+        $this->assertSame('admin.site-settings.theme-packages.preview.frame', Route::currentRouteName());
+        $this->get($response->headers->get('Location'))->assertOk()
+            ->assertSee('PAGE:category')->assertSee('REQUEST:category/current-category')
+            ->assertSee('FACADE:site.category')->assertSee('MATCH:yes')->assertSee('ROUTER:yes')
+            ->assertSee($this->frame('about'), false);
+        $this->assertSame(0, $article->fresh()->view_count);
+        $this->assertSame($views, DB::table('view_logs')->count());
     }
 
     public function test_custom_permalink_warns_when_an_installed_theme_is_active(): void
@@ -196,6 +225,28 @@ class InstalledSiteThemeTest extends TestCase
         $this->assertSame('admin.site-settings.theme-packages.preview.frame', Route::currentRouteName());
         $this->assertSame(request(), Route::getCurrentRequest());
         $this->assertSame(request()->route(), app(\Illuminate\Routing\Route::class));
+    }
+
+    public function test_friend_links_render_in_installed_home_and_preview_but_not_filtered_preview(): void
+    {
+        $files = $this->files();
+        $layout = 'resources/views/theme/'.self::ID.'/layout.blade.php';
+        $files[$layout] = str_replace('<head>', "<head>@include('site.partials.seo-head')", $files[$layout]);
+        $files[$layout] = str_replace('</body>', "<footer>@include('site.partials.friend-links')</footer></body>", $files[$layout]);
+        $this->installFiles($files);
+        $this->setting('active_theme', self::ID);
+        $this->setting('friend_links', json_encode(['enabled' => true, 'links' => [[
+            'name' => 'Installed friend', 'url' => 'https://example.com/installed-friend', 'sort_order' => 0,
+            'enabled' => true, 'target' => '_self', 'relationship' => 'regular',
+        ]]]));
+        $this->get('/')->assertOk()->assertSee('Installed friend')->assertSee('assets/css/friend-links.css');
+        $admin = Admin::query()->create(['username' => 'friend-preview', 'password' => 'fixture-password', 'role' => 'super_admin', 'status' => 'active']);
+        $this->actingAs($admin, 'admin')->get($this->frame())->assertOk()->assertSee('Installed friend')
+            ->assertSee('assets/css/friend-links.css')->assertHeader('X-Robots-Tag', 'noindex, nofollow');
+        foreach (['?search=sample', '?page=2'] as $query) {
+            $this->get($this->frame().$query)->assertOk()->assertDontSee('Installed friend')->assertDontSee('assets/css/friend-links.css');
+        }
+        $this->get(route('admin.site-settings.friend-links.edit'))->assertOk()->assertSee(__('friend_links.installed_theme'));
     }
 
     private function files(bool $allPages = true): array

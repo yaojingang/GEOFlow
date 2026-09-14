@@ -7,10 +7,13 @@ use App\Models\LeadForm;
 use App\Models\SiteSetting;
 use App\Services\Admin\SiteThemeReplicationService;
 use App\Services\AiWorkspace\AiWorkspaceRuntimeStatus;
+use App\Services\Site\ArticlePermalinkService;
 use App\Support\AdminBasePathManager;
 use App\Support\AdminWeb;
+use App\Support\Site\ArticlePermalinkPolicy;
 use App\Support\Site\ArticleTextAdPicker;
 use App\Support\Site\CtaTargetUrlNormalizer;
+use App\Support\Site\FriendLinkSettings;
 use App\Support\Site\HomepageModuleBuilder;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeCatalog;
@@ -33,16 +36,22 @@ class SiteSettingsController extends Controller
 {
     public function __construct(
         private readonly SiteThemeCatalog $siteThemeCatalog,
-        private readonly SiteThemeReplicationService $themeReplicationService
+        private readonly SiteThemeReplicationService $themeReplicationService,
+        private readonly ArticlePermalinkService $articlePermalinks,
     ) {}
 
     /**
      * 网站设置页面。
      */
-    public function index(AiWorkspaceRuntimeStatus $aiWorkspaceRuntimeStatus): View
-    {
+    public function index(
+        FriendLinkSettings $friendLinkSettings,
+        AiWorkspaceRuntimeStatus $aiWorkspaceRuntimeStatus,
+    ): View {
         $settings = $this->loadSettings();
         $canManageProtectedWorkflows = auth('admin')->user()?->canManageProtectedWorkflows() === true;
+        $availableThemes = $this->siteThemeCatalog->all();
+        $articlePermalinkPolicy = $this->articlePermalinks->policy();
+        $activeTheme = collect($availableThemes)->firstWhere('id', (string) ($settings['active_theme'] ?? ''));
 
         return view('admin.site-settings.index', [
             'pageTitle' => __('admin.site_settings.page_title'),
@@ -51,16 +60,22 @@ class SiteSettingsController extends Controller
             'settings' => $settings,
             'canEditAnalytics' => $canManageProtectedWorkflows,
             'canManageProtectedWorkflows' => $canManageProtectedWorkflows,
-            'availableThemes' => $this->siteThemeCatalog->all(),
+            'availableThemes' => $availableThemes,
             'recentThemeReplications' => $canManageProtectedWorkflows
                 ? $this->themeReplicationService->recent(3)
                 : collect(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
             'homepageEditorPage' => false,
+            'friendLinkSnapshot' => $friendLinkSettings->snapshot(),
             'homepageModuleCount' => count($this->parseHomepageModules((string) ($settings['homepage_modules'] ?? '[]'))),
             'articleDetailAds' => $this->parseArticleDetailAds((string) ($settings['article_detail_ads'] ?? '[]')),
             'articleDetailTextAds' => $this->parseArticleDetailTextAds((string) ($settings['article_detail_text_ads'] ?? '[]')),
+            'articlePermalinkPolicy' => $articlePermalinkPolicy,
+            'articlePermalinkPresets' => ArticlePermalinkPolicy::PRESETS,
+            'articlePermalinkPreview' => session('article_permalink_preview'),
             'aiWorkspaceRuntime' => $aiWorkspaceRuntimeStatus->snapshot(),
+            'articlePermalinkInstalledThemeWarning' => $articlePermalinkPolicy->currentPattern !== ArticlePermalinkPolicy::DEFAULT_PATTERN
+                && ($activeTheme['source'] ?? null) === 'installed',
         ]);
     }
 
@@ -148,8 +163,11 @@ class SiteSettingsController extends Controller
 
         try {
             $newAdminBasePath = AdminBasePathManager::normalize((string) $payload['admin_base_path']);
+            $this->articlePermalinks->assertAdminBasePathCompatible($newAdminBasePath);
         } catch (\Throwable) {
-            return back()->withErrors(['admin_base_path' => __('admin.site_settings.error.admin_base_path_invalid')])->withInput();
+            return back()->withErrors([
+                'admin_base_path' => __('article_permalink.errors.admin_path_conflict'),
+            ])->withInput();
         }
 
         $currentAdminBasePath = AdminWeb::basePath();

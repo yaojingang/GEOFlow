@@ -1123,6 +1123,26 @@ function articlePermalinkDefaultPolicy(): array
     ];
 }
 
+function articlePermalinkReservedFirstSegments(): array
+{
+    return [
+        '_boost', '_debugbar', 'about', 'admin', 'api', 'app', 'archive', 'assets', 'broadcasting', 'build',
+        'category', 'config.php', 'css', 'favicon.ico', 'forms', 'geoflow-agent', 'horizon',
+        'images', 'index.php', 'js', 'livewire', 'llms.txt', 'robots.txt', 'sanctum',
+        'sitemap.txt', 'sitemap.xml', 'sitemaps', 'storage', 'themes', 'up', 'vendor',
+    ];
+}
+
+function articlePermalinkUsesRootCategorySegment(string $pattern): bool
+{
+    return explode('/', ltrim($pattern, '/'), 2)[0] === '{category}';
+}
+
+function isReservedArticlePermalinkFirstSegment(string $segment): bool
+{
+    return in_array(mb_strtolower(trim($segment, '/'), 'UTF-8'), articlePermalinkReservedFirstSegments(), true);
+}
+
 function normalizeArticlePermalinkPattern(string $pattern): string
 {
     $pattern = trim($pattern);
@@ -1162,29 +1182,26 @@ function normalizeArticlePermalinkPattern(string $pattern): string
         throw new InvalidArgumentException('root_article_slug_requires_html_suffix');
     }
 
-    $firstSegmentParts = preg_split('/(\{[a-z]+\})/', $segments[0], -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY) ?: [];
-    $firstSegmentRegex = '';
-    foreach ($firstSegmentParts as $part) {
-        if (preg_match('/^\{([a-z]+)\}$/', $part, $matches) === 1) {
-            $firstSegmentRegex .= '(?:'.match ((string) $matches[1]) {
-                'id' => '[1-9][0-9]*',
-                'year' => '[0-9]{4}',
-                'month' => '0[1-9]|1[0-2]',
-                'day' => '0[1-9]|[12][0-9]|3[01]',
-                'slug', 'category' => '[^/?#]+',
-            }.')';
-        } else {
-            $firstSegmentRegex .= preg_quote($part, '~');
+    if ($segments[0] !== '{category}') {
+        $firstSegmentParts = preg_split('/(\{[a-z]+\})/', $segments[0], -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY) ?: [];
+        $firstSegmentRegex = '';
+        foreach ($firstSegmentParts as $part) {
+            if (preg_match('/^\{([a-z]+)\}$/', $part, $matches) === 1) {
+                $firstSegmentRegex .= '(?:'.match ((string) $matches[1]) {
+                    'id' => '[1-9][0-9]*',
+                    'year' => '[0-9]{4}',
+                    'month' => '0[1-9]|1[0-2]',
+                    'day' => '0[1-9]|[12][0-9]|3[01]',
+                    'slug', 'category' => '[^/?#]+',
+                }.')';
+            } else {
+                $firstSegmentRegex .= preg_quote($part, '~');
+            }
         }
-    }
-    foreach ([
-        '_boost', '_debugbar', 'about', 'api', 'app', 'archive', 'assets', 'broadcasting', 'build',
-        'category', 'config.php', 'css', 'favicon.ico', 'forms', 'geoflow-agent', 'horizon',
-        'images', 'index.php', 'js', 'livewire', 'llms.txt', 'robots.txt', 'sanctum',
-        'sitemap.txt', 'sitemap.xml', 'sitemaps', 'storage', 'themes', 'up', 'vendor',
-    ] as $reservedPath) {
-        if (preg_match('~\A'.$firstSegmentRegex.'\z~D', $reservedPath) === 1) {
-            throw new InvalidArgumentException('reserved_article_permalink_path');
+        foreach (articlePermalinkReservedFirstSegments() as $reservedPath) {
+            if (preg_match('~\A'.$firstSegmentRegex.'\z~D', $reservedPath) === 1) {
+                throw new InvalidArgumentException('reserved_article_permalink_path');
+            }
         }
     }
 
@@ -1276,6 +1293,11 @@ function renderArticlePermalinkPattern(string $pattern, array $article, string $
         if ($value === '') {
             throw new InvalidArgumentException('missing_article_permalink_value_'.$token);
         }
+        if ($token === 'category'
+            && articlePermalinkUsesRootCategorySegment($pattern)
+            && isReservedArticlePermalinkFirstSegment($value)) {
+            throw new InvalidArgumentException('reserved_article_permalink_category');
+        }
         $pattern = str_replace('{'.$token.'}', rawurlencode($value), $pattern);
     }
 
@@ -1329,6 +1351,11 @@ function matchArticlePermalinkPattern(string $pattern, string $path): ?array
     foreach ($tokens as $token) {
         $value = rawurldecode((string) ($matches[$token] ?? ''));
         if ($value === '' || ! mb_check_encoding($value, 'UTF-8') || preg_match('/[\x00-\x1F\x7F\\\\\/?#]/u', $value) === 1 || in_array($value, ['.', '..'], true)) {
+            return null;
+        }
+        if ($token === 'category'
+            && articlePermalinkUsesRootCategorySegment($pattern)
+            && isReservedArticlePermalinkFirstSegment($value)) {
             return null;
         }
         $values[$token] = $value;

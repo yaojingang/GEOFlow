@@ -43,3 +43,7 @@
 @if($seoSiteName !== '')
     <meta property="og:site_name" content="{{ $seoSiteName }}">
 @endif
+
+@if(!empty($friendLinks))
+    <link rel="stylesheet" href="{{ asset('assets/css/friend-links.css') }}">
+@endif

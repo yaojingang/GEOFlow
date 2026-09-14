@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\SiteSetting;
 use App\Services\Admin\SiteThemePackageGuard;
 use App\Services\Admin\SiteThemePackageService;
 use App\Support\Site\InstalledSiteThemeRepository;
@@ -623,6 +624,63 @@ class SiteThemePackageServiceTest extends TestCase
         unlink($theme['assets_path'].'/theme.css');
         symlink($target, $theme['assets_path'].'/theme.css');
         $this->assertNull(app(InstalledSiteThemeRepository::class)->asset('fixture-theme', 'theme.css'));
+    }
+
+    public function test_friend_link_dependency_survives_export_and_import_without_exporting_site_settings(): void
+    {
+        $id = 'friend-link-package-'.strtolower(Str::random(12));
+        $this->assertDirectoryDoesNotExist(resource_path('views/theme/'.$id));
+        $this->assertDirectoryDoesNotExist(public_path('themes/'.$id));
+        $files = ThemePackageFixture::files($id);
+        $files['resources/views/theme/'.$id.'/layout.blade.php'] .= "\n@include('site.partials.friend-links')\n";
+        $this->createSource($id, $files);
+        (require database_path('migrations/2026_04_18_100000_create_geoflow_admins_and_site_settings_tables.php'))->up();
+        SiteSetting::query()->create(['setting_key' => 'friend_links', 'setting_value' => 'PRIVATE-FRIEND-LIST-SENTINEL']);
+        $service = app(SiteThemePackageService::class);
+        $export = $service->export($id, 9);
+        $this->assertContains('site.partials.friend-links', $export['package']['requires']['views']);
+        $download = $service->download(9, $export['token']);
+        $zip = new \ZipArchive;
+        $zip->open($download['path']);
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $this->assertStringNotContainsString('PRIVATE-FRIEND-LIST-SENTINEL', $zip->getFromIndex($i));
+        }
+        $zip->close();
+        File::deleteDirectory(resource_path('views/theme/'.$id));
+        File::deleteDirectory(public_path('themes/'.$id));
+        $upload = new UploadedFile($download['path'], 'theme.zip', 'application/zip', null, true);
+        $report = $service->inspect($upload, 9);
+        $theme = $service->install(9, $report['token'], true);
+        $this->assertContains('site.partials.friend-links', $theme['package']['requires']['views']);
+        $component = resource_path('views/site/partials/friend-links.blade.php');
+        $originalBase = base_path();
+        $runtime = Storage::disk('local')->path('friend-link-runtime');
+        $runtimeComponent = $runtime.'/resources/views/site/partials/friend-links.blade.php';
+        foreach ($export['package']['requires']['views'] as $view) {
+            if (str_starts_with($view, 'theme.'.$id.'.')) {
+                continue;
+            }
+            $relative = 'views/'.str_replace('.', '/', $view).'.blade.php';
+            File::ensureDirectoryExists(dirname($runtime.'/resources/'.$relative));
+            File::copy(resource_path($relative), $runtime.'/resources/'.$relative);
+        }
+        $missingDependency = __('admin.theme_packages.error.missing_dependency', ['dependency' => 'views: site.partials.friend-links']);
+        try {
+            $this->app->setBasePath($runtime);
+            $this->assertSame('already_installed', $service->inspect($upload, 9)['conflict']['code']);
+            File::delete($runtimeComponent);
+            $this->assertFileExists($component, 'Dependency checks must preserve the running site component.');
+            $this->expectExceptionMessage($missingDependency);
+            $service->inspect($upload, 9);
+        } finally {
+            $this->app->setBasePath($originalBase);
+        }
+    }
+
+    public function test_shared_footer_theme_export_declares_friend_link_dependency(): void
+    {
+        $export = app(SiteThemePackageService::class)->export('apple_support_clone', 9);
+        $this->assertContains('site.partials.friend-links', $export['package']['requires']['views']);
     }
 
     private function createSource(string $id, array $files): void

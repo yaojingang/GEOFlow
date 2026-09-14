@@ -29,6 +29,7 @@ use App\Models\SystemUpdateRun;
 use App\Models\Task;
 use App\Models\TitleGenerationRun;
 use App\Models\TitleLibrary;
+use App\Models\UrlChangeRequest;
 use App\Models\UrlImportJob;
 use App\Services\Admin\SiteThemePackageService;
 use App\Support\AdminUiRegistry;
@@ -87,7 +88,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             ->sortBy(fn (LaravelRoute $route): string => (string) $route->getName())
             ->values();
 
-        $this->assertCount(106, $shellRoutes);
+        $this->assertCount(108, $shellRoutes);
 
         foreach ($shellRoutes as $route) {
             $routeName = (string) $route->getName();
@@ -156,8 +157,8 @@ class AdminUiV3FullPageSmokeTest extends TestCase
 
         $this->assertCount(3, $routesByClassification->get('special', collect()));
         $this->assertCount(3, $routesByClassification->get('redirect', collect()));
-        $this->assertCount(8, $routesByClassification->get('download', collect()));
-        $this->assertCount(14, $routesByClassification->get('endpoint', collect()));
+        $this->assertCount(9, $routesByClassification->get('download', collect()));
+        $this->assertCount(16, $routesByClassification->get('endpoint', collect()));
 
         $this->get(route('admin.login'))
             ->assertOk()
@@ -338,6 +339,14 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         $category = Category::query()->where('slug', 'ui-v3-review')->firstOrFail();
         $channel = DistributionChannel::query()->where('name', UiV3ReviewSeeder::CHANNEL_NAME)->firstOrFail();
         $hostedChannel = DistributionChannel::query()->where('name', UiV3ReviewSeeder::HOSTED_CHANNEL_NAME)->firstOrFail();
+        $urlChange = UrlChangeRequest::query()->create([
+            'admin_id' => $admin->id, 'auth_version' => $admin->auth_version,
+            'operation' => 'primary', 'old_value' => '/article/{slug}', 'new_value' => '/{slug}.html',
+            'status' => 'completed', 'versions' => [], 'sites' => [], 'summary' => [],
+            'progress' => ['segments' => 0, 'rows' => 0], 'applied_at' => now(), 'finished_at' => now(),
+        ]);
+        $hostedUrlChange = $urlChange->replicate()->fill(['operation' => 'hosted', 'target_id' => $hostedChannel->id]);
+        $hostedUrlChange->save();
         $distribution = ArticleDistribution::query()->where('idempotency_key', 'ui-v3-review-distribution')->firstOrFail();
         $project = EnterpriseKnowledgeProject::query()->where('name', UiV3ReviewSeeder::ENTERPRISE_PROJECT_NAME)->firstOrFail();
         $imageLibrary = ImageLibrary::query()->where('name', UiV3ReviewSeeder::IMAGE_LIBRARY_NAME)->firstOrFail();
@@ -417,6 +426,11 @@ class AdminUiV3FullPageSmokeTest extends TestCase
 
         return [
             'admin.ai-workspace.conversations.show' => ['conversation' => $aiConversation->id],
+            'admin.url-changes.show' => ['urlChange' => $urlChange->id],
+            'admin.url-changes.status' => ['urlChange' => $urlChange->id],
+            'admin.url-changes.articles' => ['urlChange' => $urlChange->id],
+            'admin.url-changes.download' => ['urlChange' => $urlChange->id],
+            'admin.site-settings.article-permalink.migration-map' => ['change_id' => $urlChange->id],
             'admin.articles.edit' => ['articleId' => $article->id],
             'admin.articles.ai-quality.status' => ['articleId' => $article->id],
             'admin.articles.ai-quality.optimization.candidate' => [
@@ -439,7 +453,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             'admin.distribution.delete' => ['channelId' => $channel->id],
             'admin.distribution.edit' => ['channelId' => $channel->id],
             'admin.distribution.hosted-sites.edit' => ['hostedSite' => $hostedChannel->id],
-            'admin.distribution.hosted-sites.article-permalink.migration-map' => ['hostedSite' => $hostedChannel->id],
+            'admin.distribution.hosted-sites.article-permalink.migration-map' => ['hostedSite' => $hostedChannel->id, 'change_id' => $hostedUrlChange->id],
             'admin.distribution.hosted-sites.show' => ['hostedSite' => $hostedChannel->id],
             'admin.distribution.show' => ['channelId' => $channel->id],
             'admin.distribution.sync-settings.preview' => ['channelId' => $channel->id],

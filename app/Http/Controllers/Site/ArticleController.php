@@ -51,7 +51,10 @@ class ArticleController extends Controller
 
         if (! $resolution->isCanonical) {
             $target = $this->urls->url($resolution->canonicalPath);
-            $query = $request->getQueryString();
+            $query = explode('?', $request->getRequestUri(), 2)[1] ?? '';
+            if (preg_match('/[\x00-\x1F\x7F]/', $query) === 1) {
+                throw new NotFoundHttpException(__('site.article_not_found'));
+            }
             if (is_string($query) && $query !== '') {
                 $target .= '?'.$query;
             }

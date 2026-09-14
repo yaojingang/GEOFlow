@@ -2,7 +2,6 @@
 
 namespace App\Services\HostedSites;
 
-use App\Jobs\RefreshHostedSitePermalinkUrls;
 use App\Models\Article;
 use App\Models\DistributionChannel;
 use App\Models\HostedSiteArticleAssignment;
@@ -14,7 +13,6 @@ use App\Support\Site\ArticlePermalinkPattern;
 use App\Support\Site\ArticlePermalinkPolicy;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class HostedSitePermalinkService
@@ -38,7 +36,7 @@ class HostedSitePermalinkService
         $compiled = ArticlePermalinkPattern::compile($pattern);
         $currentPolicy = $this->policy($channel);
         $previewPolicy = $currentPolicy->activate($compiled->pattern());
-        $articles = $this->articles($channel)->lazyById(500);
+        $articles = fn () => $this->articles($channel)->lazyById(500, 'articles.id', 'id');
         $analysis = $this->articlePermalinks->inspectArticles($articles, $currentPolicy, $previewPolicy);
 
         return [
@@ -54,41 +52,7 @@ class HostedSitePermalinkService
 
     public function activate(DistributionChannel $channel, string $pattern, int $expectedRevision): ArticlePermalinkPolicy
     {
-        [$policy, $hostname] = DB::transaction(function () use ($channel, $pattern, $expectedRevision): array {
-            $lockedChannel = DistributionChannel::query()->whereKey($channel->id)->lockForUpdate()->firstOrFail();
-            $lockedChannel = $this->hosted($lockedChannel);
-            $profile = HostedSiteProfile::query()
-                ->where('distribution_channel_id', $lockedChannel->id)
-                ->lockForUpdate()
-                ->firstOrFail();
-            if ($profile->serving_status === HostedSiteProfile::SERVING_ARCHIVED) {
-                throw new DomainException(__('article_permalink.errors.hosted_archived'));
-            }
-            $currentPolicy = $this->policy($lockedChannel);
-            if ($currentPolicy->revision !== $expectedRevision) {
-                throw ValidationException::withMessages(['pattern' => __('article_permalink.errors.hosted_revision_conflict')]);
-            }
-            $inspection = $this->inspect($lockedChannel, $pattern);
-            if ($inspection['conflicts'] !== []) {
-                throw ValidationException::withMessages(['pattern' => $inspection['conflicts']]);
-            }
-            $nextPolicy = $currentPolicy->activate($inspection['pattern']);
-            if ($nextPolicy->revision === $currentPolicy->revision) {
-                return [$currentPolicy, (string) $profile->hostname];
-            }
-
-            $settings = is_array($lockedChannel->site_settings) ? $lockedChannel->site_settings : [];
-            $settings[ArticlePermalinkPolicy::SETTING_KEY] = $nextPolicy->toArray();
-            $lockedChannel->forceFill(['site_settings' => $settings])->save();
-            $profile->forceFill(['settings_version' => (int) $profile->settings_version + 1])->save();
-
-            return [$nextPolicy, (string) $profile->hostname];
-        }, 3);
-
-        $this->resolver->invalidate($hostname);
-        RefreshHostedSitePermalinkUrls::dispatch((int) $channel->id, $policy->revision);
-
-        return $policy;
+        throw ValidationException::withMessages(['pattern' => __('url_change.errors.protected')]);
     }
 
     /** @return \Generator<int,array{article_id:int,title:string,old_path:string,new_path:string,change_reason:string},void,void> */
@@ -160,7 +124,8 @@ class HostedSitePermalinkService
             ->whereHas('hostedSiteAssignment', fn ($query) => $query
                 ->where('hosted_site_profile_id', $profileId)
                 ->where('status', HostedSiteArticleAssignment::STATUS_PUBLISHED))
-            ->with(['category', 'slugHistories']);
+            ->select(['articles.id', 'articles.title', 'articles.slug', 'articles.category_id', 'articles.task_id', 'articles.created_at'])
+            ->with(['category:id,slug', 'slugHistories:id,article_id,slug']);
     }
 
     private function hosted(DistributionChannel $channel): DistributionChannel

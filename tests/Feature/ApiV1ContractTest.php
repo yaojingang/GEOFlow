@@ -287,6 +287,24 @@ class ApiV1ContractTest extends TestCase
             ->assertJsonPath('error.code', 'forbidden');
     }
 
+    public function test_material_api_skips_reserved_permalink_namespace_when_generating_a_category_slug(): void
+    {
+        $admin = $this->createActiveAdmin('reserved_category_api_admin', 'p');
+        $bearer = $this->createBearerToken($admin, ['materials:write']);
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->postJson('/api/v1/materials/categories', [
+                'name' => 'API',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.item.slug', 'api-2');
+
+        $this->assertDatabaseHas('categories', [
+            'name' => 'API',
+            'slug' => 'api-2',
+        ]);
+    }
+
     public function test_knowledge_base_list_bounds_content_while_detail_returns_the_full_body(): void
     {
         $admin = $this->createActiveAdmin('knowledge_list_reader', 'p');

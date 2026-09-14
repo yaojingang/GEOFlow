@@ -11,6 +11,24 @@ This document tracks user-facing updates in the public repository. For future Gi
 - First-party hosted sites can use independent policies. GEOFlow Agent target packages now advertise capability 1.3 with dynamic matching, a private static manifest, atomic activation, and Apache, Nginx, and BaoTa fallbacks.
 
 
+## 2026-09-13
+
+### URL change risk controls
+
+- Primary/hosted article rules, existing category URL identifiers and link-changing article category moves require a super administrator, an impact check, a centered risk dialog and typed confirmation. API and automation requests cannot bypass this workflow.
+- Added category identifier history, deleted-name reservations, scope data versions and change records, with stale-report detection, concurrency checks, idempotent confirmation and direct historical-address redirects.
+- Impact checks, private migration files, sitemaps and hosted URL refreshes run in resumable batches with explicit failure states. Upgrading preserves current URL rules and the configured admin path.
+- See the [URL risk-control operations guide](deployment/URL_CHANGE_RISK_CONTROL.md) for upgrade requirements, resource limits and measured results.
+
+## 2026-09-12
+
+### Article permalink rules
+
+- Site settings now provide six permalink presets and constrained custom patterns built from `{slug}`, `{id}`, `{category}`, `{year}`, `{month}`, and `{day}`.
+- Activation uses a check-and-preview confirmation flow with a downloadable migration map. Historical patterns, old slugs, old categories, mismatched dates, and `/article/{slug}` compatibility URLs redirect once to the current canonical URL.
+- Canonical metadata, Open Graph, JSON-LD, internal article links, sitemaps, view analytics, and first-party hosted-site remote URLs now share the same permalink generator.
+- First-party hosted sites can use independent policies. GEOFlow Agent target packages now advertise capability 1.3 with dynamic matching, a private static manifest, atomic activation, and Apache, Nginx, and BaoTa fallbacks.
+
 ## 2026-09-11
 
 ### Local reverse-proxy origin fidelity

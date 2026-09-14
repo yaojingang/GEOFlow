@@ -12,6 +12,7 @@ use App\Services\Site\SiteScopedArticleQuery;
 use App\Support\Site\CurrentSite;
 use App\Support\Site\InstalledSiteThemeRepository;
 use App\Support\Site\SiteThemePreviewContext;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Pagination\AbstractPaginator;
@@ -58,7 +59,7 @@ class SiteThemePreviewController extends Controller
         ]);
     }
 
-    public function frame(Request $request, string $themeId, string $sitePath = ''): Response
+    public function frame(Request $request, string $themeId, string $sitePath = ''): Response|RedirectResponse
     {
         abort_if($this->currentSite->isHosted(), 404);
         abort_unless($this->themes->find($themeId) !== null, 404);
@@ -80,15 +81,20 @@ class SiteThemePreviewController extends Controller
         $siteRequest->setRouteResolver(fn () => $siteRoute);
 
         try {
-            $html = $this->preview->run($themeId, $frameBase, function () use ($siteRequest, $sitePath, $frameBase): string {
+            $html = $this->preview->run($themeId, $frameBase, function () use ($siteRequest, $sitePath, $frameBase): string|RedirectResponse {
                 $page = match (true) {
                     $sitePath === '' => app(HomeController::class)->index($siteRequest),
                     $sitePath === 'about' => app(AboutController::class)->index(),
                     $sitePath === 'archive' => app(ArchiveController::class)->index(),
-                    str_starts_with($sitePath, 'category/') => app(CategoryController::class)->show(substr($sitePath, 9)),
+                    str_starts_with($sitePath, 'category/') => app(CategoryController::class)->show($siteRequest, substr($sitePath, 9)),
                     str_starts_with($sitePath, 'article/') => app(ArticleController::class)->show($siteRequest),
                     default => app(ArchiveController::class)->month(...array_slice(explode('/', $sitePath), 1)),
                 };
+                if ($page instanceof RedirectResponse) {
+                    abort_unless(str_starts_with($page->getTargetUrl(), rtrim($frameBase, '/').'/'), 404);
+
+                    return $page->setStatusCode(302);
+                }
                 foreach ($page->getData() as $value) {
                     if ($value instanceof AbstractPaginator) {
                         $value->withPath(rtrim($frameBase, '/').'/'.$sitePath);
@@ -101,6 +107,10 @@ class SiteThemePreviewController extends Controller
                     ? preg_replace_callback('~</body>~i', fn (): string => $bridge.'</body>', $html, 1)
                     : $html.$bridge;
             }, $siteRequest);
+
+            if ($html instanceof RedirectResponse) {
+                return $html->withHeaders($headers);
+            }
 
             return response($html, 200, $headers);
         } catch (NotFoundHttpException) {

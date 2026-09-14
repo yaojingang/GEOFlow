@@ -19,6 +19,7 @@ use App\Models\KnowledgeChunk;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\Title;
+use App\Services\Site\UrlChangeInspector;
 use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ArticleWorkflow;
@@ -56,6 +57,7 @@ class WorkerExecutionService
         private readonly AiExecutionErrorSanitizer $aiExecutionErrorSanitizer,
         private readonly AiModelFailoverDecider $aiModelFailoverDecider,
         private readonly JobQueueService $jobQueueService,
+        private readonly UrlChangeInspector $urlChangeInspector,
     ) {}
 
     /**
@@ -187,6 +189,7 @@ class WorkerExecutionService
                         'generation_evidence_snapshot' => $generationEvidenceSnapshot,
                     ]);
 
+                    $this->urlChangeInspector->assertArticleCompatible($article);
                     $this->articleRiskScanner->record($article, 'worker_generation');
 
                     if ($workflow['review_status'] === 'approved') {

@@ -15,6 +15,7 @@ class ArticlePermalinkPolicy
 
     public const PRESETS = [
         'default' => ['name' => 'article_permalink.presets.default', 'pattern' => '/article/{slug}'],
+        'root_category' => ['name' => 'article_permalink.presets.root_category', 'pattern' => '/{category}/{slug}'],
         'html' => ['name' => 'article_permalink.presets.html', 'pattern' => '/{slug}.html'],
         'id_slug' => ['name' => 'article_permalink.presets.id_slug', 'pattern' => '/article/{id}-{slug}.html'],
         'category' => ['name' => 'article_permalink.presets.category', 'pattern' => '/article/{category}/{slug}.html'],

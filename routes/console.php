@@ -5,6 +5,7 @@
  */
 
 use App\Data\Ai\SystemAiIdentity;
+use App\Jobs\RecoverUrlChanges;
 use App\Models\KnowledgeFactGenerationRun;
 use App\Services\GeoFlow\ArticleMarkdownExportService;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
@@ -12,6 +13,8 @@ use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schedule;
+
+Schedule::job(new RecoverUrlChanges)->everyMinute()->withoutOverlapping(2)->onOneServer();
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());

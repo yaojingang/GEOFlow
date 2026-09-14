@@ -63,11 +63,13 @@ class ArticlePermalinkRoutingTest extends TestCase
     {
         return [
             'default' => ['/article/{slug}', '/article/permalink-article'],
+            'root category and slug' => ['/{category}/{slug}', '/ai/permalink-article'],
             'html' => ['/{slug}.html', '/permalink-article.html'],
             'id and slug' => ['/article/{id}-{slug}.html', '/article/1-permalink-article.html'],
             'category' => ['/article/{category}/{slug}.html', '/article/ai/permalink-article.html'],
             'date' => ['/article/{year}/{month}/{slug}.html', '/article/2026/09/permalink-article.html'],
             'id' => ['/article/{id}.html', '/article/1.html'],
+            'root category and id custom pattern' => ['/{category}/{id}', '/ai/1'],
         ];
     }
 
@@ -83,12 +85,46 @@ class ArticlePermalinkRoutingTest extends TestCase
         $this->get('/article/old-category/'.$article->slug.'.html')
             ->assertRedirect($baseUrl.'/article/ai/permalink-article.html')
             ->assertStatus(301);
+        $query = '?tag=first&tag=second&term=a%20b&literal=%2B';
+        $this->head('/article/'.$article->slug.$query)
+            ->assertStatus(301)
+            ->assertRedirect($baseUrl.'/article/ai/permalink-article.html'.$query);
 
         $this->assertSame(0, $article->fresh()->view_count);
         $this->get('/article/ai/permalink-article.html')->assertOk();
         $this->assertSame(1, $article->fresh()->view_count);
         $this->head('/article/ai/permalink-article.html')->assertOk();
         $this->assertSame(1, $article->fresh()->view_count);
+    }
+
+    public function test_large_primary_sitemap_is_sharded_and_uses_canonical_permalink_urls(): void
+    {
+        config()->set('geoflow.hosted_sites.sitemap_url_limit', 2);
+        $first = $this->article();
+        $second = Article::query()->create([
+            'title' => 'Second permalink article',
+            'slug' => 'second-permalink-article',
+            'content' => 'Second permalink body',
+            'category_id' => $first->category_id,
+            'author_id' => $first->author_id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+        $this->setPolicy('/{category}/{slug}');
+        $baseUrl = rtrim((string) config('app.url'), '/');
+
+        $this->get('/sitemap.xml')
+            ->assertOk()
+            ->assertSee('<sitemapindex', false)
+            ->assertSee($baseUrl.'/sitemaps/pages-1.xml', false)
+            ->assertSee($baseUrl.'/sitemaps/pages-2.xml', false);
+
+        $combinedShards = $this->get('/sitemaps/pages-1.xml')->assertOk()->streamedContent()
+            .$this->get('/sitemaps/pages-2.xml')->assertOk()->streamedContent();
+        $this->assertStringContainsString($baseUrl.'/ai/'.$first->slug, $combinedShards);
+        $this->assertStringContainsString($baseUrl.'/ai/'.$second->slug, $combinedShards);
+        $this->get('/sitemaps/pages-3.xml')->assertNotFound();
     }
 
     public function test_historical_pattern_and_slug_redirect_directly_to_the_current_canonical_url(): void

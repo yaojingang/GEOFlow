@@ -1,14 +1,17 @@
 <?php
 
 return [
-    'title' => 'Article permalinks',
+    'title' => 'Custom article links',
+    'description' => 'Manage article detail URLs, historical rules, and migration maps in one place.',
     'current_rule' => 'The current canonical pattern is :pattern. Retired patterns and old slugs redirect to it with HTTP 301.',
     'last_activated' => 'Last activated: :time',
     'download_migration_map' => 'Download URL migration map',
     'installed_theme_warning' => 'The installed theme may still generate legacy article links. Those links remain reachable and redirect to the canonical URL. Review links on its home, category, and article pages.',
     'choose_preset' => 'Choose a preset',
     'custom_template' => 'Custom template',
-    'token_help' => 'Available tokens: {slug}, {id}, {category}, {year}, {month}, and {day}. The template must contain {slug} or {id}.',
+    'token_help' => 'Available tokens: {slug}, {id}, {category}, {year}, {month}, and {day}. The template must contain {slug} or {id}. A root {category} segment cannot use a system-reserved category slug.',
+    'format_help' => 'Separate path levels directly with /. Do not put spaces before or after tokens.',
+    'format_example' => 'For example, /{category}/{slug} generates /ai-news/hello-world.',
     'preview_action' => 'Check and preview',
     'preview_passed' => 'Check passed',
     'preview_summary' => ':articles accessible articles will change; :links structured settings contain legacy article links.',
@@ -22,6 +25,7 @@ return [
 
     'presets' => [
         'default' => 'Default short URL',
+        'root_category' => 'Category short URL (recommended)',
         'html' => 'HTML short URL',
         'id_slug' => 'ID + slug',
         'category' => 'Category path',
@@ -44,11 +48,13 @@ return [
         'unsupported_token' => 'The permalink token {:token} is not supported.',
         'duplicate_token' => 'The permalink token {:token} may appear only once.',
         'invalid_token' => 'The permalink template contains an invalid token.',
-        'invalid_literal' => 'Literal text may contain lowercase letters, digits, hyphens, underscores, and dots.',
+        'invalid_whitespace' => 'The template contains whitespace, such as a space, tab, or line break. Remove it and separate path levels directly with /. For a category and article path, enter /{category}/{slug}.',
+        'invalid_literal' => 'The template contains an unsupported literal character. Outside tokens, use only lowercase letters (a-z), digits (0-9), hyphens (-), underscores (_), dots (.), and path separators (/).',
         'locator_required' => 'The permalink template must contain {slug} or {id}.',
         'token_separator_required' => 'Adjacent tokens require a fixed separator.',
         'root_slug_suffix_required' => 'A root-level slug template requires the fixed .html suffix.',
         'reserved_path' => 'The permalink template conflicts with the reserved /:path entry.',
+        'category_reserved_path' => 'Category slug :slug occupies the reserved /:path entry. Change the category slug first.',
         'slug_invalid' => 'The slug must be a valid single path segment between 1 and 255 bytes.',
         'slug_unavailable' => 'The slug is occupied by a current article or permalink history.',
         'article_conflict' => 'Article #:article: :message',

@@ -767,6 +767,31 @@
       "name": "2026_09_12_220500_create_article_slug_histories_table",
       "sha256": "ef8c891aff97bc636561238dd6829d9109da8e720a8c6cd7e7adf9e5297f31db",
       "online": false
+    },
+    {
+      "name": "2026_09_13_000000_add_permalink_refresh_index_to_article_distributions",
+      "sha256": "109106dc21c1c8ee2e89b6c5b97eabe3302b7c26d845ecac8da32260ae0d8400",
+      "online": false
+    },
+    {
+      "name": "2026_09_13_000100_create_category_slug_histories",
+      "sha256": "6d22fc2a1f2ae8c0840760a7c985d97b645b50df1af23bd10747fae5099dceed",
+      "online": false
+    },
+    {
+      "name": "2026_09_13_000200_create_url_change_requests",
+      "sha256": "7e2c8774246c1a6bd74fb6d96b557ddf286aad8f3917d10f805b22da5297b4fd",
+      "online": false
+    },
+    {
+      "name": "2026_09_13_000300_track_url_data_revisions",
+      "sha256": "e3221646b61ce3b5c3b2589ca879a8201372c9006fd83368a38446267e72cf1d",
+      "online": false
+    },
+    {
+      "name": "2026_09_13_000400_add_url_change_article_lookup_index",
+      "sha256": "1975a41a4504849ca34e8973f351011f3255054ded055c4a303274a49193e611",
+      "online": false
     }
   ],
   "compatibility": {

@@ -79,7 +79,7 @@ final class AdminUiRegistry
     private function settingsSections(): array
     {
         return [
-            ['key' => 'site', 'label_key' => 'admin.ui_v3.settings_site_brand', 'route' => 'admin.site-settings.index', 'patterns' => ['admin.site-settings.index'], 'protected' => false],
+            ['key' => 'site', 'label_key' => 'admin.ui_v3.settings_site_brand', 'route' => 'admin.site-settings.index', 'patterns' => ['admin.site-settings.index', 'admin.site-settings.friend-links.*', 'admin.url-changes.*'], 'protected' => false],
             ['key' => 'theme', 'label_key' => 'admin.ui_v3.settings_home_theme', 'route' => 'admin.site-settings.homepage-modules.edit', 'patterns' => ['admin.site-settings.homepage*', 'admin.site-settings.theme-replications.*', 'admin.site-settings.theme-packages.*', 'admin.site-theme-replications.*'], 'protected' => false],
             ['key' => 'forms', 'label_key' => 'admin.ui_v3.settings_forms_leads', 'route' => 'admin.lead-forms.index', 'patterns' => ['admin.lead-forms.*', 'admin.leads.*'], 'protected' => false],
             ['key' => 'users', 'label_key' => 'admin.ui_v3.users_permissions', 'route' => 'admin.admin-users.index', 'patterns' => ['admin.admin-users.*', 'admin.api-tokens.*'], 'protected' => true],
@@ -226,6 +226,8 @@ final class AdminUiRegistry
             'admin.leads.index' => ['key' => 'leads', 'icon' => 'inbox', 'body_heading' => 'hidden'],
             'admin.leads.show' => ['key' => 'lead_detail', 'icon' => 'user', 'body_heading' => 'hidden'],
             'admin.site-settings.index' => ['key' => 'site_settings', 'icon' => 'settings', 'body_heading' => 'hidden'],
+            'admin.site-settings.friend-links.edit' => ['key' => 'site_settings', 'icon' => 'link-2', 'body_heading' => 'hidden'],
+            'admin.url-changes.show' => ['key' => 'site_settings', 'icon' => 'settings', 'body_heading' => 'content'],
             'admin.site-settings.homepage-modules.edit' => ['key' => 'homepage_modules', 'icon' => 'panels-top-left', 'body_heading' => 'hidden'],
             'admin.site-settings.theme-packages.imports.create' => ['key' => 'theme_package_upload', 'icon' => 'upload', 'body_heading' => 'content'],
             'admin.site-settings.theme-packages.imports.show' => ['key' => 'theme_package_inspection', 'icon' => 'scan-line', 'body_heading' => 'content'],
@@ -358,6 +360,7 @@ final class AdminUiRegistry
             'redirect' => ['admin.entry', 'admin.locale.switch', 'admin.security-settings.index'],
             'special' => ['admin.site-settings.theme-packages.preview.frame', 'admin.login', 'admin.site-settings.theme-replications.preview'],
             'download' => [
+                'admin.url-changes.download',
                 'admin.leads.export', 'admin.manual-publications.export',
                 'admin.articles.batch.export-markdown.download',
                 'admin.distribution.hosted-sites.article-permalink.migration-map',
@@ -367,6 +370,7 @@ final class AdminUiRegistry
             ],
             'binary' => ['admin.ai-workspace.media.show'],
             'endpoint' => [
+                'admin.url-changes.status', 'admin.url-changes.articles',
                 'admin.recent.index',
                 'admin.articles.ai-quality.status', 'admin.articles.ai-quality.optimization.candidate',
                 'admin.articles.editor.titles',

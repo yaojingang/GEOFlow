@@ -5,6 +5,8 @@ namespace App\Services\Site;
 use App\Data\Site\ArticlePermalinkResolution;
 use App\Models\Article;
 use App\Models\ArticleSlugHistory;
+use App\Models\Category;
+use App\Models\DistributionChannel;
 use App\Models\SiteSetting;
 use App\Services\GeoFlow\ArticleSlugRegistry;
 use App\Support\Site\ArticlePermalinkPattern;
@@ -21,6 +23,8 @@ class ArticlePermalinkService
     private ?ArticlePermalinkPolicy $resolvedPolicy = null;
 
     private ?string $resolvedPolicyIdentity = null;
+
+    private ?bool $slugHistoriesTableExists = null;
 
     public function __construct(
         private readonly SiteScopedArticleQuery $siteArticles,
@@ -43,6 +47,12 @@ class ArticlePermalinkService
         );
     }
 
+    public function forgetPolicy(): void
+    {
+        $this->resolvedPolicy = null;
+        $this->resolvedPolicyIdentity = null;
+    }
+
     public function path(Article $article, ?ArticlePermalinkPolicy $policy = null): string
     {
         $policy ??= $this->policy();
@@ -60,6 +70,14 @@ class ArticlePermalinkService
         $compiled = ArticlePermalinkPattern::compile($policy->currentPattern);
 
         return $compiled->render($this->values($article, $slug, $compiled->tokens()));
+    }
+
+    /** @param list<string> $tokens @return array<string,int|string> */
+    public function valuesForPatterns(Article $article, string $slug, array $tokens): array
+    {
+        $this->slugRegistry->assertValid($slug);
+
+        return $this->values($article, $slug, $tokens);
     }
 
     public function currentPatternUses(string $token): bool
@@ -85,9 +103,7 @@ class ArticlePermalinkService
 
     public function assertMigrationReady(Article $article): void
     {
-        foreach ($this->knownSlugs($article) as $slug) {
-            $this->slugRegistry->assertValid($slug);
-        }
+        $this->assertSlugsValid($this->knownSlugs($article));
     }
 
     public function resolve(string $encodedPath): ?ArticlePermalinkResolution
@@ -162,14 +178,14 @@ class ArticlePermalinkService
         $compiled = ArticlePermalinkPattern::compile($pattern);
         $currentPolicy ??= $this->policy();
         $previewPolicy = $currentPolicy->activate($compiled->pattern());
-        $relations = ['category'];
-        if (Schema::hasTable('article_slug_histories')) {
-            $relations[] = 'slugHistories';
+        $relations = ['category:id,slug'];
+        if ($this->hasSlugHistoriesTable()) {
+            $relations[] = 'slugHistories:id,article_id,slug';
         }
-        $articles = $this->siteArticles->query()
+        $articles = fn () => $this->siteArticles->query()
+            ->select(['articles.id', 'articles.title', 'articles.slug', 'articles.category_id', 'articles.created_at'])
             ->with($relations)
-            ->orderBy('id')
-            ->lazyById(500);
+            ->lazyById(500, 'articles.id', 'id');
         $analysis = $this->inspectArticles($articles, $currentPolicy, $previewPolicy);
 
         return [
@@ -184,8 +200,40 @@ class ArticlePermalinkService
         ];
     }
 
+    public function assertAdminBasePathCompatible(string $adminBasePath): void
+    {
+        $usesRootCategory = $this->assertPolicyAdminBasePathCompatible($this->policy(), $adminBasePath);
+        foreach (DistributionChannel::query()->whereHas('hostedSiteProfile')
+            ->select(['id', 'site_settings'])->lazyById(100) as $channel) {
+            $policy = ArticlePermalinkPolicy::fromRaw(($channel->site_settings ?? [])[ArticlePermalinkPolicy::SETTING_KEY] ?? null);
+            $usesRootCategory = $this->assertPolicyAdminBasePathCompatible($policy, $adminBasePath) || $usesRootCategory;
+        }
+
+        if (! $usesRootCategory) {
+            return;
+        }
+
+        $reservedRoots = ArticlePermalinkPattern::reservedFirstSegments($adminBasePath);
+        foreach (['categories', 'category_slug_histories'] as $table) {
+            if (Schema::hasTable($table) && DB::table($table)
+                ->whereIn(DB::raw("LOWER(TRIM(slug, '/'))"), $reservedRoots)->exists()) {
+                throw new \InvalidArgumentException(__('article_permalink.errors.admin_path_conflict'));
+            }
+        }
+    }
+
+    private function assertPolicyAdminBasePathCompatible(ArticlePermalinkPolicy $policy, string $adminBasePath): bool
+    {
+        $usesRootCategory = false;
+        foreach ($policy->patterns() as $pattern) {
+            $usesRootCategory = ArticlePermalinkPattern::compile($pattern, $adminBasePath)->usesRootCategorySegment() || $usesRootCategory;
+        }
+
+        return $usesRootCategory;
+    }
+
     /**
-     * @param  iterable<int,Article>  $articles
+     * @param  callable():iterable<int,Article>  $articles
      * @return array{
      *   affected_articles:int,
      *   examples:list<array{id:int,title:string,current_path:string,preview_path:string}>,
@@ -193,24 +241,23 @@ class ArticlePermalinkService
      * }
      */
     public function inspectArticles(
-        iterable $articles,
+        callable $articles,
         ArticlePermalinkPolicy $currentPolicy,
         ArticlePermalinkPolicy $previewPolicy,
     ): array {
         $examples = [];
         $affectedArticles = 0;
-        $generatedPaths = [];
         $articleIds = [];
         $slugOwners = [];
-        $conflicts = [];
+        $conflicts = $this->reservedRootCategoryConflicts($previewPolicy);
+        $patternIndex = $this->indexPatternsByFirstSegment($previewPolicy);
 
-        foreach ($articles as $article) {
+        foreach ($articles() as $article) {
             try {
-                $this->assertMigrationReady($article);
+                $knownSlugs = $this->knownSlugs($article);
+                $this->assertSlugsValid($knownSlugs);
                 $currentPath = $this->path($article, $currentPolicy);
                 $previewPath = $this->path($article, $previewPolicy);
-                $knownSlugs = $this->knownSlugs($article);
-                $knownPaths = $this->inspectionPaths($article, $previewPolicy, $knownSlugs);
             } catch (\InvalidArgumentException|ValidationException $exception) {
                 $message = $exception instanceof ValidationException
                     ? (string) ($exception->errors()['slug'][0] ?? $exception->getMessage())
@@ -240,17 +287,6 @@ class ArticlePermalinkService
             if ($currentPath !== $previewPath) {
                 $affectedArticles++;
             }
-            foreach ($knownPaths as $knownPath) {
-                if (isset($generatedPaths[$knownPath]) && $generatedPaths[$knownPath] !== $articleId) {
-                    $conflicts[] = __('article_permalink.errors.path_conflict', [
-                        'path' => $knownPath,
-                        'first' => $generatedPaths[$knownPath],
-                        'second' => $articleId,
-                    ]);
-                } else {
-                    $generatedPaths[$knownPath] = $articleId;
-                }
-            }
 
             if (count($examples) < 3) {
                 $examples[] = [
@@ -265,29 +301,35 @@ class ArticlePermalinkService
             }
         }
 
-        foreach (array_keys($generatedPaths) as $knownPath) {
-            $matchedArticleIds = [];
-            foreach ($previewPolicy->patterns() as $pattern) {
-                $values = ArticlePermalinkPattern::compile($pattern)->match($knownPath);
-                if ($values === null) {
+        if (count($conflicts) < 50) {
+            foreach ($articles() as $article) {
+                try {
+                    $knownPaths = $this->inspectionPaths(
+                        $article,
+                        $previewPolicy,
+                        $this->knownSlugs($article),
+                    );
+                } catch (\InvalidArgumentException|ValidationException) {
                     continue;
                 }
-                $articleId = isset($values['id'])
-                    ? (int) $values['id']
-                    : ($slugOwners[(string) ($values['slug'] ?? '')] ?? 0);
-                if ($articleId > 0 && isset($articleIds[$articleId])) {
-                    $matchedArticleIds[$articleId] = true;
+
+                foreach ($knownPaths as $knownPath) {
+                    $matchedArticleIds = $this->matchedArticleIds(
+                        $knownPath,
+                        $patternIndex,
+                        $articleIds,
+                        $slugOwners,
+                    );
+                    if (count($matchedArticleIds) > 1) {
+                        $conflicts[] = __('article_permalink.errors.ambiguous_path', [
+                            'path' => $knownPath,
+                            'articles' => '#'.implode(' / #', $matchedArticleIds),
+                        ]);
+                    }
+                    if (count($conflicts) >= 50) {
+                        break 2;
+                    }
                 }
-            }
-            if (count($matchedArticleIds) > 1) {
-                $ids = array_keys($matchedArticleIds);
-                $conflicts[] = __('article_permalink.errors.ambiguous_path', [
-                    'path' => $knownPath,
-                    'articles' => '#'.implode(' / #', $ids),
-                ]);
-            }
-            if (count($conflicts) >= 50) {
-                break;
             }
         }
 
@@ -298,46 +340,39 @@ class ArticlePermalinkService
         ];
     }
 
+    /** @return list<string> */
+    private function reservedRootCategoryConflicts(
+        ArticlePermalinkPolicy $policy,
+        ?string $adminBasePath = null,
+    ): array {
+        $usesRootCategory = collect($policy->patterns())
+            ->contains(static fn (string $pattern): bool => ArticlePermalinkPattern::compile($pattern, $adminBasePath)->usesRootCategorySegment());
+        if (! $usesRootCategory || ! Schema::hasTable('categories')) {
+            return [];
+        }
+
+        $conflicts = [];
+        foreach (Category::query()->select(['id', 'slug'])->lazyById(500) as $category) {
+            $slug = (string) $category->slug;
+            if (! ArticlePermalinkPattern::isReservedFirstSegment($slug, $adminBasePath)) {
+                continue;
+            }
+
+            $conflicts[] = __('article_permalink.errors.category_reserved_path', [
+                'slug' => $slug,
+                'path' => mb_strtolower($slug, 'UTF-8'),
+            ]);
+            if (count($conflicts) >= 50) {
+                break;
+            }
+        }
+
+        return $conflicts;
+    }
+
     public function activatePrimary(string $pattern, int $expectedRevision): ArticlePermalinkPolicy
     {
-        $policy = DB::transaction(function () use ($pattern, $expectedRevision): ArticlePermalinkPolicy {
-            if (DB::getDriverName() === 'pgsql') {
-                DB::select("select pg_advisory_xact_lock(hashtext('site:primary:article_permalink_policy'))");
-            }
-
-            $setting = SiteSetting::query()
-                ->where('setting_key', ArticlePermalinkPolicy::SETTING_KEY)
-                ->lockForUpdate()
-                ->first();
-            $currentPolicy = ArticlePermalinkPolicy::fromRaw($setting?->setting_value);
-            if ($currentPolicy->revision !== $expectedRevision) {
-                throw ValidationException::withMessages([
-                    'pattern' => __('article_permalink.errors.revision_conflict'),
-                ]);
-            }
-
-            $inspection = $this->inspect($pattern, $currentPolicy);
-            if ($inspection['conflicts'] !== []) {
-                throw ValidationException::withMessages(['pattern' => $inspection['conflicts']]);
-            }
-
-            $nextPolicy = $currentPolicy->activate($inspection['pattern']);
-            if ($nextPolicy->revision === $currentPolicy->revision) {
-                return $currentPolicy;
-            }
-            SiteSetting::query()->updateOrCreate(
-                ['setting_key' => ArticlePermalinkPolicy::SETTING_KEY],
-                ['setting_value' => json_encode($nextPolicy->toArray(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)]
-            );
-
-            return $nextPolicy;
-        });
-
-        SiteSettingsBag::forget();
-        $this->resolvedPolicy = $policy;
-        $this->resolvedPolicyIdentity = $this->policyIdentity();
-
-        return $policy;
+        throw ValidationException::withMessages(['pattern' => __('url_change.errors.protected')]);
     }
 
     /** @return \Generator<int,array{article_id:int,title:string,old_path:string,new_path:string,change_reason:string},void,void> */
@@ -348,11 +383,14 @@ class ArticlePermalinkService
             $policy->patterns(),
             static fn (string $pattern): bool => $pattern !== $policy->currentPattern,
         ));
-        $relations = ['category'];
-        if (Schema::hasTable('article_slug_histories')) {
-            $relations[] = 'slugHistories';
+        $relations = ['category:id,slug'];
+        if ($this->hasSlugHistoriesTable()) {
+            $relations[] = 'slugHistories:id,article_id,slug';
         }
-        foreach ($this->siteArticles->query()->with($relations)->orderBy('id')->lazyById(200) as $article) {
+        foreach ($this->siteArticles->query()
+            ->select(['articles.id', 'articles.title', 'articles.slug', 'articles.category_id', 'articles.created_at'])
+            ->with($relations)
+            ->lazyById(200, 'articles.id', 'id') as $article) {
             $newPath = $this->path($article, $policy);
             $seenPaths = [];
             foreach ($oldPatterns as $oldPattern) {
@@ -413,7 +451,7 @@ class ArticlePermalinkService
 
         $slug = (string) ($values['slug'] ?? '');
         $article = (clone $query)->where('slug', $slug)->first();
-        if ($article instanceof Article || ! Schema::hasTable('article_slug_histories')) {
+        if ($article instanceof Article || ! $this->hasSlugHistoriesTable()) {
             return $article;
         }
 
@@ -425,7 +463,7 @@ class ArticlePermalinkService
         return $query->whereKey((int) $articleId)->first();
     }
 
-    private function isSafeRequestPath(string $path): bool
+    public function isSafeRequestPath(string $path): bool
     {
         return str_starts_with($path, '/')
             && strlen($path) <= 2048
@@ -470,7 +508,7 @@ class ArticlePermalinkService
     private function knownSlugs(Article $article): array
     {
         $slugs = [(string) $article->slug];
-        if (Schema::hasTable('article_slug_histories')) {
+        if ($this->hasSlugHistoriesTable()) {
             $article->loadMissing('slugHistories');
             foreach ($article->slugHistories as $history) {
                 $slugs[] = (string) $history->slug;
@@ -501,6 +539,71 @@ class ArticlePermalinkService
         }
 
         return array_values(array_unique($paths));
+    }
+
+    /**
+     * @param  array<int,true>  $articleIds
+     * @param  array<string,int>  $slugOwners
+     * @param  array{dynamic:list<string>,fixed:array<string,list<string>>}  $patternIndex
+     * @return list<int>
+     */
+    private function matchedArticleIds(
+        string $knownPath,
+        array $patternIndex,
+        array $articleIds,
+        array $slugOwners,
+    ): array {
+        $matchedArticleIds = [];
+        $firstSegment = explode('/', ltrim($knownPath, '/'), 2)[0];
+        $patterns = array_merge(
+            $patternIndex['dynamic'],
+            $patternIndex['fixed'][$firstSegment] ?? [],
+        );
+        foreach ($patterns as $pattern) {
+            $values = ArticlePermalinkPattern::compile($pattern)->match($knownPath);
+            if ($values === null) {
+                continue;
+            }
+            $articleId = isset($values['id'])
+                ? (int) $values['id']
+                : ($slugOwners[(string) ($values['slug'] ?? '')] ?? 0);
+            if ($articleId > 0 && isset($articleIds[$articleId])) {
+                $matchedArticleIds[$articleId] = true;
+            }
+        }
+
+        return array_map('intval', array_keys($matchedArticleIds));
+    }
+
+    /** @return array{dynamic:list<string>,fixed:array<string,list<string>>} */
+    private function indexPatternsByFirstSegment(ArticlePermalinkPolicy $policy): array
+    {
+        $index = ['dynamic' => [], 'fixed' => []];
+        foreach ($policy->patterns() as $pattern) {
+            $firstSegment = explode('/', ltrim($pattern, '/'), 2)[0];
+            if (str_contains($firstSegment, '{')) {
+                $index['dynamic'][] = $pattern;
+
+                continue;
+            }
+
+            $index['fixed'][$firstSegment][] = $pattern;
+        }
+
+        return $index;
+    }
+
+    /** @param list<string> $slugs */
+    private function assertSlugsValid(array $slugs): void
+    {
+        foreach ($slugs as $slug) {
+            $this->slugRegistry->assertValid($slug);
+        }
+    }
+
+    private function hasSlugHistoriesTable(): bool
+    {
+        return $this->slugHistoriesTableExists ??= Schema::hasTable('article_slug_histories');
     }
 
     /** @param array<string,string> $values */

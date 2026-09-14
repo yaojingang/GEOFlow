@@ -542,6 +542,11 @@
 </div>
 </div>
 </main><footer class="tk-footer">
+@if(!empty($friendLinks))
+<div class="tkf-inner">
+    @include('site.partials.friend-links')
+</div>
+@endif
 <div class="tkf-inner">
 <div class="tkf-brand">
 <span class="logo-mark">T</span>

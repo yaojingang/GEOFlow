@@ -9,10 +9,13 @@ use App\Services\HostedSites\HostedSiteUrlGenerator;
 use App\Support\Site\ArticlePermalinkPolicy;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\DB;
 
 class RefreshHostedSitePermalinkUrls implements ShouldQueue
 {
     use Queueable;
+
+    private const BATCH_SIZE = 200;
 
     public int $tries = 3;
 
@@ -21,6 +24,7 @@ class RefreshHostedSitePermalinkUrls implements ShouldQueue
     public function __construct(
         private readonly int $channelId,
         private readonly int $policyRevision,
+        private readonly int $afterDistributionId = 0,
     ) {}
 
     /** @return list<string> */
@@ -29,37 +33,60 @@ class RefreshHostedSitePermalinkUrls implements ShouldQueue
         return [
             'hosted-site-permalink:'.$this->channelId,
             'article-permalink-revision:'.$this->policyRevision,
+            'article-distribution-after:'.$this->afterDistributionId,
         ];
     }
 
     public function handle(HostedSiteUrlGenerator $urls): void
     {
-        $channel = DistributionChannel::query()->with('hostedSiteProfile')->find($this->channelId);
+        DB::transaction(fn () => $this->refreshBatch($urls), 3);
+    }
+
+    private function refreshBatch(HostedSiteUrlGenerator $urls): void
+    {
+        $channel = DistributionChannel::query()->lockForUpdate()->with('hostedSiteProfile')->find($this->channelId);
         if (! $channel instanceof DistributionChannel || ! $this->isCurrentRevision($channel)) {
             return;
         }
 
-        ArticleDistribution::query()
+        $distributions = ArticleDistribution::query()
             ->where('distribution_channel_id', $channel->id)
             ->where('status', 'synced')
             ->where('action', '!=', 'delete')
-            ->with('article.category')
-            ->chunkById(200, function ($distributions) use ($channel, $urls): bool {
-                $freshChannel = DistributionChannel::query()->with('hostedSiteProfile')->find($channel->id);
-                if (! $freshChannel instanceof DistributionChannel || ! $this->isCurrentRevision($freshChannel)) {
-                    return false;
-                }
+            ->where('id', '>', $this->afterDistributionId)
+            ->with([
+                'article' => fn ($article) => $article->withTrashed()->select(['id', 'slug', 'category_id', 'created_at']),
+                'article.category:id,slug',
+            ])
+            ->orderBy('id')
+            ->limit(self::BATCH_SIZE + 1)
+            ->get();
+        $hasMore = $distributions->count() > self::BATCH_SIZE;
+        $distributions = $distributions->take(self::BATCH_SIZE);
+        if ($distributions->isEmpty()) {
+            return;
+        }
 
-                foreach ($distributions as $distribution) {
-                    if ($distribution->article instanceof Article) {
-                        $distribution->forceFill([
-                            'remote_url' => $urls->article($freshChannel, $distribution->article),
-                        ])->save();
-                    }
-                }
+        $freshChannel = DistributionChannel::query()->with('hostedSiteProfile')->find($channel->id);
+        if (! $freshChannel instanceof DistributionChannel || ! $this->isCurrentRevision($freshChannel)) {
+            return;
+        }
 
-                return true;
-            });
+        foreach ($distributions as $distribution) {
+            if ($distribution->article instanceof Article) {
+                $distribution->forceFill([
+                    'remote_url' => $urls->article($freshChannel, $distribution->article),
+                ])->save();
+            }
+        }
+
+        if ($hasMore) {
+            self::dispatch(
+                $this->channelId,
+                $this->policyRevision,
+                (int) $distributions->last()->id,
+            )->afterCommit();
+        }
     }
 
     private function isCurrentRevision(DistributionChannel $channel): bool
@@ -67,6 +94,6 @@ class RefreshHostedSitePermalinkUrls implements ShouldQueue
         $settings = is_array($channel->site_settings) ? $channel->site_settings : [];
         $policy = ArticlePermalinkPolicy::fromRaw($settings[ArticlePermalinkPolicy::SETTING_KEY] ?? null);
 
-        return $channel->isHostedSite() && $policy->revision === $this->policyRevision;
+        return $channel->isHostedSite() && $channel->status !== 'deleting' && $policy->revision === $this->policyRevision;
     }
 }

@@ -47,5 +47,10 @@
     "partials/article-card.blade.php"
   ],
   "fallback_templates": [],
-  "notes": "Preview requires selecting this theme in admin site settings or using static rendered review, because this Laravel app has no isolated theme preview route."
+  "notes": "Preview requires selecting this theme in admin site settings or using static rendered review, because this Laravel app has no isolated theme preview route.",
+  "requires": {
+    "views": [
+      "site.partials.friend-links"
+    ]
+  }
 }
