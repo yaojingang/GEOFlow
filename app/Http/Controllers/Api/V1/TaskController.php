@@ -9,6 +9,7 @@ use App\Models\Admin;
 use App\Models\Task;
 use App\Services\Api\ApiTokenService;
 use App\Services\Api\IdempotencyService;
+use App\Services\Api\ManagementOperationService;
 use App\Services\GeoFlow\TaskLifecycleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -175,10 +176,24 @@ class TaskController extends BaseApiController
      */
     public function enqueue(Request $request, int $task, TaskLifecycleService $tasks, ApiTokenService $tokens): JsonResponse
     {
+        if ($request->hasHeader('X-Client-Request-Id') && $request->hasHeader('X-Idempotency-Key')) {
+            throw new ApiException('conflicting_idempotency_headers', 'X-Client-Request-Id 与 X-Idempotency-Key 不能同时使用，请选择一种请求去重方式', 422);
+        }
         $viewer = $this->executionAdmin($request);
         $this->assertTaskExecutionScope($request, $task, $tokens);
         $body = $request->all();
         $jobType = trim((string) ($body['job_type'] ?? 'generate_article'));
+
+        if ($request->hasHeader('X-Client-Request-Id')) {
+            $request->validate(['job_type' => ['sometimes', 'string', 'in:generate_article']]);
+            $receipt = app(ManagementOperationService::class)->enqueue($request, $task, $jobType,
+                fn (): array => $tasks->enqueueTaskForApi(
+                    taskId: $task, jobType: $jobType, payload: ['source' => 'api_enqueue'],
+                    canManageHostedTask: $this->canManageHostedTask($viewer), viewer: $viewer,
+                ));
+
+            return $this->success($request, $receipt, $receipt['replayed'] ? 200 : 201);
+        }
 
         return IdempotencyService::executeJson(
             $request,

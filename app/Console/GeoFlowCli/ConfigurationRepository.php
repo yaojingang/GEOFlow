@@ -39,6 +39,8 @@ class ConfigurationRepository
             'base_url' => null,
             'base_url_source' => null,
             'token' => null,
+            'instance_id' => null,
+            'admin_id' => null,
             'token_source' => null,
             'timeout' => 30,
             'timeout_source' => 'default',
@@ -60,6 +62,8 @@ class ConfigurationRepository
             }
 
             $loaded = $this->load($path);
+            $config['instance_id'] = $loaded['instance_id'];
+            $config['admin_id'] = $loaded['admin_id'];
             $config['config_files'][] = $path;
             foreach (['base_url', 'token', 'timeout', 'allow_insecure_http'] as $key) {
                 if (! array_key_exists($key, $loaded) || $loaded[$key] === null || $loaded[$key] === '') {
@@ -102,6 +106,10 @@ class ConfigurationRepository
         }
 
         $this->applyCredentialBinding($config, $requireApi);
+        if ($config['base_url_source'] !== 'file:'.$profile['path']) {
+            $config['instance_id'] = null;
+            $config['admin_id'] = null;
+        }
 
         return $config;
     }
@@ -234,6 +242,8 @@ class ConfigurationRepository
         return [
             'base_url' => $this->nullableString($decoded, 'base_url', $path),
             'token' => $this->nullableString($decoded, 'token', $path),
+            'instance_id' => $this->nullableString($decoded, 'instance_id', $path),
+            'admin_id' => $this->nullableString($decoded, 'admin_id', $path),
             'timeout' => $decoded['timeout'] ?? null,
             'allow_insecure_http' => $decoded['allow_insecure_http'] ?? null,
         ];
@@ -256,6 +266,13 @@ class ConfigurationRepository
     /** @param array<string,mixed> $options @return array{source:'explicit'|'local'|'home',path:string} */
     private function candidateProfile(array $options): array
     {
+        if (isset($options['profile'])) {
+            if (isset($options['config']) || isset($options['file'])) {
+                throw new CliException('--profile 不能与 --config/--file 同时使用');
+            }
+
+            return ['source' => 'explicit', 'path' => $this->profilePath((string) $options['profile'])];
+        }
         if (isset($options['config']) && trim((string) $options['config']) !== '') {
             return ['source' => 'explicit', 'path' => $this->expandPath((string) $options['config'])];
         }
@@ -266,6 +283,29 @@ class ConfigurationRepository
         }
 
         return ['source' => 'home', 'path' => $this->defaultPath()];
+    }
+
+    public function profilePath(string $name): string
+    {
+        if (preg_match('/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/D', $name) !== 1) {
+            throw new CliException('profile 名称仅支持 1–64 个字母、数字、下划线和连字符');
+        }
+
+        return dirname($this->defaultPath()).'/profiles/'.$name.'.json';
+    }
+
+    /** @return list<string> */
+    public function profileNames(): array
+    {
+        $names = [];
+        foreach (glob(dirname($this->defaultPath()).'/profiles/*.json') ?: [] as $file) {
+            if (! is_link($file) && is_file($file)) {
+                $names[] = basename($file, '.json');
+            }
+        }
+        sort($names);
+
+        return $names;
     }
 
     /** @param array<string,mixed> $config */
@@ -416,7 +456,7 @@ class ConfigurationRepository
 
     private function repairDefaultDirectoryPermissions(string $path): ?string
     {
-        if (PHP_OS_FAMILY === 'Windows' || $path !== $this->defaultPath()) {
+        if (PHP_OS_FAMILY === 'Windows' || ($path !== $this->defaultPath() && dirname($path) !== dirname($this->defaultPath()).'/profiles')) {
             return null;
         }
 

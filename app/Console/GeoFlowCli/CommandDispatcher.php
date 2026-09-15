@@ -92,6 +92,7 @@ final class CommandDispatcher
         }
 
         $status = match ($parsed->positionals[0]) {
+            'capabilities', 'whoami', 'doctor', 'logout', 'profile', 'api', 'site', 'operation' => (new ManagementHandler($runtime))->handle(),
             'config', 'login' => (new ConfigLoginHandler($runtime))->handle($parsed->positionals[0]),
             'catalog' => $runtime->send('catalog'),
             'task', 'job' => (new TaskJobHandler($runtime))->handle($parsed->positionals[0]),

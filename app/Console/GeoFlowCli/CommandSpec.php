@@ -6,7 +6,7 @@ final class CommandSpec
 {
     /** @var list<string> */
     private const GLOBAL_OPTIONS = [
-        'config', 'base-url', 'token', 'token-stdin', 'timeout', 'allow-insecure-http',
+        'config', 'profile', 'base-url', 'token', 'token-stdin', 'timeout', 'allow-insecure-http',
         'help', 'version', 'no-interaction', 'quiet', 'verbose', 'ansi', 'no-ansi',
     ];
 
@@ -26,7 +26,20 @@ final class CommandSpec
         return [
             'config.init' => self::spec('config.init', ['config', 'init'], 2, ['file', 'force'], null, false, 'config init --base-url URL [--token-stdin] [--file PATH] [--force]'),
             'config.show' => self::spec('config.show', ['config', 'show'], 2, [], null, false, 'config show [--config PATH]'),
-            'login' => self::spec('login', ['login'], 1, ['username', 'password', 'password-stdin', 'file', 'force'], 'auth.login', false, 'login --base-url URL [--username USER] [--password-stdin] [--file PATH] [--force]'),
+            'login' => self::spec('login', ['login'], 1, ['username', 'password', 'password-stdin', 'file', 'force', 'scopes'], 'auth.login', false, 'login --base-url URL [--profile NAME] [--scopes LIST] [--username USER] [--password-stdin] [--file PATH] [--force]'),
+            'capabilities' => self::spec('capabilities', ['capabilities'], 1, [], null, false, 'capabilities'),
+            'whoami' => self::spec('whoami', ['whoami'], 1, [], null, false, 'whoami'),
+            'doctor' => self::spec('doctor', ['doctor'], 1, [], null, false, 'doctor'),
+            'logout' => self::spec('logout', ['logout'], 1, [], null, false, 'logout [--profile NAME]'),
+            'profile.list' => self::spec('profile.list', ['profile', 'list'], 2, [], null, false, 'profile list'),
+            'profile.show' => self::spec('profile.show', ['profile', 'show'], 3, [], null, false, 'profile show NAME'),
+            'profile.bind' => self::spec('profile.bind', ['profile', 'bind'], 2, ['instance-id', 'admin-id'], null, false, 'profile bind (--profile NAME | --config PATH) --instance-id ID --admin-id ID'),
+            'api' => self::spec('api', ['api'], 2, ['input', 'idempotency-key', 'client-request-id'], null, false, 'api OPERATION_ID [--input FILE|-] [--idempotency-key KEY] [--client-request-id ID]'),
+            'site.list' => self::spec('site.list', ['site', 'list'], 2, [], null, false, 'site list'),
+            'site.show' => self::spec('site.show', ['site', 'show'], 3, [], null, false, 'site show SITE'),
+            'operation.get' => self::spec('operation.get', ['operation', 'get'], 3, [], null, false, 'operation get ID'),
+            'operation.lookup' => self::spec('operation.lookup', ['operation', 'lookup'], 3, [], null, false, 'operation lookup CLIENT_REQUEST_ID'),
+            'operation.wait' => self::spec('operation.wait', ['operation', 'wait'], 3, ['wait-seconds'], null, false, 'operation wait ID [--wait-seconds N]'),
             'catalog' => self::spec('catalog', ['catalog'], 1, [], 'catalog', false, 'catalog'),
             'task.list' => self::spec('task.list', ['task', 'list'], 2, ['page', 'per-page', 'status', 'search'], 'task.list', false, 'task list [--page N] [--per-page N] [--status STATUS] [--search TEXT]'),
             'task.create' => self::spec('task.create', ['task', 'create'], 2, ['json', 'idempotency-key'], 'task.create', false, 'task create --json FILE [--idempotency-key KEY]'),
@@ -190,7 +203,7 @@ final class CommandSpec
 
         return 'GEOFlow CLI '.CliVersion::VALUE.PHP_EOL.PHP_EOL
             .'Usage:'.PHP_EOL.implode(PHP_EOL, $lines).PHP_EOL.PHP_EOL
-            .'Global options: --config PATH --base-url URL --token-stdin --timeout SECONDS '
+            .'Global options: --profile NAME --config PATH --base-url URL --token-stdin --timeout SECONDS '
             .'--allow-insecure-http --no-interaction --quiet (-q) --verbose (-v|-vv|-vvv) '
             .'--ansi --no-ansi'.PHP_EOL.PHP_EOL
             .'Secrets can be supplied through environment variables, hidden prompts, or stdin flags.'.PHP_EOL

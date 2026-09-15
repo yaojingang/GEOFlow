@@ -59,14 +59,36 @@
     "scripts/validate_homepage_design_payload.py",
     "security/network_policy.json",
     "security/permission_policy.json",
-    "templates/homepage-design-template.json"
+    "templates/homepage-design-template.json",
+    "references/remote-cli-workflow.md",
+    "reports/remote-cli-review.md"
   ],
   "mode_outputs": {
-    "development": ["changed-files", "contract-impact", "verification-result"],
-    "operations": ["surface-used", "resource-readback", "final-state"],
-    "public_frontend": ["target-theme-or-payload", "preview-evidence", "contract-check"],
-    "channel_frontend": ["capability-status", "sync-preview", "rollback-note"],
-    "legacy_migration": ["legacy-inventory", "laravel-mapping", "migration-handoff"]
+    "development": [
+      "changed-files",
+      "contract-impact",
+      "verification-result"
+    ],
+    "operations": [
+      "surface-used",
+      "resource-readback",
+      "final-state"
+    ],
+    "public_frontend": [
+      "target-theme-or-payload",
+      "preview-evidence",
+      "contract-check"
+    ],
+    "channel_frontend": [
+      "capability-status",
+      "sync-preview",
+      "rollback-note"
+    ],
+    "legacy_migration": [
+      "legacy-inventory",
+      "laravel-mapping",
+      "migration-handoff"
+    ]
   },
   "required_report_fields": [
     "selected-mode",

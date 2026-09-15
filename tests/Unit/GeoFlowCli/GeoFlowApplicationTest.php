@@ -24,7 +24,7 @@ class GeoFlowApplicationTest extends TestCase
         $this->assertSame(0, $status);
         $this->assertSame([
             'name' => 'geoflow',
-            'version' => '0.2.0',
+            'version' => '0.3.0-preview.1',
         ], json_decode($output->fetch(), true, flags: JSON_THROW_ON_ERROR));
     }
 

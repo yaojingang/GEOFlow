@@ -106,6 +106,13 @@ final class CommandRuntime
 
     public function targetConfigPath(): string
     {
+        if (isset($this->context->options['profile'])) {
+            if (isset($this->context->options['config']) || isset($this->context->options['file'])) {
+                throw new CliException('--profile 不能与 --config/--file 同时使用');
+            }
+
+            return $this->configuration->profilePath((string) $this->context->options['profile']);
+        }
         $path = $this->context->options['file']
             ?? $this->context->options['config']
             ?? $this->configuration->defaultPath();

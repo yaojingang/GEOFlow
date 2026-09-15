@@ -15,6 +15,7 @@ use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
@@ -317,8 +318,9 @@ class FriendLinkSettingsTest extends TestCase
         $this->login();
         $this->submit([$this->link(['name' => 'Old name'])])->assertSessionHasNoErrors();
         SiteSettingsBag::forget();
-        SiteSettingsBag::all();
+        $staleSettings = SiteSettingsBag::all();
         $this->submit([$this->link(['name' => 'New name'])])->assertSessionHasNoErrors();
+        Cache::put('geoflow.site_settings.public_map', $staleSettings, 60);
         $this->assertStringContainsString('Old name', SiteSettingsBag::all()['friend_links']);
         $queries = [];
         DB::listen(function ($query) use (&$queries) {

@@ -1,4 +1,6 @@
 <!--
+
+> Remote CLI preview: for running instances, start with [the remote CLI workflow](remote-cli-workflow.md). Local source is optional. Publication and full management coverage remain pending; the guidance below describes existing source/legacy workflows.
 Copyright © 2026 姚金刚. All rights reserved.
 Project: geoflow
 Created by: 姚金刚

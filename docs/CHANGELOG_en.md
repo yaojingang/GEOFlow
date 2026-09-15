@@ -1,15 +1,15 @@
 # GEOFlow Changelog
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
-## 2026-09-12
 
-### Article permalink rules
+## Unreleased: remote management preview
 
-- Site settings now provide six permalink presets and constrained custom patterns built from `{slug}`, `{id}`, `{category}`, `{year}`, `{month}`, and `{day}`.
-- Activation uses a check-and-preview confirmation flow with a downloadable migration map. Historical patterns, old slugs, old categories, mismatched dates, and `/article/{slug}` compatibility URLs redirect once to the current canonical URL.
-- Canonical metadata, Open Graph, JSON-LD, internal article links, sitemaps, view analytics, and first-party hosted-site remote URLs now share the same permalink generator.
-- First-party hosted sites can use independent policies. GEOFlow Agent target packages now advertise capability 1.3 with dynamic matching, a private static manifest, atomic activation, and Apache, Nginx, and BaoTa fallbacks.
-
+- CLI `0.3.0-preview.1` adds a standalone PHAR, signed-bundle installation and interrupted-update recovery, named profiles, explicit login scopes, identity binding, and current-token revocation.
+- Task enqueue gains receipts and client request IDs for lost-response lookup, duplicate protection, and recovery after logging back into the same account. Theme drafts do not yet support receipt recovery.
+- Built-in and installed primary-site themes support remote drafts, chunked file reads, atomic incremental changes, signed previews with real content, and discard, without manual theme-package round trips for draft editing.
+- Native template code requires a trusted super administrator, explicit code scope, and a short-lived password grant. Admin appearance writes share a lock and version conflict checks.
+- Skill `1.1.0-preview.1` defaults to the remote CLI. Added operation/route coverage records, a preview contract, and CI installation verification.
+- Five maintenance-mode migrations extend the data model. Theme publication, rollback, full administration, multiple sites, and official signed distribution remain pending; see [current coverage](api/remote-management-preview.md).
 
 ## 2026-09-13
 

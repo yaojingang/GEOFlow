@@ -39,7 +39,7 @@ final class SiteSettingsBag
             return [];
         }
 
-        return Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, static function (): array {
+        $cached = Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, static function (): array {
             /** @var array<string, string> $map */
             $map = SiteSetting::query()
                 ->pluck('setting_value', 'setting_key')
@@ -47,6 +47,8 @@ final class SiteSettingsBag
 
             return $map;
         });
+
+        return array_replace($cached, app(ThemeRevisionContext::class)->snapshot()['settings'] ?? []);
     }
 
     /** @return array<string,string> */

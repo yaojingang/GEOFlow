@@ -23,6 +23,7 @@ use App\Http\Middleware\NormalizeRequestHost;
 use App\Http\Middleware\RecordSiteViewLog;
 use App\Http\Middleware\RenderAiWorkspaceJsonErrors;
 use App\Http\Middleware\ResolveCurrentSite;
+use App\Http\Middleware\ScopeThemeRevision;
 use App\Http\Middleware\SiteWebLocale;
 use App\Http\Middleware\TrackAdminRecentPage;
 use App\Support\ApiResponse;
@@ -35,7 +36,9 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Exception\SuspiciousOperationException;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -47,7 +50,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->trimStrings(except: ['friend_links.links.*.url']);
+        $workspaceFileChanges = static fn (Request $request): bool => $request->isMethod('POST')
+            && count($request->segments()) === 6
+            && $request->is('api/v1/management/theme-workspaces/*/changes')
+            && Str::isUuid((string) $request->segment(5));
+        $middleware->trimStrings(except: ['friend_links.links.*.url', $workspaceFileChanges]);
+        $middleware->convertEmptyStringsToNull(except: [$workspaceFileChanges]);
         $middleware->prepend(LimitArticleMarkdownExportRequestSize::class);
         $middleware->trustHosts(static function (): array {
             $patterns = [];
@@ -64,6 +72,7 @@ return Application::configure(basePath: dirname(__DIR__))
             NormalizeRequestHost::class,
             ResolveCurrentSite::class,
             EnforceCurrentSiteSurface::class,
+            ScopeThemeRevision::class,
         ]);
         $middleware->appendToGroup('web', AssignApiRequestId::class);
 
@@ -153,7 +162,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(function (ApiException $e, Request $request) {
             if (! $request->is('api/*')) {
-                return null;
+                return response($e->getMessage(), $e->getHttpStatus())
+                    ->header('Content-Type', 'text/plain; charset=utf-8')
+                    ->header('Cache-Control', 'no-store, private');
             }
 
             $rid = (string) ($request->attributes->get('request_id') ?? Str::uuid()->toString());
@@ -204,6 +215,15 @@ return Application::configure(basePath: dirname(__DIR__))
                     $rid,
                     404
                 )->withHeaders(['X-Request-Id' => $rid]);
+            }
+
+            if ($e instanceof HttpExceptionInterface) {
+                $rid = (string) ($request->attributes->get('request_id') ?? Str::uuid()->toString());
+                $status = $e->getStatusCode();
+
+                return ApiResponse::error('http_'.$status, Response::$statusTexts[$status] ?? 'Request failed', $rid, $status)
+                    ->withHeaders(array_intersect_key($e->getHeaders(), array_flip(['Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining'])))
+                    ->withHeaders(['X-Request-Id' => $rid]);
             }
 
             Log::error($e->getMessage(), [

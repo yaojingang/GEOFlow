@@ -98,7 +98,7 @@ class ArticlePermalinkPattern
             'category', 'config.php', 'css', 'favicon.ico', 'forms', 'geoflow-agent', 'horizon',
             'images', 'index.php', 'js', 'livewire', 'llms.txt', 'robots.txt', 'sanctum',
             'sitemap.txt', 'sitemap.xml', 'sitemaps', 'storage',
-            'themes', 'up', 'vendor',
+            'theme-assets', 'themes', 'up', 'vendor',
         ];
         $configuredAdminBasePath = function_exists('app') && app()->bound('config')
             ? (string) config('geoflow.admin_base_path', '/geo_admin')

@@ -4,5 +4,5 @@ namespace App\Console\GeoFlowCli;
 
 final class CliVersion
 {
-    public const VALUE = '0.2.0';
+    public const VALUE = '0.3.0-preview.1';
 }

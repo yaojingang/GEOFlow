@@ -2,6 +2,7 @@
 
 namespace App\Support\Site;
 
+use App\Services\Site\SiteAppearanceService;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -98,6 +99,11 @@ class FriendLinkSettings
 
     /** @param array{config:array, expected_revision:string, replace_invalid:bool} $payload */
     public function save(array $payload): void
+    {
+        app(SiteAppearanceService::class)->transaction(fn () => $this->persist($payload));
+    }
+
+    private function persist(array $payload): void
     {
         $current = $this->snapshot();
         if (! hash_equals($current['revision'], $payload['expected_revision'])) {

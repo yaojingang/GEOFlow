@@ -1,8 +1,8 @@
 {
   "name": "geoflow",
-  "version": "1.0.0",
+  "version": "1.1.0-preview.1",
   "owner": "Yao Team",
-  "updated_at": "2026-07-19",
+  "updated_at": "2026-09-15",
   "status": "active",
   "catalog_maturity": "beta",
   "maturity_tier": "production",

@@ -4,6 +4,7 @@ namespace Tests\Unit\GeoFlowCli;
 
 use App\Console\GeoFlowCli\CommandSpec;
 use App\Console\GeoFlowCli\OperationRegistry;
+use App\Support\Api\ManagementOperationRegistry;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Route as RouteFacade;
 use PHPUnit\Framework\Attributes\Test;
@@ -26,6 +27,8 @@ class OperationRegistryTest extends TestCase
             ->reject(fn (Route $route): bool => in_array($route->getName(), [
                 'api.v1.articles.ai-quality.optimization.candidate',
                 'api.v1.articles.ai-quality.optimization.rollback',
+                'api.v1.theme-preview',
+                'api.v1.theme-preview-asset',
             ], true))
             ->map(function (Route $route): string {
                 $method = collect($route->methods())->first(fn (string $method): bool => $method !== 'HEAD');
@@ -37,8 +40,10 @@ class OperationRegistryTest extends TestCase
             ->all();
 
         $this->assertCount(10, $browserRoutes);
-        $this->assertCount(35, $apiRoutes);
-        $this->assertSame($apiRoutes, OperationRegistry::routeSignatures());
+        $managementRoutes = array_map(fn (array $operation): string => $operation['method'].' '.$operation['path'], ManagementOperationRegistry::all());
+        $expected = array_values(array_unique(array_merge(OperationRegistry::routeSignatures(), $managementRoutes)));
+        sort($expected);
+        $this->assertSame($apiRoutes, $expected);
     }
 
     #[Test]

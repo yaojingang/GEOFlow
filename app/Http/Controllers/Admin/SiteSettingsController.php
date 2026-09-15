@@ -7,7 +7,9 @@ use App\Models\LeadForm;
 use App\Models\SiteSetting;
 use App\Services\Admin\SiteThemeReplicationService;
 use App\Services\AiWorkspace\AiWorkspaceRuntimeStatus;
+use App\Services\Api\ManagementSiteQuery;
 use App\Services\Site\ArticlePermalinkService;
+use App\Services\Site\SiteAppearanceService;
 use App\Support\AdminBasePathManager;
 use App\Support\AdminWeb;
 use App\Support\Site\ArticlePermalinkPolicy;
@@ -58,6 +60,7 @@ class SiteSettingsController extends Controller
             'activeMenu' => 'site_settings',
             'adminSiteName' => AdminWeb::siteName(),
             'settings' => $settings,
+            'appearanceRevision' => $settings['_appearance_revision'],
             'canEditAnalytics' => $canManageProtectedWorkflows,
             'canManageProtectedWorkflows' => $canManageProtectedWorkflows,
             'availableThemes' => $availableThemes,
@@ -91,6 +94,7 @@ class SiteSettingsController extends Controller
             'activeMenu' => 'site_settings',
             'adminSiteName' => AdminWeb::siteName(),
             'settings' => $settings,
+            'appearanceRevision' => $settings['_appearance_revision'],
             'homepageEditorPage' => true,
             'homepageModules' => $this->parseHomepageModules((string) ($settings['homepage_modules'] ?? '[]')),
             'homepageStyle' => $this->parseHomepageStyle((string) ($settings['homepage_style'] ?? '{}')),
@@ -196,12 +200,7 @@ class SiteSettingsController extends Controller
             'admin_base_path' => $newAdminBasePath,
         ];
 
-        foreach ($settings as $settingKey => $settingValue) {
-            SiteSetting::query()->updateOrCreate(
-                ['setting_key' => $settingKey],
-                ['setting_value' => $settingValue]
-            );
-        }
+        app(SiteAppearanceService::class)->saveValidated($settings, $this->appearanceRevision($request));
 
         SiteSettingsBag::forget();
 
@@ -242,10 +241,7 @@ class SiteSettingsController extends Controller
             abort_unless($request->user('admin')?->canManageProtectedWorkflows(), 403);
         }
 
-        SiteSetting::query()->updateOrCreate(
-            ['setting_key' => 'active_theme'],
-            ['setting_value' => $selectedTheme]
-        );
+        app(SiteAppearanceService::class)->saveValidated(['active_theme' => $selectedTheme], $this->appearanceRevision($request));
 
         SiteSettingsBag::forget();
 
@@ -270,14 +266,10 @@ class SiteSettingsController extends Controller
         $style = HomepageModuleBuilder::normalizeStyle($postedStyle);
         $modules = HomepageModuleBuilder::normalizeModules($postedModules, false, HomepageModuleBuilder::MAX_MODULES);
 
-        SiteSetting::query()->updateOrCreate(
-            ['setting_key' => 'homepage_style'],
-            ['setting_value' => (string) json_encode($style, JSON_UNESCAPED_UNICODE)]
-        );
-        SiteSetting::query()->updateOrCreate(
-            ['setting_key' => 'homepage_modules'],
-            ['setting_value' => (string) json_encode($modules, JSON_UNESCAPED_UNICODE)]
-        );
+        app(SiteAppearanceService::class)->saveValidated([
+            'homepage_style' => (string) json_encode($style, JSON_UNESCAPED_UNICODE),
+            'homepage_modules' => (string) json_encode($modules, JSON_UNESCAPED_UNICODE),
+        ], $this->appearanceRevision($request));
 
         SiteSettingsBag::forget();
 
@@ -310,14 +302,10 @@ class SiteSettingsController extends Controller
             );
         }
 
-        SiteSetting::query()->updateOrCreate(
-            ['setting_key' => 'homepage_style'],
-            ['setting_value' => (string) json_encode($style, JSON_UNESCAPED_UNICODE)]
-        );
-        SiteSetting::query()->updateOrCreate(
-            ['setting_key' => 'homepage_modules'],
-            ['setting_value' => (string) json_encode($modules, JSON_UNESCAPED_UNICODE)]
-        );
+        app(SiteAppearanceService::class)->saveValidated([
+            'homepage_style' => (string) json_encode($style, JSON_UNESCAPED_UNICODE),
+            'homepage_modules' => (string) json_encode($modules, JSON_UNESCAPED_UNICODE),
+        ], $this->appearanceRevision($request));
 
         SiteSettingsBag::forget();
 
@@ -364,14 +352,10 @@ class SiteSettingsController extends Controller
             );
         }
 
-        SiteSetting::query()->updateOrCreate(
-            ['setting_key' => 'homepage_style'],
-            ['setting_value' => (string) json_encode($style, JSON_UNESCAPED_UNICODE)]
-        );
-        SiteSetting::query()->updateOrCreate(
-            ['setting_key' => 'homepage_modules'],
-            ['setting_value' => (string) json_encode($modules, JSON_UNESCAPED_UNICODE)]
-        );
+        app(SiteAppearanceService::class)->saveValidated([
+            'homepage_style' => (string) json_encode($style, JSON_UNESCAPED_UNICODE),
+            'homepage_modules' => (string) json_encode($modules, JSON_UNESCAPED_UNICODE),
+        ], $this->appearanceRevision($request));
 
         SiteSettingsBag::forget();
 
@@ -424,10 +408,7 @@ class SiteSettingsController extends Controller
             ];
         }
 
-        SiteSetting::query()->updateOrCreate(
-            ['setting_key' => 'article_detail_ads'],
-            ['setting_value' => (string) json_encode($ads, JSON_UNESCAPED_UNICODE)]
-        );
+        app(SiteAppearanceService::class)->saveValidated(['article_detail_ads' => (string) json_encode($ads, JSON_UNESCAPED_UNICODE)], $this->appearanceRevision($request));
 
         SiteSettingsBag::forget();
 
@@ -446,10 +427,7 @@ class SiteSettingsController extends Controller
 
         $modules = $this->normalizePostedArticleTextAdModules($postedModules);
 
-        SiteSetting::query()->updateOrCreate(
-            ['setting_key' => 'article_detail_text_ads'],
-            ['setting_value' => (string) json_encode($modules, JSON_UNESCAPED_UNICODE)]
-        );
+        app(SiteAppearanceService::class)->saveValidated(['article_detail_text_ads' => (string) json_encode($modules, JSON_UNESCAPED_UNICODE)], $this->appearanceRevision($request));
 
         SiteSettingsBag::forget();
 
@@ -507,12 +485,14 @@ class SiteSettingsController extends Controller
             'article_detail_text_ads' => '[]',
         ];
 
-        $stored = SiteSetting::query()
+        $appearanceFields = array_merge(ManagementSiteQuery::PUBLIC_FIELDS, ['site_title']);
+        $stored = SiteSetting::query()->useWritePdo()
             ->select(['setting_key', 'setting_value'])
-            ->whereIn('setting_key', array_keys($defaults))
+            ->whereIn('setting_key', array_unique(array_merge(array_keys($defaults), $appearanceFields)))
             ->get()
             ->pluck('setting_value', 'setting_key')
             ->all();
+        $appearanceRevision = app(SiteAppearanceService::class)->hash(array_intersect_key($stored, array_flip($appearanceFields)));
 
         foreach ($defaults as $key => $defaultValue) {
             if (! array_key_exists($key, $stored)) {
@@ -521,6 +501,7 @@ class SiteSettingsController extends Controller
         }
 
         return [
+            '_appearance_revision' => $appearanceRevision,
             'site_name' => (string) $stored['site_name'],
             'site_subtitle' => (string) $stored['site_subtitle'],
             'site_description' => (string) $stored['site_description'],
@@ -1050,5 +1031,10 @@ class SiteSettingsController extends Controller
             && ! str_contains($trackingParam, '://')
             && ! str_starts_with($trackingParam, '/')
             && preg_match('/^[A-Za-z0-9._~%=&+;,:@-]+$/', $trackingParam) === 1;
+    }
+
+    private function appearanceRevision(Request $request): ?string
+    {
+        return $request->validate(['appearance_revision' => ['sometimes', 'string', 'regex:/^[a-f0-9]{64}$/D']])['appearance_revision'] ?? null;
     }
 }

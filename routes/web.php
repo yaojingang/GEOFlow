@@ -72,12 +72,15 @@ use App\Http\Controllers\Site\HomeController;
 use App\Http\Controllers\Site\HostedAssetController;
 use App\Http\Controllers\Site\LeadFormController as SiteLeadFormController;
 use App\Http\Controllers\Site\SiteDiscoveryController;
+use App\Http\Controllers\Site\ThemeRevisionAssetController;
 use App\Support\AdminUiRegistry;
 use App\Support\Site\ArticlePermalinkPattern;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/favicon.ico', HostedAssetController::class)->name('site.asset.favicon');
+Route::get('/theme-assets/{revision}/{path}', ThemeRevisionAssetController::class)
+    ->whereUuid('revision')->where('path', '.*')->name('site.theme-revision.asset');
 Route::get('/{assetPath}', HostedAssetController::class)
     ->where('assetPath', '(?:(?:assets|js|storage)/[a-zA-Z0-9._/-]+|themes/[a-zA-Z0-9_-]+/[^\x00-\x1F\x7F]+|build/assets/[a-zA-Z0-9._-]+)')
     ->name('site.asset');

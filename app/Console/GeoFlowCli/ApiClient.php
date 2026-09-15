@@ -2,6 +2,7 @@
 
 namespace App\Console\GeoFlowCli;
 
+use App\Support\Api\ManagementOperationRegistry;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\PendingRequest;
@@ -37,17 +38,27 @@ class ApiClient
         ?array $body = null,
         ?string $idempotencyKey = null,
         ?string $uploadPath = null,
+        ?string $clientRequestId = null,
+        ?float $timeoutSeconds = null,
     ): ApiResult {
         $this->responseLimitExceeded = false;
         $this->unsupportedResponseEncoding = false;
-        $operation = OperationRegistry::get($operationName);
+        $operation = isset(ManagementOperationRegistry::all()[$operationName])
+            ? ManagementOperationRegistry::get($operationName) : OperationRegistry::get($operationName);
         $secrets = array_values(array_filter(array_merge(
             [$this->token],
             SecretRedactor::sensitiveValues($body ?? []),
         ), static fn (mixed $value): bool => is_string($value) && $value !== ''));
         $path = $this->interpolatePath($operation['path'], $pathParameters);
         $url = rtrim($this->baseUrl, '/').'/api/v1/'.$path;
-        $pendingRequest = $this->pendingRequest($operation['auth']);
+        $pendingRequest = $this->pendingRequest($operation['auth'], $timeoutSeconds);
+
+        if ($clientRequestId !== null) {
+            if (preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{7,127}$/D', $clientRequestId) !== 1) {
+                throw new CliException('客户端请求 ID 格式无效');
+            }
+            $pendingRequest->withHeader('X-Client-Request-Id', $clientRequestId);
+        }
 
         if ($operation['idempotent'] && is_string($idempotencyKey) && trim($idempotencyKey) !== '') {
             $pendingRequest->withHeader('X-Idempotency-Key', trim($idempotencyKey));
@@ -79,8 +90,12 @@ class ApiClient
         return $this->parseResponse($response, $secrets);
     }
 
-    private function pendingRequest(bool $requiresAuth): PendingRequest
+    private function pendingRequest(bool $requiresAuth, ?float $timeoutSeconds = null): PendingRequest
     {
+        if ($timeoutSeconds !== null && (! is_finite($timeoutSeconds) || $timeoutSeconds <= 0)) {
+            throw new CliException('请求等待时间必须大于零');
+        }
+        $timeout = $timeoutSeconds === null ? $this->timeout : min($this->timeout, $timeoutSeconds);
         $headers = [
             'X-Request-Id' => $this->requestId(),
             'Accept-Encoding' => 'identity',
@@ -98,8 +113,8 @@ class ApiClient
         return $this->httpFactory
             ->acceptJson()
             ->withHeaders($headers)
-            ->timeout($this->timeout)
-            ->connectTimeout(min(10, $this->timeout))
+            ->timeout($timeout)
+            ->connectTimeout(min(10, $timeout))
             ->withOptions([
                 'verify' => true,
                 'decode_content' => false,

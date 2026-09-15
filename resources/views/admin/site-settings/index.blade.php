@@ -231,6 +231,7 @@
             <div class="px-6 py-6">
                 <form method="POST" action="{{ route('admin.site-settings.ai-workspace.update') }}" class="space-y-5">
                     @csrf
+                <input type="hidden" name="appearance_revision" value="{{ $appearanceRevision }}">
                     <input type="hidden" name="enabled" value="0">
 
                     <div class="rounded-lg border border-gray-200 bg-gray-50/70 p-4 sm:p-5">
@@ -296,6 +297,7 @@
             <div class="px-6 py-6">
                 <form method="POST" action="{{ route('admin.site-settings.update') }}" class="space-y-6" data-url-source-form>
                     @csrf
+                <input type="hidden" name="appearance_revision" value="{{ $appearanceRevision }}">
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
@@ -546,6 +548,7 @@
                         <summary class="min-h-10 cursor-pointer text-sm font-semibold text-blue-700 focus-visible:outline-2 focus-visible:outline-blue-600">{{ __('url_change.ui.edit_rule') }}</summary>
                     <form method="POST" action="{{ route('admin.site-settings.article-permalink.preview') }}" class="mt-5 rounded-lg border border-gray-200 bg-gray-50/70 p-5" data-url-separate-check>
                         @csrf
+                <input type="hidden" name="appearance_revision" value="{{ $appearanceRevision }}">
                         <fieldset @disabled(!($canManageProtectedWorkflows ?? false))>
                             <legend class="text-sm font-semibold text-gray-900">{{ __('article_permalink.choose_preset') }}</legend>
                             <div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -627,6 +630,7 @@
 
                 <form method="POST" action="{{ route('admin.site-settings.homepage-modules.preset') }}" class="mb-5 rounded-2xl border border-indigo-100 bg-white p-5">
                     @csrf
+                <input type="hidden" name="appearance_revision" value="{{ $appearanceRevision }}">
                     <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                         <div class="min-w-0 flex-1">
                             <div class="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100">
@@ -664,6 +668,7 @@
 
                 <form method="POST" action="{{ route('admin.site-settings.homepage-modules.import') }}" class="mb-5 rounded-2xl border border-blue-100 bg-white p-5">
                     @csrf
+                <input type="hidden" name="appearance_revision" value="{{ $appearanceRevision }}">
                     <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_240px]">
                         <div class="min-w-0">
                             <div class="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
@@ -696,6 +701,7 @@
 
                 <form method="POST" action="{{ route('admin.site-settings.homepage-modules') }}" id="homepage-module-form" class="mb-8 rounded-2xl border border-gray-200 bg-gray-50/70 p-5">
                     @csrf
+                <input type="hidden" name="appearance_revision" value="{{ $appearanceRevision }}">
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div>
                             <div class="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
@@ -907,6 +913,7 @@
                 @else
                 <form method="POST" action="{{ route('admin.site-settings.theme') }}" class="space-y-5">
                     @csrf
+                <input type="hidden" name="appearance_revision" value="{{ $appearanceRevision }}">
 
                     @php
                         $currentThemeLabel = __('admin.site_settings.theme.default_name');
@@ -1052,6 +1059,7 @@
                         </button>
                     </div>
                     @csrf
+                <input type="hidden" name="appearance_revision" value="{{ $appearanceRevision }}">
 
                     <div class="rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
                         <div class="text-sm font-medium text-gray-900">{{ __('admin.site_settings.ads.preview_title') }}</div>
@@ -1144,6 +1152,7 @@
                 @php($textAdModules = is_array(old('text_ad_modules')) ? old('text_ad_modules') : $articleDetailTextAds)
                 <form method="POST" action="{{ route('admin.site-settings.text-ads') }}" id="article-text-ad-form" class="mt-8 space-y-6 border-t border-gray-200 pt-8">
                     @csrf
+                <input type="hidden" name="appearance_revision" value="{{ $appearanceRevision }}">
                     <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                             <h4 class="text-base font-semibold text-gray-900">{{ __('admin.site_settings.ads.text_section_title') }}</h4>

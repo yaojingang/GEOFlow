@@ -136,25 +136,60 @@ final class ConfigLoginHandler
                     throw new CliException("配置文件已存在，登录前请传入 --force 允许覆盖: {$lockedPath}");
                 }
 
+                $loginBody = ['username' => $username, 'password' => $password];
+                if (isset($this->runtime->context->options['scopes'])) {
+                    $loginBody['requested_scopes'] = array_values(array_unique(array_map('trim', explode(',', $this->runtime->requiredOption('scopes')))));
+                }
                 $apiResult = $this->runtime->client(
                     $config['base_url'],
                     null,
                     $config['timeout'],
-                )->send('auth.login', body: [
-                    'username' => $username,
-                    'password' => $password,
-                ]);
-                $token = trim((string) ($apiResult->payload['data']['token'] ?? ''));
-                if ($token === '') {
+                )->send('auth.login', body: $loginBody);
+                $returnedToken = $apiResult->payload['data']['token'] ?? null;
+                $token = is_string($returnedToken) ? trim($returnedToken) : '';
+                if ($token === '' || preg_match('/[\x00-\x1F\x7F]/', $token) === 1) {
                     throw new CliException('登录成功，但服务端没有返回 token');
                 }
-
-                $warnings = $this->runtime->configuration->saveLocked($lockedPath, [
-                    'base_url' => $config['base_url'],
-                    'token' => $token,
-                    'timeout' => $config['timeout'],
-                    'allow_insecure_http' => $config['allow_insecure_http'],
-                ]);
+                try {
+                    if (isset($loginBody['requested_scopes'])) {
+                        $requested = $loginBody['requested_scopes'];
+                        $granted = $apiResult->payload['data']['scopes'] ?? [];
+                        $granted = is_array($granted) && array_is_list($granted)
+                            && count(array_filter($granted, static fn (mixed $scope): bool => is_string($scope) && $scope !== '')) === count($granted)
+                            ? $granted : [];
+                        sort($requested);
+                        sort($granted);
+                        if ($requested !== $granted) {
+                            throw new CliException('目标实例未按请求授予权限，请升级实例或调整 --scopes');
+                        }
+                    }
+                    $instanceId = $apiResult->payload['data']['instance_id'] ?? null;
+                    $adminId = $apiResult->payload['data']['admin']['id'] ?? null;
+                    if (($instanceId !== null && (! is_string($instanceId) || trim($instanceId) === '' || strlen($instanceId) > 128))
+                        || ($adminId !== null && ((! is_int($adminId) && ! is_string($adminId)) || filter_var($adminId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false))
+                        || (isset($loginBody['requested_scopes']) && ($instanceId === null || $adminId === null))) {
+                        throw new CliException('服务端没有返回有效的实例和账号身份，未保存登录');
+                    }
+                    $warnings = $this->runtime->configuration->saveLocked($lockedPath, [
+                        'base_url' => $config['base_url'],
+                        'token' => $token,
+                        'instance_id' => $instanceId,
+                        'admin_id' => $adminId !== null ? (string) $adminId : null,
+                        'timeout' => $config['timeout'],
+                        'allow_insecure_http' => $config['allow_insecure_http'],
+                    ]);
+                } catch (\Throwable $exception) {
+                    try {
+                        $revoked = ($this->runtime->client($config['base_url'], $token, $config['timeout'])->send('auth.logout')->payload['data']['revoked'] ?? false) === true;
+                    } catch (\Throwable) {
+                        $revoked = false;
+                    }
+                    if (! $revoked) {
+                        $this->runtime->context->deferWarnings(['远端新令牌撤销未确认，请在目标后台检查。']);
+                        $this->runtime->context->flushWarnings();
+                    }
+                    throw $exception;
+                }
 
                 return ['api_result' => $apiResult, 'token' => $token, 'warnings' => $warnings];
             },
@@ -167,6 +202,8 @@ final class ConfigLoginHandler
             'config_file' => $path,
             'base_url' => $config['base_url'],
             'token_masked' => SecretRedactor::mask($result['token']),
+            'instance_id' => $result['api_result']->payload['data']['instance_id'] ?? null,
+            'scopes' => $result['api_result']->payload['data']['scopes'] ?? [],
             'admin' => $result['api_result']->payload['data']['admin'] ?? null,
             'expires_at' => $result['api_result']->payload['data']['expires_at'] ?? null,
         ]);

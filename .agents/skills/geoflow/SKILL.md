@@ -1,31 +1,31 @@
 ---
 name: geoflow
-description: Develop or operate GEOFlow across Laravel backend/admin/API/CLI, the default site, themes, leads, and GeoFlow Agent channel sites. Use for code changes, running-system operations, frontend or template edits, channel capability sync, legacy PHP migration, or retired yao-geoflow-cli, yao-geoflow-design, and yao-geoflow-template IDs. Discover real routes first. Excludes unrelated work, database shortcuts, invented routes, auth bypass, secret exposure, raw copying, and unapproved live or destructive actions.
+description: Develop or operate GEOFlow through its remote CLI, Laravel backend/admin/API, default site, themes, leads, and Agent sites. Use for source-free connections, remote theme drafts/previews, code changes, channel sync, legacy migration, or retired yao-geoflow-cli/design/template IDs. Discover capabilities first. Excludes unrelated work, database shortcuts, invented routes, auth bypass, secret exposure, and unapproved live or destructive actions.
 ---
 
 # GEOFlow
 
 ## Route
 
-1. Run `scripts/discover_geoflow_workspace.py <workspace>` for source work or `scripts/geoflow_preflight.sh "<workspace>" [config] [checks]` before runtime mutations. Inspect current CLI help and routes when available.
+1. For a running instance, use installed `geoflow`: read help, select the profile, run `whoami`, `capabilities`, and `doctor`. Source is optional. Follow [remote-cli-workflow.md](references/remote-cli-workflow.md). For source edits, run `scripts/discover_geoflow_workspace.py <workspace>`.
 2. Load one route:
 
-- `development`: [development-workflow.md](references/development-workflow.md) and [system-capability-discovery.md](references/system-capability-discovery.md)
-- `operations`: [operation-boundary.md](references/operation-boundary.md), [command-map.md](references/command-map.md), and [geoflow-current-capability-map.md](references/geoflow-current-capability-map.md)
-- `public_frontend`: [frontend-resource-index.md](references/frontend-resource-index.md) and [geoflow-frontend-map.md](references/geoflow-frontend-map.md)
-- `channel_frontend`: [frontend-resource-index.md](references/frontend-resource-index.md) and [channel-frontend-contract.md](references/channel-frontend-contract.md)
-- `legacy_migration`: [legacy-template-migration.md](references/legacy-template-migration.md) and [legacy-skill-id-migration.md](references/legacy-skill-id-migration.md)
-
-3. Mixed work follows: discover, implement, test or preview, approved finalize.
+- `development`: [workflow](references/development-workflow.md), [discovery](references/system-capability-discovery.md).
+- `operations`: [boundaries](references/operation-boundary.md), [commands](references/command-map.md), [capabilities](references/geoflow-current-capability-map.md).
+- `public_frontend`: [resources](references/frontend-resource-index.md), [site map](references/geoflow-frontend-map.md).
+- `channel_frontend`: [resources](references/frontend-resource-index.md), [contract](references/channel-frontend-contract.md).
+- `legacy_migration`: [templates](references/legacy-template-migration.md), [skill IDs](references/legacy-skill-id-migration.md).
 
 ## Mode Boundaries
 
-Each phase has one mode. `development` edits code and tests; `operations` uses supported runtime interfaces; `public_frontend` prepares themes or payloads; `channel_frontend` handles target-package contracts. Switch modes when crossing these boundaries. Keep authenticated form creation, sync, activation, and publication as confirmed operations phases.
+Use one mode per phase: `development` edits source/tests; `operations` uses runtime interfaces; frontend modes prepare themes/payloads. Authenticated form creation, sync, activation, and publication are authorized operations. Discover → implement → verify → authorized finalize.
 
 ## Guardrails
 
-- Follow repository rules and focused tests.
-- Run bundled helpers on macOS, Linux, or WSL with Python 3.10+ and Bash where required; runtime preflight also needs `curl`, and live channel reports need PHP CLI plus a working project `artisan`. If a dependency is unavailable, stay in read-only discovery, report the missing verification layer, and do not claim live success.
-- Preserve authentication, CSRF, idempotency, permissions, readback, contracts, and secret redaction.
-- Separate preview, import, sync, activation, publication, updates, rollback, and destructive actions. Require the exact target and explicit approval for high-risk steps.
-- Report the selected mode, evidence, touched files/routes/resources, verification, final state, and remaining risks.
+- Follow repository rules and focused tests; preserve auth, CSRF, scopes, contracts, readback and secret redaction.
+- Helpers require macOS/Linux/WSL, Python 3.10+, Bash; preflight needs curl, live channel reports need PHP and project artisan. Missing dependencies permit read-only discovery; report unverified layers.
+- Use operations supported by both instance and client. Preview supports draft editing and preview links. Publication, rollback, remote configuration, large-file staging and full administration remain unavailable. Report gaps; never invent routes or substitute template uploads.
+- Retain request IDs for task-enqueue receipts; query uncertain results before retrying. Draft create/change have no receipt recovery: inspect state after lost responses; never blindly repeat writes.
+- Native template editing requires explicit code scope and password reauthentication. Keep secrets in protected input streams.
+- Distinguish preview/import/sync/activation/publication/update/rollback. High-risk operations require an exact target and explicit authorization.
+- Report mode, redacted identity, changes, verification, final state and remaining limits.

@@ -1,4 +1,10 @@
-# GEOFlow CLI 0.2.0
+# GEOFlow CLI 0.3.0-preview.1
+
+## 远程管理预览版
+
+独立安装与恢复参见 [CLI 安装说明](../packages/geoflow-cli/README.md)。远程实例操作无需本地 Core 源码，先通过 `whoami`、`capabilities` 和 `doctor` 核对连接；旧配置可通过 `profile bind --instance-id UUID --admin-id ID` 显式固定身份。
+
+本版新增多 profile、显式 scope、当前令牌撤销、任务收据，以及主站远程主题草稿、原子文件修改、签名预览与丢弃。完整用法见 [远程 CLI 流程](../.agents/skills/geoflow/references/remote-cli-workflow.md)；支持范围及未完成项见 [覆盖说明](api/remote-management-preview.md)。主题发布、回滚与完整后台管理尚未开放。以下保留原有文章、任务和素材等命令用法。
 
 GEOFlow CLI 是仓库内置的 API v1 客户端，用于管理目录、任务、执行记录、素材和文章。它负责配置文件、登录、HTTPS 策略、密钥脱敏、JSON 校验、删除确认和 API 错误提示。
 
@@ -6,7 +12,9 @@ GEOFlow CLI 是仓库内置的 API v1 客户端，用于管理目录、任务、
 
 ## 安装与前置条件
 
-CLI 随 GEOFlow 源码提供，不需要单独下载。运行前需要：
+已安装的独立 `geoflow` 可直接连接实例，无需 Core 源码或完整项目依赖。独立安装需要 PHP 8.3+ 及 [安装说明](../packages/geoflow-cli/README.md) 列出的扩展；当前提供可信本地签名包的安装流程，正式下载渠道仍待发布。
+
+以下为源码开发者的运行方式，需要：
 
 - PHP 8.3 或更高版本。
 - 已通过 Composer 安装项目依赖。
@@ -34,15 +42,16 @@ chmod +x bin/geoflow
 php bin/geoflow --version
 ```
 
-`--version` 返回 JSON，当前版本为 `0.2.0`。`--help` 是命令名称和基本用法的最终依据。
+`--version` 返回 JSON，当前版本为 `0.3.0-preview.1`。`--help` 是命令名称和基本用法的最终依据。
 
 ## 配置文件与优先级
 
 CLI 每次只选择一个配置文件，顺序如下：
 
-1. 命令行指定的 `--config PATH`。
-2. 当前工作目录中已存在的 `.geoflow.json`。
-3. 用户目录下的 `~/.config/geoflow/config.json`。
+1. 显式命名的 `--profile NAME`，对应 `~/.config/geoflow/profiles/NAME.json`；不能与 `--config` 或 `--file` 同用。
+2. 命令行指定的 `--config PATH`。
+3. 当前工作目录中已存在的 `.geoflow.json`。
+4. 用户目录下的 `~/.config/geoflow/config.json`。
 
 选定配置文件后，各配置项按以下顺序覆盖：
 
@@ -466,7 +475,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml \
 
 ## API 与后台边界
 
-CLI 0.2.0 覆盖 API v1 中的目录、任务、执行记录、素材和文章操作。CLI 缺失时，可以安全回退到对应 `/api/v1` 路由。API Token 需要与操作匹配的 scope。
+CLI 0.3.0-preview.1 覆盖 API v1 中的目录、任务、执行记录、素材和文章操作。CLI 缺失时，可以安全回退到对应 `/api/v1` 路由。API Token 需要与操作匹配的 scope。
 
 以下能力目前只在登录后的后台提供：
 

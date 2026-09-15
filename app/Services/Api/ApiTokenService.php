@@ -142,7 +142,8 @@ class ApiTokenService
     {
         $scopes = $token['scopes'] ?? [];
 
-        return in_array('*', $scopes, true) || in_array($scope, $scopes, true);
+        return in_array($scope, $scopes, true)
+            || (! in_array($scope, ManagementScopePolicy::SCOPES, true) && in_array('*', $scopes, true));
     }
 
     public function resolveAuditAdminId(?int $preferredAdminId): int
@@ -215,6 +216,7 @@ class ApiTokenService
         return array_values(array_unique(array_merge(
             $this->getCliLoginScopes(),
             $this->getBrowserClientScopes(),
+            ManagementScopePolicy::SCOPES,
         )));
     }
 

@@ -124,7 +124,7 @@ GEOFlow 适合拥有真实业务资料、明确审核责任和持续运营计划
 | 组件 | 当前源码版本或状态 | 说明 |
 |------|-------------------|------|
 | GEOFlow Core | `3.1.0` | Laravel 应用、管理后台、前台、API、队列和分发系统 |
-| GEOFlow CLI | `0.2.0` | 仓库内置 `bin/geoflow`，支持 macOS、Linux 和 WSL |
+| GEOFlow CLI | `0.3.0-preview.1` | 内置命令与独立 PHAR 预览版；远程草稿可用，主题发布尚未开放 |
 | Chrome 运营助手 | `0.1.0` | 源码和打包产物位于 `browser-extension/` 与 `dist/browser-extension/` |
 | GEOFlow Updater | 独立组件 | 使用与目标 Release 明确兼容的签名版本，参见 [geoflow-updater](https://github.com/yaojingang/geoflow-updater) |
 | 目标站点 Agent | 按渠道生成 | 每个渠道可生成预配置 PHP 包，提供首页、详情页、静态资源、Schema、sitemap 和 `llms.txt` |

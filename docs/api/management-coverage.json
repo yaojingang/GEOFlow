@@ -1,0 +1,3863 @@
+{
+    "schema_version": 1,
+    "support_stage": "remote-management-preview",
+    "admin_route_count": 355,
+    "legacy_cli_operations": [
+        {
+            "name": "article.ai-optimization-apply",
+            "method": "POST",
+            "path": "articles/{article}/ai-quality/optimization/{run}/apply",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "article.ai-optimization-cancel",
+            "method": "POST",
+            "path": "articles/{article}/ai-quality/optimization/{run}/cancel",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "article.ai-optimization-candidate",
+            "method": "GET",
+            "path": "articles/{article}/ai-quality/optimization/candidate",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "article.ai-optimization-status",
+            "method": "GET",
+            "path": "articles/{article}/ai-quality/status",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "article.ai-optimize",
+            "method": "POST",
+            "path": "articles/{article}/ai-quality/optimization",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "article.ai-quality-override",
+            "method": "POST",
+            "path": "articles/{article}/ai-quality/override",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "article.ai-quality-recheck",
+            "method": "POST",
+            "path": "articles/{article}/ai-quality/recheck",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "article.ai-quality-status",
+            "method": "GET",
+            "path": "articles/{article}/ai-quality/status",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "article.create",
+            "method": "POST",
+            "path": "articles",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "article.get",
+            "method": "GET",
+            "path": "articles/{article}",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "article.list",
+            "method": "GET",
+            "path": "articles",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "article.publish",
+            "method": "POST",
+            "path": "articles/{article}/publish",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "article.review",
+            "method": "POST",
+            "path": "articles/{article}/review",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "article.trash",
+            "method": "POST",
+            "path": "articles/{article}/trash",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "article.update",
+            "method": "PATCH",
+            "path": "articles/{article}",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "auth.login",
+            "method": "POST",
+            "path": "auth/login",
+            "auth": false,
+            "idempotent": false
+        },
+        {
+            "name": "catalog",
+            "method": "GET",
+            "path": "catalog",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "job.get",
+            "method": "GET",
+            "path": "jobs/{job}",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "material.create",
+            "method": "POST",
+            "path": "materials/{type}",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "material.delete",
+            "method": "DELETE",
+            "path": "materials/{type}/{id}",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "material.get",
+            "method": "GET",
+            "path": "materials/{type}/{id}",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "material.item-create",
+            "method": "POST",
+            "path": "materials/{type}/{id}/items",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "material.item-delete",
+            "method": "DELETE",
+            "path": "materials/{type}/{id}/items",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "material.item-list",
+            "method": "GET",
+            "path": "materials/{type}/{id}/items",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "material.item-upload",
+            "method": "POST",
+            "path": "materials/{type}/{id}/items",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "material.list",
+            "method": "GET",
+            "path": "materials/{type}",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "material.summary",
+            "method": "GET",
+            "path": "materials",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "material.update",
+            "method": "PATCH",
+            "path": "materials/{type}/{id}",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "task.create",
+            "method": "POST",
+            "path": "tasks",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "task.delete",
+            "method": "DELETE",
+            "path": "tasks/{task}",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "task.enqueue",
+            "method": "POST",
+            "path": "tasks/{task}/enqueue",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "task.get",
+            "method": "GET",
+            "path": "tasks/{task}",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "task.jobs",
+            "method": "GET",
+            "path": "tasks/{task}/jobs",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "task.list",
+            "method": "GET",
+            "path": "tasks",
+            "auth": true,
+            "idempotent": false
+        },
+        {
+            "name": "task.start",
+            "method": "POST",
+            "path": "tasks/{task}/start",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "task.stop",
+            "method": "POST",
+            "path": "tasks/{task}/stop",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "task.update",
+            "method": "PATCH",
+            "path": "tasks/{task}",
+            "auth": true,
+            "idempotent": true
+        }
+    ],
+    "management_operations": [
+        {
+            "name": "auth.logout",
+            "method": "POST",
+            "path": "auth/logout",
+            "auth": true,
+            "idempotent": false,
+            "scope": null,
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": [],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "auth.session",
+            "method": "GET",
+            "path": "auth/session",
+            "auth": true,
+            "idempotent": false,
+            "scope": null,
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": [],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "capabilities",
+            "method": "GET",
+            "path": "capabilities",
+            "auth": true,
+            "idempotent": false,
+            "scope": null,
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": [],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "operations.lookup",
+            "method": "GET",
+            "path": "management/operations/lookup",
+            "auth": true,
+            "idempotent": false,
+            "scope": null,
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "object",
+                        "required": [
+                            "client_request_id"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "operations.show",
+            "method": "GET",
+            "path": "management/operations/{operation}",
+            "auth": true,
+            "idempotent": false,
+            "scope": null,
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "object",
+                        "required": [
+                            "operation"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "sites.list",
+            "method": "GET",
+            "path": "management/sites",
+            "auth": true,
+            "idempotent": false,
+            "scope": "sites:read",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": [],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "sites.show",
+            "method": "GET",
+            "path": "management/sites/{site}",
+            "auth": true,
+            "idempotent": false,
+            "scope": "sites:read",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "object",
+                        "required": [
+                            "site"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "tasks.enqueue",
+            "method": "POST",
+            "path": "tasks/{task}/enqueue",
+            "auth": true,
+            "idempotent": true,
+            "scope": "tasks:write",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "object",
+                        "required": [
+                            "task"
+                        ]
+                    },
+                    "body": {
+                        "type": "object"
+                    }
+                },
+                "additionalProperties": false
+            },
+            "receipt": true
+        },
+        {
+            "name": "theme-workspaces.authorize-code",
+            "method": "POST",
+            "path": "management/theme-workspaces/{workspace}/code-authorizations",
+            "auth": true,
+            "idempotent": false,
+            "scope": "themes:code",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "object",
+                        "required": [
+                            "workspace"
+                        ]
+                    },
+                    "body": {
+                        "type": "object",
+                        "required": [
+                            "password"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "theme-workspaces.change",
+            "method": "POST",
+            "path": "management/theme-workspaces/{workspace}/changes",
+            "auth": true,
+            "idempotent": false,
+            "scope": "themes:write",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "object",
+                        "required": [
+                            "workspace"
+                        ]
+                    },
+                    "body": {
+                        "type": "object",
+                        "required": [
+                            "expected_version",
+                            "changes"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "theme-workspaces.contract",
+            "method": "GET",
+            "path": "management/theme-workspaces/{workspace}/contract",
+            "auth": true,
+            "idempotent": false,
+            "scope": "themes:read",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "object",
+                        "required": [
+                            "workspace"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "theme-workspaces.create",
+            "method": "POST",
+            "path": "management/theme-workspaces",
+            "auth": true,
+            "idempotent": false,
+            "scope": "themes:write",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "body": {
+                        "type": "object",
+                        "required": [
+                            "site",
+                            "theme"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "theme-workspaces.discard",
+            "method": "POST",
+            "path": "management/theme-workspaces/{workspace}/discard",
+            "auth": true,
+            "idempotent": false,
+            "scope": "themes:write",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "object",
+                        "required": [
+                            "workspace"
+                        ]
+                    },
+                    "body": {
+                        "type": "object",
+                        "required": [
+                            "expected_version"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "theme-workspaces.file",
+            "method": "GET",
+            "path": "management/theme-workspaces/{workspace}/files",
+            "auth": true,
+            "idempotent": false,
+            "scope": "themes:read",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "object",
+                        "required": [
+                            "workspace"
+                        ]
+                    },
+                    "query": {
+                        "type": "object",
+                        "required": [
+                            "path"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "theme-workspaces.preview",
+            "method": "POST",
+            "path": "management/theme-workspaces/{workspace}/previews",
+            "auth": true,
+            "idempotent": false,
+            "scope": "themes:read",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "object",
+                        "required": [
+                            "workspace"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "theme-workspaces.show",
+            "method": "GET",
+            "path": "management/theme-workspaces/{workspace}",
+            "auth": true,
+            "idempotent": false,
+            "scope": "themes:read",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "object",
+                        "required": [
+                            "workspace"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "themes.contract",
+            "method": "GET",
+            "path": "management/theme-contract",
+            "auth": true,
+            "idempotent": false,
+            "scope": "themes:read",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": [],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "themes.list",
+            "method": "GET",
+            "path": "management/themes",
+            "auth": true,
+            "idempotent": false,
+            "scope": "themes:read",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": [],
+                "additionalProperties": false
+            }
+        }
+    ],
+    "admin_routes": [
+        {
+            "methods": [
+                "DELETE"
+            ],
+            "uri": "geo_admin/account/browser-clients/{tokenId}",
+            "name": "admin.account.browser-clients.destroy",
+            "action": "App\\Http\\Controllers\\Admin\\BrowserClientController@destroy",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/account/browser-clients",
+            "name": "admin.account.browser-clients.index",
+            "action": "App\\Http\\Controllers\\Admin\\BrowserClientController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/account/password",
+            "name": "admin.account.password.update",
+            "action": "App\\Http\\Controllers\\Admin\\AdminAccountController@updatePassword",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/account/profile",
+            "name": "admin.account.profile.update",
+            "action": "App\\Http\\Controllers\\Admin\\AdminAccountController@updateProfile",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/account",
+            "name": "admin.account.show",
+            "action": "App\\Http\\Controllers\\Admin\\AdminAccountController@show",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/admin-activity-logs",
+            "name": "admin.admin-activity-logs",
+            "action": "App\\Http\\Controllers\\Admin\\AdminActivityLogController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/admin-users/create",
+            "name": "admin.admin-users.create",
+            "action": "App\\Http\\Controllers\\Admin\\AdminUserController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/admin-users/create",
+            "name": "admin.admin-users.store",
+            "action": "App\\Http\\Controllers\\Admin\\AdminUserController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/admin-users/{adminId}/delete",
+            "name": "admin.admin-users.delete",
+            "action": "App\\Http\\Controllers\\Admin\\AdminUserController@destroy",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/admin-users/{adminId}/edit",
+            "name": "admin.admin-users.edit",
+            "action": "App\\Http\\Controllers\\Admin\\AdminUserController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/admin-users/{adminId}/toggle-status",
+            "name": "admin.admin-users.toggle-status",
+            "action": "App\\Http\\Controllers\\Admin\\AdminUserController@toggleStatus",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/admin-users/{adminId}/update",
+            "name": "admin.admin-users.update",
+            "action": "App\\Http\\Controllers\\Admin\\AdminUserController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/admin-users",
+            "name": "admin.admin-users.index",
+            "action": "App\\Http\\Controllers\\Admin\\AdminUserController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-configurator",
+            "name": "admin.ai.configurator",
+            "action": "App\\Http\\Controllers\\Admin\\LegacyController@aiConfigurator",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-models/chunking-config",
+            "name": "admin.ai-models.chunking-config",
+            "action": "App\\Http\\Controllers\\Admin\\AiModelController@updateChunkingConfig",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-models/create",
+            "name": "admin.ai-models.create",
+            "action": "App\\Http\\Controllers\\Admin\\AiModelController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-models/create",
+            "name": "admin.ai-models.store",
+            "action": "App\\Http\\Controllers\\Admin\\AiModelController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-models/default-embedding",
+            "name": "admin.ai-models.default-embedding",
+            "action": "App\\Http\\Controllers\\Admin\\AiModelController@updateDefaultEmbedding",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-models/personal-defaults",
+            "name": "admin.ai-models.personal-defaults",
+            "action": "App\\Http\\Controllers\\Admin\\AiModelController@updatePersonalDefaults",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-models/{modelId}/delete",
+            "name": "admin.ai-models.delete",
+            "action": "App\\Http\\Controllers\\Admin\\AiModelController@destroy",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-models/{modelId}/edit",
+            "name": "admin.ai-models.edit",
+            "action": "App\\Http\\Controllers\\Admin\\AiModelController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-models/{modelId}/test",
+            "name": "admin.ai-models.test",
+            "action": "App\\Http\\Controllers\\Admin\\AiModelController@testConnection",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/ai-models/{modelId}",
+            "name": "admin.ai-models.update",
+            "action": "App\\Http\\Controllers\\Admin\\AiModelController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-models",
+            "name": "admin.ai-models.index",
+            "action": "App\\Http\\Controllers\\Admin\\AiModelController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-prompts/create",
+            "name": "admin.ai-prompts.create",
+            "action": "App\\Http\\Controllers\\Admin\\AiPromptController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-prompts/create",
+            "name": "admin.ai-prompts.store",
+            "action": "App\\Http\\Controllers\\Admin\\AiPromptController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-prompts/{promptId}/copy",
+            "name": "admin.ai-prompts.copy",
+            "action": "App\\Http\\Controllers\\Admin\\AiPromptController@copy",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-prompts/{promptId}/delete",
+            "name": "admin.ai-prompts.delete",
+            "action": "App\\Http\\Controllers\\Admin\\AiPromptController@destroy",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-prompts/{promptId}/edit",
+            "name": "admin.ai-prompts.edit",
+            "action": "App\\Http\\Controllers\\Admin\\AiPromptController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/ai-prompts/{promptId}",
+            "name": "admin.ai-prompts.update",
+            "action": "App\\Http\\Controllers\\Admin\\AiPromptController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-prompts",
+            "name": "admin.ai-prompts",
+            "action": "App\\Http\\Controllers\\Admin\\AiPromptController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-source-providers/create",
+            "name": "admin.ai-source-providers.create",
+            "action": "App\\Http\\Controllers\\Admin\\AiSourceProviderController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-source-providers/model-bindings/test",
+            "name": "admin.ai-source-providers.model-bindings.test",
+            "action": "App\\Http\\Controllers\\Admin\\AiSourceProviderController@testModelBinding",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-source-providers/model-bindings/upsert-api",
+            "name": "admin.ai-source-providers.model-bindings.upsert-api",
+            "action": "App\\Http\\Controllers\\Admin\\AiSourceProviderController@upsertModelApi",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-source-providers/model-bindings",
+            "name": "admin.ai-source-providers.model-bindings",
+            "action": "App\\Http\\Controllers\\Admin\\AiSourceProviderController@updateModelBindings",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-source-providers/{providerId}/delete",
+            "name": "admin.ai-source-providers.delete",
+            "action": "App\\Http\\Controllers\\Admin\\AiSourceProviderController@destroy",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-source-providers/{providerId}/edit",
+            "name": "admin.ai-source-providers.edit",
+            "action": "App\\Http\\Controllers\\Admin\\AiSourceProviderController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-source-providers/{providerId}/test",
+            "name": "admin.ai-source-providers.test",
+            "action": "App\\Http\\Controllers\\Admin\\AiSourceProviderController@testProvider",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/ai-source-providers/{providerId}",
+            "name": "admin.ai-source-providers.update",
+            "action": "App\\Http\\Controllers\\Admin\\AiSourceProviderController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-source-providers",
+            "name": "admin.ai-source-providers.index",
+            "action": "App\\Http\\Controllers\\Admin\\AiSourceProviderController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-source-providers",
+            "name": "admin.ai-source-providers.store",
+            "action": "App\\Http\\Controllers\\Admin\\AiSourceProviderController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-special-prompts/description",
+            "name": "admin.ai-special-prompts.description",
+            "action": "App\\Http\\Controllers\\Admin\\AiSpecialPromptController@updateDescription",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-special-prompts/keyword",
+            "name": "admin.ai-special-prompts.keyword",
+            "action": "App\\Http\\Controllers\\Admin\\AiSpecialPromptController@updateKeyword",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-special-prompts",
+            "name": "admin.ai-special-prompts",
+            "action": "App\\Http\\Controllers\\Admin\\AiSpecialPromptController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-workspace/conversations/{conversation}/archive",
+            "name": "admin.ai-workspace.conversations.archive",
+            "action": "App\\Http\\Controllers\\Admin\\AiWorkspaceApiController@archiveConversation",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-workspace/conversations/{conversation}/messages",
+            "name": "admin.ai-workspace.messages.store",
+            "action": "App\\Http\\Controllers\\Admin\\AiWorkspaceApiController@sendMessage",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-workspace/conversations/{conversation}",
+            "name": "admin.ai-workspace.conversations.show",
+            "action": "App\\Http\\Controllers\\Admin\\AiWorkspaceApiController@showConversation",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PATCH"
+            ],
+            "uri": "geo_admin/ai-workspace/conversations/{conversation}",
+            "name": "admin.ai-workspace.conversations.update",
+            "action": "App\\Http\\Controllers\\Admin\\AiWorkspaceApiController@renameConversation",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-workspace/conversations",
+            "name": "admin.ai-workspace.conversations.index",
+            "action": "App\\Http\\Controllers\\Admin\\AiWorkspaceApiController@conversations",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-workspace/conversations",
+            "name": "admin.ai-workspace.conversations.store",
+            "action": "App\\Http\\Controllers\\Admin\\AiWorkspaceApiController@storeConversation",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-workspace/media/{mediaAsset}",
+            "name": "admin.ai-workspace.media.show",
+            "action": "App\\Http\\Controllers\\Admin\\AiWorkspaceKnowledgeMediaController",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-workspace",
+            "name": "admin.ai-workspace",
+            "action": "App\\Http\\Controllers\\Admin\\AiWorkspaceController",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/analytics/ai-visibility/collect",
+            "name": "admin.analytics.ai-visibility.collect",
+            "action": "App\\Http\\Controllers\\Admin\\AiVisibilityAnalyticsController@collect",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/analytics/ai-visibility/competitors/detect",
+            "name": "admin.analytics.ai-visibility.competitors.detect",
+            "action": "App\\Http\\Controllers\\Admin\\AiVisibilityAnalyticsController@detectCompetitors",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "DELETE"
+            ],
+            "uri": "geo_admin/analytics/ai-visibility/competitors/{competitor}/delete",
+            "name": "admin.analytics.ai-visibility.competitors.destroy",
+            "action": "App\\Http\\Controllers\\Admin\\AiVisibilityAnalyticsController@destroyCompetitor",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/analytics/ai-visibility/competitors",
+            "name": "admin.analytics.ai-visibility.competitors.store",
+            "action": "App\\Http\\Controllers\\Admin\\AiVisibilityAnalyticsController@storeCompetitor",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/analytics/ai-visibility",
+            "name": "admin.analytics.ai-visibility",
+            "action": "App\\Http\\Controllers\\Admin\\AiVisibilityAnalyticsController",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/analytics/content",
+            "name": "admin.analytics.content",
+            "action": "App\\Http\\Controllers\\Admin\\ContentAnalyticsController",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/analytics/distribution",
+            "name": "admin.analytics.distribution",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionAnalyticsController",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/analytics/leads",
+            "name": "admin.analytics.leads",
+            "action": "App\\Http\\Controllers\\Admin\\LeadAnalyticsController",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/analytics/traffic",
+            "name": "admin.analytics.traffic",
+            "action": "App\\Http\\Controllers\\Admin\\TrafficAnalyticsController",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/analytics",
+            "name": "admin.analytics",
+            "action": "App\\Http\\Controllers\\Admin\\AnalyticsController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/api-tokens/{tokenId}/revoke",
+            "name": "admin.api-tokens.revoke",
+            "action": "App\\Http\\Controllers\\Admin\\ApiTokenController@revoke",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/api-tokens",
+            "name": "admin.api-tokens.index",
+            "action": "App\\Http\\Controllers\\Admin\\ApiTokenController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/api-tokens",
+            "name": "admin.api-tokens.store",
+            "action": "App\\Http\\Controllers\\Admin\\ApiTokenController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/batch/delete",
+            "name": "admin.articles.batch.delete",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@batchDelete",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/articles/batch/export-markdown/download/{exportToken}",
+            "name": "admin.articles.batch.export-markdown.download",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@downloadMarkdownExport",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/batch/export-markdown/prepare",
+            "name": "admin.articles.batch.export-markdown.prepare",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@prepareMarkdownExport",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/batch/force-delete",
+            "name": "admin.articles.batch.force-delete",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@batchForceDelete",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/batch/restore",
+            "name": "admin.articles.batch.restore",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@batchRestore",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/batch/update-review",
+            "name": "admin.articles.batch.update-review",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@batchUpdateReview",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/batch/update-status",
+            "name": "admin.articles.batch.update-status",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@batchUpdateStatus",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/articles/create",
+            "name": "admin.articles.create",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/create",
+            "name": "admin.articles.store",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/editor/generate",
+            "name": "admin.articles.editor.generate",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleEditorAssistantController@generate",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/articles/editor/titles",
+            "name": "admin.articles.editor.titles",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleEditorAssistantController@titles",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/editor/wechat-html",
+            "name": "admin.articles.editor.wechat-html",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleEditorAssetController@exportWeChatHtml",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/trash/empty",
+            "name": "admin.articles.trash.empty",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@emptyTrash",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/{articleId}/ai-quality/optimization/{runId}/apply",
+            "name": "admin.articles.ai-quality.optimization.apply",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleAiOptimizationController@apply",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/{articleId}/ai-quality/optimization/{runId}/cancel",
+            "name": "admin.articles.ai-quality.optimization.cancel",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleAiOptimizationController@cancel",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/articles/{articleId}/ai-quality/optimization/{runId}/candidate",
+            "name": "admin.articles.ai-quality.optimization.candidate",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleAiOptimizationController@candidate",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/{articleId}/ai-quality/optimization/{runId}/rollback",
+            "name": "admin.articles.ai-quality.optimization.rollback",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleAiOptimizationController@rollback",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/{articleId}/ai-quality/optimization",
+            "name": "admin.articles.ai-quality.optimization.store",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleAiOptimizationController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/{articleId}/ai-quality/override",
+            "name": "admin.articles.ai-quality.override",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@overrideAiQuality",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/{articleId}/ai-quality/recheck",
+            "name": "admin.articles.ai-quality.recheck",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@recheckAiQuality",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/articles/{articleId}/ai-quality/status",
+            "name": "admin.articles.ai-quality.status",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@aiQualityStatus",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/{articleId}/ai-quality/workflow-retry",
+            "name": "admin.articles.ai-quality.workflow-retry",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@retryAiQualityWorkflow",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/articles/{articleId}/edit",
+            "name": "admin.articles.edit",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/{articleId}/editor/images/upload",
+            "name": "admin.articles.editor.images.upload",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleEditorAssetController@uploadImage",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/{articleId}/force-delete",
+            "name": "admin.articles.force-delete",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@forceDelete",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/{articleId}/restore",
+            "name": "admin.articles.restore",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@restore",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/articles/{articleId}/risk-scan",
+            "name": "admin.articles.risk-scan",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@recheckRisk",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/articles/{articleId}",
+            "name": "admin.articles.update",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/articles",
+            "name": "admin.articles.index",
+            "action": "App\\Http\\Controllers\\Admin\\ArticleController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/authors/create",
+            "name": "admin.authors.create",
+            "action": "App\\Http\\Controllers\\Admin\\AuthorController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/authors/create",
+            "name": "admin.authors.store",
+            "action": "App\\Http\\Controllers\\Admin\\AuthorController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/authors/{authorId}/delete",
+            "name": "admin.authors.delete",
+            "action": "App\\Http\\Controllers\\Admin\\AuthorController@destroy",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/authors/{authorId}/detail",
+            "name": "admin.authors.detail",
+            "action": "App\\Http\\Controllers\\Admin\\AuthorController@detail",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/authors/{authorId}/edit",
+            "name": "admin.authors.edit",
+            "action": "App\\Http\\Controllers\\Admin\\AuthorController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/authors/{authorId}",
+            "name": "admin.authors.update",
+            "action": "App\\Http\\Controllers\\Admin\\AuthorController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/authors",
+            "name": "admin.authors.index",
+            "action": "App\\Http\\Controllers\\Admin\\AuthorController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/categories/create",
+            "name": "admin.categories.create",
+            "action": "App\\Http\\Controllers\\Admin\\CategoryController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/categories/create",
+            "name": "admin.categories.store",
+            "action": "App\\Http\\Controllers\\Admin\\CategoryController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/categories/{categoryId}/delete",
+            "name": "admin.categories.delete",
+            "action": "App\\Http\\Controllers\\Admin\\CategoryController@destroy",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/categories/{categoryId}/edit",
+            "name": "admin.categories.edit",
+            "action": "App\\Http\\Controllers\\Admin\\CategoryController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/categories/{categoryId}",
+            "name": "admin.categories.update",
+            "action": "App\\Http\\Controllers\\Admin\\CategoryController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/categories",
+            "name": "admin.categories.index",
+            "action": "App\\Http\\Controllers\\Admin\\CategoryController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/dashboard",
+            "name": "admin.dashboard",
+            "action": "App\\Http\\Controllers\\Admin\\DashboardController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/distribution/create",
+            "name": "admin.distribution.create",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/create",
+            "name": "admin.distribution.store",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/distribution/hosted-sites/create",
+            "name": "admin.distribution.hosted-sites.create",
+            "action": "App\\Http\\Controllers\\Admin\\HostedSiteController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/hosted-sites/{hostedSite}/activate",
+            "name": "admin.distribution.hosted-sites.activate",
+            "action": "App\\Http\\Controllers\\Admin\\HostedSiteController@activate",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/hosted-sites/{hostedSite}/archive",
+            "name": "admin.distribution.hosted-sites.archive",
+            "action": "App\\Http\\Controllers\\Admin\\HostedSiteController@archive",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/hosted-sites/{hostedSite}/article-permalink/activate",
+            "name": "admin.distribution.hosted-sites.article-permalink.activate",
+            "action": "App\\Http\\Controllers\\Admin\\HostedSitePermalinkController@activate",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/distribution/hosted-sites/{hostedSite}/article-permalink/migration-map",
+            "name": "admin.distribution.hosted-sites.article-permalink.migration-map",
+            "action": "App\\Http\\Controllers\\Admin\\HostedSitePermalinkController@migrationMap",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/hosted-sites/{hostedSite}/article-permalink/preview",
+            "name": "admin.distribution.hosted-sites.article-permalink.preview",
+            "action": "App\\Http\\Controllers\\Admin\\HostedSitePermalinkController@preview",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/hosted-sites/{hostedSite}/articles",
+            "name": "admin.distribution.hosted-sites.articles.assign",
+            "action": "App\\Http\\Controllers\\Admin\\HostedSiteController@assignArticle",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/distribution/hosted-sites/{hostedSite}/edit",
+            "name": "admin.distribution.hosted-sites.edit",
+            "action": "App\\Http\\Controllers\\Admin\\HostedSiteController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/hosted-sites/{hostedSite}/indexing",
+            "name": "admin.distribution.hosted-sites.indexing",
+            "action": "App\\Http\\Controllers\\Admin\\HostedSiteController@indexing",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/hosted-sites/{hostedSite}/maintenance",
+            "name": "admin.distribution.hosted-sites.maintenance",
+            "action": "App\\Http\\Controllers\\Admin\\HostedSiteController@maintenance",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/hosted-sites/{hostedSite}/pause",
+            "name": "admin.distribution.hosted-sites.pause",
+            "action": "App\\Http\\Controllers\\Admin\\HostedSiteController@pause",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/hosted-sites/{hostedSite}/preflight",
+            "name": "admin.distribution.hosted-sites.preflight",
+            "action": "App\\Http\\Controllers\\Admin\\HostedSiteController@preflight",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/distribution/hosted-sites/{hostedSite}",
+            "name": "admin.distribution.hosted-sites.show",
+            "action": "App\\Http\\Controllers\\Admin\\HostedSiteController@show",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/distribution/hosted-sites/{hostedSite}",
+            "name": "admin.distribution.hosted-sites.update",
+            "action": "App\\Http\\Controllers\\Admin\\HostedSiteController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/distribution/hosted-sites",
+            "name": "admin.distribution.hosted-sites.index",
+            "action": "App\\Http\\Controllers\\Admin\\HostedSiteController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/hosted-sites",
+            "name": "admin.distribution.hosted-sites.store",
+            "action": "App\\Http\\Controllers\\Admin\\HostedSiteController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/jobs/{distributionId}/delete",
+            "name": "admin.distribution.article.delete",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@deleteArticle",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/distribution/jobs/{distributionId}/edit",
+            "name": "admin.distribution.article.edit",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@editArticle",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/jobs/{distributionId}/retry",
+            "name": "admin.distribution.retry",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@retry",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/distribution/jobs/{distributionId}",
+            "name": "admin.distribution.article.update",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@updateArticle",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/distribution/jobs",
+            "name": "admin.distribution.jobs",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@jobs",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/distribution/sync-settings-all/preview",
+            "name": "admin.distribution.sync-settings-all.preview",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@previewSyncSettingsAll",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/sync-settings-all",
+            "name": "admin.distribution.sync-settings-all",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@syncSettingsAll",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/sync-settings-selected/preview",
+            "name": "admin.distribution.sync-settings-selected.preview",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@previewSyncSettingsSelected",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/sync-settings-selected",
+            "name": "admin.distribution.sync-settings-selected",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@syncSettingsSelected",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/{channelId}/activate",
+            "name": "admin.distribution.activate",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@activate",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/{channelId}/delete/cancel",
+            "name": "admin.distribution.delete.cancel",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@cancelDelete",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/{channelId}/delete/prepare",
+            "name": "admin.distribution.delete.prepare",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@prepareDelete",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/distribution/{channelId}/delete",
+            "name": "admin.distribution.delete",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@deletePreview",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/{channelId}/download-package",
+            "name": "admin.distribution.download-package",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@downloadPackage",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/distribution/{channelId}/edit",
+            "name": "admin.distribution.edit",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/{channelId}/frontend-capabilities/refresh",
+            "name": "admin.distribution.frontend-capabilities.refresh",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@refreshFrontendCapabilities",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/{channelId}/health",
+            "name": "admin.distribution.health",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@health",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/{channelId}/pause",
+            "name": "admin.distribution.pause",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@pause",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/{channelId}/reveal-secret",
+            "name": "admin.distribution.reveal-secret",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@revealSecret",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/{channelId}/rotate-secret",
+            "name": "admin.distribution.rotate-secret",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@rotateSecret",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/distribution/{channelId}/sync-settings/preview",
+            "name": "admin.distribution.sync-settings.preview",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@previewSyncSettings",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/distribution/{channelId}/sync-settings",
+            "name": "admin.distribution.sync-settings",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@syncSettings",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "DELETE"
+            ],
+            "uri": "geo_admin/distribution/{channelId}",
+            "name": "admin.distribution.destroy",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@destroy",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/distribution/{channelId}",
+            "name": "admin.distribution.show",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@show",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/distribution/{channelId}",
+            "name": "admin.distribution.update",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/distribution",
+            "name": "admin.distribution.index",
+            "action": "App\\Http\\Controllers\\Admin\\DistributionController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/enterprise-knowledge/create",
+            "name": "admin.enterprise-knowledge.create",
+            "action": "App\\Http\\Controllers\\Admin\\EnterpriseKnowledgeController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/enterprise-knowledge/create",
+            "name": "admin.enterprise-knowledge.store",
+            "action": "App\\Http\\Controllers\\Admin\\EnterpriseKnowledgeController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/enterprise-knowledge/{projectId}/autosave",
+            "name": "admin.enterprise-knowledge.autosave",
+            "action": "App\\Http\\Controllers\\Admin\\EnterpriseKnowledgeController@autosave",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/enterprise-knowledge/{projectId}/delete",
+            "name": "admin.enterprise-knowledge.delete",
+            "action": "App\\Http\\Controllers\\Admin\\EnterpriseKnowledgeController@destroy",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/enterprise-knowledge/{projectId}/editor/images/upload",
+            "name": "admin.enterprise-knowledge.editor.images.upload",
+            "action": "App\\Http\\Controllers\\Admin\\EnterpriseKnowledgeController@uploadImage",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/enterprise-knowledge/{projectId}/publish",
+            "name": "admin.enterprise-knowledge.publish",
+            "action": "App\\Http\\Controllers\\Admin\\EnterpriseKnowledgeController@publish",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/enterprise-knowledge/{projectId}/revisions/{revisionId}/restore",
+            "name": "admin.enterprise-knowledge.revisions.restore",
+            "action": "App\\Http\\Controllers\\Admin\\EnterpriseKnowledgeController@restoreRevision",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/enterprise-knowledge/{projectId}/status",
+            "name": "admin.enterprise-knowledge.status",
+            "action": "App\\Http\\Controllers\\Admin\\EnterpriseKnowledgeController@status",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/enterprise-knowledge/{projectId}/validate",
+            "name": "admin.enterprise-knowledge.validate",
+            "action": "App\\Http\\Controllers\\Admin\\EnterpriseKnowledgeController@validateDraft",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/enterprise-knowledge/{projectId}",
+            "name": "admin.enterprise-knowledge.show",
+            "action": "App\\Http\\Controllers\\Admin\\EnterpriseKnowledgeController@show",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/enterprise-knowledge",
+            "name": "admin.enterprise-knowledge.index",
+            "action": "App\\Http\\Controllers\\Admin\\EnterpriseKnowledgeController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/image-libraries/create",
+            "name": "admin.image-libraries.create",
+            "action": "App\\Http\\Controllers\\Admin\\ImageLibraryController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/image-libraries/create",
+            "name": "admin.image-libraries.store",
+            "action": "App\\Http\\Controllers\\Admin\\ImageLibraryController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/image-libraries/{libraryId}/delete",
+            "name": "admin.image-libraries.delete",
+            "action": "App\\Http\\Controllers\\Admin\\ImageLibraryController@destroy",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/image-libraries/{libraryId}/detail",
+            "name": "admin.image-libraries.detail",
+            "action": "App\\Http\\Controllers\\Admin\\ImageLibraryController@detail",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/image-libraries/{libraryId}/detail",
+            "name": "admin.image-libraries.detail.update",
+            "action": "App\\Http\\Controllers\\Admin\\ImageLibraryController@updateFromDetail",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/image-libraries/{libraryId}/edit",
+            "name": "admin.image-libraries.edit",
+            "action": "App\\Http\\Controllers\\Admin\\ImageLibraryController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/image-libraries/{libraryId}/images/delete",
+            "name": "admin.image-libraries.images.delete",
+            "action": "App\\Http\\Controllers\\Admin\\ImageLibraryController@destroyImages",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/image-libraries/{libraryId}/images/upload",
+            "name": "admin.image-libraries.images.create",
+            "action": "App\\Http\\Controllers\\Admin\\ImageLibraryController@createImageUpload",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/image-libraries/{libraryId}/images/upload",
+            "name": "admin.image-libraries.images.upload",
+            "action": "App\\Http\\Controllers\\Admin\\ImageLibraryController@uploadImages",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/image-libraries/{libraryId}",
+            "name": "admin.image-libraries.update",
+            "action": "App\\Http\\Controllers\\Admin\\ImageLibraryController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/image-libraries",
+            "name": "admin.image-libraries.index",
+            "action": "App\\Http\\Controllers\\Admin\\ImageLibraryController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/keyword-libraries/create",
+            "name": "admin.keyword-libraries.create",
+            "action": "App\\Http\\Controllers\\Admin\\KeywordLibraryController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/keyword-libraries/create",
+            "name": "admin.keyword-libraries.store",
+            "action": "App\\Http\\Controllers\\Admin\\KeywordLibraryController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/keyword-libraries/{libraryId}/delete",
+            "name": "admin.keyword-libraries.delete",
+            "action": "App\\Http\\Controllers\\Admin\\KeywordLibraryController@destroy",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/keyword-libraries/{libraryId}/detail",
+            "name": "admin.keyword-libraries.detail",
+            "action": "App\\Http\\Controllers\\Admin\\KeywordLibraryController@detail",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/keyword-libraries/{libraryId}/detail",
+            "name": "admin.keyword-libraries.detail.update",
+            "action": "App\\Http\\Controllers\\Admin\\KeywordLibraryController@updateFromDetail",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/keyword-libraries/{libraryId}/edit",
+            "name": "admin.keyword-libraries.edit",
+            "action": "App\\Http\\Controllers\\Admin\\KeywordLibraryController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/keyword-libraries/{libraryId}/import",
+            "name": "admin.keyword-libraries.import.create",
+            "action": "App\\Http\\Controllers\\Admin\\KeywordLibraryController@createImport",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/keyword-libraries/{libraryId}/import",
+            "name": "admin.keyword-libraries.import",
+            "action": "App\\Http\\Controllers\\Admin\\KeywordLibraryController@importKeywords",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/keyword-libraries/{libraryId}/keywords/create",
+            "name": "admin.keyword-libraries.keywords.create",
+            "action": "App\\Http\\Controllers\\Admin\\KeywordLibraryController@createKeyword",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/keyword-libraries/{libraryId}/keywords/delete",
+            "name": "admin.keyword-libraries.keywords.delete",
+            "action": "App\\Http\\Controllers\\Admin\\KeywordLibraryController@destroyKeywords",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/keyword-libraries/{libraryId}/keywords",
+            "name": "admin.keyword-libraries.keywords.store",
+            "action": "App\\Http\\Controllers\\Admin\\KeywordLibraryController@storeKeyword",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/keyword-libraries/{libraryId}",
+            "name": "admin.keyword-libraries.update",
+            "action": "App\\Http\\Controllers\\Admin\\KeywordLibraryController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/keyword-libraries",
+            "name": "admin.keyword-libraries.index",
+            "action": "App\\Http\\Controllers\\Admin\\KeywordLibraryController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/knowledge-bases/create",
+            "name": "admin.knowledge-bases.create",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/create",
+            "name": "admin.knowledge-bases.store",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/upload",
+            "name": "admin.knowledge-bases.upload",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseController@uploadFile",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/chunks/refresh",
+            "name": "admin.knowledge-bases.chunks.refresh",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseController@refreshChunks",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/chunks",
+            "name": "admin.knowledge-bases.chunks.index",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseController@chunks",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/delete",
+            "name": "admin.knowledge-bases.delete",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseController@destroy",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/detail",
+            "name": "admin.knowledge-bases.detail",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseController@detail",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/detail",
+            "name": "admin.knowledge-bases.detail.update",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseController@updateFromDetail",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/edit",
+            "name": "admin.knowledge-bases.edit",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/fact-generation/{runId}/cancel",
+            "name": "admin.knowledge-bases.fact-generation.cancel",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactGenerationController@cancel",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/fact-generation/{runId}/resolve",
+            "name": "admin.knowledge-bases.fact-generation.resolve",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactGenerationController@resolve",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/fact-generation/{runId}",
+            "name": "admin.knowledge-bases.fact-generation.show",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactGenerationController@show",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/fact-generation",
+            "name": "admin.knowledge-bases.fact-generation.store",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactGenerationController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/fact-revisions/{revisionId}/restore",
+            "name": "admin.knowledge-bases.fact-revisions.restore",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactController@restore",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/fact-values/{valueId}/archive",
+            "name": "admin.knowledge-bases.fact-values.archive",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactController@archiveValue",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/fact-values/{valueId}/evidences",
+            "name": "admin.knowledge-bases.fact-evidences.store",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactController@storeEvidence",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/fact-values/{valueId}",
+            "name": "admin.knowledge-bases.fact-values.update",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactController@updateValue",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/facts/publish",
+            "name": "admin.knowledge-bases.facts.publish",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactController@publish",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/facts/{factId}/archive",
+            "name": "admin.knowledge-bases.facts.archive",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactController@archive",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/facts/{factId}/merge",
+            "name": "admin.knowledge-bases.facts.merge",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactController@merge",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/facts/{factId}/review",
+            "name": "admin.knowledge-bases.facts.review",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactController@review",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/facts/{factId}/split",
+            "name": "admin.knowledge-bases.facts.split",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactController@split",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/facts/{factId}/values",
+            "name": "admin.knowledge-bases.fact-values.store",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactController@storeValue",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/facts/{factId}",
+            "name": "admin.knowledge-bases.facts.update",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/facts",
+            "name": "admin.knowledge-bases.facts.index",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/facts",
+            "name": "admin.knowledge-bases.facts.store",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeFactController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/media/{mediaAsset}/replace",
+            "name": "admin.knowledge-bases.media.replace",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseMediaController@replace",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/media/{mediaAsset}/toggle",
+            "name": "admin.knowledge-bases.media.toggle",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseMediaController@toggle",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/media/{mediaAsset}",
+            "name": "admin.knowledge-bases.media.update",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseMediaController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/media",
+            "name": "admin.knowledge-bases.media.store",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseMediaController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/official/adopt",
+            "name": "admin.knowledge-bases.official.adopt",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseController@adoptOfficial",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}/revisions/{revisionId}/restore",
+            "name": "admin.knowledge-bases.revisions.restore",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseController@restoreRevision",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/knowledge-bases/{knowledgeBaseId}",
+            "name": "admin.knowledge-bases.update",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/knowledge-bases",
+            "name": "admin.knowledge-bases.index",
+            "action": "App\\Http\\Controllers\\Admin\\KnowledgeBaseController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/lead-forms/create",
+            "name": "admin.lead-forms.create",
+            "action": "App\\Http\\Controllers\\Admin\\LeadFormController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/lead-forms/{formId}/delete",
+            "name": "admin.lead-forms.delete",
+            "action": "App\\Http\\Controllers\\Admin\\LeadFormController@destroy",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/lead-forms/{formId}/edit",
+            "name": "admin.lead-forms.edit",
+            "action": "App\\Http\\Controllers\\Admin\\LeadFormController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/lead-forms/{formId}/toggle-status",
+            "name": "admin.lead-forms.toggle-status",
+            "action": "App\\Http\\Controllers\\Admin\\LeadFormController@toggleStatus",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/lead-forms/{formId}",
+            "name": "admin.lead-forms.update",
+            "action": "App\\Http\\Controllers\\Admin\\LeadFormController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/lead-forms",
+            "name": "admin.lead-forms.index",
+            "action": "App\\Http\\Controllers\\Admin\\LeadFormController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/lead-forms",
+            "name": "admin.lead-forms.store",
+            "action": "App\\Http\\Controllers\\Admin\\LeadFormController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/leads/export",
+            "name": "admin.leads.export",
+            "action": "App\\Http\\Controllers\\Admin\\LeadController@export",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/leads/{submissionId}",
+            "name": "admin.leads.show",
+            "action": "App\\Http\\Controllers\\Admin\\LeadController@show",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/leads/{submissionId}",
+            "name": "admin.leads.update",
+            "action": "App\\Http\\Controllers\\Admin\\LeadController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/leads",
+            "name": "admin.leads.index",
+            "action": "App\\Http\\Controllers\\Admin\\LeadController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/locale/{locale}",
+            "name": "admin.locale.switch",
+            "action": "App\\Http\\Controllers\\Admin\\AdminAuthController@switchLocale",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/login",
+            "name": "admin.login",
+            "action": "App\\Http\\Controllers\\Admin\\AdminAuthController@showLoginForm",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/login",
+            "name": "admin.login.attempt",
+            "action": "App\\Http\\Controllers\\Admin\\AdminAuthController@login",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/logout",
+            "name": "admin.logout",
+            "action": "App\\Http\\Controllers\\Admin\\AdminAuthController@logout",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/manual-publications/browser-connect/decision",
+            "name": "admin.manual-publications.browser-connect.decision",
+            "action": "App\\Http\\Controllers\\Admin\\BrowserConnectionApprovalController@decision",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/manual-publications/browser-connect",
+            "name": "admin.manual-publications.browser-connect.show",
+            "action": "App\\Http\\Controllers\\Admin\\BrowserConnectionApprovalController@show",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/manual-publications/create",
+            "name": "admin.manual-publications.create",
+            "action": "App\\Http\\Controllers\\Admin\\ManualPublicationController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/manual-publications/export",
+            "name": "admin.manual-publications.export",
+            "action": "App\\Http\\Controllers\\Admin\\ManualPublicationController@export",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/manual-publications/settings/accounts/{accountId}",
+            "name": "admin.manual-publications.settings.accounts.update",
+            "action": "App\\Http\\Controllers\\Admin\\ManualPublicationSettingsController@updateAccount",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/manual-publications/settings/accounts",
+            "name": "admin.manual-publications.settings.accounts.store",
+            "action": "App\\Http\\Controllers\\Admin\\ManualPublicationSettingsController@storeAccount",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/manual-publications/settings/personas/{personaId}",
+            "name": "admin.manual-publications.settings.personas.update",
+            "action": "App\\Http\\Controllers\\Admin\\ManualPublicationSettingsController@updatePersona",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/manual-publications/settings/personas",
+            "name": "admin.manual-publications.settings.personas.store",
+            "action": "App\\Http\\Controllers\\Admin\\ManualPublicationSettingsController@storePersona",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/manual-publications/settings",
+            "name": "admin.manual-publications.settings.index",
+            "action": "App\\Http\\Controllers\\Admin\\ManualPublicationSettingsController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/manual-publications/{manualPublicationId}/edit",
+            "name": "admin.manual-publications.edit",
+            "action": "App\\Http\\Controllers\\Admin\\ManualPublicationController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/manual-publications/{manualPublicationId}/transition",
+            "name": "admin.manual-publications.transition",
+            "action": "App\\Http\\Controllers\\Admin\\ManualPublicationController@transition",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/manual-publications/{manualPublicationId}",
+            "name": "admin.manual-publications.show",
+            "action": "App\\Http\\Controllers\\Admin\\ManualPublicationController@show",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/manual-publications/{manualPublicationId}",
+            "name": "admin.manual-publications.update",
+            "action": "App\\Http\\Controllers\\Admin\\ManualPublicationController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/manual-publications",
+            "name": "admin.manual-publications.index",
+            "action": "App\\Http\\Controllers\\Admin\\ManualPublicationController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/manual-publications",
+            "name": "admin.manual-publications.store",
+            "action": "App\\Http\\Controllers\\Admin\\ManualPublicationController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/materials",
+            "name": "admin.materials.index",
+            "action": "App\\Http\\Controllers\\Admin\\MaterialsController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/recent",
+            "name": "admin.recent.index",
+            "action": "App\\Http\\Controllers\\Admin\\AdminRecentActivityController",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/security-settings/password",
+            "name": "admin.security-settings.password.update",
+            "action": "App\\Http\\Controllers\\Admin\\SecuritySettingsController@updatePassword",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/security-settings/sensitive-words/{wordId}/delete",
+            "name": "admin.security-settings.words.delete",
+            "action": "App\\Http\\Controllers\\Admin\\SecuritySettingsController@destroySensitiveWord",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/security-settings/sensitive-words",
+            "name": "admin.security-settings.words.store",
+            "action": "App\\Http\\Controllers\\Admin\\SecuritySettingsController@storeSensitiveWords",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/security-settings",
+            "name": "admin.security-settings.index",
+            "action": "Closure",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/ai-workspace",
+            "name": "admin.site-settings.ai-workspace.update",
+            "action": "App\\Http\\Controllers\\Admin\\AiWorkspaceRuntimeSettingsController",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/article-detail-ads",
+            "name": "admin.site-settings.ads",
+            "action": "App\\Http\\Controllers\\Admin\\SiteSettingsController@updateArticleDetailAds",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/article-detail-text-ads",
+            "name": "admin.site-settings.text-ads",
+            "action": "App\\Http\\Controllers\\Admin\\SiteSettingsController@updateArticleDetailTextAds",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/article-permalink/activate",
+            "name": "admin.site-settings.article-permalink.activate",
+            "action": "App\\Http\\Controllers\\Admin\\ArticlePermalinkController@activate",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/article-permalink/migration-map",
+            "name": "admin.site-settings.article-permalink.migration-map",
+            "action": "App\\Http\\Controllers\\Admin\\ArticlePermalinkController@migrationMap",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/article-permalink/preview",
+            "name": "admin.site-settings.article-permalink.preview",
+            "action": "App\\Http\\Controllers\\Admin\\ArticlePermalinkController@preview",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/friend-links",
+            "name": "admin.site-settings.friend-links.edit",
+            "action": "App\\Http\\Controllers\\Admin\\FriendLinkSettingsController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/friend-links",
+            "name": "admin.site-settings.friend-links.update",
+            "action": "App\\Http\\Controllers\\Admin\\FriendLinkSettingsController",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/homepage-modules/import",
+            "name": "admin.site-settings.homepage-modules.import",
+            "action": "App\\Http\\Controllers\\Admin\\SiteSettingsController@importHomepageModuleDesign",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/homepage-modules/preset",
+            "name": "admin.site-settings.homepage-modules.preset",
+            "action": "App\\Http\\Controllers\\Admin\\SiteSettingsController@applyHomepageModulePreset",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/homepage-modules",
+            "name": "admin.site-settings.homepage-modules.edit",
+            "action": "App\\Http\\Controllers\\Admin\\SiteSettingsController@editHomepageModules",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/homepage-modules",
+            "name": "admin.site-settings.homepage-modules",
+            "action": "App\\Http\\Controllers\\Admin\\SiteSettingsController@updateHomepageModules",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/sensitive-words/{wordId}/delete",
+            "name": "admin.site-settings.sensitive-words.delete",
+            "action": "App\\Http\\Controllers\\Admin\\SecuritySettingsController@destroySensitiveWord",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/site-settings/sensitive-words/{wordId}",
+            "name": "admin.site-settings.sensitive-words.update",
+            "action": "App\\Http\\Controllers\\Admin\\SecuritySettingsController@updateSensitiveWord",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/sensitive-words",
+            "name": "admin.site-settings.sensitive-words",
+            "action": "App\\Http\\Controllers\\Admin\\SecuritySettingsController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/sensitive-words",
+            "name": "admin.site-settings.sensitive-words.store",
+            "action": "App\\Http\\Controllers\\Admin\\SecuritySettingsController@storeSensitiveWords",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/theme-packages/exports/{token}",
+            "name": "admin.site-settings.theme-packages.exports.download",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemePackageController@download",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/theme-packages/exports",
+            "name": "admin.site-settings.theme-packages.exports.store",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemePackageController@export",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/theme-packages/imports/create",
+            "name": "admin.site-settings.theme-packages.imports.create",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemePackageController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/theme-packages/imports/{token}/files/{fileIndex}",
+            "name": "admin.site-settings.theme-packages.imports.file",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemePackageController@file",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/theme-packages/imports/{token}/install",
+            "name": "admin.site-settings.theme-packages.imports.install",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemePackageController@install",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/theme-packages/imports/{token}",
+            "name": "admin.site-settings.theme-packages.imports.show",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemePackageController@inspection",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/theme-packages/imports",
+            "name": "admin.site-settings.theme-packages.imports.store",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemePackageController@upload",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/theme-packages/installed/{themeId}/preview/frame/{sitePath?}",
+            "name": "admin.site-settings.theme-packages.preview.frame",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemePreviewController@frame",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/theme-packages/installed/{themeId}/preview/{page?}",
+            "name": "admin.site-settings.theme-packages.preview",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemePreviewController@show",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/theme-replications/create",
+            "name": "admin.site-settings.theme-replications.create",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemeReplicationController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/theme-replications/{replicationId}/archive",
+            "name": "admin.site-settings.theme-replications.archive",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemeReplicationController@archive",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/theme-replications/{replicationId}/copy",
+            "name": "admin.site-settings.theme-replications.copy",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemeReplicationController@copy",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/theme-replications/{replicationId}/drafts/delete",
+            "name": "admin.site-settings.theme-replications.delete-drafts",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemeReplicationController@deleteDrafts",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/theme-replications/{replicationId}/iterate",
+            "name": "admin.site-settings.theme-replications.iterate",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemeReplicationController@iterate",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/theme-replications/{replicationId}/package",
+            "name": "admin.site-settings.theme-replications.package",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemeReplicationController@downloadPackage",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/theme-replications/{replicationId}/preview/{page}",
+            "name": "admin.site-settings.theme-replications.preview",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemeReplicationController@preview",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/theme-replications/{replicationId}/publish",
+            "name": "admin.site-settings.theme-replications.publish",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemeReplicationController@publish",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/theme-replications/{replicationId}/retry",
+            "name": "admin.site-settings.theme-replications.retry",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemeReplicationController@retry",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/theme-replications/{replicationId}/status",
+            "name": "admin.site-settings.theme-replications.status",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemeReplicationController@status",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/theme-replications/{replicationId}",
+            "name": "admin.site-settings.theme-replications.show",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemeReplicationController@show",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/theme-replications",
+            "name": "admin.site-settings.theme-replications.store",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemeReplicationController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/theme",
+            "name": "admin.site-settings.theme",
+            "action": "App\\Http\\Controllers\\Admin\\SiteSettingsController@updateTheme",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings",
+            "name": "admin.site-settings.index",
+            "action": "App\\Http\\Controllers\\Admin\\SiteSettingsController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings",
+            "name": "admin.site-settings.update",
+            "action": "App\\Http\\Controllers\\Admin\\SiteSettingsController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/system-updates/backups/{backupUuid}",
+            "name": "admin.system-updates.backups.show",
+            "action": "App\\Http\\Controllers\\Admin\\LegacySystemUpdateHistoryController@backup",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/system-updates/check",
+            "name": "admin.system-updates.check",
+            "action": "App\\Http\\Controllers\\Admin\\SystemUpdateController@check",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/system-updates/runs/{runUuid}",
+            "name": "admin.system-updates.runs.show",
+            "action": "App\\Http\\Controllers\\Admin\\LegacySystemUpdateHistoryController@run",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/system-updates/updater/backup",
+            "name": "admin.system-updates.updater.backup",
+            "action": "App\\Http\\Controllers\\Admin\\SystemUpdaterOperationController@backup",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/system-updates/updater/download",
+            "name": "admin.system-updates.updater.download",
+            "action": "App\\Http\\Controllers\\Admin\\SystemUpdaterOperationController@download",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/system-updates/updater/plan",
+            "name": "admin.system-updates.updater.plan",
+            "action": "App\\Http\\Controllers\\Admin\\SystemUpdaterOperationController@preview",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/system-updates/updater/prepare",
+            "name": "admin.system-updates.updater.prepare",
+            "action": "App\\Http\\Controllers\\Admin\\SystemUpdaterOperationController@prepare",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/system-updates/updater/rollback",
+            "name": "admin.system-updates.updater.rollback",
+            "action": "App\\Http\\Controllers\\Admin\\SystemUpdaterOperationController@rollback",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/system-updates/updater/switch-back",
+            "name": "admin.system-updates.updater.switch-back",
+            "action": "App\\Http\\Controllers\\Admin\\SystemUpdaterOperationController@switchBack",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/system-updates/updater/update",
+            "name": "admin.system-updates.updater.update",
+            "action": "App\\Http\\Controllers\\Admin\\SystemUpdaterOperationController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/system-updates/updater/verify",
+            "name": "admin.system-updates.updater.verify",
+            "action": "App\\Http\\Controllers\\Admin\\SystemUpdaterOperationController@verify",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/system-updates",
+            "name": "admin.system-updates.index",
+            "action": "App\\Http\\Controllers\\Admin\\SystemUpdateController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/tasks/batch/start",
+            "name": "admin.tasks.batch",
+            "action": "App\\Http\\Controllers\\Admin\\TaskController@batchAction",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/tasks/create",
+            "name": "admin.tasks.create",
+            "action": "App\\Http\\Controllers\\Admin\\TaskController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/tasks/create",
+            "name": "admin.tasks.store",
+            "action": "App\\Http\\Controllers\\Admin\\TaskController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/tasks/health-check",
+            "name": "admin.tasks.health",
+            "action": "App\\Http\\Controllers\\Admin\\TaskController@healthCheck",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/tasks/jobs",
+            "name": "admin.tasks.jobs",
+            "action": "App\\Http\\Controllers\\Admin\\TaskController@jobs",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/tasks/title-readiness",
+            "name": "admin.tasks.title-readiness",
+            "action": "App\\Http\\Controllers\\Admin\\TaskController@titleReadiness",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/tasks/workers",
+            "name": "admin.tasks.workers",
+            "action": "App\\Http\\Controllers\\Admin\\TaskController@workers",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/tasks/{taskId}/delete",
+            "name": "admin.tasks.delete",
+            "action": "App\\Http\\Controllers\\Admin\\TaskController@destroyTask",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/tasks/{taskId}/edit",
+            "name": "admin.tasks.edit",
+            "action": "App\\Http\\Controllers\\Admin\\TaskController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/tasks/{taskId}/restore",
+            "name": "admin.tasks.restore",
+            "action": "App\\Http\\Controllers\\Admin\\TaskController@restoreTask",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/tasks/{taskId}/toggle-status",
+            "name": "admin.tasks.toggle-status",
+            "action": "App\\Http\\Controllers\\Admin\\TaskController@toggleStatus",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/tasks/{taskId}",
+            "name": "admin.tasks.update",
+            "action": "App\\Http\\Controllers\\Admin\\TaskController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/tasks",
+            "name": "admin.tasks.index",
+            "action": "App\\Http\\Controllers\\Admin\\TaskController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/title-libraries/create",
+            "name": "admin.title-libraries.create",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/title-libraries/create",
+            "name": "admin.title-libraries.store",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/title-libraries/{libraryId}/ai-generate",
+            "name": "admin.title-libraries.ai-generate",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@aiGenerate",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/title-libraries/{libraryId}/ai-generate",
+            "name": "admin.title-libraries.ai-generate.submit",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@generateWithAi",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/title-libraries/{libraryId}/ai-generation-runs/{runId}/cancel",
+            "name": "admin.title-libraries.ai-generate.cancel",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@cancelGeneration",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/title-libraries/{libraryId}/ai-generation-runs/{runId}/retry",
+            "name": "admin.title-libraries.ai-generate.retry",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@retryGeneration",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/title-libraries/{libraryId}/ai-generation-runs/{runId}/status",
+            "name": "admin.title-libraries.ai-generate.status",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@generationStatus",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/title-libraries/{libraryId}/delete",
+            "name": "admin.title-libraries.delete",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@destroy",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/title-libraries/{libraryId}/detail",
+            "name": "admin.title-libraries.detail",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@detail",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/title-libraries/{libraryId}/edit",
+            "name": "admin.title-libraries.edit",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/title-libraries/{libraryId}/import",
+            "name": "admin.title-libraries.import.create",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@createImport",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/title-libraries/{libraryId}/import",
+            "name": "admin.title-libraries.import",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@importTitles",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/title-libraries/{libraryId}/titles/create",
+            "name": "admin.title-libraries.titles.create",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@createTitle",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/title-libraries/{libraryId}/titles/delete",
+            "name": "admin.title-libraries.titles.delete",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@destroyTitles",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/title-libraries/{libraryId}/titles",
+            "name": "admin.title-libraries.titles.store",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@storeTitle",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/title-libraries/{libraryId}",
+            "name": "admin.title-libraries.update",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/title-libraries",
+            "name": "admin.title-libraries.index",
+            "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/url-changes/{urlChange}/articles",
+            "name": "admin.url-changes.articles",
+            "action": "App\\Http\\Controllers\\Admin\\UrlChangeController@articles",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/url-changes/{urlChange}/cancel",
+            "name": "admin.url-changes.cancel",
+            "action": "App\\Http\\Controllers\\Admin\\UrlChangeController@cancel",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/url-changes/{urlChange}/confirm",
+            "name": "admin.url-changes.confirm",
+            "action": "App\\Http\\Controllers\\Admin\\UrlChangeController@confirm",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/url-changes/{urlChange}/download",
+            "name": "admin.url-changes.download",
+            "action": "App\\Http\\Controllers\\Admin\\UrlChangeController@download",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/url-changes/{urlChange}/status",
+            "name": "admin.url-changes.status",
+            "action": "App\\Http\\Controllers\\Admin\\UrlChangeController@status",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/url-changes/{urlChange}",
+            "name": "admin.url-changes.show",
+            "action": "App\\Http\\Controllers\\Admin\\UrlChangeController@show",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/url-changes",
+            "name": "admin.url-changes.store",
+            "action": "App\\Http\\Controllers\\Admin\\UrlChangeController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/url-import/history",
+            "name": "admin.url-import.history",
+            "action": "App\\Http\\Controllers\\Admin\\UrlImportController@history",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/url-import/{jobId}/commit",
+            "name": "admin.url-import.commit",
+            "action": "App\\Http\\Controllers\\Admin\\UrlImportController@commit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/url-import/{jobId}/run",
+            "name": "admin.url-import.run",
+            "action": "App\\Http\\Controllers\\Admin\\UrlImportController@run",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/url-import/{jobId}/status",
+            "name": "admin.url-import.status",
+            "action": "App\\Http\\Controllers\\Admin\\UrlImportController@status",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/url-import/{jobId}",
+            "name": "admin.url-import.show",
+            "action": "App\\Http\\Controllers\\Admin\\UrlImportController@show",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/url-import",
+            "name": "admin.url-import",
+            "action": "App\\Http\\Controllers\\Admin\\UrlImportController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/url-import",
+            "name": "admin.url-import.store",
+            "action": "App\\Http\\Controllers\\Admin\\UrlImportController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/welcome/dismiss",
+            "name": "admin.welcome.dismiss",
+            "action": "App\\Http\\Controllers\\Admin\\AdminWelcomeController@dismiss",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin",
+            "name": "admin.entry",
+            "action": "Closure",
+            "remote_coverage": "pending_domain_mapping"
+        }
+    ],
+    "pending_batches": {
+        "A": [
+            "complete_domain_coverage_mapping",
+            "complete_operation_schemas",
+            "public_signed_distribution",
+            "cli_skill_installer"
+        ],
+        "B": [
+            "managed_revision_source",
+            "remote_configuration",
+            "large_file_staging",
+            "checks",
+            "publish_plan_and_apply",
+            "field_rollback",
+            "upgrade_interlock",
+            "consistent_backup_restore",
+            "scheduled_retention",
+            "installed_theme_two_round_acceptance"
+        ],
+        "C": [
+            "full_backend_adapters"
+        ],
+        "D": [
+            "hosted_and_agent_frontends"
+        ],
+        "E": [
+            "cross_platform",
+            "multi_replica",
+            "restore_acceptance",
+            "stable_release"
+        ]
+    }
+}

@@ -41,6 +41,10 @@ final class SiteThemeViewResolver
 
     private static function registerInstalledTheme(): void
     {
+        app(ThemeRevisionContext::class)->views();
+        if ((app(ThemeRevisionContext::class)->snapshot()['revision_id'] ?? null) !== null) {
+            return;
+        }
         $id = self::activeThemeId();
         if ($id === '' || is_dir(resource_path('views/theme/'.$id))) {
             return;

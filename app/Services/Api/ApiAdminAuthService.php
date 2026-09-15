@@ -17,7 +17,7 @@ class ApiAdminAuthService
     /**
      * @return array<string, mixed>
      */
-    public function login(string $username, string $password, string $ipAddress = '', string $userAgent = ''): array
+    public function login(string $username, string $password, string $ipAddress = '', string $userAgent = '', ?array $requestedScopes = null): array
     {
         $username = trim($username);
         if ($username === '' || $password === '') {
@@ -39,7 +39,7 @@ class ApiAdminAuthService
             ]);
         }
 
-        $loginResult = DB::transaction(function () use ($username, $password, $ipAddress): array {
+        $loginResult = DB::transaction(function () use ($username, $password, $ipAddress, $requestedScopes): array {
             $admin = Admin::query()
                 ->where('username', $username)
                 ->lockForUpdate()
@@ -56,12 +56,14 @@ class ApiAdminAuthService
 
             $admin->forceFill(['last_login' => now()])->save();
             $this->loginLockService->clearFailedAttempts($username, $ipAddress);
+            $scopes = $requestedScopes === null ? $this->tokenService->getCliLoginScopes()
+                : ManagementScopePolicy::validate($admin, $requestedScopes, array_merge($this->tokenService->getCliLoginScopes(), ManagementScopePolicy::SCOPES));
 
             return [
                 'admin' => $admin,
                 'token' => $this->tokenService->createToken(
                     'CLI Login '.$username.' '.date('Y-m-d H:i:s'),
-                    $this->tokenService->getCliLoginScopes(),
+                    $scopes,
                     (int) $admin->id
                 ),
             ];

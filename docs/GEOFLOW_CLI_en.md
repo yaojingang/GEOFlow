@@ -1,4 +1,8 @@
-# GEOFlow CLI 0.2.0
+# GEOFlow CLI 0.3.0-preview.1
+
+## Remote management preview
+
+The standalone client can run without local GEOFlow Core source. See [installation and recovery](../packages/geoflow-cli/README.md), [remote CLI workflow](../.agents/skills/geoflow/references/remote-cli-workflow.md), and [implemented coverage and pending work](api/remote-management-preview.md). This preview adds profiles, explicit scopes, identity binding, receipts, and primary-site theme drafts and previews. Theme publication, rollback, and complete backend coverage remain unavailable. Existing commands are documented below.
 
 GEOFlow CLI is the repository's API v1 client for catalog, task, job, material, and article operations. It handles profiles, login, HTTPS policy, secret redaction, JSON validation, deletion confirmation, and API error hints.
 
@@ -6,7 +10,9 @@ The supported platforms are macOS, Linux, and WSL. Native Windows can run PHP, b
 
 ## Installation And Prerequisites
 
-The CLI ships with the GEOFlow source tree. It requires:
+An installed standalone `geoflow` connects directly to an instance without Core source or full project dependencies. It requires PHP 8.3+ and the extensions listed in the [installation guide](../packages/geoflow-cli/README.md). Trusted local signed bundles can be installed now; an official download channel remains pending.
+
+Source contributors can also run the repository entrypoint. This path requires:
 
 - PHP 8.3 or later.
 - Project dependencies installed with Composer.
@@ -34,15 +40,16 @@ You can also invoke the file through PHP:
 php bin/geoflow --version
 ```
 
-`--version` returns JSON. The current version is `0.2.0`. Treat `--help` as the source of truth for command names and basic usage.
+`--version` returns JSON. The current version is `0.3.0-preview.1`. Treat `--help` as the source of truth for command names and basic usage.
 
 ## Profiles And Precedence
 
 The CLI selects one profile per invocation in this order:
 
-1. `--config PATH`
-2. An existing `.geoflow.json` in the current working directory
-3. `~/.config/geoflow/config.json`
+1. `--profile NAME`, selecting `~/.config/geoflow/profiles/NAME.json`; it cannot be combined with `--config` or `--file`
+2. `--config PATH`
+3. An existing `.geoflow.json` in the current working directory
+4. `~/.config/geoflow/config.json`
 
 After profile selection, each value follows this precedence:
 
@@ -466,7 +473,7 @@ When the caller runs on the host, it can usually run the host copy of `bin/geofl
 
 ## API And Admin Boundaries
 
-CLI 0.2.0 covers catalog, task, job, material, and article operations exposed by API v1. If the CLI is absent, use the matching `/api/v1` route with a token carrying the required scopes.
+CLI 0.3.0-preview.1 covers catalog, task, job, material, and article operations exposed by API v1. If the CLI is absent, use the matching `/api/v1` route with a token carrying the required scopes.
 
 These capabilities currently require an authenticated admin session:
 

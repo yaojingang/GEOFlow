@@ -1,0 +1,712 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "GEOFlow remote management preview",
+        "version": "1.0"
+    },
+    "servers": [
+        {
+            "url": "/api/v1"
+        }
+    ],
+    "paths": {
+        "/auth/logout": {
+            "post": {
+                "operationId": "auth.logout",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": null,
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    },
+                    "201": {
+                        "description": "Resource or receipt created"
+                    }
+                }
+            }
+        },
+        "/auth/session": {
+            "get": {
+                "operationId": "auth.session",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": null,
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    }
+                }
+            }
+        },
+        "/capabilities": {
+            "get": {
+                "operationId": "capabilities",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": null,
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    }
+                }
+            }
+        },
+        "/management/operations/lookup": {
+            "get": {
+                "operationId": "operations.lookup",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": null,
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "client_request_id",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
+        "/management/operations/{operation}": {
+            "get": {
+                "operationId": "operations.show",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": null,
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "operation",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
+        "/management/sites": {
+            "get": {
+                "operationId": "sites.list",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "sites:read",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    }
+                }
+            }
+        },
+        "/management/sites/{site}": {
+            "get": {
+                "operationId": "sites.show",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "sites:read",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "site",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
+        "/tasks/{task}/enqueue": {
+            "post": {
+                "operationId": "tasks.enqueue",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "tasks:write",
+                "x-idempotent": true,
+                "x-receipt": true,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    },
+                    "201": {
+                        "description": "Resource or receipt created"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "task",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/management/theme-workspaces/{workspace}/code-authorizations": {
+            "post": {
+                "operationId": "theme-workspaces.authorize-code",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "themes:code",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    },
+                    "201": {
+                        "description": "Resource or receipt created"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "workspace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "password"
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/management/theme-workspaces/{workspace}/changes": {
+            "post": {
+                "operationId": "theme-workspaces.change",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "themes:write",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    },
+                    "201": {
+                        "description": "Resource or receipt created"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "workspace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "expected_version",
+                                    "changes"
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/management/theme-workspaces/{workspace}/contract": {
+            "get": {
+                "operationId": "theme-workspaces.contract",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "themes:read",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "workspace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
+        "/management/theme-workspaces": {
+            "post": {
+                "operationId": "theme-workspaces.create",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "themes:write",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    },
+                    "201": {
+                        "description": "Resource or receipt created"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "site",
+                                    "theme"
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/management/theme-workspaces/{workspace}/discard": {
+            "post": {
+                "operationId": "theme-workspaces.discard",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "themes:write",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    },
+                    "201": {
+                        "description": "Resource or receipt created"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "workspace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "expected_version"
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/management/theme-workspaces/{workspace}/files": {
+            "get": {
+                "operationId": "theme-workspaces.file",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "themes:read",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "workspace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "path",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
+        "/management/theme-workspaces/{workspace}/previews": {
+            "post": {
+                "operationId": "theme-workspaces.preview",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "themes:read",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    },
+                    "201": {
+                        "description": "Resource or receipt created"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "workspace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
+        "/management/theme-workspaces/{workspace}": {
+            "get": {
+                "operationId": "theme-workspaces.show",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "themes:read",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "workspace",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
+        "/management/theme-contract": {
+            "get": {
+                "operationId": "themes.contract",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "themes:read",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    }
+                }
+            }
+        },
+        "/management/themes": {
+            "get": {
+                "operationId": "themes.list",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "themes:read",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer"
+            }
+        }
+    },
+    "x-schema-completeness": "partial: nested business schemas remain pending"
+}

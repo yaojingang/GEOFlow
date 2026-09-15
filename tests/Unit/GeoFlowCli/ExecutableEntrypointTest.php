@@ -26,7 +26,7 @@ class ExecutableEntrypointTest extends TestCase
         $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
         $this->assertSame([
             'name' => 'geoflow',
-            'version' => '0.2.0',
+            'version' => '0.3.0-preview.1',
         ], json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR));
         $this->assertSame('', $process->getErrorOutput());
     }

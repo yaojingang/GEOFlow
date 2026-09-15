@@ -124,7 +124,7 @@ La [guía de despliegue](../deployment/DEPLOYMENT.md) y las notas de la versión
 | Componente | Versión o estado actual del código | Descripción |
 |------------|------------------------------------|-------------|
 | GEOFlow Core | `3.1.0` | Aplicación Laravel, panel, frontend, API, colas y distribución |
-| GEOFlow CLI | `0.2.0` | Incluido como `bin/geoflow`; compatible con macOS, Linux y WSL |
+| GEOFlow CLI | `0.3.0-preview.1` | Incluido como `bin/geoflow`; compatible con macOS, Linux y WSL |
 | Asistente de Chrome | `0.1.0` | Código y paquete en `browser-extension/` y `dist/browser-extension/` |
 | GEOFlow Updater | Componente independiente | Usa una versión firmada compatible con la versión objetivo; consulta [geoflow-updater](https://github.com/yaojingang/geoflow-updater) |
 | Agent de destino | Generado por canal | Crea un paquete PHP configurado con portada, artículos, recursos, Schema, sitemap y `llms.txt` |

@@ -792,6 +792,31 @@
       "name": "2026_09_13_000400_add_url_change_article_lookup_index",
       "sha256": "1975a41a4504849ca34e8973f351011f3255054ded055c4a303274a49193e611",
       "online": false
+    },
+    {
+      "name": "2026_09_15_171103_create_management_operations_table",
+      "sha256": "fa9dd08de9cbf30ffb7a540b23cca60a44f2e694bcdad217ba06d8cb7351469a",
+      "online": false
+    },
+    {
+      "name": "2026_09_15_172155_create_theme_revisions_table",
+      "sha256": "5e3ac54286b8fb7f83e45ddef12f398714384956959cef97c401ad419013c437",
+      "online": false
+    },
+    {
+      "name": "2026_09_15_172155_create_theme_workspaces_table",
+      "sha256": "9e0c5e27d59e3ebbf0ad892e2ae8e25b7652642aea151327b22f1be9bde0062c",
+      "online": false
+    },
+    {
+      "name": "2026_09_15_172156_create_site_theme_bindings_table",
+      "sha256": "d9f68e998b5d3dd32f0f0b8d3db2f90207a9e157c826b865212791071c88bcf6",
+      "online": false
+    },
+    {
+      "name": "2026_09_15_172156_create_theme_releases_table",
+      "sha256": "5a0ba2409f3234dd778ed4fd7eb342e255bb1b96f042f920722e798849f2a913",
+      "online": false
     }
   ],
   "compatibility": {

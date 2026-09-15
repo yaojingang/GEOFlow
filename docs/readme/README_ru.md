@@ -124,7 +124,7 @@ GEOFlow рассчитан на команды с реальными делов�
 | Компонент | Версия исходного кода или состояние | Описание |
 |-----------|--------------------------------------|----------|
 | GEOFlow Core | `3.1.0` | Приложение Laravel, панель, frontend, API, очереди и система публикации |
-| GEOFlow CLI | `0.2.0` | Входит как `bin/geoflow`; поддерживает macOS, Linux и WSL |
+| GEOFlow CLI | `0.3.0-preview.1` | Входит как `bin/geoflow`; поддерживает macOS, Linux и WSL |
 | Помощник Chrome | `0.1.0` | Исходный код и пакет находятся в `browser-extension/` и `dist/browser-extension/` |
 | GEOFlow Updater | Отдельный компонент | Используйте подписанную версию, совместимую с целевым выпуском; см. [geoflow-updater](https://github.com/yaojingang/geoflow-updater) |
 | Agent целевого сайта | Создаётся для канала | Формирует настроенный PHP-пакет с главной страницей, статьями, ресурсами, Schema, sitemap и `llms.txt` |

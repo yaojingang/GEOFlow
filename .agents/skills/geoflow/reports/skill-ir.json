@@ -2,9 +2,9 @@
   "schema_version": "2.0.0",
   "name": "geoflow",
   "title": "GEOFlow",
-  "job_to_be_done": "Develop or operate GEOFlow across Laravel backend/admin/API/CLI, the default site, themes, leads, and GeoFlow Agent channel sites. Use for code changes, running-system operations, frontend or template edits, channel capability sync, legacy PHP migration, or retired yao-geoflow-cli, yao-geoflow-design, and yao-geoflow-template IDs. Discover real routes first. Excludes unrelated work, database shortcuts, invented routes, auth bypass, secret exposure, raw copying, and unapproved live or destructive actions.",
+  "job_to_be_done": "Develop or operate GEOFlow through its remote CLI, Laravel backend/admin/API, default site, themes, leads, and Agent sites. Use for source-free connections, remote theme drafts/previews, code changes, channel sync, legacy migration, or retired yao-geoflow-cli/design/template IDs. Discover capabilities first. Excludes unrelated work, database shortcuts, invented routes, auth bypass, secret exposure, and unapproved live or destructive actions.",
   "trigger_surface": {
-    "description": "Develop or operate GEOFlow across Laravel backend/admin/API/CLI, the default site, themes, leads, and GeoFlow Agent channel sites. Use for code changes, running-system operations, frontend or template edits, channel capability sync, legacy PHP migration, or retired yao-geoflow-cli, yao-geoflow-design, and yao-geoflow-template IDs. Discover real routes first. Excludes unrelated work, database shortcuts, invented routes, auth bypass, secret exposure, raw copying, and unapproved live or destructive actions.",
+    "description": "Develop or operate GEOFlow through its remote CLI, Laravel backend/admin/API, default site, themes, leads, and Agent sites. Use for source-free connections, remote theme drafts/previews, code changes, channel sync, legacy migration, or retired yao-geoflow-cli/design/template IDs. Discover capabilities first. Excludes unrelated work, database shortcuts, invented routes, auth bypass, secret exposure, and unapproved live or destructive actions.",
     "should_trigger": [
       "给 GEOFlow 后台新增一个 AI 来源管理模块，包含迁移、模型、控制器、页面和测试。",
       "修改 GEOFlow API v1，让任务接口支持新的发布策略，并补齐权限和回归测试。",
@@ -21,7 +21,9 @@
       "升级 GEOFlow 渠道目标包，让 frontend-capabilities 返回新模块并补签名请求测试。",
       "把默认站首页设置同步到指定渠道站，先检查 target package 能力和回滚方案。",
       "把旧 GEOFlow 的 index.php、article.php 和 tokens.json 迁移成当前 Laravel 主题方案。",
-      "以前用 $yao-geoflow-design 修改主题，现在请用合并后的入口继续完成渠道站前台升级。"
+      "以前用 $yao-geoflow-design 修改主题，现在请用合并后的入口继续完成渠道站前台升级。",
+      "没有本地 GEOFlow 源码，用独立 CLI 连接实例并修改远程主题草稿、生成真实内容预览。",
+      "GEOFlow 任务入队响应丢失，重新登录后按客户端请求 ID 查询原收据。"
     ],
     "should_not_trigger": [
       "给一个普通 Laravel 博客写用户登录教程，与 GEOFlow 无关。",
@@ -48,6 +50,7 @@
       "Finalize only the user-approved target and report evidence, rollback boundary, final state, and remaining risks."
     ],
     "decision_points": [
+      "Prefer the installed remote CLI with identity and capability discovery; local application source is optional for instance operations.",
       "Choose source-work discovery or running-instance preflight from the target supplied by the user.",
       "Split mixed requests into ordered mode phases when implementation crosses into authenticated operation.",
       "Use an isolated theme preview or reviewed homepage payload before live activation or replacement.",
@@ -85,7 +88,8 @@
       "references/system-capability-discovery.md",
       "references/template-boundary.md",
       "references/theme-edit-workflow.md",
-      "references/theme-package-contract.md"
+      "references/theme-package-contract.md",
+      "references/remote-cli-workflow.md"
     ],
     "scripts": [
       "scripts/build_sync_preview_report.py",
@@ -108,7 +112,8 @@
     "reports": [
       "reports/output_quality_scorecard.md",
       "reports/conformance_matrix.md",
-      "reports/security_trust_report.md"
+      "reports/security_trust_report.md",
+      "reports/remote-cli-review.md"
     ]
   },
   "eval_plan": {

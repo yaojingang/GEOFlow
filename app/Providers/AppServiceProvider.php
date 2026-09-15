@@ -40,6 +40,7 @@ use App\Services\SystemUpdater\UnixSocketAgentClient;
 use App\Support\AdminUiRegistry;
 use App\Support\Site\CurrentSite;
 use App\Support\Site\SiteThemePreviewContext;
+use App\Support\Site\ThemeRevisionContext;
 use App\View\Composers\SiteLayoutComposer;
 use Closure;
 use GuzzleHttp\Utils;
@@ -63,6 +64,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->scoped(ThemeRevisionContext::class);
         $fixedContextCapability = new \stdClass;
         $trustedTerminal = Closure::fromCallable(Utils::chooseHandler());
 

@@ -1129,7 +1129,7 @@ function articlePermalinkReservedFirstSegments(): array
         '_boost', '_debugbar', 'about', 'admin', 'api', 'app', 'archive', 'assets', 'broadcasting', 'build',
         'category', 'config.php', 'css', 'favicon.ico', 'forms', 'geoflow-agent', 'horizon',
         'images', 'index.php', 'js', 'livewire', 'llms.txt', 'robots.txt', 'sanctum',
-        'sitemap.txt', 'sitemap.xml', 'sitemaps', 'storage', 'themes', 'up', 'vendor',
+        'sitemap.txt', 'sitemap.xml', 'sitemaps', 'storage', 'theme-assets', 'themes', 'up', 'vendor',
     ];
 }
 
