@@ -20,9 +20,9 @@ try {
             throw new RuntimeException('Missing PHP extension: '.$extension);
         }
     }
-    $options = StandaloneArguments::parse(array_slice($argv, 1), ['bundle', 'trusted-keys', 'bin-dir'], ['update', 'recover']);
-    if (isset($options['recover'], $options['update'])) {
-        throw new RuntimeException('--recover and --update cannot be combined.');
+    $options = StandaloneArguments::parse(array_slice($argv, 1), ['bundle', 'trusted-keys', 'bin-dir'], ['update', 'recover', 'rollback']);
+    if (count(array_intersect(['recover', 'update', 'rollback'], array_keys($options))) > 1) {
+        throw new RuntimeException('--recover, --update and --rollback are mutually exclusive.');
     }
     foreach (['trusted-keys', 'bin-dir'] as $required) {
         if (! isset($options[$required]) || ! is_string($options[$required]) || $options[$required] === '') {
@@ -36,7 +36,7 @@ try {
     if (! is_array($trusted['keys'] ?? null)) {
         throw new RuntimeException('Invalid trusted key file.');
     }
-    $result = (new StandaloneInstaller($options['bin-dir'], $trusted['keys']))->run($options['bundle'] ?? null, isset($options['update']));
+    $result = (new StandaloneInstaller($options['bin-dir'], $trusted['schema_version'] ?? null ? $trusted : $trusted['keys']))->run($options['bundle'] ?? null, isset($options['update']), rollback: isset($options['rollback']));
     fwrite(STDOUT, json_encode($result, JSON_THROW_ON_ERROR)."\n");
 } catch (Throwable $exception) {
     fwrite(STDERR, $exception->getMessage()."\nIf activation was interrupted, use --recover with the same trusted keys and bin directory.\n");

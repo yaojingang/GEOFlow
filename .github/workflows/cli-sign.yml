@@ -1,0 +1,93 @@
+name: Sign approved CLI candidate
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful immutable CLI candidate run
+        type: number
+        required: true
+      candidate_sha256:
+        description: Reviewed candidate.tar SHA-256
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+  attestations: write
+concurrency:
+  group: geoflow-cli-sign
+  cancel-in-progress: false
+jobs:
+  sign:
+    if: github.repository == 'yaojingang/GEOFlow' && github.ref == 'refs/heads/main'
+    environment: cli-release-signing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: '8.3'
+          extensions: mbstring, curl, fileinfo, sodium
+          coverage: none
+      - name: Verify candidate workflow, source, digest and provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.candidate_run_id }}
+          EXPECTED: ${{ inputs.candidate_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[1-9][0-9]*$ && "$EXPECTED" =~ ^[a-f0-9]{64}$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > "$RUNNER_TEMP/run.json"
+          jq -e --arg sha "$GITHUB_SHA" '.conclusion == "success" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .path == ".github/workflows/cli-candidate.yml"' "$RUNNER_TEMP/run.json" >/dev/null
+          python3 -B packages/geoflow-cli/release.py candidate-evidence --run-id "$RUN_ID" --sha256 "$EXPECTED" --source-commit "$GITHUB_SHA" > "$RUNNER_TEMP/candidate-evidence.json"
+          gh run download "$RUN_ID" --name "cli-candidate-$RUN_ID" --dir "$RUNNER_TEMP/candidate"
+          test "$(sha256sum "$RUNNER_TEMP/candidate/candidate.tar" | cut -d ' ' -f 1)" = "$EXPECTED"
+          gh attestation verify "$RUNNER_TEMP/candidate/candidate.tar" --repo yaojingang/GEOFlow --signer-workflow yaojingang/GEOFlow/.github/workflows/cli-candidate.yml --source-ref refs/heads/main --source-digest "$GITHUB_SHA" --deny-self-hosted-runners
+      - name: Sign exact approved bytes with independent CLI key
+        env:
+          CLI_RELEASE_KEY_B64: ${{ secrets.CLI_RELEASE_KEY_B64 }}
+          CLI_RELEASE_KEY_ID: ${{ vars.CLI_RELEASE_KEY_ID }}
+          CLI_TRUST_BUNDLE_B64: ${{ secrets.CLI_TRUST_BUNDLE_B64 }}
+          CLI_TRUST_SOURCE_COMMIT: ${{ vars.CLI_TRUST_SOURCE_COMMIT }}
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED: ${{ inputs.candidate_sha256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          trap 'rm -f "$RUNNER_TEMP/cli.key"' EXIT
+          printf '%s' "$CLI_RELEASE_KEY_B64" > "$RUNNER_TEMP/cli.key"
+          printf '%s' "$CLI_TRUST_BUNDLE_B64" | base64 --decode > "$RUNNER_TEMP/trust.json"
+          [[ "$CLI_TRUST_SOURCE_COMMIT" =~ ^[a-f0-9]{40}$|^[a-f0-9]{64}$ ]]
+          trust_version="$(jq -er '.version' "$RUNNER_TEMP/trust.json")"
+          [[ "$trust_version" =~ ^[1-9][0-9]*$ ]]
+          gh release download "cli-trust-v$trust_version" --pattern trust.json --dir "$RUNNER_TEMP/published-trust"
+          cmp "$RUNNER_TEMP/trust.json" "$RUNNER_TEMP/published-trust/trust.json"
+          gh attestation verify "$RUNNER_TEMP/trust.json" --repo yaojingang/GEOFlow --signer-workflow yaojingang/GEOFlow/.github/workflows/cli-trust.yml --source-ref refs/heads/main --source-digest "$CLI_TRUST_SOURCE_COMMIT" --deny-self-hosted-runners
+          export TRUST_VERSION="$trust_version"
+          PYTHONPATH=packages/geoflow-cli python3 -B -c 'import os; from bootstrap import verify_tag; verify_tag("cli-trust-v" + os.environ["TRUST_VERSION"], os.environ["CLI_TRUST_SOURCE_COMMIT"])'             || exit 1
+          mkdir -p "$RUNNER_TEMP/signed"
+          version="$(jq -er '.version' "$RUNNER_TEMP/candidate/candidate.json")"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          python3 -B packages/geoflow-cli/release.py sign --candidate "$RUNNER_TEMP/candidate/candidate.tar" --candidate-evidence "$RUNNER_TEMP/candidate-evidence.json" --sha256 "$EXPECTED" --key-file "$RUNNER_TEMP/cli.key" --key-id "$CLI_RELEASE_KEY_ID" --trust "$RUNNER_TEMP/trust.json" --output "$RUNNER_TEMP/signed/geoflow-cli-$version.tar" > "$RUNNER_TEMP/signed/release.json"
+          test "$(jq -er '.source_commit' "$RUNNER_TEMP/signed/release.json")" = "$GITHUB_SHA"
+          test "$(jq -er '.version' "$RUNNER_TEMP/signed/release.json")" = "$version"
+          cp packages/geoflow-cli/bootstrap.py "$RUNNER_TEMP/signed/bootstrap.py"
+      - name: Verify signed payload after removing private key
+        run: |
+          set -euo pipefail
+          test ! -e "$RUNNER_TEMP/cli.key"
+          python3 -B packages/geoflow-cli/release.py verify --archive "$RUNNER_TEMP/signed/$(jq -r '"geoflow-cli-" + .version + ".tar"' "$RUNNER_TEMP/signed/release.json")" --trust "$RUNNER_TEMP/trust.json"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
+        with:
+          subject-path: |
+            ${{ runner.temp }}/signed/*.tar
+            ${{ runner.temp }}/signed/bootstrap.py
+            ${{ runner.temp }}/signed/release.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cli-signed-${{ github.run_id }}
+          path: ${{ runner.temp }}/signed/*
+          if-no-files-found: error
+          retention-days: 30

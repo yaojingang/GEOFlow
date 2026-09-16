@@ -4,6 +4,7 @@ namespace App\Services\Api;
 
 use App\Exceptions\ApiException;
 use App\Models\Admin;
+use App\Services\SystemUpdater\RecoveryState;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -94,9 +95,13 @@ class ApiTokenService
      */
     public function getActiveTokenByPlaintext(string $plainToken): ?array
     {
+        $recovery = app(RecoveryState::class)->assertHttpReady();
         $row = PersonalAccessToken::findToken($plainToken);
 
         if (! $row || $row->tokenable_type !== Admin::class) {
+            return null;
+        }
+        if ($recovery !== null && $row->getAttribute('recovery_epoch') !== $recovery['epoch']) {
             return null;
         }
 
@@ -169,6 +174,7 @@ class ApiTokenService
      */
     public function createToken(string $name, array $scopes, ?int $adminId, ?string $expiresAt = null): array
     {
+        $recovery = app(RecoveryState::class)->assertHttpReady();
         $name = trim($name);
         if ($name === '') {
             throw new ApiException('validation_failed', 'Token 名称不能为空', 422, [
@@ -198,6 +204,9 @@ class ApiTokenService
         $model = $tokenResult->accessToken->fresh();
         if (! $model instanceof PersonalAccessToken) {
             throw new ApiException('token_create_failed', 'Token 创建失败', 500);
+        }
+        if ($recovery !== null) {
+            $model->forceFill(['recovery_epoch' => $recovery['epoch']])->save();
         }
 
         $record = $this->hydrate($model);

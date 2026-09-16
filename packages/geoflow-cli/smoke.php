@@ -2,9 +2,15 @@
 
 declare(strict_types=1);
 
+use GeoFlow\Distribution\StandaloneArguments;
+use GeoFlow\Distribution\StandaloneBundle;
 use GeoFlow\Distribution\StandaloneFiles;
 
 require_once __DIR__.'/StandaloneFiles.php';
+require_once __DIR__.'/StandaloneArguments.php';
+require_once __DIR__.'/StandaloneBundle.php';
+
+$options = StandaloneArguments::parse(array_slice($argv, 1), ['candidate-bundle']);
 
 $root = dirname(__DIR__, 2);
 $temporary = StandaloneFiles::directory(sys_get_temp_dir().'/geoflow-cli-smoke-'.bin2hex(random_bytes(12)));
@@ -12,6 +18,10 @@ $server = null;
 $secret = null;
 $status = 0;
 $environment = getenv();
+$isolatedHome = StandaloneFiles::directory($temporary.'/home');
+foreach (['HOME', 'USERPROFILE', 'LOCALAPPDATA', 'APPDATA'] as $name) {
+    $environment[$name] = $isolatedHome;
+}
 foreach (array_keys($environment) as $name) {
     if (str_starts_with($name, 'GEOFLOW_')) {
         unset($environment[$name]);
@@ -69,11 +79,22 @@ try {
     $pair = sodium_crypto_sign_keypair();
     $secret = sodium_crypto_sign_secretkey($pair);
     StandaloneFiles::writeNew($temporary.'/signing.key', base64_encode($secret));
-    StandaloneFiles::writeNew($temporary.'/trust.json', json_encode(['keys' => ['smoke-test-only' => base64_encode(sodium_crypto_sign_publickey($pair))]], JSON_THROW_ON_ERROR));
-    sodium_memzero($secret);
+    StandaloneFiles::writeNew($temporary.'/trust.json', json_encode(['schema_version' => 1, 'version' => 1, 'expires_at' => gmdate('Y-m-d\TH:i:s\Z', time() + 3600), 'keys' => ['smoke-test-only' => ['public_key' => base64_encode(sodium_crypto_sign_publickey($pair)), 'status' => 'active']]], JSON_THROW_ON_ERROR));
     sodium_memzero($pair);
     $started = microtime(true);
-    $build = $json($run([PHP_BINARY, '-d', 'phar.readonly=0', $root.'/scripts/build-geoflow-cli.php', '--output='.$temporary.'/build', '--signing-key-file='.$temporary.'/signing.key', '--key-id=smoke-test-only'], $root), 'Standalone build');
+    if (isset($options['candidate-bundle'])) {
+        $candidate = StandaloneBundle::resolve($options['candidate-bundle']);
+        $bundle = StandaloneFiles::directory($temporary.'/build');
+        $manifestBytes = StandaloneFiles::read($candidate.'/manifest.json', 65536);
+        StandaloneBundle::manifest($manifestBytes);
+        StandaloneFiles::writeNew($bundle.'/manifest.json', $manifestBytes);
+        StandaloneFiles::writeNew($bundle.'/geoflow.phar', StandaloneFiles::read($candidate.'/geoflow.phar', StandaloneBundle::MAX_ARCHIVE_BYTES), 0755);
+        StandaloneFiles::writeNew($bundle.'/manifest.sig', json_encode(['key_id' => 'smoke-test-only', 'signature' => base64_encode(sodium_crypto_sign_detached($manifestBytes, $secret))], JSON_THROW_ON_ERROR));
+        $build = ['signed' => true, 'bundle' => $bundle];
+    } else {
+        $build = $json($run([PHP_BINARY, '-d', 'phar.readonly=0', $root.'/scripts/build-geoflow-cli.php', '--output='.$temporary.'/build', '--signing-key-file='.$temporary.'/signing.key', '--key-id=smoke-test-only'], $root), 'Standalone build');
+    }
+    sodium_memzero($secret);
     $buildSeconds = round(microtime(true) - $started, 3);
     $expect($build['signed'] === true, 'The smoke build must be signed with its temporary test key.');
     $manifest = json_decode(StandaloneFiles::read($build['bundle'].'/manifest.json', 65536), true, flags: JSON_THROW_ON_ERROR);
@@ -87,7 +108,7 @@ try {
     $help = $run([$cli, '--help'], $empty);
     $expect($help['code'] === 0 && str_contains($help['output'], 'Usage:'), 'Installed PHAR help is unavailable.');
     $updated = $json($run([...$install, '--update'], $temporary), 'Signed update');
-    $expect($updated['signature_verified'] === true && hash_file('sha256', $cli.'.previous') === $manifest['sha256'], 'Update did not preserve the previous verified executable.');
+    $expect($updated['signature_verified'] === true && hash_file('sha256', $cli) === $manifest['sha256'] && ! file_exists($cli.'.previous'), 'Repeated installation must preserve the active executable without creating a backup.');
 
     $router = <<<'PHP'
     <?php
@@ -160,7 +181,7 @@ try {
     $report = [
         'success' => true, 'version' => $version['version'], 'php_version' => PHP_VERSION,
         'build_seconds' => $buildSeconds, 'archive_sha256' => $manifest['sha256'], 'archive_bytes' => $manifest['size'],
-        'signature' => 'temporary-test-key', 'source_free_working_directory' => true, 'api_target' => 'loopback-fixture',
+        'signature' => 'temporary-test-key', 'candidate_reused' => isset($options['candidate-bundle']), 'source_free_working_directory' => true, 'api_target' => 'loopback-fixture',
         'checks' => ['signed-build', 'verified-install', 'version', 'help', 'verified-update', 'login-scopes', 'profile-bind', 'whoami', 'site-list', 'logout', 'credential-cleanup'],
     ];
 } catch (Throwable $exception) {

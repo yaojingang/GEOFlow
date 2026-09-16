@@ -31,6 +31,7 @@ use App\Http\Controllers\Admin\BrowserClientController;
 use App\Http\Controllers\Admin\BrowserConnectionApprovalController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\ContentAnalyticsController;
+use App\Http\Controllers\Admin\CoordinatedUpdaterController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DistributionAnalyticsController;
 use App\Http\Controllers\Admin\DistributionController;
@@ -202,19 +203,24 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('updater/download', [SystemUpdaterOperationController::class, 'download'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.download');
-            Route::post('updater/plan', [SystemUpdaterOperationController::class, 'preview'])
+            Route::get('updater/console', [CoordinatedUpdaterController::class, 'index'])->name('updater.console');
+            Route::post('updater/action-plans', [CoordinatedUpdaterController::class, 'plan'])
+                ->middleware('throttle:admin-sensitive')->name('updater.action-plan');
+            Route::post('updater/operations', [CoordinatedUpdaterController::class, 'submit'])
+                ->middleware('throttle:admin-sensitive')->name('updater.submit');
+            Route::post('updater/plan', [CoordinatedUpdaterController::class, 'retired'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.plan');
-            Route::post('updater/switch-back', [SystemUpdaterOperationController::class, 'switchBack'])
+            Route::post('updater/switch-back', [CoordinatedUpdaterController::class, 'retired'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.switch-back');
-            Route::post('updater/update', [SystemUpdaterOperationController::class, 'update'])
+            Route::post('updater/update', [CoordinatedUpdaterController::class, 'retired'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.update');
-            Route::post('updater/backup', [SystemUpdaterOperationController::class, 'backup'])
+            Route::post('updater/backup', [CoordinatedUpdaterController::class, 'retired'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.backup');
-            Route::post('updater/rollback', [SystemUpdaterOperationController::class, 'rollback'])
+            Route::post('updater/rollback', [CoordinatedUpdaterController::class, 'retired'])
                 ->middleware('throttle:admin-sensitive')
                 ->name('updater.rollback');
             Route::post('updater/verify', [SystemUpdaterOperationController::class, 'verify'])

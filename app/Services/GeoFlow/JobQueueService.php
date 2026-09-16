@@ -9,6 +9,7 @@ use App\Jobs\ProcessGeoFlowTaskJob;
 use App\Models\Article;
 use App\Models\Task;
 use App\Models\TaskRun;
+use App\Services\SystemUpdater\RecoveryState;
 use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -109,6 +110,7 @@ class JobQueueService
      */
     public function enqueueTaskJob(int $taskId, string $jobType = 'generate_article', array $payload = [], ?string $availableAt = null): ?int
     {
+        app(RecoveryState::class)->assertBackgroundReady();
         $jobType = in_array($jobType, self::ALLOWED_JOB_TYPES, true) ? $jobType : 'generate_article';
         $run = DB::transaction(function () use ($taskId, $jobType, $payload, $availableAt): ?TaskRun {
             $taskRow = Task::query()

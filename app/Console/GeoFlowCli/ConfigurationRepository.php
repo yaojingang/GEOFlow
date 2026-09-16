@@ -41,6 +41,7 @@ class ConfigurationRepository
             'token' => null,
             'instance_id' => null,
             'admin_id' => null,
+            'recovery_epoch' => null,
             'token_source' => null,
             'timeout' => 30,
             'timeout_source' => 'default',
@@ -64,6 +65,7 @@ class ConfigurationRepository
             $loaded = $this->load($path);
             $config['instance_id'] = $loaded['instance_id'];
             $config['admin_id'] = $loaded['admin_id'];
+            $config['recovery_epoch'] = $loaded['recovery_epoch'];
             $config['config_files'][] = $path;
             foreach (['base_url', 'token', 'timeout', 'allow_insecure_http'] as $key) {
                 if (! array_key_exists($key, $loaded) || $loaded[$key] === null || $loaded[$key] === '') {
@@ -109,6 +111,10 @@ class ConfigurationRepository
         if ($config['base_url_source'] !== 'file:'.$profile['path']) {
             $config['instance_id'] = null;
             $config['admin_id'] = null;
+        }
+
+        if ($config['base_url_source'] !== 'file:'.$profile['path'] || $config['token_source'] !== 'file:'.$profile['path']) {
+            $config['recovery_epoch'] = null;
         }
 
         return $config;
@@ -244,6 +250,7 @@ class ConfigurationRepository
             'token' => $this->nullableString($decoded, 'token', $path),
             'instance_id' => $this->nullableString($decoded, 'instance_id', $path),
             'admin_id' => $this->nullableString($decoded, 'admin_id', $path),
+            'recovery_epoch' => $this->nullableString($decoded, 'recovery_epoch', $path),
             'timeout' => $decoded['timeout'] ?? null,
             'allow_insecure_http' => $decoded['allow_insecure_http'] ?? null,
         ];

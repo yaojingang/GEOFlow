@@ -15,15 +15,21 @@ export class GeoFlowApiClient {
         this.baseUrl = String(baseUrl).replace(/\/$/, '');
         this.token = token;
         this.version = version;
+        this.recoveryEpoch = null;
+        this.recoveryDiscovered = false;
     }
 
     async request(path, { method = 'GET', body = null, idempotencyKey = null } = {}) {
+        if (this.token && !['GET', 'HEAD'].includes(method) && !this.recoveryDiscovered) {
+            await this.request('/api/v1/browser-operations/session');
+        }
         const headers = {
             Accept: 'application/json',
             'Content-Type': 'application/json',
             'X-GEOFlow-Browser-Protocol': PROTOCOL_VERSION,
             'X-GEOFlow-Client-Version': this.version,
         };
+        if (this.token && this.recoveryEpoch && !['GET', 'HEAD'].includes(method)) headers['X-GEOFlow-Recovery-Epoch'] = this.recoveryEpoch;
         if (this.token) headers.Authorization = `Bearer ${this.token}`;
         if (idempotencyKey) headers['X-Idempotency-Key'] = idempotencyKey;
 
@@ -50,6 +56,14 @@ export class GeoFlowApiClient {
             );
         }
 
+        if (path === '/api/v1/browser-operations/session') {
+            const recovery = envelope.data?.recovery;
+            if (recovery != null && recovery.supported !== false && (recovery.supported !== true || !/^[a-f0-9]{32}$/.test(recovery.epoch ?? ''))) {
+                throw new GeoFlowApiError('invalid_recovery_contract', 'GEOFlow returned an invalid recovery epoch.', 0);
+            }
+            this.recoveryEpoch = recovery?.supported === true ? recovery.epoch : null;
+            this.recoveryDiscovered = true;
+        }
         return envelope.data;
     }
 }

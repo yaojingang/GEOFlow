@@ -40,6 +40,16 @@ final class CommandSpec
             'operation.get' => self::spec('operation.get', ['operation', 'get'], 3, [], null, false, 'operation get ID'),
             'operation.lookup' => self::spec('operation.lookup', ['operation', 'lookup'], 3, [], null, false, 'operation lookup CLIENT_REQUEST_ID'),
             'operation.wait' => self::spec('operation.wait', ['operation', 'wait'], 3, ['wait-seconds'], null, false, 'operation wait ID [--wait-seconds N]'),
+            'updater.status' => self::spec('updater.status', ['updater', 'status'], 2, [], null, false, 'updater status'),
+            'updater.plan' => self::spec('updater.plan', ['updater', 'plan'], 2, ['action', 'recovery-point'], null, false, 'updater plan --action update|backup|restore|switch-back [--recovery-point ID]'),
+            'updater.recovery-points' => self::spec('updater.recovery-points', ['updater', 'recovery-points'], 2, [], null, false, 'updater recovery-points'),
+            'updater.operation.get' => self::spec('updater.operation.get', ['updater', 'operation', 'get'], 4, [], null, false, 'updater operation get ID'),
+            'updater.operation.lookup' => self::spec('updater.operation.lookup', ['updater', 'operation', 'lookup'], 4, [], null, false, 'updater operation lookup CLIENT_REQUEST_ID'),
+            'updater.operation.wait' => self::spec('updater.operation.wait', ['updater', 'operation', 'wait'], 4, ['wait-seconds'], null, false, 'updater operation wait CLIENT_REQUEST_ID [--wait-seconds 600]'),
+            'updater.update' => self::spec('updater.update', ['updater', 'update'], 2, ['plan', 'client-request-id', 'credentials-file', 'allow-maintenance', 'confirm-host-access'], null, false, 'updater update --plan FILE --client-request-id ID [--credentials-file FILE] [--allow-maintenance] [--confirm-host-access]'),
+            'updater.backup' => self::spec('updater.backup', ['updater', 'backup'], 2, ['plan', 'client-request-id', 'credentials-file', 'allow-maintenance', 'confirm-host-access'], null, false, 'updater backup --plan FILE --client-request-id ID [--credentials-file FILE] [--allow-maintenance] [--confirm-host-access]'),
+            'updater.restore' => self::spec('updater.restore', ['updater', 'restore'], 2, ['plan', 'client-request-id', 'credentials-file', 'allow-maintenance', 'confirm-host-access'], null, false, 'updater restore --plan FILE --client-request-id ID [--credentials-file FILE] [--allow-maintenance] [--confirm-host-access]'),
+            'updater.switch-back' => self::spec('updater.switch-back', ['updater', 'switch-back'], 2, ['plan', 'client-request-id', 'credentials-file', 'allow-maintenance', 'confirm-host-access'], null, false, 'updater switch-back --plan FILE --client-request-id ID [--credentials-file FILE] [--allow-maintenance] [--confirm-host-access]'),
             'catalog' => self::spec('catalog', ['catalog'], 1, [], 'catalog', false, 'catalog'),
             'task.list' => self::spec('task.list', ['task', 'list'], 2, ['page', 'per-page', 'status', 'search'], 'task.list', false, 'task list [--page N] [--per-page N] [--status STATUS] [--search TEXT]'),
             'task.create' => self::spec('task.create', ['task', 'create'], 2, ['json', 'idempotency-key'], 'task.create', false, 'task create --json FILE [--idempotency-key KEY]'),
@@ -123,7 +133,7 @@ final class CommandSpec
     {
         return [
             'ai-generated', 'allow-insecure-http', 'ansi', 'enqueue-now', 'force', 'help',
-            'no-ansi', 'no-interaction', 'password-stdin', 'quiet', 'token-stdin', 'verbose', 'version', 'yes',
+            'allow-maintenance', 'confirm-host-access', 'no-ansi', 'no-interaction', 'password-stdin', 'quiet', 'token-stdin', 'verbose', 'version', 'yes',
         ];
     }
 

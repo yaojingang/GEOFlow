@@ -167,6 +167,8 @@ return [
     'updater_socket' => (string) env('GEOFLOW_UPDATER_SOCKET', '/run/geoflow-updater/geoflow-updater.sock'),
     'updater_control_token_file' => (string) env('GEOFLOW_UPDATER_CONTROL_TOKEN_FILE', '/run/secrets/geoflow-updater-control-token'),
     'updater_instance_id' => (string) env('GEOFLOW_UPDATER_INSTANCE_ID', 'primary'),
+    'recovery_contract_required' => filter_var(env('GEOFLOW_RECOVERY_CONTRACT', false), FILTER_VALIDATE_BOOLEAN),
+    'recovery_control_directory' => '/run/geoflow-recovery-control',
     'updater_host_root' => rtrim((string) env('GEOFLOW_UPDATER_HOST_ROOT', ''), '/'),
     'updater_connect_timeout_seconds' => max(0.1, (float) env('GEOFLOW_UPDATER_CONNECT_TIMEOUT_SECONDS', 0.5)),
     'updater_read_timeout_seconds' => max(1, (int) env('GEOFLOW_UPDATER_READ_TIMEOUT_SECONDS', 10)),

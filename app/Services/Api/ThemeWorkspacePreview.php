@@ -11,6 +11,7 @@ use App\Http\Controllers\Site\HomeController;
 use App\Models\ThemeRevision;
 use App\Services\Site\ArticlePermalinkService;
 use App\Services\Site\SiteScopedArticleQuery;
+use App\Services\SystemUpdater\RecoveryState;
 use App\Support\Site\SiteThemePreviewContext;
 use App\Support\Site\ThemeRevisionContext;
 use Illuminate\Http\Request;
@@ -30,7 +31,7 @@ final class ThemeWorkspacePreview
         'X-Robots-Tag' => 'noindex, nofollow', 'Referrer-Policy' => 'no-referrer',
     ];
 
-    public function __construct(private ThemeWorkspaceAuthorization $authorization, private ThemeRevisionStorage $storage) {}
+    public function __construct(private ThemeWorkspaceAuthorization $authorization, private ThemeRevisionStorage $storage, private RecoveryState $recovery) {}
 
     public function links(ApiAuthContext $auth, string $workspaceId): array
     {
@@ -52,7 +53,7 @@ final class ThemeWorkspacePreview
                 'available' => true, 'path' => $path, 'query' => $query,
                 'url' => URL::temporarySignedRoute('api.v1.theme-preview', now()->addMinutes(15), [
                     'workspace' => $workspace->id, 'revision' => $workspace->revision_id, 'sitePath' => $path,
-                    'token_id' => $auth->token['id'], ...$query,
+                    'token_id' => $auth->token['id'], 'recovery_epoch' => $this->recovery->assertHttpReady()['epoch'] ?? null, ...$query,
                 ]),
             ];
         }
@@ -63,6 +64,8 @@ final class ThemeWorkspacePreview
     public function fromSignedRequest(Request $request, string $workspace, string $revision): ApiAuthContext
     {
         abort_unless($request->hasValidSignature(), 403);
+        $state = $this->recovery->assertHttpReady();
+        abort_if($state !== null && $request->query('recovery_epoch') !== $state['epoch'], 403);
         $token = PersonalAccessToken::query()->find($request->integer('token_id'));
         abort_unless($token, 403);
         $auth = new ApiAuthContext(['id' => $token->id, 'scopes' => $token->abilities], (int) $token->tokenable_id);
@@ -124,7 +127,7 @@ final class ThemeWorkspacePreview
     public function assetUrl(ApiAuthContext $auth, string $workspace, string $revision, string $path): string
     {
         return URL::temporarySignedRoute('api.v1.theme-preview-asset', now()->addMinutes(15), [
-            'workspace' => $workspace, 'revision' => $revision, 'assetPath' => $path, 'token_id' => $auth->token['id'],
+            'workspace' => $workspace, 'revision' => $revision, 'assetPath' => $path, 'token_id' => $auth->token['id'], 'recovery_epoch' => $this->recovery->assertHttpReady()['epoch'] ?? null,
         ]);
     }
 
@@ -235,7 +238,7 @@ final class ThemeWorkspacePreview
             parse_str($parts['query'] ?? '', $query);
             $query = array_intersect_key($query, array_flip(['search', 'page']));
             $signed = URL::temporarySignedRoute('api.v1.theme-preview', now()->addMinutes(15), [
-                'workspace' => $workspace, 'revision' => $revision, 'sitePath' => $path, 'token_id' => $auth->token['id'], ...$query,
+                'workspace' => $workspace, 'revision' => $revision, 'sitePath' => $path, 'token_id' => $auth->token['id'], 'recovery_epoch' => $this->recovery->assertHttpReady()['epoch'] ?? null, ...$query,
             ]);
             if (isset($parts['fragment'])) {
                 $signed .= '#'.$parts['fragment'];

@@ -80,6 +80,14 @@
     {
       "text": "GEOFlow 任务入队响应丢失，重新登录后按客户端请求 ID 查询原收据。",
       "family": "remote_cli_recovery"
+    },
+    {
+      "text": "用 GEOFlow Skill 经远程 CLI 生成完整备份计划，核对维护窗口后执行，保存请求 ID 查询收据。",
+      "family": "remote_updater_plan"
+    },
+    {
+      "text": "GEOFlow 升级断网后重新登录，按原请求 ID 继续查结果，后台任务 held 时报告待对账。",
+      "family": "remote_updater_recovery"
     }
   ],
   "should_not_trigger": [
@@ -160,6 +168,14 @@
     {
       "text": "不看 preview 和 target package 能力，立即覆盖所有渠道站模板。",
       "family": "unsafe_live_sync"
+    },
+    {
+      "text": "GEOFlow Updater 返回 404，直接换请求 ID 再恢复一次数据库。",
+      "family": "updater_uncertain_replay"
+    },
+    {
+      "text": "GEOFlow 旧 Core 不支持 v2，就偷偷换 v1 接口执行更新。",
+      "family": "updater_unsafe_fallback"
     }
   ]
 }

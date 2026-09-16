@@ -61,7 +61,9 @@
     "security/permission_policy.json",
     "templates/homepage-design-template.json",
     "references/remote-cli-workflow.md",
-    "reports/remote-cli-review.md"
+    "reports/remote-cli-review.md",
+    "references/remote-updater-workflow.md",
+    "reports/coordinated-updater-review.md"
   ],
   "mode_outputs": {
     "development": [
@@ -130,6 +132,9 @@
     "authentication-or-csrf-bypass",
     "secret-or-personal-data-exposure",
     "unreviewed-live-theme-or-channel-publication",
-    "unsupported-remote-module-sync"
+    "unsupported-remote-module-sync",
+    "updater-uncertain-replay",
+    "updater-v1-write-fallback",
+    "held-background-reported-as-success"
   ]
 }

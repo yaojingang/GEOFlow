@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Admin;
+use App\Services\SystemUpdater\RecoveryState;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -19,6 +20,7 @@ class AuthenticateAdminWeb
      */
     public function handle(Request $request, Closure $next): Response
     {
+        $recovery = app(RecoveryState::class)->assertHttpReady();
         $guard = Auth::guard('admin');
         if (! $guard->check()) {
             return $this->unauthenticated($request);
@@ -28,6 +30,16 @@ class AuthenticateAdminWeb
         $admin = $adminId > 0 ? Admin::query()->find($adminId) : null;
         if (! $admin instanceof Admin || $admin->status !== 'active') {
             return $this->logout($request);
+        }
+        if ($recovery !== null) {
+            $epoch = $request->session()->get(RecoveryState::SESSION_KEY);
+            if ($epoch === null && $guard->viaRemember() && $admin->getAttribute('remember_recovery_epoch') === $recovery['epoch']) {
+                $epoch = $recovery['epoch'];
+                $request->session()->put(RecoveryState::SESSION_KEY, $epoch);
+            }
+            if ($epoch !== $recovery['epoch']) {
+                return $this->logout($request);
+            }
         }
 
         $sessionVersion = $request->session()->get(Admin::AUTH_VERSION_SESSION_KEY);

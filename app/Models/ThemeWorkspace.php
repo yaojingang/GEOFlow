@@ -12,7 +12,7 @@ class ThemeWorkspace extends Model
 
     protected $guarded = [];
 
-    protected $hidden = ['code_token_id', 'code_authorized_until', 'plan'];
+    protected $hidden = ['code_recovery_epoch', 'code_token_id', 'code_authorized_until', 'plan'];
 
     protected function casts(): array
     {

@@ -92,6 +92,7 @@ return [
     'browser_clients' => '浏览器客户端',
     'system_updates' => '系统更新',
     'system_update_detail' => '更新详情',
+    'updater_operations' => '运维操作与收据',
     'system_backup_detail' => '备份详情',
     'lead_forms' => '转化表单',
     'lead_form_create' => '新建表单',

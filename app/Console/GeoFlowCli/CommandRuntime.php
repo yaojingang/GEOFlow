@@ -77,6 +77,8 @@ final class CommandRuntime
             (string) $config['base_url'],
             (string) $config['token'],
             $config['timeout'],
+            $config['recovery_epoch'] ?? null,
+            true,
         );
     }
 
@@ -85,9 +87,9 @@ final class CommandRuntime
         $this->apiClient();
     }
 
-    public function client(string $baseUrl, ?string $token, int $timeout): ApiClient
+    public function client(string $baseUrl, ?string $token, int $timeout, ?string $recoveryEpoch = null): ApiClient
     {
-        return new ApiClient($this->httpFactory, $baseUrl, $token, $timeout);
+        return new ApiClient($this->httpFactory, $baseUrl, $token, $timeout, $recoveryEpoch);
     }
 
     /** @param array<string,mixed> $config */

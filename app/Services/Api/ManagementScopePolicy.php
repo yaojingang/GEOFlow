@@ -4,13 +4,17 @@ namespace App\Services\Api;
 
 use App\Exceptions\ApiException;
 use App\Models\Admin;
+use App\Services\SystemUpdater\RemoteUpdaterService;
 
 final class ManagementScopePolicy
 {
-    public const SCOPES = ['sites:read', ...ThemeManagementPolicy::SCOPES];
+    public const SCOPES = ['sites:read', ...ThemeManagementPolicy::SCOPES, ...RemoteUpdaterService::SCOPES];
 
     public static function allows(Admin $admin, string $scope): bool
     {
+        if (in_array($scope, RemoteUpdaterService::SCOPES, true)) {
+            return $admin->status === 'active' && $admin->isSuperAdmin();
+        }
         if (in_array($scope, ThemeManagementPolicy::SCOPES, true)) {
             return ThemeManagementPolicy::allows($admin, $scope);
         }

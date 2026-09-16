@@ -3,25 +3,17 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Contracts\SystemUpdater\AgentClient;
-use App\Contracts\SystemUpdater\PlannedAgentClient;
 use App\Exceptions\SystemUpdaterPreparationException;
 use App\Http\Controllers\Controller;
-use App\Services\Admin\SystemUpdateOperationGuard;
 use App\Services\Admin\SystemUpdaterBootstrapService;
-use App\Services\Admin\SystemUpdaterMutationPolicy;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SystemUpdaterOperationController extends Controller
 {
-    public function __construct(private readonly SystemUpdaterMutationPolicy $mutationPolicy) {}
-
     public function prepare(SystemUpdaterBootstrapService $bootstrapService): RedirectResponse
     {
         $this->ensureUpdateCenterEnabled();
@@ -69,98 +61,6 @@ class SystemUpdaterOperationController extends Controller
         );
     }
 
-    public function preview(Request $request, AgentClient $agentClient): RedirectResponse
-    {
-        $this->ensureUpdateCenterEnabled();
-        $request->session()->forget('system_updater_plan');
-        try {
-            if (! $agentClient instanceof PlannedAgentClient) {
-                throw new \RuntimeException('Updater preview is unavailable.');
-            }
-            $plan = $agentClient->preview();
-            $request->session()->put('system_updater_plan', $plan);
-        } catch (\Throwable $exception) {
-            report($exception);
-
-            return redirect()->route('admin.system-updates.index')
-                ->withErrors([__('admin.system_updates.updater.plan_failed')]);
-        }
-
-        return redirect()->route('admin.system-updates.index');
-    }
-
-    public function switchBack(Request $request, AgentClient $agentClient, SystemUpdateOperationGuard $operationGuard): RedirectResponse
-    {
-        $this->ensureUpdateCenterEnabled();
-        $authorizationCode = $this->validateMutationRequest($request);
-
-        return $this->startOperation(
-            fn (): array => $this->startAuthorizedMutation(
-                $agentClient,
-                'switch-back',
-                fn (): array => $agentClient instanceof PlannedAgentClient
-                    ? $agentClient->startSwitchBack($authorizationCode)
-                    : throw new \RuntimeException('Code switch-back is unavailable.'),
-                $operationGuard,
-            ),
-            'switch-back',
-        );
-    }
-
-    public function update(Request $request, AgentClient $agentClient, SystemUpdateOperationGuard $operationGuard): RedirectResponse
-    {
-        $this->ensureUpdateCenterEnabled();
-        $authorizationCode = $this->validateMutationRequest($request);
-        $options = $this->validateUpdatePlan($request, $agentClient);
-
-        return $this->startOperation(
-            fn (): array => $this->startAuthorizedMutation(
-                $agentClient,
-                'update',
-                fn (): array => $agentClient instanceof PlannedAgentClient
-                    ? $agentClient->startPlannedUpdate($authorizationCode, $options['allow_maintenance'], $options['expected_plan_sha256'])
-                    : $agentClient->startUpdate($authorizationCode),
-                $operationGuard,
-            ),
-            'update',
-        );
-    }
-
-    public function backup(Request $request, AgentClient $agentClient, SystemUpdateOperationGuard $operationGuard): RedirectResponse
-    {
-        $this->ensureUpdateCenterEnabled();
-        $authorizationCode = $this->validateMutationRequest($request);
-
-        return $this->startOperation(
-            fn (): array => $this->startAuthorizedMutation(
-                $agentClient,
-                'backup',
-                fn (): array => $agentClient->startBackup($authorizationCode),
-                $operationGuard,
-            ),
-            'backup',
-        );
-    }
-
-    public function rollback(Request $request, AgentClient $agentClient, SystemUpdateOperationGuard $operationGuard): RedirectResponse
-    {
-        $this->ensureUpdateCenterEnabled();
-        $authorizationCode = $this->validateMutationRequest($request);
-        $validated = $request->validate([
-            'recovery_point_id' => ['required', 'regex:/\A[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}\z/'],
-        ]);
-
-        return $this->startOperation(
-            fn (): array => $this->startAuthorizedMutation(
-                $agentClient,
-                'rollback',
-                fn (): array => $agentClient->startRollback((string) $validated['recovery_point_id'], $authorizationCode),
-                $operationGuard,
-            ),
-            'rollback',
-        );
-    }
-
     public function verify(AgentClient $agentClient): RedirectResponse
     {
         $this->ensureUpdateCenterEnabled();
@@ -171,71 +71,6 @@ class SystemUpdaterOperationController extends Controller
         );
     }
 
-    /** @return array{allow_maintenance: bool, expected_plan_sha256: string} */
-    private function validateUpdatePlan(Request $request, AgentClient $agentClient): array
-    {
-        if (! $agentClient instanceof PlannedAgentClient) {
-            return ['allow_maintenance' => false, 'expected_plan_sha256' => ''];
-        }
-        $validated = $request->validate([
-            'expected_plan_sha256' => ['required', 'string', 'regex:/\A[a-f0-9]{64}\z/'],
-            'allow_maintenance' => ['sometimes', 'boolean'],
-        ]);
-        $plan = $request->session()->get('system_updater_plan');
-        $hash = is_array($plan) ? ($plan['plan_sha256'] ?? null) : null;
-        if (! is_string($hash) || ! hash_equals($hash, $validated['expected_plan_sha256'])) {
-            throw ValidationException::withMessages(['expected_plan_sha256' => __('admin.system_updates.updater.plan_changed')]);
-        }
-        $allowMaintenance = (bool) ($validated['allow_maintenance'] ?? false);
-        if (($plan['strategy'] ?? null) === 'maintenance' && ! $allowMaintenance) {
-            throw ValidationException::withMessages(['allow_maintenance' => __('admin.system_updates.updater.maintenance_confirmation')]);
-        }
-        $request->session()->forget('system_updater_plan');
-
-        return ['allow_maintenance' => $allowMaintenance, 'expected_plan_sha256' => $validated['expected_plan_sha256']];
-    }
-
-    private function validateMutationRequest(Request $request): string
-    {
-        $validated = $request->validate([
-            'updater_authorization_code' => ['required', 'regex:/\A[0-9]{6}\z/'],
-        ]);
-
-        if ((bool) config('geoflow.update_require_admin_password', true)) {
-            $password = $request->validate([
-                'current_admin_password' => ['required', 'string'],
-            ]);
-            $admin = $request->user('admin');
-            if (! $admin || ! Hash::check((string) $password['current_admin_password'], (string) $admin->password)) {
-                throw ValidationException::withMessages([
-                    'current_admin_password' => __('admin.system_updates.error.admin_password_invalid'),
-                ]);
-            }
-        }
-
-        return (string) $validated['updater_authorization_code'];
-    }
-
-    /**
-     * @param  \Closure(): array<string, mixed>  $start
-     * @return array<string, mixed>
-     */
-    private function startAuthorizedMutation(
-        AgentClient $agentClient,
-        string $kind,
-        \Closure $start,
-        SystemUpdateOperationGuard $operationGuard,
-    ): array {
-        $status = $agentClient->status();
-        $currentOperation = $agentClient->currentOperation();
-        if ($this->mutationPolicy->allows($status, $kind, $currentOperation)) {
-            return $operationGuard->run($start, $status);
-        }
-
-        throw new \RuntimeException('Updater mutation preconditions are unavailable.');
-    }
-
-    /** @param  \Closure(): array<string, mixed>  $start */
     private function startOperation(\Closure $start, string $kind): RedirectResponse
     {
         try {

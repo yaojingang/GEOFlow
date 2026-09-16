@@ -2,9 +2,9 @@
   "schema_version": "2.0.0",
   "name": "geoflow",
   "title": "GEOFlow",
-  "job_to_be_done": "Develop or operate GEOFlow through its remote CLI, Laravel backend/admin/API, default site, themes, leads, and Agent sites. Use for source-free connections, remote theme drafts/previews, code changes, channel sync, legacy migration, or retired yao-geoflow-cli/design/template IDs. Discover capabilities first. Excludes unrelated work, database shortcuts, invented routes, auth bypass, secret exposure, and unapproved live or destructive actions.",
+  "job_to_be_done": "Develop or operate GEOFlow through its remote CLI, Laravel backend/admin/API, default site, themes, leads, and Agent sites. Use for source-free connections, remote theme drafts/previews, planned Updater operations and receipt recovery, code changes, channel sync, legacy migration, or retired yao-geoflow-cli/design/template IDs. Discover capabilities first. Excludes unrelated work, database shortcuts, invented routes, auth bypass, secret exposure, and unapproved live or destructive actions.",
   "trigger_surface": {
-    "description": "Develop or operate GEOFlow through its remote CLI, Laravel backend/admin/API, default site, themes, leads, and Agent sites. Use for source-free connections, remote theme drafts/previews, code changes, channel sync, legacy migration, or retired yao-geoflow-cli/design/template IDs. Discover capabilities first. Excludes unrelated work, database shortcuts, invented routes, auth bypass, secret exposure, and unapproved live or destructive actions.",
+    "description": "Develop or operate GEOFlow through its remote CLI, Laravel backend/admin/API, default site, themes, leads, and Agent sites. Use for source-free connections, remote theme drafts/previews, planned Updater operations and receipt recovery, code changes, channel sync, legacy migration, or retired yao-geoflow-cli/design/template IDs. Discover capabilities first. Excludes unrelated work, database shortcuts, invented routes, auth bypass, secret exposure, and unapproved live or destructive actions.",
     "should_trigger": [
       "给 GEOFlow 后台新增一个 AI 来源管理模块，包含迁移、模型、控制器、页面和测试。",
       "修改 GEOFlow API v1，让任务接口支持新的发布策略，并补齐权限和回归测试。",
@@ -23,7 +23,9 @@
       "把旧 GEOFlow 的 index.php、article.php 和 tokens.json 迁移成当前 Laravel 主题方案。",
       "以前用 $yao-geoflow-design 修改主题，现在请用合并后的入口继续完成渠道站前台升级。",
       "没有本地 GEOFlow 源码，用独立 CLI 连接实例并修改远程主题草稿、生成真实内容预览。",
-      "GEOFlow 任务入队响应丢失，重新登录后按客户端请求 ID 查询原收据。"
+      "GEOFlow 任务入队响应丢失，重新登录后按客户端请求 ID 查询原收据。",
+      "用 GEOFlow Skill 经远程 CLI 生成完整备份计划，核对维护窗口后执行，保存请求 ID 查询收据。",
+      "GEOFlow 升级断网后重新登录，按原请求 ID 继续查结果，后台任务 held 时报告待对账。"
     ],
     "should_not_trigger": [
       "给一个普通 Laravel 博客写用户登录教程，与 GEOFlow 无关。",
@@ -55,7 +57,8 @@
       "Split mixed requests into ordered mode phases when implementation crosses into authenticated operation.",
       "Use an isolated theme preview or reviewed homepage payload before live activation or replacement.",
       "Compare default-site, packaged, cached, and live channel capabilities before sync.",
-      "Stop for exact target approval before destructive, live, activation, publication, update-apply, or broad channel actions."
+      "Verify existing authorization covers the exact destructive or live target; ask only for missing authorization after the concrete plan is reviewable.",
+      "Use actual host v2 capabilities and a saved plan for Updater; resume uncertain requests through receipt lookup only."
     ],
     "failure_modes": [
       "Use of a remembered route or command without current discovery evidence.",
@@ -65,7 +68,9 @@
       "Syncing a module that the target package does not support.",
       "Adding fields or modules without migrations, validation, localization, permissions, or tests.",
       "Exposing secrets, credentials, or personal lead data in output.",
-      "Claiming completion without tests, rendering, persisted readback, or capability evidence."
+      "Claiming completion without tests, rendering, persisted readback, or capability evidence.",
+      "Resending an uncertain Updater request after 404, changing its request ID, or silently falling back to v1.",
+      "Treating held background work or a rolled_back update as full target success."
     ]
   },
   "resources": {
@@ -89,7 +94,8 @@
       "references/template-boundary.md",
       "references/theme-edit-workflow.md",
       "references/theme-package-contract.md",
-      "references/remote-cli-workflow.md"
+      "references/remote-cli-workflow.md",
+      "references/remote-updater-workflow.md"
     ],
     "scripts": [
       "scripts/build_sync_preview_report.py",
@@ -113,7 +119,8 @@
       "reports/output_quality_scorecard.md",
       "reports/conformance_matrix.md",
       "reports/security_trust_report.md",
-      "reports/remote-cli-review.md"
+      "reports/remote-cli-review.md",
+      "reports/coordinated-updater-review.md"
     ]
   },
   "eval_plan": {

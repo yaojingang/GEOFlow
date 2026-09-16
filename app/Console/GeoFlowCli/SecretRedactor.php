@@ -22,7 +22,7 @@ class SecretRedactor
     public static function payload(array $payload, array $secrets = []): array
     {
         foreach ($payload as $key => $value) {
-            if (preg_match('/(?:token|password|secret|api[_-]?key)/i', (string) $key) === 1) {
+            if (preg_match('/(?:token|password|secret|authorization[_-]?code|api[_-]?key)/i', (string) $key) === 1) {
                 $payload[$key] = is_string($value) ? self::mask($value) : '[redacted]';
             } elseif (is_array($value)) {
                 $payload[$key] = self::payload($value, $secrets);
@@ -39,7 +39,7 @@ class SecretRedactor
     {
         $values = [];
         foreach ($payload as $key => $value) {
-            if (preg_match('/(?:token|password|secret|api[_-]?key)/i', (string) $key) === 1) {
+            if (preg_match('/(?:token|password|secret|authorization[_-]?code|api[_-]?key)/i', (string) $key) === 1) {
                 self::collectStrings($value, $values);
             } elseif (is_array($value)) {
                 $values = array_merge($values, self::sensitiveValues($value));
@@ -64,7 +64,7 @@ class SecretRedactor
         }
 
         return preg_replace(
-            '/((?:token|password|secret|api[_-]?key)\s*[=:]\s*)[^\s,&]+/i',
+            '/((?:token|password|secret|authorization[_-]?code|api[_-]?key)\s*[=:]\s*)[^\s,&]+/i',
             '$1[redacted]',
             $message,
         ) ?? $message;

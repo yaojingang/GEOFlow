@@ -1,7 +1,7 @@
 {
     "schema_version": 1,
     "support_stage": "remote-management-preview",
-    "admin_route_count": 355,
+    "admin_route_count": 358,
     "legacy_cli_operations": [
         {
             "name": "article.ai-optimization-apply",
@@ -623,6 +623,133 @@
             "auth": true,
             "idempotent": false,
             "scope": "themes:read",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": [],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "updater.operations.create",
+            "method": "POST",
+            "path": "management/updater/operations",
+            "auth": true,
+            "idempotent": true,
+            "scope": null,
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "body": {
+                        "type": "object",
+                        "required": [
+                            "instance_id",
+                            "action",
+                            "client_request_id",
+                            "plan_id",
+                            "plan_sha256",
+                            "expected_epoch",
+                            "allow_maintenance",
+                            "confirm_host_access"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            },
+            "receipt": true,
+            "action_scopes": {
+                "update": "updater:update",
+                "backup": "updater:backup",
+                "restore": "updater:restore",
+                "switch-back": "updater:update"
+            }
+        },
+        {
+            "name": "updater.operations.show",
+            "method": "GET",
+            "path": "management/updater/operations/{operationId}",
+            "auth": true,
+            "idempotent": false,
+            "scope": "updater:read",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "object",
+                        "required": [
+                            "operationId"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "updater.plan",
+            "method": "POST",
+            "path": "management/updater/plans",
+            "auth": true,
+            "idempotent": false,
+            "scope": "updater:plan",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "body": {
+                        "type": "object",
+                        "required": [
+                            "instance_id",
+                            "action"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "updater.recovery-points",
+            "method": "GET",
+            "path": "management/updater/recovery-points",
+            "auth": true,
+            "idempotent": false,
+            "scope": "updater:read",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": [],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "updater.requests.lookup",
+            "method": "GET",
+            "path": "management/updater/requests/{requestId}",
+            "auth": true,
+            "idempotent": false,
+            "scope": "updater:read",
+            "transport": "json",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "object",
+                        "required": [
+                            "requestId"
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "updater.status",
+            "method": "GET",
+            "path": "management/updater/status",
+            "auth": true,
+            "idempotent": false,
+            "scope": "updater:read",
             "transport": "json",
             "input_schema": {
                 "type": "object",
@@ -3336,9 +3463,27 @@
             "methods": [
                 "POST"
             ],
+            "uri": "geo_admin/system-updates/updater/action-plans",
+            "name": "admin.system-updates.updater.action-plan",
+            "action": "App\\Http\\Controllers\\Admin\\CoordinatedUpdaterController@plan",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
             "uri": "geo_admin/system-updates/updater/backup",
             "name": "admin.system-updates.updater.backup",
-            "action": "App\\Http\\Controllers\\Admin\\SystemUpdaterOperationController@backup",
+            "action": "App\\Http\\Controllers\\Admin\\CoordinatedUpdaterController@retired",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/system-updates/updater/console",
+            "name": "admin.system-updates.updater.console",
+            "action": "App\\Http\\Controllers\\Admin\\CoordinatedUpdaterController@index",
             "remote_coverage": "pending_domain_mapping"
         },
         {
@@ -3354,9 +3499,18 @@
             "methods": [
                 "POST"
             ],
+            "uri": "geo_admin/system-updates/updater/operations",
+            "name": "admin.system-updates.updater.submit",
+            "action": "App\\Http\\Controllers\\Admin\\CoordinatedUpdaterController@submit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
             "uri": "geo_admin/system-updates/updater/plan",
             "name": "admin.system-updates.updater.plan",
-            "action": "App\\Http\\Controllers\\Admin\\SystemUpdaterOperationController@preview",
+            "action": "App\\Http\\Controllers\\Admin\\CoordinatedUpdaterController@retired",
             "remote_coverage": "pending_domain_mapping"
         },
         {
@@ -3374,7 +3528,7 @@
             ],
             "uri": "geo_admin/system-updates/updater/rollback",
             "name": "admin.system-updates.updater.rollback",
-            "action": "App\\Http\\Controllers\\Admin\\SystemUpdaterOperationController@rollback",
+            "action": "App\\Http\\Controllers\\Admin\\CoordinatedUpdaterController@retired",
             "remote_coverage": "pending_domain_mapping"
         },
         {
@@ -3383,7 +3537,7 @@
             ],
             "uri": "geo_admin/system-updates/updater/switch-back",
             "name": "admin.system-updates.updater.switch-back",
-            "action": "App\\Http\\Controllers\\Admin\\SystemUpdaterOperationController@switchBack",
+            "action": "App\\Http\\Controllers\\Admin\\CoordinatedUpdaterController@retired",
             "remote_coverage": "pending_domain_mapping"
         },
         {
@@ -3392,7 +3546,7 @@
             ],
             "uri": "geo_admin/system-updates/updater/update",
             "name": "admin.system-updates.updater.update",
-            "action": "App\\Http\\Controllers\\Admin\\SystemUpdaterOperationController@update",
+            "action": "App\\Http\\Controllers\\Admin\\CoordinatedUpdaterController@retired",
             "remote_coverage": "pending_domain_mapping"
         },
         {

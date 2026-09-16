@@ -92,6 +92,7 @@ return [
     'browser_clients' => 'Browser Clients',
     'system_updates' => 'System Updates',
     'system_update_detail' => 'Update Details',
+    'updater_operations' => 'Operations and Receipts',
     'system_backup_detail' => 'Backup Details',
     'lead_forms' => 'Conversion Forms',
     'lead_form_create' => 'New Form',

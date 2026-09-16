@@ -12,6 +12,7 @@ class ApiException extends RuntimeException
         public readonly int $httpStatus,
         public readonly array $payload = [],
         public readonly string $raw = '',
+        public readonly ?int $retryAfterSeconds = null,
     ) {
         parent::__construct($message);
     }

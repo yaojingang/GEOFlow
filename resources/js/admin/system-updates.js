@@ -176,7 +176,55 @@ export function initializeSystemUpdaterAuthorizationDialogs(root = document, win
     });
 }
 
+export function prepareUpdaterRequest(storage, instance, requestId) {
+    if (!/^[0-9a-f-]{36}$/i.test(instance) || !/^[A-Za-z0-9][A-Za-z0-9._-]{7,127}$/.test(requestId)) {
+        throw new Error('Invalid updater identity.');
+    }
+    const key = `geoflow.updater.request.${instance}.${requestId}`;
+    if (storage.getItem(key) !== null) return false;
+    storage.setItem(key, requestId);
+    if (storage.getItem(key) !== requestId) throw new Error('Request journal did not persist.');
+    return true;
+}
+
+export function initializeUpdaterAdmission(root = document, windowRef = window) {
+    const consoleElement = root.querySelector('[data-updater-console]');
+    if (!consoleElement) return;
+    const form = consoleElement.querySelector('[data-updater-admission]');
+    form?.addEventListener('submit', (event) => {
+        try {
+            const fresh = prepareUpdaterRequest(windowRef.localStorage, consoleElement.dataset.instanceId, form.dataset.requestId);
+            if (!fresh) {
+                event.preventDefault();
+                const receipt = new URL(consoleElement.dataset.receiptUrl, windowRef.location.href);
+                receipt.searchParams.set('request', form.dataset.requestId);
+                windowRef.location.assign(receipt.href);
+                return;
+            }
+            form.querySelector('button[type="submit"]').disabled = true;
+        } catch {
+            event.preventDefault();
+            const error = form.querySelector('[data-updater-client-error]');
+            error.textContent = form.dataset.storageFailed;
+            error.classList.remove('hidden');
+        }
+    });
+    if (form) {
+        form.querySelector('button[type="submit"]').disabled = false;
+        form.querySelector('[data-updater-bootstrap-status]')?.classList.add('hidden');
+    }
+    const planForm = consoleElement.querySelector('[data-updater-plan-form]');
+    if (planForm) {
+        const action = planForm.querySelector('[name="action"]');
+        const point = planForm.querySelector('[name="recovery_point_id"]');
+        const updatePoint = () => { point.disabled = action.value !== 'restore'; };
+        action.addEventListener('change', updatePoint);
+        updatePoint();
+    }
+}
+
 if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+    initializeUpdaterAdmission();
     initializeSystemUpdaterAutoReload();
     initializeSystemUpdaterCopy();
     initializeSystemUpdaterErrorDialog();

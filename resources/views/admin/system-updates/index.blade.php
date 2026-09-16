@@ -108,9 +108,9 @@
             ];
         }
         $readOnlyOperationDisabled = $updaterOperationBlocksMutations || !$updaterOperationsAvailable;
-        $mutationDisabled = $readOnlyOperationDisabled || $legacyCutoverBlocked || $updaterConnection !== 'connected' || !$mutationAuthorizationReady;
-        $recoveryDisabled = $legacyCutoverBlocked || empty($updaterBridge['recovery_available']);
-        $updateMutationDisabled = $readOnlyOperationDisabled || $legacyCutoverBlocked || ($updaterConnection !== 'connected' && !$phaseBHandoverReady) || !$mutationAuthorizationReady;
+        $mutationDisabled = true;
+        $recoveryDisabled = true;
+        $updateMutationDisabled = true;
         $authorizationCheckFailed = !$mutationAuthorizationReady;
         $manualCommands = is_array($summary['manual_commands'] ?? null) ? $summary['manual_commands'] : [];
     @endphp
@@ -126,6 +126,11 @@
                 {{ __('admin.system_updates.updater.project_link') }}
             </a>
         </div>
+
+        <section class="mb-6 flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <p class="text-sm text-blue-900">{{ __('updater.introduction') }}</p>
+            <a href="{{ route('admin.system-updates.updater.console') }}" class="inline-flex min-h-10 shrink-0 items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">{{ __('updater.title') }}</a>
+        </section>
 
         @if($hasReleaseUpdate)
             <section class="mb-6 overflow-hidden rounded-xl border border-amber-200 bg-amber-50 shadow-sm" data-system-update-release-notice aria-labelledby="system-update-release-title">

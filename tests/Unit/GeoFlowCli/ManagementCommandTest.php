@@ -6,6 +6,7 @@ use App\Console\GeoFlowCli\ApiException;
 use App\Console\GeoFlowCli\CliException;
 use App\Console\GeoFlowCli\CommandDispatcher;
 use App\Console\GeoFlowCli\ConfigurationRepository;
+use App\Console\GeoFlowCli\OperationJournal;
 use App\Support\Api\ManagementOperationRegistry;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
@@ -77,6 +78,61 @@ class ManagementCommandTest extends TestCase
         $status = (new CommandDispatcher($factory, $this->configuration))->dispatch($input->getRawTokens(), $input, $output, $error);
 
         return [$status, $output->fetch(), $error->fetch()];
+    }
+
+    public function test_login_preserves_epoch_for_legacy_commands_and_journals_keep_original_epoch_after_relogin(): void
+    {
+        $factory = new Factory;
+        $factory->fake(['*' => Factory::response(['success' => true, 'data' => ['token' => 'new-token', 'instance_id' => 'instance-test', 'admin' => ['id' => 7], 'recovery' => ['supported' => true, 'epoch' => str_repeat('a', 32)]]])]);
+        $this->runCommand($factory, ['login', '--profile', 'production', '--base-url', 'https://example.com', '--username', 'admin', '--password-stdin'], "password\n");
+        $saved = $this->configuration->load($this->configuration->profilePath('production'));
+        $this->assertSame(str_repeat('a', 32), $saved['recovery_epoch']);
+        $this->runCommand($factory, ['--profile', 'production', 'task', 'delete', '4', '--yes']);
+        $this->assertTrue($factory->recorded()[1][0]->hasHeader('X-GEOFlow-Recovery-Epoch', str_repeat('a', 32)));
+        $session = $this->session()['data'];
+        $session['recovery'] = ['supported' => true, 'epoch' => str_repeat('a', 32)];
+        $first = OperationJournal::prepare($this->configuration, $session, 'tasks.enqueue', [], 'recovery-request-1');
+        $session['recovery']['epoch'] = str_repeat('b', 32);
+        $second = OperationJournal::prepare($this->configuration, $session, 'tasks.enqueue', [], 'recovery-request-1');
+        $this->assertFalse($first['repeated']);
+        $this->assertTrue($second['repeated']);
+        $this->assertSame(str_repeat('a', 32), $second['recovery_epoch']);
+    }
+
+    public function test_malformed_login_epoch_is_revoked_using_a_fresh_session_before_failing(): void
+    {
+        $factory = new Factory;
+        $factory->preventStrayRequests();
+        $factory->fake([
+            '*/auth/login' => Factory::response(['success' => true, 'data' => ['token' => 'orphan-risk-token', 'instance_id' => 'instance-test', 'admin' => ['id' => 7], 'recovery' => ['supported' => true]]]),
+            '*/auth/session' => Factory::response(['success' => true, 'data' => ['recovery' => ['supported' => true, 'epoch' => str_repeat('a', 32)]]]),
+            '*/auth/logout' => Factory::response(['success' => true, 'data' => ['revoked' => true]]),
+        ]);
+        try {
+            $this->runCommand($factory, ['login', '--profile', 'production', '--base-url', 'https://example.com', '--username', 'admin', '--password-stdin'], "password\n");
+            $this->fail('Invalid identity must not be saved.');
+        } catch (CliException $exception) {
+            $this->assertStringContainsString('恢复代次', $exception->getMessage());
+        }
+        $this->assertCount(3, $factory->recorded());
+        $this->assertTrue($factory->recorded()[2][0]->hasHeader('X-GEOFlow-Recovery-Epoch', str_repeat('a', 32)));
+        $this->assertFileDoesNotExist($this->configuration->profilePath('production'));
+    }
+
+    public function test_legacy_write_with_environment_credentials_discovers_the_current_epoch_before_sending(): void
+    {
+        putenv('GEOFLOW_BASE_URL=https://example.com');
+        putenv('GEOFLOW_TOKEN=current-ephemeral-token');
+        $factory = new Factory;
+        $factory->preventStrayRequests();
+        $factory->fake([
+            '*/auth/session' => Factory::response(['success' => true, 'data' => ['recovery' => ['supported' => true, 'epoch' => str_repeat('b', 32)]]]),
+            '*/tasks/4' => Factory::response(['success' => true]),
+        ]);
+        $this->runCommand($factory, ['task', 'delete', '4', '--yes']);
+        $this->assertCount(2, $factory->recorded());
+        $this->assertSame('GET', $factory->recorded()[0][0]->method());
+        $this->assertTrue($factory->recorded()[1][0]->hasHeader('X-GEOFlow-Recovery-Epoch', str_repeat('b', 32)));
     }
 
     public function test_named_profile_ignores_unknown_working_directory_configuration(): void
@@ -314,11 +370,11 @@ class ManagementCommandTest extends TestCase
         $this->profile();
         $factory = new Factory;
         $factory->preventStrayRequests();
-        $factory->fake(['*/tasks/7/enqueue' => Factory::response(['success' => true, 'data' => ['job_id' => 17]], 201)]);
+        $factory->fake(['*/auth/session' => Factory::response(['success' => false, 'error' => ['code' => 'not_found']], 404), '*/tasks/7/enqueue' => Factory::response(['success' => true, 'data' => ['job_id' => 17]], 201)]);
         [$status] = $this->runCommand($factory, ['--profile', 'production', 'task', 'enqueue', '7', '--idempotency-key', 'legacy-key']);
         $this->assertSame(0, $status);
-        $this->assertCount(1, $factory->recorded());
-        $request = $factory->recorded()[0][0];
+        $this->assertCount(2, $factory->recorded());
+        $request = $factory->recorded()[1][0];
         $this->assertSame(['legacy-key'], $request->header('X-Idempotency-Key'));
         $this->assertSame([], $request->header('X-Client-Request-Id'));
     }
@@ -390,7 +446,7 @@ class ManagementCommandTest extends TestCase
         $this->assertSame($this->receipt()['data']['operation_id'], $this->journalRecord()['operation_id']);
     }
 
-    public function test_a_missing_remote_operation_allows_the_same_prepared_request_to_be_sent(): void
+    public function test_a_missing_remote_operation_keeps_a_legacy_prepared_request_uncertain(): void
     {
         $this->profile();
         $factory = new Factory;
@@ -405,9 +461,66 @@ class ManagementCommandTest extends TestCase
         $resumed = new Factory;
         $resumed->preventStrayRequests();
         $resumed->fake(['*/capabilities' => Factory::response($this->session()), '*/operations/lookup?*' => Factory::response(['success' => false, 'error' => ['code' => 'operation_not_found']], 404), '*/tasks/7/enqueue' => Factory::response($this->receipt(), 202)]);
-        $this->assertSame(0, $this->runCommand($resumed, $command, '{"path":{"task":7}}')[0]);
-        $this->assertCount(3, $resumed->recorded());
-        $this->assertSame('enqueue-request-1', $resumed->recorded()[2][0]->header('X-Client-Request-Id')[0]);
+        try {
+            $this->runCommand($resumed, $command, '{"path":{"task":7}}');
+            $this->fail('A prepared journal does not prove that the write was never executed.');
+        } catch (CliException $exception) {
+            $this->assertStringContainsString('未重新执行', $exception->getMessage());
+            $this->assertStringContainsString('enqueue-request-1', $exception->getMessage());
+        }
+        $this->assertCount(2, $resumed->recorded());
+        $this->assertSame($record, $this->journalRecord());
+    }
+
+    public function test_a_lost_response_and_missing_receipt_after_relogin_never_enqueue_again(): void
+    {
+        $path = $this->profile();
+        $executions = 0;
+        $factory = new Factory;
+        $factory->preventStrayRequests();
+        $factory->fake(function ($request) use (&$executions) {
+            if ($request->method() === 'GET') {
+                return Factory::response($this->session());
+            }
+            $executions++;
+            throw new ConnectionException('Response lost after enqueue');
+        });
+        $command = ['--profile', 'production', 'api', 'tasks.enqueue', '--input', '-', '--client-request-id', 'enqueue-request-1'];
+        try {
+            $this->runCommand($factory, $command, '{"path":{"task":7}}');
+            $this->fail('The first response must be lost.');
+        } catch (CliException $exception) {
+            $this->assertStringContainsString('Response lost', $exception->getMessage());
+        }
+        $record = $this->journalRecord();
+        $this->assertSame('prepared', $record['state']);
+        $this->configuration->save($path, array_replace($this->configuration->load($path), ['token' => 'new-login-token']));
+        $resumed = new Factory;
+        $resumed->preventStrayRequests();
+        $resumed->fake(function ($request) use (&$executions) {
+            if (str_ends_with($request->url(), '/capabilities')) {
+                return Factory::response($this->session());
+            }
+            if ($request->method() === 'GET') {
+                return Factory::response(['success' => false, 'error' => ['code' => 'operation_not_found']], 404);
+            }
+            $executions++;
+
+            return Factory::response($this->receipt(), 202);
+        });
+
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            try {
+                $this->runCommand($resumed, $command, '{"path":{"task":7}}');
+                $this->fail('A restored server losing its receipt must not replay the write.');
+            } catch (CliException $exception) {
+                $this->assertStringContainsString('未重新执行', $exception->getMessage());
+                $this->assertStringContainsString('enqueue-request-1', $exception->getMessage());
+            }
+        }
+        $this->assertSame(1, $executions);
+        $this->assertSame($record, $this->journalRecord());
+        $this->assertCount(4, $resumed->recorded());
     }
 
     public function test_lookup_failure_does_not_trigger_another_write(): void

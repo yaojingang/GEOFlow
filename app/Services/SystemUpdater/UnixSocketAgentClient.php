@@ -2,12 +2,14 @@
 
 namespace App\Services\SystemUpdater;
 
-use App\Contracts\SystemUpdater\PlannedAgentClient;
+use App\Contracts\SystemUpdater\CoordinatedAgentClient;
 use JsonException;
 use RuntimeException;
 
-class UnixSocketAgentClient implements PlannedAgentClient
+class UnixSocketAgentClient implements CoordinatedAgentClient
 {
+    use CoordinatedAgentProtocol;
+
     private const MAX_RESPONSE_BYTES = 1024 * 1024;
 
     /** @return array<string, mixed> */
@@ -264,9 +266,9 @@ class UnixSocketAgentClient implements PlannedAgentClient
 
     /**
      * @param  array<string, mixed>|null  $payload
-     * @return array{0: int, 1: array<string, mixed>}
+     * @return array{0: int, 1: array<string, mixed>, 2: ?int}
      */
-    private function instanceRequest(string $method, string $endpoint, ?array $payload = null, #[\SensitiveParameter] ?string $authorizationCode = null): array
+    private function instanceRequest(string $method, string $endpoint, ?array $payload = null, #[\SensitiveParameter] ?string $authorizationCode = null, string $protocol = 'v1'): array
     {
         $socketPath = (string) config('geoflow.updater_socket');
         $tokenPath = (string) config('geoflow.updater_control_token_file');
@@ -282,10 +284,10 @@ class UnixSocketAgentClient implements PlannedAgentClient
                 throw new RuntimeException('Updater request could not be encoded.', 0, $exception);
             }
         }
-        [$status, $response] = $this->request(
+        [$status, $response, $retryAfter] = $this->request(
             $socketPath,
             $method,
-            '/v1/instances/'.$this->instanceId().'/'.$endpoint,
+            '/'.$protocol.'/instances/'.$this->instanceId().'/'.$endpoint,
             $token,
             $body,
             $authorizationCode,
@@ -299,7 +301,7 @@ class UnixSocketAgentClient implements PlannedAgentClient
             throw new RuntimeException('Updater returned an invalid response.');
         }
 
-        return [$status, $decoded];
+        return [$status, $decoded, $retryAfter];
     }
 
     private function instanceId(): string
@@ -328,7 +330,7 @@ class UnixSocketAgentClient implements PlannedAgentClient
         return $token;
     }
 
-    /** @return array{0: int, 1: string} */
+    /** @return array{0: int, 1: string, 2: ?int} */
     private function request(string $socketPath, string $method, string $path, #[\SensitiveParameter] string $token, string $body, #[\SensitiveParameter] ?string $authorizationCode): array
     {
         $socketInfo = @lstat($socketPath);
@@ -336,7 +338,7 @@ class UnixSocketAgentClient implements PlannedAgentClient
             throw new RuntimeException('Updater agent is not reachable.');
         }
         $connectTimeout = max(0.1, (float) config('geoflow.updater_connect_timeout_seconds', 0.5));
-        $readTimeout = str_ends_with($path, '/plan')
+        $readTimeout = str_ends_with($path, '/plan') || ($method === 'POST' && str_ends_with($path, '/plans'))
             ? max(60, (int) config('geoflow.updater_plan_timeout_seconds', 1800))
             : max(1, (int) config('geoflow.updater_read_timeout_seconds', 10));
         $errorCode = 0;
@@ -403,7 +405,12 @@ class UnixSocketAgentClient implements PlannedAgentClient
             throw new RuntimeException('Updater agent returned an empty response.');
         }
 
-        return [(int) $matches[1], $responseBody];
+        $retryAfter = null;
+        if (preg_match('/(?:\A|\r\n)Retry-After:[ \t]*([0-9]{1,5})[ \t]*(?:\r\n|\z)/i', $headers, $retry) === 1) {
+            $retryAfter = min(86400, (int) $retry[1]);
+        }
+
+        return [(int) $matches[1], $responseBody, $retryAfter];
     }
 
     private function validateAuthorizationCode(#[\SensitiveParameter] string $authorizationCode): void

@@ -7,6 +7,8 @@ import {
     initializeSystemUpdaterAuthorizationDialogs,
     initializeSystemUpdaterErrorDialog,
     updaterReloadDelay,
+    prepareUpdaterRequest,
+    initializeUpdaterAdmission,
 } from '../../resources/js/admin/system-updates.js';
 
 test('updater reload delay accepts only bounded millisecond values', () => {
@@ -226,4 +228,41 @@ test('planned confirmation never prompts or submits with a missing hash or unche
     assert.equal(form.submitted, true);
     assert.equal(form.plan.value, 'a'.repeat(64));
     assert.equal(form.maintenance.checked, true);
+});
+
+
+test('admission journal preserves the first request across reload and refuses a second POST', () => {
+    const map = new Map();
+    const storage = { getItem: key => map.get(key) ?? null, setItem: (key, value) => map.set(key, value) };
+    const instance = '12345678-1234-1234-1234-123456789abc';
+    assert.equal(prepareUpdaterRequest(storage, instance, 'browser-request-001'), true);
+    assert.equal(prepareUpdaterRequest(storage, instance, 'browser-request-001'), false);
+    assert.deepEqual([...map.values()], ['browser-request-001']);
+});
+
+test('admission journal fails closed on storage failure or invalid identity', () => {
+    const unavailable = { getItem: () => null, setItem: () => { throw new Error('full'); } };
+    const instance = '12345678-1234-1234-1234-123456789abc';
+    assert.throws(() => prepareUpdaterRequest(unavailable, instance, 'browser-request-001'));
+    assert.throws(() => prepareUpdaterRequest(unavailable, 'wrong-instance', 'browser-request-001'));
+    assert.throws(() => prepareUpdaterRequest({getItem: () => null, setItem: () => {}}, instance, 'browser-request-001'));
+});
+
+
+test('admission enables the initially disabled button only after registering the guard', () => {
+    const button = {disabled: true};
+    const notice = {classList: {add: () => {}}};
+    let handler;
+    const form = {
+        addEventListener: (name, callback) => { assert.equal(button.disabled, true); handler = callback; },
+        querySelector: selector => selector === 'button[type="submit"]' ? button : notice,
+    };
+    const root = {querySelector: () => ({querySelector: selector => selector === '[data-updater-admission]' ? form : null})};
+    initializeUpdaterAdmission(root, {});
+    assert.equal(typeof handler, 'function');
+    assert.equal(button.disabled, false);
+    button.disabled = true;
+    form.addEventListener = () => { throw new Error('initialization failed'); };
+    assert.throws(() => initializeUpdaterAdmission(root, {}));
+    assert.equal(button.disabled, true);
 });

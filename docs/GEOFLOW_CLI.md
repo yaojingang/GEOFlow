@@ -6,6 +6,8 @@
 
 本版新增多 profile、显式 scope、当前令牌撤销、任务收据，以及主站远程主题草稿、原子文件修改、签名预览与丢弃。完整用法见 [远程 CLI 流程](../.agents/skills/geoflow/references/remote-cli-workflow.md)；支持范围及未完成项见 [覆盖说明](api/remote-management-preview.md)。主题发布、回滚与完整后台管理尚未开放。以下保留原有文章、任务和素材等命令用法。
 
+任务入队响应丢失后，请保留原客户端请求 ID 并查询收据。远端返回 `operation_not_found` / 404 时，CLI 会停止自动重发，包括只有 `prepared` 状态的旧本地日志。恢复旧数据库可能同时丢失收据；先核对业务结果，再明确决定是否以新请求执行。重新登录、绑定 profile 和更新 CLI 均不应删除原日志。
+
 GEOFlow CLI 是仓库内置的 API v1 客户端，用于管理目录、任务、执行记录、素材和文章。它负责配置文件、登录、HTTPS 策略、密钥脱敏、JSON 校验、删除确认和 API 错误提示。
 
 当前正式支持 macOS、Linux 和 WSL。原生 Windows 可以运行 PHP，但 CLI 无法验证 Windows ACL。需要在原生 Windows 保存 Token 时，请手动限制配置文件权限，或改用 WSL。

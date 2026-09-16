@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Services\SystemUpdater\AgentProtocolException;
 use App\Services\SystemUpdater\UnixSocketAgentClient;
 use Monolog\Formatter\LineFormatter;
 use Monolog\Level;
@@ -450,7 +451,54 @@ class UnixSocketAgentClientTest extends TestCase
         }
     }
 
-    private function withAgentResponse(array $payload, callable $callback, int $httpStatus = 200): mixed
+    private function coordinatedCapabilities(): array
+    {
+        return ['schema_version' => 2, 'instance_id' => 'primary', 'protocol_version' => 2, 'updater_protocol' => 5,
+            'actions' => ['update', 'backup', 'restore', 'switch-back'], 'features' => ['plans' => true, 'requests' => true, 'idempotency' => true, 'recovery_epoch' => true],
+            'maintenance_confirmation' => true, 'restore_policy' => 'latest_update_checkpoint', 'background_status' => 'ready',
+            'recovery' => ['host_id' => str_repeat('b', 32), 'epoch' => str_repeat('a', 32), 'phase' => 'ready']];
+    }
+
+    public function test_coordinated_capabilities_require_the_real_versioned_contract(): void
+    {
+        $payload = $this->coordinatedCapabilities();
+        $this->assertSame($payload, $this->withAgentResponse($payload, fn ($client) => $client->capabilities(), expectedLine: 'GET /v2/instances/primary/capabilities HTTP/1.0'));
+        $payload['features']['idempotency'] = false;
+        $this->expectException(RuntimeException::class);
+        $this->withAgentResponse($payload, fn ($client) => $client->capabilities());
+    }
+
+    public function test_only_an_exact_versioned_request_not_found_is_a_missing_receipt(): void
+    {
+        $this->assertNull($this->withAgentResponse(['error' => 'request_not_found'], fn ($client) => $client->requestReceipt('original-request-001'), 404,
+            expectedLine: 'GET /v2/instances/primary/requests/original-request-001 HTTP/1.0'));
+        $this->expectException(AgentProtocolException::class);
+        $this->withAgentResponse(['error' => 'not_found'], fn ($client) => $client->requestReceipt('original-request-001'), 404);
+    }
+
+    public function test_coordinated_rate_limit_preserves_retry_after_without_retrying_the_request(): void
+    {
+        try {
+            $this->withAgentResponse(['error' => 'rate_limited'], fn ($client) => $client->requestReceipt('original-request-001'), 429, responseHeaders: "Retry-After: 17\r\n");
+            $this->fail('Rate limit should be returned to caller.');
+        } catch (AgentProtocolException $exception) {
+            $this->assertSame(429, $exception->httpStatus);
+            $this->assertSame(17, $exception->retryAfterSeconds);
+        }
+    }
+
+    public function test_receipt_lookup_rejects_another_request_identity_even_when_the_operation_is_pending(): void
+    {
+        $envelope = ['schema_version' => 2, 'instance_id' => 'primary', 'client_request_id' => 'another-request-002',
+            'business_sha256' => str_repeat('d', 64), 'operation_id' => '20260916T120000.000000001Z-'.str_repeat('f', 16),
+            'action' => 'backup', 'plan_id' => str_repeat('c', 32), 'accepted_epoch' => str_repeat('a', 32),
+            'admission_status' => 'pending', 'background_status' => 'ready', 'operation' => null];
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('different request receipt');
+        $this->withAgentResponse($envelope, fn ($client) => $client->requestReceipt('original-request-001'));
+    }
+
+    private function withAgentResponse(array $payload, callable $callback, int $httpStatus = 200, ?string $expectedLine = null, string $responseHeaders = ''): mixed
     {
         $directory = sys_get_temp_dir().'/geoflow-updater-client-'.bin2hex(random_bytes(8));
         mkdir($directory, 0700, true);
@@ -466,14 +514,20 @@ class UnixSocketAgentClientTest extends TestCase
         if ($pid === 0) {
             $connection = stream_socket_accept($server, 5);
             if (is_resource($connection)) {
+                $received = '';
                 while (! feof($connection)) {
                     $chunk = fread($connection, 4096);
+                    $received .= is_string($chunk) ? $chunk : '';
                     if (! is_string($chunk) || $chunk === '' || str_contains($chunk, "\r\n\r\n")) {
                         break;
                     }
                 }
+                if ($expectedLine !== null && ! str_starts_with($received, $expectedLine."\r\n")) {
+                    $httpStatus = 400;
+                    $payload = ['error' => 'unexpected_protocol_endpoint'];
+                }
                 $body = json_encode($payload, JSON_THROW_ON_ERROR);
-                fwrite($connection, "HTTP/1.0 {$httpStatus} Response\r\nContent-Type: application/json\r\nContent-Length: ".strlen($body)."\r\n\r\n".$body);
+                fwrite($connection, "HTTP/1.0 {$httpStatus} Response\r\n{$responseHeaders}Content-Type: application/json\r\nContent-Length: ".strlen($body)."\r\n\r\n".$body);
                 fclose($connection);
             }
             fclose($server);

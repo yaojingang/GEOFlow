@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "minimum_updater_protocol": 5,
+  "recovery_state_schema": 1,
+  "host_api_protocol": 2,
+  "management_protocol": "1.0"
+}

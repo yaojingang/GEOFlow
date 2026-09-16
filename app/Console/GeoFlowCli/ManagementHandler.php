@@ -99,7 +99,7 @@ final class ManagementHandler
             if (is_link($lockedPath) || ! is_file($lockedPath) || $this->runtime->configuration->load($lockedPath) !== $saved) {
                 throw new CliException('身份查询期间配置已经变化，未覆盖新的配置或凭据');
             }
-            $warnings = $this->runtime->configuration->saveLocked($lockedPath, array_replace($saved, ['instance_id' => $instanceId, 'admin_id' => $adminId]));
+            $warnings = $this->runtime->configuration->saveLocked($lockedPath, array_replace($saved, ['instance_id' => $instanceId, 'admin_id' => $adminId, 'recovery_epoch' => ApiClient::recoveryEpoch($session)]));
             $this->runtime->context->deferWarnings($warnings);
         });
         $this->runtime->writeJson(['bound' => true, 'config_file' => $path, 'base_url' => $config['base_url'], 'instance_id' => $instanceId, 'admin_id' => $adminId]);
@@ -139,6 +139,9 @@ final class ManagementHandler
         $name = $this->runtime->context->positionals[1];
         if (! isset(ManagementOperationRegistry::all()[$name])) {
             throw new CliException('未知管理 operation ID，请先读取 capabilities');
+        }
+        if (str_starts_with($name, 'updater.')) {
+            throw new CliException('运维操作请使用 geoflow updater 命令，以保留计划、受保护授权输入和宿主机续接信息');
         }
         $operation = ManagementOperationRegistry::get($name);
         if (($operation['receipt'] ?? false) && array_key_exists('idempotency-key', $this->runtime->context->options)) {
@@ -183,6 +186,7 @@ final class ManagementHandler
                     if ($prepared['operation_id'] !== null) {
                         throw new CliException('本地已有操作收据，远端记录暂不可用；未重新执行，请核对实例恢复或收据保留状态');
                     }
+                    throw new CliException('请求 '.$requestId.' 的此前结果尚无法确认；未重新执行。请保留原请求 ID，核对实例恢复和业务结果；对账确认可重做并明确授权后，再创建新请求');
                 }
             }
         }
@@ -267,6 +271,7 @@ final class ManagementHandler
             if ($saved !== null) {
                 $saved['token'] = null;
                 $saved['admin_id'] = null;
+                $saved['recovery_epoch'] = null;
                 $this->runtime->configuration->saveLocked($lockedPath, $saved);
                 $localCleared = true;
             }

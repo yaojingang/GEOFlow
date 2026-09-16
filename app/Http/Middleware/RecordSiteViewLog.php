@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Services\Site\SiteScopedArticleQuery;
+use App\Services\SystemUpdater\RecoveryState;
 use App\Support\Site\CurrentSite;
 use App\Support\Site\SiteThemePreviewContext;
 use Closure;
@@ -29,6 +30,11 @@ class RecordSiteViewLog
         $response = $next($request);
 
         if (strtoupper((string) $request->method()) !== 'GET') {
+            return $response;
+        }
+
+        $state = app(RecoveryState::class)->snapshot();
+        if ($state !== null && $state['phase'] !== 'ready') {
             return $response;
         }
 

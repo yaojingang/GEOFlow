@@ -102,6 +102,8 @@ final class AdminActivityLogger
             'package_password',
             'current_password',
             'current_admin_password',
+            'updater_authorization_code',
+            'authorization_code',
             'new_password',
             'confirm_password',
             'api_key',

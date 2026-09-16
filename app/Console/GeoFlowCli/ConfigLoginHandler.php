@@ -174,13 +174,20 @@ final class ConfigLoginHandler
                         'base_url' => $config['base_url'],
                         'token' => $token,
                         'instance_id' => $instanceId,
+                        'recovery_epoch' => ApiClient::recoveryEpoch($apiResult->payload['data'] ?? []),
                         'admin_id' => $adminId !== null ? (string) $adminId : null,
                         'timeout' => $config['timeout'],
                         'allow_insecure_http' => $config['allow_insecure_http'],
                     ]);
                 } catch (\Throwable $exception) {
                     try {
-                        $revoked = ($this->runtime->client($config['base_url'], $token, $config['timeout'])->send('auth.logout')->payload['data']['revoked'] ?? false) === true;
+                        try {
+                            $cleanup = $this->runtime->client($config['base_url'], $token, $config['timeout'], ApiClient::recoveryEpoch($apiResult->payload['data'] ?? []));
+                        } catch (CliException) {
+                            $cleanup = $this->runtime->client($config['base_url'], $token, $config['timeout']);
+                            $cleanup->send('auth.session');
+                        }
+                        $revoked = ($cleanup->send('auth.logout')->payload['data']['revoked'] ?? false) === true;
                     } catch (\Throwable) {
                         $revoked = false;
                     }

@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\V1\JobController;
 use App\Http\Controllers\Api\V1\ManagementOperationController;
 use App\Http\Controllers\Api\V1\ManagementSessionController;
 use App\Http\Controllers\Api\V1\ManagementSiteController;
+use App\Http\Controllers\Api\V1\ManagementUpdaterController;
 use App\Http\Controllers\Api\V1\MaterialController;
 use App\Http\Controllers\Api\V1\TaskController;
 use App\Http\Controllers\Api\V1\ThemeWorkspaceController;
@@ -34,7 +35,7 @@ Route::prefix('v1')
             ->whereUuid(['workspace', 'revision'])->where('assetPath', '.*')->middleware('throttle:120,1,theme-preview-asset:')->name('api.v1.theme-preview-asset');
         // 公开：管理员登录，返回 API Token（无需 Bearer）
         Route::post('auth/login', [AuthController::class, 'login'])
-            ->middleware('throttle:admin-login');
+            ->middleware('throttle:admin-login')->name('api.v1.auth.login');
 
         Route::middleware(['browser.protocol'])
             ->prefix('browser-operations')
@@ -46,7 +47,15 @@ Route::prefix('v1')
             });
 
         // 需有效 Token + 对应 scope
-        Route::middleware(['api.auth'])->group(function (): void {
+        Route::middleware(['api.auth', 'api.recovery'])->group(function (): void {
+            Route::prefix('management/updater')->name('api.v1.management.updater.')->group(function (): void {
+                Route::get('status', [ManagementUpdaterController::class, 'status'])->name('status');
+                Route::get('recovery-points', [ManagementUpdaterController::class, 'recoveryPoints'])->name('recovery-points');
+                Route::post('plans', [ManagementUpdaterController::class, 'plan'])->middleware('throttle:5,1,updater-plans:')->name('plans');
+                Route::post('operations', [ManagementUpdaterController::class, 'submit'])->middleware('throttle:10,1,updater-submit:')->name('submit');
+                Route::get('requests/{requestId}', [ManagementUpdaterController::class, 'lookup'])->where('requestId', '[A-Za-z0-9][A-Za-z0-9._-]{7,127}')->name('lookup');
+                Route::get('operations/{operationId}', [ManagementUpdaterController::class, 'operation'])->where('operationId', '[0-9]{8}T[0-9]{6}\.[0-9]{9}Z-[a-f0-9]{16}')->name('operation');
+            });
             Route::get('capabilities', [ManagementSessionController::class, 'capabilities'])->name('api.v1.capabilities');
             Route::get('auth/session', [ManagementSessionController::class, 'show'])->name('api.v1.auth.session');
             Route::post('auth/logout', [ManagementSessionController::class, 'destroy'])->name('api.v1.auth.logout');
@@ -71,7 +80,7 @@ Route::prefix('v1')
                 ->group(function (): void {
                     Route::get('session', [BrowserSessionController::class, 'show'])->middleware('throttle:120,1');
                     Route::delete('session', [BrowserSessionController::class, 'destroy'])
-                        ->middleware(['api.scope:browser-operations:execute', 'throttle:30,1']);
+                        ->middleware(['api.scope:browser-operations:execute', 'throttle:30,1'])->name('api.v1.browser-session.logout');
                 });
 
             Route::middleware(['browser.protocol', 'api.scope:browser-operations:read'])

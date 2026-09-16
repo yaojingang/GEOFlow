@@ -117,7 +117,7 @@ class AdminUiV3RouteRegistryTest extends TestCase
                 && $registry->routeClassification($name) === 'shell')
             ->values();
 
-        $this->assertCount(108, $shellRouteNames);
+        $this->assertCount(109, $shellRouteNames);
         $shellRouteNames->each(function (string $routeName) use ($registry): void {
             $identity = $registry->pageIdentity($routeName);
 
@@ -154,7 +154,7 @@ class AdminUiV3RouteRegistryTest extends TestCase
             ->unique()
             ->values();
 
-        $this->assertCount(111, $routeNames);
+        $this->assertCount(112, $routeNames);
 
         foreach (array_keys(AdminWeb::supportedLocales()) as $locale) {
             App::setLocale($locale);

@@ -218,6 +218,7 @@ final class AdminUiRegistry
             'admin.account.show' => ['key' => 'account', 'icon' => 'user-round-cog', 'body_heading' => 'hidden'],
             'admin.account.browser-clients.index' => ['key' => 'browser_clients', 'icon' => 'monitor-smartphone', 'body_heading' => 'hidden'],
             'admin.system-updates.index' => ['key' => 'system_updates', 'icon' => 'refresh-cw', 'body_heading' => 'hidden'],
+            'admin.system-updates.updater.console' => ['key' => 'updater_operations', 'icon' => 'list-checks', 'body_heading' => 'hidden'],
             'admin.system-updates.runs.show' => ['key' => 'system_update_detail', 'icon' => 'history', 'body_heading' => 'hidden'],
             'admin.system-updates.backups.show' => ['key' => 'system_backup_detail', 'icon' => 'archive', 'body_heading' => 'hidden'],
             'admin.lead-forms.index' => ['key' => 'lead_forms', 'icon' => 'clipboard-list', 'body_heading' => 'hidden'],

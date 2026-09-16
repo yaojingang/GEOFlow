@@ -4,6 +4,8 @@
 
 The standalone client can run without local GEOFlow Core source. See [installation and recovery](../packages/geoflow-cli/README.md), [remote CLI workflow](../.agents/skills/geoflow/references/remote-cli-workflow.md), and [implemented coverage and pending work](api/remote-management-preview.md). This preview adds profiles, explicit scopes, identity binding, receipts, and primary-site theme drafts and previews. Theme publication, rollback, and complete backend coverage remain unavailable. Existing commands are documented below.
 
+After losing a task-enqueue response, retain the client request ID and query its receipt. A remote `operation_not_found` / 404 stops automatic resending, including old local journals with only a `prepared` state. Restoring an older database can remove receipts. Reconcile the business result before explicitly authorizing a new request. Login, profile binding and CLI updates must preserve the original journal.
+
 GEOFlow CLI is the repository's API v1 client for catalog, task, job, material, and article operations. It handles profiles, login, HTTPS policy, secret redaction, JSON validation, deletion confirmation, and API error hints.
 
 The supported platforms are macOS, Linux, and WSL. Native Windows can run PHP, but the CLI cannot verify Windows ACLs. If you must save a token from native Windows, restrict the profile manually or run the CLI in WSL.

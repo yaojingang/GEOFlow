@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Models\Admin;
 use App\Services\Api\ApiTokenService;
+use App\Services\Api\ManagementInstance;
 use App\Support\AdminActivityLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,6 +18,7 @@ final class BrowserSessionController extends BaseApiController
 
         return $this->success($request, [
             'protocol_version' => 1,
+            'recovery' => app(ManagementInstance::class)->describe()['recovery'],
             'admin' => [
                 'id' => (int) $admin->getKey(),
                 'display_name' => $admin->name,

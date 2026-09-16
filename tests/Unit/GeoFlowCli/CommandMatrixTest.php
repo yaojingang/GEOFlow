@@ -67,8 +67,13 @@ class CommandMatrixTest extends TestCase
         $status = $dispatcher->dispatch($tokens, $input, new BufferedOutput, new BufferedOutput);
 
         $this->assertSame(0, $status);
-        $this->assertCount(1, $factory->recorded());
-        $request = $factory->recorded()[0][0];
+        $discovers = $contract['auth'] && ! in_array($contract['method'], ['GET', 'HEAD'], true);
+        $this->assertCount($discovers ? 2 : 1, $factory->recorded());
+        if ($discovers) {
+            $this->assertSame('GET', $factory->recorded()[0][0]->method());
+            $this->assertSame('https://api.example.com/api/v1/auth/session', $factory->recorded()[0][0]->url());
+        }
+        $request = $factory->recorded()->last()[0];
         $this->assertSame($contract['method'], $request->method());
         $this->assertSame('https://api.example.com/api/v1/'.$contract['target'], $request->url());
         $this->assertTrue($request->hasHeader('Accept', 'application/json'));

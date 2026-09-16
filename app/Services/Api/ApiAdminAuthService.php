@@ -4,6 +4,7 @@ namespace App\Services\Api;
 
 use App\Exceptions\ApiException;
 use App\Models\Admin;
+use App\Services\SystemUpdater\RecoveryState;
 use App\Support\GeoFlow\AdminLoginLockService;
 use Illuminate\Support\Facades\DB;
 
@@ -19,6 +20,7 @@ class ApiAdminAuthService
      */
     public function login(string $username, string $password, string $ipAddress = '', string $userAgent = '', ?array $requestedScopes = null): array
     {
+        app(RecoveryState::class)->assertHttpReady();
         $username = trim($username);
         if ($username === '' || $password === '') {
             $fieldErrors = [];

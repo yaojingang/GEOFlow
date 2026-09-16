@@ -62,7 +62,7 @@ class CommandDispatcherTest extends TestCase
 
         $dispatcher->dispatch($input->getRawTokens(), $input, $stdout, $stderr);
 
-        $request = $factory->recorded()[0][0];
+        $request = $factory->recorded()->last()[0];
         $this->assertSame('POST', $request->method());
         $this->assertSame('legal approval', $request->data()['risk_override_reason']);
     }
@@ -128,7 +128,7 @@ class CommandDispatcherTest extends TestCase
 
         $dispatcher->dispatch($input->getRawTokens(), $input, $stdout, $stderr);
 
-        $request = $factory->recorded()[0][0];
+        $request = $factory->recorded()->last()[0];
         $this->assertSame('DELETE', $request->method());
         $this->assertSame(['ids' => [3, 4]], $request->data());
         $this->assertFalse($request->hasHeader('X-Idempotency-Key'));
@@ -176,7 +176,7 @@ class CommandDispatcherTest extends TestCase
 
         $dispatcher->dispatch($input->getRawTokens(), $input, $stdout, $stderr);
 
-        $this->assertSame(['ids' => [3, 4]], $factory->recorded()[0][0]->data());
+        $this->assertSame(['ids' => [3, 4]], $factory->recorded()->last()[0]->data());
     }
 
     #[Test]
@@ -414,7 +414,7 @@ class CommandDispatcherTest extends TestCase
 
         fclose($stream);
         $this->assertSame(0, $status);
-        $this->assertSame('DELETE', $factory->recorded()[0][0]->method());
+        $this->assertSame('DELETE', $factory->recorded()->last()[0]->method());
     }
 
     #[Test]

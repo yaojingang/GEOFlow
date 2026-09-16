@@ -698,6 +698,228 @@
                     }
                 }
             }
+        },
+        "/management/updater/operations": {
+            "post": {
+                "operationId": "updater.operations.create",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": null,
+                "x-idempotent": true,
+                "x-receipt": true,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    },
+                    "201": {
+                        "description": "Resource or receipt created"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "instance_id",
+                                    "action",
+                                    "client_request_id",
+                                    "plan_id",
+                                    "plan_sha256",
+                                    "expected_epoch",
+                                    "allow_maintenance",
+                                    "confirm_host_access"
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/management/updater/operations/{operationId}": {
+            "get": {
+                "operationId": "updater.operations.show",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "updater:read",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "operationId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
+        "/management/updater/plans": {
+            "post": {
+                "operationId": "updater.plan",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "updater:plan",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    },
+                    "201": {
+                        "description": "Resource or receipt created"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "instance_id",
+                                    "action"
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/management/updater/recovery-points": {
+            "get": {
+                "operationId": "updater.recovery-points",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "updater:read",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    }
+                }
+            }
+        },
+        "/management/updater/requests/{requestId}": {
+            "get": {
+                "operationId": "updater.requests.lookup",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "updater:read",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "requestId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ]
+            }
+        },
+        "/management/updater/status": {
+            "get": {
+                "operationId": "updater.status",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "x-required-scope": "updater:read",
+                "x-idempotent": false,
+                "x-receipt": false,
+                "responses": {
+                    "200": {
+                        "description": "Successful API envelope"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Permission denied"
+                    },
+                    "409": {
+                        "description": "Baseline or request identity conflict"
+                    }
+                }
+            }
         }
     },
     "components": {

@@ -817,6 +817,21 @@
       "name": "2026_09_15_172156_create_theme_releases_table",
       "sha256": "5a0ba2409f3234dd778ed4fd7eb342e255bb1b96f042f920722e798849f2a913",
       "online": false
+    },
+    {
+      "name": "2026_09_16_092941_add_recovery_epoch_to_admin_credentials",
+      "sha256": "7555aae25bb771bd836124a41b953e7ea9b49a52a117d964283b3542139f53ba",
+      "online": false
+    },
+    {
+      "name": "2026_09_16_094613_create_recovery_preparations_table",
+      "sha256": "1f52879c213457e0ea1f453045b2573d692fe9b66c93e67dc691fc75fd70538f",
+      "online": false
+    },
+    {
+      "name": "2026_09_16_144419_create_recovery_reconciliations_tables",
+      "sha256": "370b18a227ba6e9b14caf1aaf6314d56ce83b68b38547642ff97ccd23bbe1be1",
+      "online": false
     }
   ],
   "compatibility": {

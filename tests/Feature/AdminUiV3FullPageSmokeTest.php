@@ -88,7 +88,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             ->sortBy(fn (LaravelRoute $route): string => (string) $route->getName())
             ->values();
 
-        $this->assertCount(108, $shellRoutes);
+        $this->assertCount(109, $shellRoutes);
 
         foreach ($shellRoutes as $route) {
             $routeName = (string) $route->getName();
