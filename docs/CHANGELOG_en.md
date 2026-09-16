@@ -2,13 +2,16 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
-## Unreleased: remote management preview
+## 2026-09-16
 
-- CLI `0.3.0-preview.1` adds a standalone PHAR, signed-bundle installation and interrupted-update recovery, named profiles, explicit login scopes, identity binding, and current-token revocation.
+### v3.2.0-beta.1
+
+- Core advances to `3.2.0-beta.1`; CLI `0.4.0-preview.1` adds a standalone PHAR, signed-bundle installation and interrupted-update recovery, named profiles, explicit login scopes, identity binding, and current-token revocation.
 - Task enqueue gains receipts and client request IDs for lost-response lookup, duplicate protection, and recovery after logging back into the same account. Theme drafts do not yet support receipt recovery.
 - Built-in and installed primary-site themes support remote drafts, chunked file reads, atomic incremental changes, signed previews with real content, and discard, without manual theme-package round trips for draft editing.
 - Native template code requires a trusted super administrator, explicit code scope, and a short-lived password grant. Admin appearance writes share a lock and version conflict checks.
-- Skill `1.1.0-preview.1` defaults to the remote CLI. Added operation/route coverage records, a preview contract, and CI installation verification.
+- Skill `1.2.0-preview.1` defaults to the remote CLI. Added operation/route coverage records, a preview contract, and CI installation verification.
+- Core and Updater add remote action plans, durable admission records, and receipt lookup. Full recovery records a recovery epoch, invalidates old credentials, and quarantines background work; uncertain responses are reconciled through the original receipt without automatic resend.
 - Five maintenance-mode migrations extend the data model. Theme publication, rollback, full administration, multiple sites, and official signed distribution remain pending; see [current coverage](api/remote-management-preview.md).
 
 ## 2026-09-13
