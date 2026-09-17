@@ -97,10 +97,18 @@ class UrlChangeController extends Controller
                 'article_category' => 'category_id',
                 default => 'pattern',
             };
-
-            return redirect()->to($this->editorUrl($urlChange))
+            $editorUrl = $urlChange->operation === 'primary'
+                ? route('admin.site-settings.index')
+                : $this->editorUrl($urlChange);
+            $redirect = redirect()->to($editorUrl)
                 ->withInput([$field => $urlChange->new_value])
                 ->with('url_change_draft_restored', true);
+
+            if ($urlChange->operation === 'primary') {
+                $redirect->with('site_settings_open_target', 'site-settings-permalink');
+            }
+
+            return $redirect;
         }
 
         return redirect()->route('admin.url-changes.show', $urlChange);

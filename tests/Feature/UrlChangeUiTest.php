@@ -101,11 +101,14 @@ class UrlChangeUiTest extends TestCase
         $change = $this->ready($admin);
 
         $this->actingAs($admin, 'admin')->post(route('admin.url-changes.cancel', $change), ['return_to_editor' => true])
-            ->assertRedirect(route('admin.site-settings.index').'#site-settings-permalink')
-            ->assertSessionHasInput('pattern', '/{category}/{slug}');
+            ->assertRedirect(route('admin.site-settings.index'))
+            ->assertSessionHasInput('pattern', '/{category}/{slug}')
+            ->assertSessionHas('site_settings_open_target', 'site-settings-permalink');
 
         $this->assertSame('cancelled', $change->refresh()->status);
         $this->assertDatabaseHas('url_change_scope_states', ['scope_key' => 'primary', 'active_request_id' => null]);
+        $this->get(route('admin.site-settings.index'))
+            ->assertSee('data-site-settings-open-target="site-settings-permalink"', false);
         $this->post(route('admin.url-changes.store'), ['operation' => 'primary', 'value' => '/{slug}.html'])->assertSessionHasNoErrors();
         $this->assertDatabaseCount('url_change_requests', 2);
         Queue::assertPushed(CheckUrlChange::class);

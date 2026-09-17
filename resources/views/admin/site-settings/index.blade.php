@@ -147,9 +147,13 @@
 @section('content')
     @php
         $showHomepageEditor = $homepageEditorPage ?? false;
+        $siteSettingsOpenTarget = session('site_settings_open_target');
     @endphp
 
-    <div class="px-4 sm:px-0" data-url-separate-editor data-has-unsaved-input="{{ session()->hasOldInput('site_name') ? '1' : '0' }}">
+    <div class="px-4 sm:px-0"
+         data-url-separate-editor
+         data-has-unsaved-input="{{ session()->hasOldInput('site_name') ? '1' : '0' }}"
+         @if (is_string($siteSettingsOpenTarget) && $siteSettingsOpenTarget !== '') data-site-settings-open-target="{{ $siteSettingsOpenTarget }}" @endif>
         @if ($showHomepageEditor)
             <div class="mb-8">
                 <a href="{{ route('admin.site-settings.index') }}" class="inline-flex min-h-10 items-center text-sm font-semibold text-gray-600 transition-colors hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
@@ -210,7 +214,7 @@
             </div>
 
         @if ($canManageProtectedWorkflows ?? false)
-        <details id="site-settings-ai-workspace" class="mb-6 overflow-hidden rounded-lg bg-white shadow group" @if ($errors->has('enabled')) open @endif>
+        <details id="site-settings-ai-workspace" class="mb-6 overflow-hidden rounded-lg bg-white shadow group" @if ($errors->has('enabled') || $siteSettingsOpenTarget === 'site-settings-ai-workspace') open @endif>
             <summary class="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-gray-200 px-6 py-5 [&::-webkit-details-marker]:hidden">
                 <div class="flex min-w-0 items-start gap-4">
                     <span class="hidden h-10 w-10 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100 sm:inline-flex">
@@ -1348,6 +1352,15 @@
                     openSiteSettingsTarget(targetId, 'auto');
                 }
             };
+
+            const requestedTarget = document.querySelector('[data-site-settings-open-target]')
+                ?.getAttribute('data-site-settings-open-target');
+
+            if (requestedTarget) {
+                window.requestAnimationFrame(function () {
+                    openSiteSettingsTarget(requestedTarget, 'auto');
+                });
+            }
 
             openHashTarget();
             window.addEventListener('hashchange', openHashTarget);

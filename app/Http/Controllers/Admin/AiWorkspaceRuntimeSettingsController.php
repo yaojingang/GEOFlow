@@ -32,7 +32,8 @@ final class AiWorkspaceRuntimeSettingsController extends Controller
                 : __('admin.site_settings.ai_workspace_runtime.saved_disabled'));
 
         return redirect()
-            ->to(route('admin.site-settings.index').'#site-settings-ai-workspace')
-            ->with('message', $message);
+            ->route('admin.site-settings.index')
+            ->with('message', $message)
+            ->with('site_settings_open_target', 'site-settings-ai-workspace');
     }
 }

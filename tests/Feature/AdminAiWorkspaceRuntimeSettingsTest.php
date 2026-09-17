@@ -53,8 +53,17 @@ final class AdminAiWorkspaceRuntimeSettingsTest extends TestCase
         self::assertSame(1, substr_count((string) $response->getContent(), 'id="ai-workspace-runtime-help"'));
 
         $this->post(route('admin.site-settings.ai-workspace.update'), ['enabled' => '1'])
-            ->assertRedirect(route('admin.site-settings.index').'#site-settings-ai-workspace')
-            ->assertSessionHas('message', __('admin.site_settings.ai_workspace_runtime.saved_enabled'));
+            ->assertRedirect(route('admin.site-settings.index'))
+            ->assertSessionHas('message', __('admin.site_settings.ai_workspace_runtime.saved_enabled'))
+            ->assertSessionHas('site_settings_open_target', 'site-settings-ai-workspace');
+
+        $page = $this->get(route('admin.site-settings.index'))
+            ->assertOk()
+            ->assertSee('data-site-settings-open-target="site-settings-ai-workspace"', false);
+        self::assertMatchesRegularExpression(
+            '/<details id="site-settings-ai-workspace"[^>]*\sopen(?:\s|>)/',
+            (string) $page->getContent(),
+        );
 
         $this->assertDatabaseHas('site_settings', [
             'setting_key' => AiWorkspaceRuntimeStatus::SETTING_KEY,
