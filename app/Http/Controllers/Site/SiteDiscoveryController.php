@@ -9,7 +9,9 @@ use App\Services\Site\SitemapManifest;
 use App\Services\Site\SiteScopedArticleQuery;
 use App\Services\Site\SiteUrlGenerator;
 use App\Services\Site\UrlChangeService;
+use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\CurrentSite;
+use App\Support\Site\SiteSettingsBag;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
@@ -35,11 +37,80 @@ final class SiteDiscoveryController extends Controller
         } else {
             $lines[] = 'Allow: /';
             $lines[] = 'Sitemap: '.$this->urls->sitemap();
+            $lines[] = 'Sitemap: '.$this->urls->sitemapText();
         }
 
         return response(implode("\n", $lines)."\n", 200, [
             'Content-Type' => 'text/plain; charset=UTF-8',
+            'Cache-Control' => 'no-cache, private',
         ]);
+    }
+
+    public function llms(): Response
+    {
+        $settings = SiteSettingsBag::all();
+        $siteName = $this->textMapLine((string) ($settings['site_name'] ?? config('geoflow.site_name', config('app.name'))));
+        $description = $this->textMapLine((string) ($settings['site_description'] ?? config('geoflow.site_description', '')));
+        $lines = ['# '.($siteName !== '' ? $siteName : 'GEOFlow Site'), ''];
+
+        if ($description !== '') {
+            $lines[] = '> '.$description;
+            $lines[] = '';
+        }
+
+        $lines[] = '## Site';
+        $lines[] = '';
+        $lines[] = '- Home: '.$this->urls->home();
+        $lines[] = '- Sitemap: '.$this->urls->sitemapText();
+        $lines[] = '';
+        $lines[] = '## Articles';
+        $lines[] = '';
+
+        if (! $this->indexingAllowed()) {
+            $lines[] = 'No articles are currently available for indexing.';
+        } else {
+            $articles = $this->withPermalinkRelations($this->siteArticles->query())
+                ->orderByDesc('published_at')
+                ->orderByDesc('id')
+                ->limit(200)
+                ->get(['id', 'title', 'slug', 'excerpt', 'meta_description', 'content', 'category_id', 'created_at', 'updated_at']);
+
+            if ($articles->isEmpty()) {
+                $lines[] = 'No articles have been published yet.';
+            } else {
+                foreach ($articles as $article) {
+                    $title = $this->textMapLine((string) $article->title);
+                    $summary = $this->textMapLine((string) ($article->excerpt ?: $article->meta_description));
+                    if ($summary === '') {
+                        $summary = $this->textMapLine(ArticleHtmlPresenter::cardSummary($article, 180));
+                    }
+
+                    $line = '- '.($title !== '' ? $title : $article->slug).' - '.$this->urls->article($article);
+                    if ($summary !== '') {
+                        $line .= ' - '.$summary;
+                    }
+                    $lines[] = $line;
+                }
+            }
+        }
+
+        return $this->textResponse($lines);
+    }
+
+    public function sitemapText(): Response
+    {
+        $lines = [$this->urls->home()];
+        if ($this->indexingAllowed()) {
+            $articles = $this->withPermalinkRelations($this->siteArticles->query())
+                ->orderByDesc('published_at')
+                ->orderByDesc('id')
+                ->get(['id', 'slug', 'category_id', 'created_at', 'updated_at']);
+            foreach ($articles as $article) {
+                $lines[] = $this->urls->article($article);
+            }
+        }
+
+        return $this->textResponse($lines);
     }
 
     public function sitemap(): Response
@@ -230,5 +301,22 @@ final class SiteDiscoveryController extends Controller
     private function lastmod(?CarbonInterface $updated, ?CarbonImmutable $urlChanged): ?string
     {
         return ($urlChanged && (! $updated || $urlChanged->gt($updated)) ? $urlChanged : $updated)?->toAtomString();
+    }
+
+    /** @param list<string> $lines */
+    private function textResponse(array $lines): Response
+    {
+        return response(implode("\n", $lines)."\n", 200, [
+            'Content-Type' => 'text/plain; charset=UTF-8',
+            'Cache-Control' => 'no-cache, private',
+        ]);
+    }
+
+    private function textMapLine(string $value): string
+    {
+        $value = trim(strip_tags($value));
+        $value = preg_replace('/\s+/u', ' ', $value);
+
+        return trim(is_string($value) ? $value : '');
     }
 }

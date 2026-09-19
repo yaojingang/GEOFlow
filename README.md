@@ -71,9 +71,11 @@ flowchart LR
 | 可信知识与内容生产 | 集中管理知识库、标题库、关键词库、图片库、作者、提示词和 AI 模型；知识库支持结构化切片、可选语义规划、向量召回和稳定回退 |
 | AI 质量门禁 | 按知识证据、数据与引文、广告规则和发布语境检查文章，记录分项评分、原文定位、法规依据、修改建议和历史结果；待复核、阻断、异常或过期的文章停留在草稿阶段 |
 | 审核与运营协作 | 统一管理草稿、审核、发布、回收站和批量 Markdown 导出；人工发布工作台保存身份、账号、执行人、计划时间、风险提示、回执和审计记录 |
-| 企业官网与多站点交付 | 本地前台提供 SEO 元信息、Open Graph、Schema、sitemap 和 `llms.txt`；渠道支持托管站点、GEOFlow Agent、WordPress REST 和通用 HTTP API |
+| 企业官网与多站点交付 | 本地前台提供 SEO 元信息、Open Graph、Schema、`robots.txt`、sitemap 和 `llms.txt`；渠道支持托管站点、GEOFlow Agent、WordPress REST 和通用 HTTP API |
 | 数据反馈与日常运维 | 数据中心汇总内容、分发、访问、Top 内容、AI 爬虫和趋势；独立 Updater 负责签名更新、完整备份、环境验收和恢复点回滚 |
 | 团队与开发者入口 | Admin UI V3 支持六种语言、响应式布局、PWA 和图文帮助；API v1、GEOFlow CLI 与内置 Agent Skill 覆盖自动化与二次开发 |
+
+部署并完成基础站点设置后，主站和托管站会自动提供 `/robots.txt`、`/sitemap.xml`、`/sitemap.txt` 和 `/llms.txt`。这些地址按当前站点、发布状态、索引开关、规范化文章链接和站点设置实时生成；GEOFlow Agent 目标站点包在安装时提供 `/robots.txt`、`/sitemap.txt` 和 `/llms.txt`，并在文章发布、删除和站点设置同步时自动刷新文本地图。页面的标题、描述、规范链接、Open Graph 和 JSON-LD 继续由公共前台层统一输出。
 
 ### 3.0 的主要升级
 

@@ -77,7 +77,7 @@ class EnforceCurrentSiteSurface
             return false;
         }
 
-        if (in_array($path, ['/', '/about', '/archive', '/robots.txt', '/sitemap.xml'], true)) {
+        if (in_array($path, ['/', '/about', '/archive', '/robots.txt', '/llms.txt', '/sitemap.txt', '/sitemap.xml'], true)) {
             return true;
         }
 

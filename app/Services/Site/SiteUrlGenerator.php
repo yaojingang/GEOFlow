@@ -60,6 +60,16 @@ final class SiteUrlGenerator
         return $this->url('/sitemap.xml');
     }
 
+    public function llms(): string
+    {
+        return $this->url('/llms.txt');
+    }
+
+    public function sitemapText(): string
+    {
+        return $this->url('/sitemap.txt');
+    }
+
     public function sitemapShard(int $page): string
     {
         return $this->url('/sitemaps/pages-'.$page.'.xml');

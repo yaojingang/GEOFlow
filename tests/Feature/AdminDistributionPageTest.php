@@ -1472,6 +1472,7 @@ class AdminDistributionPageTest extends TestCase
         $report = app(FrontendExperienceInspector::class)->inspect($channel->fresh(), true);
         $this->assertSame(DistributionChannel::FRONTEND_EXPERIENCE_INHERIT_DEFAULT, $report['channel']['frontend_experience_mode']);
         $this->assertContains('hero', $report['target_package']['supported_modules']);
+        $this->assertContains('/robots.txt', $report['target_package']['supported_routes']);
         $this->assertSame('not_checked', $report['remote_target']['status']);
         $this->assertArrayHasKey('sync_summary', $report['channel']);
         $this->assertSame('missing_secret', app(FrontendExperienceInspector::class)->inspect($channel->fresh(), true, true)['remote_target']['status']);
@@ -2954,6 +2955,7 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringNotContainsString('<style>', $staticIndex);
         $this->assertStringNotContainsString('</style>', $staticIndex);
         $this->assertStringContainsString('# 远程门户', (string) $zip->getFromName('llms.txt'));
+        $this->assertStringContainsString('Sitemap: https://example.com/sitemap.txt', (string) $zip->getFromName('robots.txt'));
         $this->assertStringContainsString('https://example.com/', (string) $zip->getFromName('sitemap.txt'));
         $this->assertFalse($zip->locateName('README.md'));
 
@@ -3099,10 +3101,12 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString('article_storage_not_writable', $frontController);
         $this->assertStringContainsString('site_settings_not_writable', $frontController);
         $this->assertStringContainsString('function renderLlmsText', $frontController);
+        $this->assertStringContainsString('function renderRobotsText', $frontController);
         $this->assertStringContainsString('function renderSitemapText', $frontController);
         $this->assertStringContainsString('function maxAssetBytes', $frontController);
         $this->assertStringNotContainsString('stream_context_create', $frontController);
         $this->assertStringContainsString("writeStaticFile(\$config, 'llms.txt'", $frontController);
+        $this->assertStringContainsString("writeStaticFile(\$config, 'robots.txt'", $frontController);
         $this->assertStringContainsString("writeStaticFile(\$config, 'sitemap.txt'", $frontController);
         $this->assertStringContainsString('textResponse(renderLlmsText($config))', $frontController);
         $this->assertStringContainsString("writeStaticFile(\$config, 'index.html'", $frontController);
@@ -3173,6 +3177,10 @@ class AdminDistributionPageTest extends TestCase
 
         try {
             $this->waitForHttpServer($baseUrl);
+
+            $runtimeRobots = Http::timeout(3)->get($baseUrl.'/robots.txt');
+            $this->assertSame(200, $runtimeRobots->status());
+            $this->assertStringContainsString('Sitemap: '.$baseUrl.'/sitemap.txt', $runtimeRobots->body());
 
             $httpClient = app(DistributionHttpClient::class);
             $capabilities = $httpClient->frontendCapabilities($channel->fresh());

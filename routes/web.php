@@ -96,6 +96,8 @@ Route::middleware(['site.locale', 'site.view_log'])->group(function (): void {
     Route::get('/', [HomeController::class, 'index'])->name('site.home');
     Route::get('/about', [AboutController::class, 'index'])->name('site.about');
     Route::get('/robots.txt', [SiteDiscoveryController::class, 'robots'])->name('site.robots');
+    Route::get('/llms.txt', [SiteDiscoveryController::class, 'llms'])->name('site.llms');
+    Route::get('/sitemap.txt', [SiteDiscoveryController::class, 'sitemapText'])->name('site.sitemap.text');
     Route::get('/sitemap.xml', [SiteDiscoveryController::class, 'sitemap'])->name('site.sitemap');
     Route::get('/sitemaps/pages-{page}.xml', [SiteDiscoveryController::class, 'sitemapShard'])
         ->whereNumber('page')

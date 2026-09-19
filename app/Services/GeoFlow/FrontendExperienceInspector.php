@@ -223,6 +223,7 @@ class FrontendExperienceInspector
                 '/',
                 '{article_permalink_policy}',
                 '/article/{slug}',
+                '/robots.txt',
                 '/llms.txt',
                 '/sitemap.txt',
                 '/geoflow-agent/v1/health',

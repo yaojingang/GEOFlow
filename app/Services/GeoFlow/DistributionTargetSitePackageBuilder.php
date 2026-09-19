@@ -27,6 +27,7 @@ class DistributionTargetSitePackageBuilder
 
         $zip->addFromString('.htaccess', $this->rootHtaccess());
         $zip->addFromString('index.html', $this->initialStaticIndex($channel));
+        $zip->addFromString('robots.txt', $this->initialRobotsText($channel));
         $zip->addFromString('llms.txt', $this->initialLlmsText($channel));
         $zip->addFromString('sitemap.txt', $this->initialSitemapText($channel));
         $zip->addFromString('assets/css/site.css', $this->targetSiteCss());
@@ -555,6 +556,13 @@ HTACCESS;
             ."- Sitemap: {$homeUrl}sitemap.txt\n\n"
             ."## Articles\n\n"
             ."No articles have been published yet.\n";
+    }
+
+    private function initialRobotsText(DistributionChannel $channel): string
+    {
+        $homeUrl = $this->publicFrontBaseUrl((string) $channel->endpoint_url).'/';
+
+        return "User-agent: *\nAllow: /\nSitemap: {$homeUrl}sitemap.txt\n";
     }
 
     private function initialSitemapText(DistributionChannel $channel): string
@@ -2295,6 +2303,7 @@ function rebuildStaticSite(array $config, ?array $settingsOverride = null, bool 
         'entries' => [],
     ];
     $homeHtml = renderHomePageHtml($runtimeConfig);
+    $robotsText = renderRobotsText($runtimeConfig);
     $llmsText = renderLlmsText($runtimeConfig);
     $sitemapText = renderSitemapText($runtimeConfig);
     $count = 0;
@@ -2317,6 +2326,7 @@ function rebuildStaticSite(array $config, ?array $settingsOverride = null, bool 
         '_manifest' => $manifest,
         '_previous_manifest' => $previousManifest,
         '_home_html' => $homeHtml,
+        '_robots_text' => $robotsText,
         '_llms_text' => $llmsText,
         '_sitemap_text' => $sitemapText,
         '_article_slugs' => array_values(array_filter(array_map(
@@ -2344,6 +2354,7 @@ function activateStaticSiteBuild(array $config, array $build, ?array $settingsOv
 
     $publicFiles = [
         staticRoot($config).'/index.html',
+        staticRoot($config).'/robots.txt',
         staticRoot($config).'/llms.txt',
         staticRoot($config).'/sitemap.txt',
     ];
@@ -2355,6 +2366,7 @@ function activateStaticSiteBuild(array $config, array $build, ?array $settingsOv
     $manifest = (array) ($build['_manifest'] ?? []);
     try {
         writeStaticFile($config, 'index.html', (string) ($build['_home_html'] ?? ''));
+        writeStaticFile($config, 'robots.txt', (string) ($build['_robots_text'] ?? ''));
         writeStaticFile($config, 'llms.txt', (string) ($build['_llms_text'] ?? ''));
         writeStaticFile($config, 'sitemap.txt', (string) ($build['_sitemap_text'] ?? ''));
         writeActiveSiteState($config, $settings, $manifest);
@@ -3432,6 +3444,11 @@ function renderLlmsText(array $config): string
     return rtrim(implode("\n", $lines))."\n";
 }
 
+function renderRobotsText(array $config): string
+{
+    return "User-agent: *\nAllow: /\nSitemap: ".frontSiteUrl($config, '/sitemap.txt')."\n";
+}
+
 function renderSitemapText(array $config): string
 {
     $urls = [frontSiteUrl($config, '/')];
@@ -3494,6 +3511,7 @@ function handleFrontendCapabilities(array $config, string $method, string $path,
             '/',
             '{article_permalink_policy}',
             '/article/{slug}',
+            '/robots.txt',
             '/llms.txt',
             '/sitemap.txt',
             '/geoflow-agent/v1/health',
@@ -3740,6 +3758,9 @@ if ($method === 'POST' && $path === '/geoflow-agent/v1/site-settings') {
 if ($method === 'GET' && $path === '/') {
     renderHomePage($config);
     exit;
+}
+if ($method === 'GET' && $path === '/robots.txt') {
+    textResponse(renderRobotsText($config));
 }
 if ($method === 'GET' && $path === '/llms.txt') {
     textResponse(renderLlmsText($config));

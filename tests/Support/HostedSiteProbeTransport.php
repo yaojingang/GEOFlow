@@ -46,6 +46,8 @@ final class HostedSiteProbeTransport implements OutboundTransport
             $path === '/' => '<link rel="canonical" href="'.$baseUrl.'/"><script type="application/ld+json">{}</script>',
             $path === '/about' => '<link rel="canonical" href="'.$baseUrl.'/about">',
             $path === '/robots.txt' => "User-agent: *\nAllow: /\n",
+            $path === '/llms.txt' => "# Hosted Site\n\n## Site\n",
+            $path === '/sitemap.txt' => $baseUrl.'/'."\n",
             $path === '/sitemap.xml' => '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></sitemapindex>',
             str_starts_with($path, '/forms/') => '<form method="post"></form>',
             default => '',
