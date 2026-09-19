@@ -170,6 +170,12 @@ class HostedSitePublicRenderingTest extends TestCase
         $this->get('http://alpha.sites.test/robots.txt')
             ->assertOk()
             ->assertSee('Disallow: /');
+        $this->get('http://alpha.sites.test/llms.txt')
+            ->assertOk()
+            ->assertSee('No articles are currently available for indexing.');
+        $this->get('http://alpha.sites.test/sitemap.txt')
+            ->assertOk()
+            ->assertSee('https://alpha.sites.test/');
         $this->get('http://alpha.sites.test/sitemap.xml')
             ->assertOk()
             ->assertDontSee($article->slug);
@@ -182,7 +188,14 @@ class HostedSitePublicRenderingTest extends TestCase
         $this->get('http://alpha.sites.test/robots.txt')
             ->assertOk()
             ->assertSee('Sitemap: https://alpha.sites.test/sitemap.xml')
+            ->assertSee('Sitemap: https://alpha.sites.test/sitemap.txt')
             ->assertDontSee('Disallow: /');
+        $this->get('http://alpha.sites.test/llms.txt')
+            ->assertOk()
+            ->assertSee('Alpha article');
+        $this->get('http://alpha.sites.test/sitemap.txt')
+            ->assertOk()
+            ->assertSee('https://alpha.sites.test/article/'.$article->slug);
         $this->get('http://alpha.sites.test/sitemap.xml')
             ->assertOk()
             ->assertSee('<sitemapindex', false)

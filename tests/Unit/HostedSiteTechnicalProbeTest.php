@@ -39,6 +39,8 @@ class HostedSiteTechnicalProbeTest extends TestCase
         $this->assertArrayHasKey('json_ld', $checks);
         $this->assertArrayHasKey('about_page', $checks);
         $this->assertArrayHasKey('robots', $checks);
+        $this->assertArrayHasKey('llms', $checks);
+        $this->assertArrayHasKey('sitemap_text', $checks);
         $this->assertArrayHasKey('sitemap', $checks);
         $this->assertArrayHasKey('form_'.hash('sha256', 'contact'), $checks);
         $this->assertTrue($checks['theme_css']);

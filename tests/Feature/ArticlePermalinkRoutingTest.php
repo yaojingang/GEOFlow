@@ -58,6 +58,32 @@ class ArticlePermalinkRoutingTest extends TestCase
             ->assertSee('<loc>'.$baseUrl.$path.'</loc>', false);
     }
 
+    public function test_public_discovery_documents_include_current_site_content(): void
+    {
+        $article = $this->article();
+        SiteSetting::query()->create(['setting_key' => 'site_name', 'setting_value' => 'Primary GEO Site']);
+        SiteSetting::query()->create(['setting_key' => 'site_description', 'setting_value' => 'Evidence-led coverage']);
+        SiteSettingsBag::forget();
+        $baseUrl = rtrim((string) config('app.url'), '/');
+
+        $this->get('/robots.txt')
+            ->assertOk()
+            ->assertHeader('Content-Type', 'text/plain; charset=UTF-8')
+            ->assertHeader('Cache-Control', 'no-cache, private')
+            ->assertSee('Sitemap: '.$baseUrl.'/sitemap.xml')
+            ->assertSee('Sitemap: '.$baseUrl.'/sitemap.txt');
+        $this->get('/llms.txt')
+            ->assertOk()
+            ->assertSee('# Primary GEO Site')
+            ->assertSee('Evidence-led coverage')
+            ->assertSee($article->title)
+            ->assertSee($baseUrl.'/article/'.$article->slug);
+        $this->get('/sitemap.txt')
+            ->assertOk()
+            ->assertSee($baseUrl.'/')
+            ->assertSee($baseUrl.'/article/'.$article->slug);
+    }
+
     /** @return array<string,array{string,string}> */
     public static function presetPaths(): array
     {
