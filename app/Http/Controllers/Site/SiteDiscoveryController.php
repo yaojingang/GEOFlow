@@ -11,6 +11,7 @@ use App\Services\Site\SiteUrlGenerator;
 use App\Services\Site\UrlChangeService;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\CurrentSite;
+use App\Support\Site\RobotsPolicy;
 use App\Support\Site\SiteSettingsBag;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -31,16 +32,11 @@ final class SiteDiscoveryController extends Controller
 
     public function robots(): Response
     {
-        $lines = ['User-agent: *'];
-        if (! $this->indexingAllowed()) {
-            $lines[] = 'Disallow: /';
-        } else {
-            $lines[] = 'Allow: /';
-            $lines[] = 'Sitemap: '.$this->urls->sitemap();
-            $lines[] = 'Sitemap: '.$this->urls->sitemapText();
-        }
-
-        return response(implode("\n", $lines)."\n", 200, [
+        return response(RobotsPolicy::render(
+            $this->indexingAllowed(),
+            $this->urls->sitemap(),
+            $this->urls->sitemapText(),
+        ), 200, [
             'Content-Type' => 'text/plain; charset=UTF-8',
             'Cache-Control' => 'no-cache, private',
         ]);
@@ -51,7 +47,10 @@ final class SiteDiscoveryController extends Controller
         $settings = SiteSettingsBag::all();
         $siteName = $this->textMapLine((string) ($settings['site_name'] ?? config('geoflow.site_name', config('app.name'))));
         $description = $this->textMapLine((string) ($settings['site_description'] ?? config('geoflow.site_description', '')));
-        $lines = ['# '.($siteName !== '' ? $siteName : 'GEOFlow Site'), ''];
+        $lines = [
+            '# '.($siteName !== '' ? $siteName : 'GEOFlow Site'),
+            '',
+        ];
 
         if ($description !== '') {
             $lines[] = '> '.$description;
@@ -60,8 +59,9 @@ final class SiteDiscoveryController extends Controller
 
         $lines[] = '## Site';
         $lines[] = '';
-        $lines[] = '- Home: '.$this->urls->home();
-        $lines[] = '- Sitemap: '.$this->urls->sitemapText();
+        $lines[] = '- [Home]('.$this->urls->home().'): The public site homepage.';
+        $lines[] = '- [XML Sitemap]('.$this->urls->sitemap().'): Canonical URLs and verified last modification timestamps for search engines.';
+        $lines[] = '- [Text Sitemap]('.$this->urls->sitemapText().'): One canonical URL per line for simple sitemap consumers.';
         $lines[] = '';
         $lines[] = '## Articles';
         $lines[] = '';
@@ -73,7 +73,7 @@ final class SiteDiscoveryController extends Controller
                 ->orderByDesc('published_at')
                 ->orderByDesc('id')
                 ->limit(200)
-                ->get(['id', 'title', 'slug', 'excerpt', 'meta_description', 'content', 'category_id', 'created_at', 'updated_at']);
+                ->get(['id', 'title', 'slug', 'excerpt', 'meta_description', 'content', 'category_id', 'created_at', 'published_at', 'updated_at']);
 
             if ($articles->isEmpty()) {
                 $lines[] = 'No articles have been published yet.';
@@ -85,16 +85,21 @@ final class SiteDiscoveryController extends Controller
                         $summary = $this->textMapLine(ArticleHtmlPresenter::cardSummary($article, 180));
                     }
 
-                    $line = '- '.($title !== '' ? $title : $article->slug).' - '.$this->urls->article($article);
-                    if ($summary !== '') {
-                        $line .= ' - '.$summary;
+                    $notes = array_values(array_filter([
+                        $summary,
+                        $article->published_at ? 'Published: '.$article->published_at->utc()->toAtomString() : null,
+                        $article->updated_at ? 'Updated: '.$article->updated_at->utc()->toAtomString() : null,
+                    ]));
+                    $line = '- ['.$this->textMapLinkLabel($title !== '' ? $title : (string) $article->slug).']('.$this->urls->article($article).')';
+                    if ($notes !== []) {
+                        $line .= ': '.implode(' ', $notes);
                     }
                     $lines[] = $line;
                 }
             }
         }
 
-        return $this->textResponse($lines);
+        return $this->textResponse(array_values(array_unique($lines)));
     }
 
     public function sitemapText(): Response
@@ -110,7 +115,7 @@ final class SiteDiscoveryController extends Controller
             }
         }
 
-        return $this->textResponse($lines);
+        return $this->textResponse(array_values(array_unique($lines)));
     }
 
     public function sitemap(): Response
@@ -151,6 +156,12 @@ final class SiteDiscoveryController extends Controller
         abort_unless($page > 0, 404);
 
         $articleCount = $this->indexingAllowed() ? $this->siteArticles->query()->count() : 0;
+        if ($this->currentSite->isPrimary()
+            && $page === 1
+            && $articleCount + 1 <= $this->primarySitemapInlineLimit()) {
+            return $this->sitemap();
+        }
+
         $site = $this->manifestSite();
         $manifests = app(SitemapManifest::class);
         $manifest = $manifests->current($site);
@@ -318,5 +329,10 @@ final class SiteDiscoveryController extends Controller
         $value = preg_replace('/\s+/u', ' ', $value);
 
         return trim(is_string($value) ? $value : '');
+    }
+
+    private function textMapLinkLabel(string $value): string
+    {
+        return str_replace(['\\', '[', ']'], ['\\\\', '\\[', '\\]'], $this->textMapLine($value));
     }
 }

@@ -172,10 +172,12 @@ class HostedSitePublicRenderingTest extends TestCase
             ->assertSee('Disallow: /');
         $this->get('http://alpha.sites.test/llms.txt')
             ->assertOk()
-            ->assertSee('No articles are currently available for indexing.');
+            ->assertSee('No articles are currently available for indexing.')
+            ->assertDontSee($article->slug);
         $this->get('http://alpha.sites.test/sitemap.txt')
             ->assertOk()
-            ->assertSee('https://alpha.sites.test/');
+            ->assertSee('https://alpha.sites.test/', false)
+            ->assertDontSee($article->slug);
         $this->get('http://alpha.sites.test/sitemap.xml')
             ->assertOk()
             ->assertDontSee($article->slug);
@@ -189,13 +191,18 @@ class HostedSitePublicRenderingTest extends TestCase
             ->assertOk()
             ->assertSee('Sitemap: https://alpha.sites.test/sitemap.xml')
             ->assertSee('Sitemap: https://alpha.sites.test/sitemap.txt')
-            ->assertDontSee('Disallow: /');
+            ->assertDontSee("User-agent: *\nDisallow: /\n", false);
         $this->get('http://alpha.sites.test/llms.txt')
             ->assertOk()
-            ->assertSee('Alpha article');
+            ->assertSee('# Alpha Site')
+            ->assertSee('[Alpha article](https://alpha.sites.test/article/'.$article->slug.')', false)
+            ->assertDontSee($betaArticle->slug);
         $this->get('http://alpha.sites.test/sitemap.txt')
             ->assertOk()
-            ->assertSee('https://alpha.sites.test/article/'.$article->slug);
+            ->assertSee('https://alpha.sites.test/', false)
+            ->assertSee('https://alpha.sites.test/article/'.$article->slug, false)
+            ->assertSee('https://alpha.sites.test/article/'.$secondArticle->slug, false)
+            ->assertDontSee($betaArticle->slug);
         $this->get('http://alpha.sites.test/sitemap.xml')
             ->assertOk()
             ->assertSee('<sitemapindex', false)

@@ -58,32 +58,6 @@ class ArticlePermalinkRoutingTest extends TestCase
             ->assertSee('<loc>'.$baseUrl.$path.'</loc>', false);
     }
 
-    public function test_public_discovery_documents_include_current_site_content(): void
-    {
-        $article = $this->article();
-        SiteSetting::query()->create(['setting_key' => 'site_name', 'setting_value' => 'Primary GEO Site']);
-        SiteSetting::query()->create(['setting_key' => 'site_description', 'setting_value' => 'Evidence-led coverage']);
-        SiteSettingsBag::forget();
-        $baseUrl = rtrim((string) config('app.url'), '/');
-
-        $this->get('/robots.txt')
-            ->assertOk()
-            ->assertHeader('Content-Type', 'text/plain; charset=UTF-8')
-            ->assertHeader('Cache-Control', 'no-cache, private')
-            ->assertSee('Sitemap: '.$baseUrl.'/sitemap.xml')
-            ->assertSee('Sitemap: '.$baseUrl.'/sitemap.txt');
-        $this->get('/llms.txt')
-            ->assertOk()
-            ->assertSee('# Primary GEO Site')
-            ->assertSee('Evidence-led coverage')
-            ->assertSee($article->title)
-            ->assertSee($baseUrl.'/article/'.$article->slug);
-        $this->get('/sitemap.txt')
-            ->assertOk()
-            ->assertSee($baseUrl.'/')
-            ->assertSee($baseUrl.'/article/'.$article->slug);
-    }
-
     /** @return array<string,array{string,string}> */
     public static function presetPaths(): array
     {
@@ -151,6 +125,64 @@ class ArticlePermalinkRoutingTest extends TestCase
         $this->assertStringContainsString($baseUrl.'/ai/'.$first->slug, $combinedShards);
         $this->assertStringContainsString($baseUrl.'/ai/'.$second->slug, $combinedShards);
         $this->get('/sitemaps/pages-3.xml')->assertNotFound();
+    }
+
+    public function test_first_primary_sitemap_shard_is_available_when_the_index_is_inline(): void
+    {
+        $article = $this->article();
+        $baseUrl = rtrim((string) config('app.url'), '/');
+
+        $response = $this->get('/sitemaps/pages-1.xml')->assertOk();
+
+        $this->assertStringContainsString('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', $response->getContent());
+        $this->assertStringContainsString('<loc>'.$baseUrl.'/</loc>', $response->getContent());
+        $this->assertStringContainsString('<loc>'.$baseUrl.'/article/'.$article->slug.'</loc>', $response->getContent());
+        $this->get('/sitemaps/pages-2.xml')->assertNotFound();
+    }
+
+    public function test_primary_discovery_text_routes_use_site_settings_and_canonical_articles(): void
+    {
+        $article = $this->article();
+        SiteSetting::query()->create([
+            'setting_key' => 'site_name',
+            'setting_value' => 'Primary GEO Site',
+        ]);
+        SiteSetting::query()->create([
+            'setting_key' => 'site_description',
+            'setting_value' => 'A trusted publication for AI operators.',
+        ]);
+        $baseUrl = rtrim((string) config('app.url'), '/');
+        $adminPath = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/');
+
+        $this->get('/robots.txt')
+            ->assertOk()
+            ->assertHeader('Cache-Control', 'no-cache, private')
+            ->assertSee('Disallow: /'.$adminPath.'/', false)
+            ->assertSee('Disallow: /api/', false)
+            ->assertSee('Disallow: /storage/', false)
+            ->assertSee('Disallow: /*?*', false)
+            ->assertSee('Disallow: /*.jpg$', false)
+            ->assertSee("User-agent: facebookexternalhit\nDisallow: /", false)
+            ->assertSee("User-agent: Facebot\nDisallow: /", false)
+            ->assertSee('Sitemap: '.$baseUrl.'/sitemap.xml')
+            ->assertSee('Sitemap: '.$baseUrl.'/sitemap.txt');
+        $this->get('/llms.txt')
+            ->assertOk()
+            ->assertHeader('Content-Type', 'text/plain; charset=UTF-8')
+            ->assertSee('# Primary GEO Site')
+            ->assertSee('> A trusted publication for AI operators.', false)
+            ->assertSee('- [Home]('.$baseUrl.'/): The public site homepage.', false)
+            ->assertSee('- [XML Sitemap]('.$baseUrl.'/sitemap.xml): Canonical URLs and verified last modification timestamps for search engines.', false)
+            ->assertSee('- [Text Sitemap]('.$baseUrl.'/sitemap.txt): One canonical URL per line for simple sitemap consumers.', false)
+            ->assertSee('- [Permalink article]('.$baseUrl.'/article/'.$article->slug.'): Permalink description', false)
+            ->assertSee('Published: 2026-09-12T00:30:00+00:00', false)
+            ->assertSee('Updated: 2026-09-12T00:30:00+00:00', false);
+        $this->get('/sitemap.txt')
+            ->assertOk()
+            ->assertSee($baseUrl.'/', false)
+            ->assertSee($baseUrl.'/article/'.$article->slug, false);
+        $sitemapXml = $this->get('/sitemap.xml')->assertOk()->getContent();
+        $this->assertNotFalse(@simplexml_load_string($sitemapXml));
     }
 
     public function test_historical_pattern_and_slug_redirect_directly_to_the_current_canonical_url(): void

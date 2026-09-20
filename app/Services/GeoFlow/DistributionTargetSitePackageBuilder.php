@@ -30,6 +30,8 @@ class DistributionTargetSitePackageBuilder
         $zip->addFromString('robots.txt', $this->initialRobotsText($channel));
         $zip->addFromString('llms.txt', $this->initialLlmsText($channel));
         $zip->addFromString('sitemap.txt', $this->initialSitemapText($channel));
+        $zip->addFromString('sitemap.xml', $this->initialSitemapXml($channel));
+        $zip->addFromString('sitemaps/pages-1.xml', $this->initialSitemapXml($channel));
         $zip->addFromString('assets/css/site.css', $this->targetSiteCss());
         $zip->addFromString('assets/js/site.js', $this->targetSiteJs());
         $zip->addFromString('assets/images/.gitkeep', '');
@@ -552,8 +554,9 @@ HTACCESS;
         return "# {$siteName}\n\n"
             .($description !== '' ? "> {$description}\n\n" : '')
             ."## Site\n\n"
-            ."- Home: {$homeUrl}\n"
-            ."- Sitemap: {$homeUrl}sitemap.txt\n\n"
+            ."- [Home]({$homeUrl}): The public site homepage.\n"
+            ."- [XML Sitemap]({$homeUrl}sitemap.xml): Canonical URLs and verified last modification timestamps for search engines.\n"
+            ."- [Text Sitemap]({$homeUrl}sitemap.txt): One canonical URL per line for simple sitemap consumers.\n\n"
             ."## Articles\n\n"
             ."No articles have been published yet.\n";
     }
@@ -561,13 +564,47 @@ HTACCESS;
     private function initialRobotsText(DistributionChannel $channel): string
     {
         $homeUrl = $this->publicFrontBaseUrl((string) $channel->endpoint_url).'/';
+        $lines = [
+            'User-agent: *',
+            'Allow: /',
+        ];
+        foreach ([
+            '/admin/', '/api/', '/app', '/broadcasting/', '/config.php', '/horizon/', '/livewire/',
+            '/sanctum/', '/storage/', '/up', '/vendor/', '/_boost/', '/_debugbar/',
+            '/search', '/search/', '/query', '/query/', '/find', '/find/', '/*?*',
+            '/*.avif$', '/*.gif$', '/*.jpeg$', '/*.jpg$', '/*.png$', '/*.svg$', '/*.webp$',
+        ] as $path) {
+            $lines[] = 'Disallow: '.$path;
+        }
+        foreach (['facebookexternalhit', 'Facebot', 'facebookcatalog'] as $userAgent) {
+            $lines[] = '';
+            $lines[] = 'User-agent: '.$userAgent;
+            $lines[] = 'Disallow: /';
+        }
+        $lines[] = '';
+        $lines[] = 'Sitemap: '.$homeUrl.'sitemap.xml';
+        $lines[] = 'Sitemap: '.$homeUrl.'sitemap.txt';
 
-        return "User-agent: *\nAllow: /\nSitemap: {$homeUrl}sitemap.txt\n";
+        return implode("\n", $lines)."\n";
     }
 
     private function initialSitemapText(DistributionChannel $channel): string
     {
         return $this->publicFrontBaseUrl((string) $channel->endpoint_url)."/\n";
+    }
+
+    private function initialSitemapXml(DistributionChannel $channel): string
+    {
+        $homeUrl = htmlspecialchars(
+            $this->publicFrontBaseUrl((string) $channel->endpoint_url).'/',
+            ENT_XML1 | ENT_QUOTES,
+            'UTF-8',
+        );
+
+        return '<?xml version="1.0" encoding="UTF-8"?>'."\n"
+            .'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'."\n"
+            .'  <url><loc>'.$homeUrl.'</loc></url>'."\n"
+            .'</urlset>'."\n";
     }
 
     private function publicFrontBaseUrl(string $endpointUrl): string
@@ -683,6 +720,14 @@ function jsonResponse(int $status, array $payload): void
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+function xmlResponse(string $content, int $status = 200): void
+{
+    http_response_code($status);
+    header('Content-Type: application/xml; charset=utf-8');
+    echo $content;
     exit;
 }
 
@@ -2303,9 +2348,15 @@ function rebuildStaticSite(array $config, ?array $settingsOverride = null, bool 
         'entries' => [],
     ];
     $homeHtml = renderHomePageHtml($runtimeConfig);
-    $robotsText = renderRobotsText($runtimeConfig);
     $llmsText = renderLlmsText($runtimeConfig);
     $sitemapText = renderSitemapText($runtimeConfig);
+    $sitemapXml = renderSitemapXml($runtimeConfig);
+    $sitemapShards = [];
+    $sitemapChunks = sitemapArticleChunks($runtimeConfig);
+    foreach (array_keys($sitemapChunks) as $page) {
+        $sitemapShards['sitemaps/pages-'.$page.'.xml'] = renderSitemapShard($runtimeConfig, $page);
+    }
+    $robotsText = renderRobotsText($runtimeConfig);
     $count = 0;
     foreach (loadArticles($runtimeConfig) as $article) {
         $slug = (string) ($article['slug'] ?? '');
@@ -2326,9 +2377,11 @@ function rebuildStaticSite(array $config, ?array $settingsOverride = null, bool 
         '_manifest' => $manifest,
         '_previous_manifest' => $previousManifest,
         '_home_html' => $homeHtml,
-        '_robots_text' => $robotsText,
         '_llms_text' => $llmsText,
         '_sitemap_text' => $sitemapText,
+        '_sitemap_xml' => $sitemapXml,
+        '_sitemap_shards' => $sitemapShards,
+        '_robots_text' => $robotsText,
         '_article_slugs' => array_values(array_filter(array_map(
             static fn (array $article): string => (string) ($article['slug'] ?? ''),
             loadArticles($runtimeConfig),
@@ -2357,6 +2410,7 @@ function activateStaticSiteBuild(array $config, array $build, ?array $settingsOv
         staticRoot($config).'/robots.txt',
         staticRoot($config).'/llms.txt',
         staticRoot($config).'/sitemap.txt',
+        staticRoot($config).'/sitemap.xml',
     ];
     $snapshots = [];
     foreach ($publicFiles as $file) {
@@ -2369,6 +2423,10 @@ function activateStaticSiteBuild(array $config, array $build, ?array $settingsOv
         writeStaticFile($config, 'robots.txt', (string) ($build['_robots_text'] ?? ''));
         writeStaticFile($config, 'llms.txt', (string) ($build['_llms_text'] ?? ''));
         writeStaticFile($config, 'sitemap.txt', (string) ($build['_sitemap_text'] ?? ''));
+        writeStaticFile($config, 'sitemap.xml', (string) ($build['_sitemap_xml'] ?? ''));
+        foreach ((array) ($build['_sitemap_shards'] ?? []) as $relativePath => $content) {
+            writeStaticFile($config, (string) $relativePath, (string) $content);
+        }
         writeActiveSiteState($config, $settings, $manifest);
     } catch (Throwable $exception) {
         foreach (array_reverse($publicFiles) as $file) {
@@ -3397,6 +3455,22 @@ function textMapLine(string $value): string
     return trim(is_string($value) ? $value : '');
 }
 
+function textMapLinkLabel(string $value): string
+{
+    return str_replace(['\\', '[', ']'], ['\\\\', '\\[', '\\]'], textMapLine($value));
+}
+
+function articleIsoDate(array $article, string $field): string
+{
+    $value = trim((string) ($article[$field] ?? ''));
+    if ($value === '') {
+        return '';
+    }
+    $timestamp = strtotime($value);
+
+    return $timestamp === false ? '' : gmdate('c', $timestamp);
+}
+
 function renderLlmsText(array $config): string
 {
     $settings = siteSettings($config);
@@ -3413,8 +3487,9 @@ function renderLlmsText(array $config): string
 
     $lines[] = '## Site';
     $lines[] = '';
-    $lines[] = '- Home: '.frontSiteUrl($config, '/');
-    $lines[] = '- Sitemap: '.frontSiteUrl($config, '/sitemap.txt');
+    $lines[] = '- [Home]('.frontSiteUrl($config, '/').'): The public site homepage.';
+    $lines[] = '- [XML Sitemap]('.frontSiteUrl($config, '/sitemap.xml').'): Canonical URLs and verified last modification timestamps for search engines.';
+    $lines[] = '- [Text Sitemap]('.frontSiteUrl($config, '/sitemap.txt').'): One canonical URL per line for simple sitemap consumers.';
     $lines[] = '';
     $lines[] = '## Articles';
     $lines[] = '';
@@ -3433,9 +3508,14 @@ function renderLlmsText(array $config): string
             if ($summary === '') {
                 $summary = textMapLine(mb_substr(strip_tags((string) ($article['content'] ?? '')), 0, 180));
             }
-            $line = '- '.($title !== '' ? $title : $slug).' - '.frontSiteUrl($config, articlePermalinkPath($config, $article));
-            if ($summary !== '') {
-                $line .= ' - '.$summary;
+            $notes = array_values(array_filter([
+                $summary,
+                ($published = articleIsoDate($article, 'published_at')) !== '' ? 'Published: '.$published : null,
+                ($updated = articleIsoDate($article, 'updated_at')) !== '' ? 'Updated: '.$updated : null,
+            ]));
+            $line = '- ['.textMapLinkLabel($title !== '' ? $title : $slug).']('.frontSiteUrl($config, articlePermalinkPath($config, $article)).')';
+            if ($notes !== []) {
+                $line .= ': '.implode(' ', $notes);
             }
             $lines[] = $line;
         }
@@ -3446,7 +3526,58 @@ function renderLlmsText(array $config): string
 
 function renderRobotsText(array $config): string
 {
-    return "User-agent: *\nAllow: /\nSitemap: ".frontSiteUrl($config, '/sitemap.txt')."\n";
+    $sitemapXml = frontSiteUrl($config, '/sitemap.xml');
+    $sitemapText = frontSiteUrl($config, '/sitemap.txt');
+    $lines = [
+        'User-agent: *',
+        'Allow: /',
+    ];
+    foreach (robotsBlockedPaths() as $path) {
+        $lines[] = 'Disallow: '.$path;
+    }
+    foreach (['facebookexternalhit', 'Facebot', 'facebookcatalog'] as $userAgent) {
+        $lines[] = '';
+        $lines[] = 'User-agent: '.$userAgent;
+        $lines[] = 'Disallow: /';
+    }
+    $lines[] = '';
+    $lines[] = 'Sitemap: '.$sitemapXml;
+    $lines[] = 'Sitemap: '.$sitemapText;
+
+    return implode("\n", $lines)."\n";
+}
+
+function robotsBlockedPaths(): array
+{
+    return [
+        '/admin/',
+        '/api/',
+        '/app',
+        '/broadcasting/',
+        '/config.php',
+        '/horizon/',
+        '/livewire/',
+        '/sanctum/',
+        '/storage/',
+        '/up',
+        '/vendor/',
+        '/_boost/',
+        '/_debugbar/',
+        '/search',
+        '/search/',
+        '/query',
+        '/query/',
+        '/find',
+        '/find/',
+        '/*?*',
+        '/*.avif$',
+        '/*.gif$',
+        '/*.jpeg$',
+        '/*.jpg$',
+        '/*.png$',
+        '/*.svg$',
+        '/*.webp$',
+    ];
 }
 
 function renderSitemapText(array $config): string
@@ -3460,6 +3591,106 @@ function renderSitemapText(array $config): string
     }
 
     return implode("\n", array_values(array_unique($urls)))."\n";
+}
+
+function renderSitemapXml(array $config): string
+{
+    $chunks = sitemapArticleChunks($config);
+    if (count($chunks) > 1) {
+        $lines = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+        ];
+        foreach (array_keys($chunks) as $page) {
+            $loc = htmlspecialchars(
+                frontSiteUrl($config, '/sitemaps/pages-'.$page.'.xml'),
+                ENT_XML1 | ENT_QUOTES,
+                'UTF-8',
+            );
+            $lines[] = '  <sitemap><loc>'.$loc.'</loc></sitemap>';
+        }
+        $lines[] = '</sitemapindex>';
+
+        return implode("\n", $lines)."\n";
+    }
+
+    $urls = [['loc' => frontSiteUrl($config, '/'), 'lastmod' => '']];
+    foreach ($chunks[1] ?? [] as $article) {
+        $slug = (string) ($article['slug'] ?? '');
+        if ($slug !== '') {
+            $urls[] = [
+                'loc' => frontSiteUrl($config, articlePermalinkPath($config, $article)),
+                'lastmod' => articleIsoDate($article, 'updated_at'),
+            ];
+        }
+    }
+
+    return renderSitemapUrlSet($urls);
+}
+
+function publicSitemapUrlLimit(): int
+{
+    return 50000;
+}
+
+/** @return array<int, array<int, array<string, mixed>>> */
+function sitemapArticleChunks(array $config): array
+{
+    $articles = loadArticles($config);
+    $firstPageLimit = publicSitemapUrlLimit() - 1;
+    if (count($articles) <= $firstPageLimit) {
+        return [1 => $articles];
+    }
+
+    $chunks = [1 => array_slice($articles, 0, $firstPageLimit)];
+    foreach (array_chunk(array_slice($articles, $firstPageLimit), publicSitemapUrlLimit(), true) as $page => $chunk) {
+        $chunks[$page + 2] = $chunk;
+    }
+
+    return $chunks;
+}
+
+function renderSitemapShard(array $config, int $page): ?string
+{
+    $chunks = sitemapArticleChunks($config);
+    if (! isset($chunks[$page])) {
+        return null;
+    }
+
+    $urls = [];
+    if ($page === 1) {
+        $urls[] = ['loc' => frontSiteUrl($config, '/'), 'lastmod' => ''];
+    }
+    foreach ($chunks[$page] as $article) {
+        $slug = (string) ($article['slug'] ?? '');
+        if ($slug !== '') {
+            $urls[] = [
+                'loc' => frontSiteUrl($config, articlePermalinkPath($config, $article)),
+                'lastmod' => articleIsoDate($article, 'updated_at'),
+            ];
+        }
+    }
+
+    return renderSitemapUrlSet($urls);
+}
+
+/** @param list<array{loc:string,lastmod:string}> $urls */
+function renderSitemapUrlSet(array $urls): string
+{
+    $lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ];
+    foreach ($urls as $url) {
+        $loc = htmlspecialchars((string) $url['loc'], ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $lastmod = (string) ($url['lastmod'] ?? '');
+        $lines[] = '  <url><loc>'.$loc.'</loc>'.($lastmod !== ''
+            ? '<lastmod>'.htmlspecialchars($lastmod, ENT_XML1 | ENT_QUOTES, 'UTF-8').'</lastmod>'
+            : '').'</url>';
+    }
+    $lines[] = '</urlset>';
+
+    return implode("\n", $lines)."\n";
 }
 
 function handleHealth(array $config, string $method, string $path, string $body): void
@@ -3514,6 +3745,8 @@ function handleFrontendCapabilities(array $config, string $method, string $path,
             '/robots.txt',
             '/llms.txt',
             '/sitemap.txt',
+            '/sitemap.xml',
+            '/sitemaps/pages-{page}.xml',
             '/geoflow-agent/v1/health',
             '/geoflow-agent/v1/site-settings',
             '/geoflow-agent/v1/frontend-capabilities',
@@ -3767,6 +4000,16 @@ if ($method === 'GET' && $path === '/llms.txt') {
 }
 if ($method === 'GET' && $path === '/sitemap.txt') {
     textResponse(renderSitemapText($config));
+}
+if ($method === 'GET' && $path === '/sitemap.xml') {
+    xmlResponse(renderSitemapXml($config));
+}
+if ($method === 'GET' && preg_match('#^/sitemaps/pages-([1-9][0-9]*)\.xml$#', $path, $matches) === 1) {
+    $sitemap = renderSitemapShard($config, (int) $matches[1]);
+    if ($sitemap === null) {
+        xmlResponse('', 404);
+    }
+    xmlResponse($sitemap);
 }
 if (in_array($method, ['GET', 'HEAD'], true)) {
     $resolution = resolveArticlePermalink($config, $path);

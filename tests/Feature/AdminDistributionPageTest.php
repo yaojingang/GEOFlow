@@ -2954,9 +2954,24 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString('class="target-theme-toutiao"', $staticIndex);
         $this->assertStringNotContainsString('<style>', $staticIndex);
         $this->assertStringNotContainsString('</style>', $staticIndex);
-        $this->assertStringContainsString('# 远程门户', (string) $zip->getFromName('llms.txt'));
-        $this->assertStringContainsString('Sitemap: https://example.com/sitemap.txt', (string) $zip->getFromName('robots.txt'));
+        $llmsText = (string) $zip->getFromName('llms.txt');
+        $this->assertStringContainsString('# 远程门户', $llmsText);
+        $this->assertStringContainsString('[XML Sitemap](https://example.com/sitemap.xml)', $llmsText);
+        $this->assertStringContainsString('[Text Sitemap](https://example.com/sitemap.txt)', $llmsText);
+        $robotsText = (string) $zip->getFromName('robots.txt');
+        $this->assertStringContainsString('Sitemap: https://example.com/sitemap.txt', $robotsText);
+        $this->assertStringContainsString('Disallow: /storage/', $robotsText);
+        $this->assertStringContainsString('Disallow: /*.jpg$', $robotsText);
+        $this->assertStringContainsString("User-agent: facebookexternalhit\nDisallow: /", $robotsText);
         $this->assertStringContainsString('https://example.com/', (string) $zip->getFromName('sitemap.txt'));
+        $sitemapXml = (string) $zip->getFromName('sitemap.xml');
+        $this->assertStringContainsString('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', $sitemapXml);
+        $this->assertStringContainsString('<loc>https://example.com/</loc>', $sitemapXml);
+        $this->assertNotFalse(@simplexml_load_string($sitemapXml));
+        $sitemapShardXml = (string) $zip->getFromName('sitemaps/pages-1.xml');
+        $this->assertStringContainsString('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', $sitemapShardXml);
+        $this->assertStringContainsString('<loc>https://example.com/</loc>', $sitemapShardXml);
+        $this->assertNotFalse(@simplexml_load_string($sitemapShardXml));
         $this->assertFalse($zip->locateName('README.md'));
 
         $siteCss = (string) $zip->getFromName('assets/css/site.css');
@@ -3101,14 +3116,21 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString('article_storage_not_writable', $frontController);
         $this->assertStringContainsString('site_settings_not_writable', $frontController);
         $this->assertStringContainsString('function renderLlmsText', $frontController);
+        $this->assertStringContainsString('function renderSitemapXml', $frontController);
+        $this->assertStringContainsString('function renderSitemapShard', $frontController);
+        $this->assertStringContainsString('function publicSitemapUrlLimit', $frontController);
+        $this->assertStringContainsString('function xmlResponse', $frontController);
         $this->assertStringContainsString('function renderRobotsText', $frontController);
+        $this->assertStringContainsString('function robotsBlockedPaths', $frontController);
         $this->assertStringContainsString('function renderSitemapText', $frontController);
         $this->assertStringContainsString('function maxAssetBytes', $frontController);
         $this->assertStringNotContainsString('stream_context_create', $frontController);
         $this->assertStringContainsString("writeStaticFile(\$config, 'llms.txt'", $frontController);
         $this->assertStringContainsString("writeStaticFile(\$config, 'robots.txt'", $frontController);
         $this->assertStringContainsString("writeStaticFile(\$config, 'sitemap.txt'", $frontController);
+        $this->assertStringContainsString('textResponse(renderRobotsText($config))', $frontController);
         $this->assertStringContainsString('textResponse(renderLlmsText($config))', $frontController);
+        $this->assertStringContainsString('xmlResponse(renderSitemapXml($config))', $frontController);
         $this->assertStringContainsString("writeStaticFile(\$config, 'index.html'", $frontController);
         $this->assertStringContainsString('writeStaticCacheFile($config, $cachePath', $frontController);
         $this->assertStringContainsString('rebuildStaticSite($config)', $frontController);
@@ -3178,9 +3200,11 @@ class AdminDistributionPageTest extends TestCase
         try {
             $this->waitForHttpServer($baseUrl);
 
-            $runtimeRobots = Http::timeout(3)->get($baseUrl.'/robots.txt');
-            $this->assertSame(200, $runtimeRobots->status());
-            $this->assertStringContainsString('Sitemap: '.$baseUrl.'/sitemap.txt', $runtimeRobots->body());
+            $robots = Http::timeout(3)->get($baseUrl.'/robots.txt');
+            $this->assertSame(200, $robots->status());
+            $this->assertStringContainsString('Disallow: /storage/', $robots->body());
+            $this->assertStringContainsString("User-agent: facebookexternalhit\nDisallow: /", $robots->body());
+            $this->assertStringContainsString('Sitemap: '.$baseUrl.'/sitemap.txt', $robots->body());
 
             $httpClient = app(DistributionHttpClient::class);
             $capabilities = $httpClient->frontendCapabilities($channel->fresh());
