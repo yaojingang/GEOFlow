@@ -1,0 +1,37 @@
+# Build this image after the application image from docker/Dockerfile.prod:
+#
+#   docker build -f docker/Dockerfile.prod -t geoflow-app:local .
+#   docker build -f docker/Dockerfile.sae-web \
+#     --build-arg GEOFLOW_APP_IMAGE=geoflow-app:local \
+#     -t geoflow-web:local .
+#
+# Keeping the application build in Dockerfile.prod avoids maintaining a second
+# Composer/Node build graph. SAE Web adds Nginx to that already-built PHP image
+# and runs both processes in one container.
+ARG GEOFLOW_APP_IMAGE=geoflow-app:latest
+
+FROM ${GEOFLOW_APP_IMAGE}
+
+USER root
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        gettext-base \
+        nginx \
+    && rm -f /etc/nginx/conf.d/default.conf /etc/nginx/sites-enabled/default \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY docker/nginx/default.conf.template /etc/nginx/templates/default.conf.template
+COPY docker/nginx/geoflow-app.conf /etc/nginx/snippets/geoflow-app.conf.template
+COPY docker/entrypoint.sae.sh /usr/local/bin/geoflow-entrypoint-sae
+COPY docker/entrypoint.sae-release.sh /usr/local/bin/geoflow-entrypoint-sae-release
+
+RUN chmod +x \
+        /usr/local/bin/geoflow-entrypoint-sae \
+        /usr/local/bin/geoflow-entrypoint-sae-release \
+    && mkdir -p /etc/nginx/conf.d /etc/nginx/snippets
+
+EXPOSE 80
+
+ENTRYPOINT ["/usr/local/bin/geoflow-entrypoint-sae"]
+CMD ["--role=web"]

@@ -93,9 +93,9 @@
                 </div>
                 <div class="px-6 py-5 space-y-4">
                     <div class="flex items-center justify-between">
-                        <span class="text-sm text-gray-600">{{ __('admin.ai_models.pgvector') }}</span>
-                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {{ $pgvectorEnabled ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800' }}">
-                            {{ $pgvectorEnabled ? __('admin.ai_models.pgvector_enabled') : __('admin.ai_models.pgvector_fallback') }}
+                        <span class="text-sm text-gray-600">{{ __('admin.ai_models.vector_store') }}</span>
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {{ $vectorStoreAvailable ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800' }}">
+                            {{ $vectorStoreAvailable ? __('admin.ai_models.vector_store_enabled') : __('admin.ai_models.vector_store_fallback') }}
                         </span>
                     </div>
 

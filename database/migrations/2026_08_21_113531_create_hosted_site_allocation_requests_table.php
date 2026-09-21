@@ -18,9 +18,9 @@ return new class extends Migration
                 ->cascadeOnDelete();
             $table->foreignId('hosted_site_article_assignment_id')
                 ->nullable()
-                ->unique('hosted_requests_assignment_unique')
-                ->constrained('hosted_site_article_assignments')
-                ->nullOnDelete();
+                ->unique('hosted_requests_assignment_unique');
+            $table->foreign('hosted_site_article_assignment_id', 'hosted_requests_assignment_fk')
+                ->references('id')->on('hosted_site_article_assignments')->nullOnDelete();
             $table->string('status', 24)->default('pending');
             $table->unsignedInteger('attempt_count')->default(0);
             $table->timestamp('next_attempt_at')->nullable();

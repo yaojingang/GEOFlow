@@ -23,9 +23,10 @@ return new class extends Migration
             }
         });
 
-        $limitExpression = DB::getDriverName() === 'pgsql'
-            ? 'GREATEST(COALESCE(article_limit, 10), COALESCE(draft_limit, 10), COALESCE(created_count, 0), 1)'
-            : 'max(COALESCE(article_limit, 10), COALESCE(draft_limit, 10), COALESCE(created_count, 0), 1)';
+        $limitExpression = match (DB::getDriverName()) {
+            'pgsql', 'mysql' => 'GREATEST(COALESCE(article_limit, 10), COALESCE(draft_limit, 10), COALESCE(created_count, 0), 1)',
+            default => 'max(COALESCE(article_limit, 10), COALESCE(draft_limit, 10), COALESCE(created_count, 0), 1)',
+        };
 
         DB::table('tasks')
             ->update([

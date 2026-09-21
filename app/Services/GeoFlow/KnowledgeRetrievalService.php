@@ -7,6 +7,7 @@ use App\Data\Ai\KnowledgeQueryEmbeddingResult;
 use App\Models\Admin;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
+use App\Support\GeoFlow\VectorStoreAdapter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +29,13 @@ class KnowledgeRetrievalService
 
     private const MAX_PREFILTER_TERMS = 12;
 
-    public function __construct(private readonly KnowledgeChunkSyncService $knowledgeChunkSyncService) {}
+    /** @var array<string,mixed>|null */
+    private ?array $vectorRetrievalMetadata = null;
+
+    public function __construct(
+        private readonly KnowledgeChunkSyncService $knowledgeChunkSyncService,
+        private readonly VectorStoreAdapter $vectorStore,
+    ) {}
 
     public function retrieveContext(
         int $knowledgeBaseId,
@@ -296,6 +303,7 @@ class KnowledgeRetrievalService
         int $queryOrdinal = 1,
     ): array {
         $retrievalRequestId ??= (string) Str::uuid();
+        $this->vectorRetrievalMetadata = null;
         /** @var KnowledgeBase|null $knowledgeBase */
         $knowledgeBase = KnowledgeBase::query()
             ->whereKey($knowledgeBaseId)
@@ -338,11 +346,11 @@ class KnowledgeRetrievalService
         $queryVectorLiteral = $embeddingResult->successful()
             ? $this->knowledgeChunkSyncService->queryVectorLiteral($embeddingResult->vector)
             : '';
-        $pgvectorScores = $queryVectorLiteral !== ''
-            ? $this->fetchPgvectorScores($knowledgeBase, $servingGeneration, $queryVectorLiteral, max($candidateLimit, 16))
+        $vectorScores = $queryVectorLiteral !== ''
+            ? $this->fetchVectorScores($knowledgeBase, $servingGeneration, $queryVectorLiteral, max($candidateLimit, 16))
             : [];
 
-        $rows = $this->loadCandidateRows($knowledgeBaseId, $servingGeneration, $queryTerms, $pgvectorScores, $candidateLimit);
+        $rows = $this->loadCandidateRows($knowledgeBaseId, $servingGeneration, $queryTerms, $vectorScores, $candidateLimit);
         if ($rows === []) {
             return [];
         }
@@ -379,7 +387,7 @@ class KnowledgeRetrievalService
             $lexicalScore = $this->lexicalScore($queryTerms, $this->termFrequencies($searchText));
             $titleScore = $this->lexicalScore($queryTerms, $this->termFrequencies($title."\n".$sectionPath));
             $metadataScore = $this->metadataScore($metadata);
-            $vectorScore = $pgvectorScores[$chunkIndex] ?? $this->localVectorScore($row, $knowledgeBase, $queryVector, $useRealEmbeddingScore);
+            $vectorScore = $vectorScores[$chunkIndex] ?? $this->localVectorScore($row, $knowledgeBase, $queryVector, $useRealEmbeddingScore);
             $score = ($vectorScore * 0.45) + ($lexicalScore * 0.35) + ($titleScore * 0.12) + ($metadataScore * 0.08);
 
             $scored[] = [
@@ -398,7 +406,10 @@ class KnowledgeRetrievalService
                 'keyword_score' => $lexicalScore,
                 'title_score' => $titleScore,
                 'metadata_score' => $metadataScore,
-                'retrieval_meta' => $embeddingResult->safeMetadata(),
+                'retrieval_meta' => array_replace(
+                    $embeddingResult->safeMetadata(),
+                    $this->vectorRetrievalMetadata ?? [],
+                ),
             ];
         }
 
@@ -601,10 +612,10 @@ class KnowledgeRetrievalService
      * 大知识库先做候选集预筛，避免每次召回都把单个知识库全部切片加载到 PHP。
      *
      * @param  array<string,int>  $queryTerms
-     * @param  array<int,float>  $pgvectorScores
+     * @param  array<int,float>  $vectorScores
      * @return list<KnowledgeChunk>
      */
-    private function loadCandidateRows(int $knowledgeBaseId, string $generation, array $queryTerms, array $pgvectorScores, int $candidateLimit): array
+    private function loadCandidateRows(int $knowledgeBaseId, string $generation, array $queryTerms, array $vectorScores, int $candidateLimit): array
     {
         $chunkCount = $this->applyServingGeneration(
             KnowledgeChunk::query()->where('knowledge_base_id', $knowledgeBaseId),
@@ -622,7 +633,7 @@ class KnowledgeRetrievalService
         }
 
         $rowsByIndex = [];
-        foreach ($this->fetchRowsByChunkIndexes($knowledgeBaseId, $generation, array_keys($pgvectorScores)) as $row) {
+        foreach ($this->fetchRowsByChunkIndexes($knowledgeBaseId, $generation, array_keys($vectorScores)) as $row) {
             $rowsByIndex[(int) ($row->chunk_index ?? 0)] = $row;
         }
 
@@ -1012,18 +1023,35 @@ class KnowledgeRetrievalService
     /**
      * @return array<int,float>
      */
-    private function fetchPgvectorScores(
+    private function fetchVectorScores(
         KnowledgeBase $knowledgeBase,
         string $generation,
         string $vectorLiteral,
         int $candidateLimit,
     ): array {
-        if (! $this->canUsePgvectorSearch()) {
+        $capabilities = $this->vectorStore->capabilities();
+        $vectorMetadata = [
+            'vector_store_driver' => $capabilities->driver,
+            'vector_store_available' => $capabilities->available,
+            'vector_store_dimensions' => $capabilities->dimensions,
+            'vector_store_error_code' => $capabilities->reason,
+        ];
+
+        if (! $capabilities->available) {
+            $this->vectorRetrievalMetadata = $vectorMetadata;
+            Log::warning('geoflow.knowledge_vector_store_unavailable', [
+                'knowledge_base_id' => (int) $knowledgeBase->id,
+                'driver' => $capabilities->driver,
+                'reason' => $capabilities->reason,
+            ]);
+
             return [];
         }
 
         try {
             $generationSql = $generation === '' ? 'AND generation_key IS NULL' : 'AND generation_key = ?';
+            $similarityExpression = $this->vectorStore->similarityExpression();
+            $limitClause = $this->vectorStore->limitClause($candidateLimit);
             $profileBindings = [
                 (int) $knowledgeBase->chunk_embedding_model_id,
                 (int) $knowledgeBase->chunk_embedding_dimensions,
@@ -1033,12 +1061,12 @@ class KnowledgeRetrievalService
                 (string) $knowledgeBase->chunk_embedding_profile_digest,
             ];
             $bindings = $generation === ''
-                ? [$vectorLiteral, (int) $knowledgeBase->id, ...$profileBindings, $vectorLiteral, max(1, $candidateLimit)]
-                : [$vectorLiteral, (int) $knowledgeBase->id, $generation, ...$profileBindings, $vectorLiteral, max(1, $candidateLimit)];
+                ? [$vectorLiteral, (int) $knowledgeBase->id, ...$profileBindings, $vectorLiteral]
+                : [$vectorLiteral, (int) $knowledgeBase->id, $generation, ...$profileBindings, $vectorLiteral];
             $rows = DB::select(
                 '
                     SELECT chunk_index,
-                           (embedding_vector <=> CAST(? AS vector)) AS vector_distance
+                           ('.$similarityExpression.') AS vector_distance
                     FROM knowledge_chunks
                     WHERE knowledge_base_id = ?
                       '.$generationSql.'
@@ -1049,14 +1077,26 @@ class KnowledgeRetrievalService
                       AND embedding_fingerprint = ?
                       AND embedding_profile_version = ?
                       AND embedding_profile_digest = ?
-                    ORDER BY embedding_vector <=> CAST(? AS vector), chunk_index ASC
-                    LIMIT ?
+                    ORDER BY '.$similarityExpression.', chunk_index ASC
+                    '.$limitClause.'
                 ',
                 $bindings
             );
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
+            $this->vectorRetrievalMetadata = array_replace($vectorMetadata, [
+                'vector_store_available' => false,
+                'vector_store_error_code' => 'vector_query_failed',
+            ]);
+            Log::warning('geoflow.knowledge_vector_retrieval_failed', [
+                'knowledge_base_id' => (int) $knowledgeBase->id,
+                'driver' => $capabilities->driver,
+                'exception_type' => $exception::class,
+            ]);
+
             return [];
         }
+
+        $this->vectorRetrievalMetadata = $vectorMetadata;
 
         $scores = [];
         foreach ($rows as $row) {
@@ -1076,38 +1116,10 @@ class KnowledgeRetrievalService
             }
         }
 
-        return KnowledgeQueryEmbeddingResult::incompatible('no_evidence')->safeMetadata();
-    }
-
-    private function canUsePgvectorSearch(): bool
-    {
-        if (DB::getDriverName() !== 'pgsql') {
-            return false;
-        }
-
-        try {
-            $typeRow = DB::selectOne("
-                SELECT EXISTS (
-                    SELECT 1 FROM pg_type WHERE typname = 'vector'
-                ) AS ok
-            ");
-            if (! $typeRow || ! (bool) ($typeRow->ok ?? false)) {
-                return false;
-            }
-
-            $columnRow = DB::selectOne("
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name = 'knowledge_chunks'
-                      AND column_name = 'embedding_vector'
-                ) AS ok
-            ");
-
-            return $columnRow !== null && (bool) ($columnRow->ok ?? false);
-        } catch (Throwable) {
-            return false;
-        }
+        return array_replace(
+            KnowledgeQueryEmbeddingResult::incompatible('no_evidence')->safeMetadata(),
+            $this->vectorRetrievalMetadata ?? [],
+        );
     }
 
     /**

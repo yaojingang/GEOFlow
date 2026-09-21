@@ -19,6 +19,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: geoflow_ci
+          MYSQL_ROOT_PASSWORD: geoflow_ci_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pgeoflow_ci_password"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -27,7 +41,7 @@ jobs:
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
         with:
           php-version: '8.4'
-          extensions: mbstring, intl, pdo_sqlite, sqlite3, zip, pcntl, curl, fileinfo, sodium
+          extensions: mbstring, intl, pdo_mysql, pdo_sqlite, sqlite3, zip, pcntl, curl, fileinfo, sodium
           coverage: none
           tools: composer:v2
 
@@ -45,6 +59,25 @@ jobs:
 
       - name: Install PHP dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Verify standard MySQL fresh migration
+        env:
+          APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          APP_ENV: testing
+          APP_DEBUG: 'false'
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: geoflow_ci
+          DB_USERNAME: root
+          DB_PASSWORD: geoflow_ci_password
+          CACHE_STORE: array
+          SESSION_DRIVER: array
+          QUEUE_CONNECTION: sync
+          GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED: 'true'
+        run: |
+          php artisan migrate --force --no-interaction
+          php artisan migrate:status --pending=1 --no-interaction
 
       - name: Install JavaScript dependencies
         run: npm ci

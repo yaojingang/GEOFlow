@@ -10,14 +10,18 @@ return new class extends Migration
     {
         Schema::create('article_ai_quality_check_sources', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('article_ai_quality_check_id')->constrained('article_ai_quality_checks')->cascadeOnDelete();
+            $table->foreignId('article_ai_quality_check_id')
+                ->constrained('article_ai_quality_checks', 'id', 'ai_quality_sources_check_fk')
+                ->cascadeOnDelete();
             $table->foreignId('knowledge_base_id')->nullable()->constrained('knowledge_bases')->nullOnDelete();
             $table->string('knowledge_base_name_snapshot');
             $table->string('dependency_kind', 24);
             $table->char('source_hash', 64)->nullable();
             $table->string('chunk_serving_generation', 64)->nullable();
             $table->char('chunk_manifest_hash', 64)->nullable();
-            $table->foreignId('fact_revision_id')->nullable()->constrained('knowledge_fact_library_revisions')->nullOnDelete();
+            $table->foreignId('fact_revision_id')->nullable()
+                ->constrained('knowledge_fact_library_revisions', 'id', 'ai_quality_sources_fact_fk')
+                ->nullOnDelete();
             $table->char('fact_library_hash', 64)->nullable();
             $table->string('readiness_status', 24);
             $table->string('used_provider', 32)->nullable();

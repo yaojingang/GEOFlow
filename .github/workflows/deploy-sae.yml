@@ -1,0 +1,334 @@
+name: Deploy GEOFlow to SAE
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      deploy_web:
+        description: Deploy the Web SAE application
+        required: false
+        type: boolean
+        default: true
+      deploy_worker:
+        description: Deploy the general queue worker SAE application
+        required: false
+        type: boolean
+        default: false
+      deploy_ai_quality_front:
+        description: Deploy the AI quality front queue SAE application
+        required: false
+        type: boolean
+        default: false
+      deploy_ai_quality_backfill:
+        description: Deploy the AI quality backfill SAE application
+        required: false
+        type: boolean
+        default: false
+      deploy_ai_optimization:
+        description: Deploy the AI optimization queue SAE application
+        required: false
+        type: boolean
+        default: false
+      deploy_knowledge:
+        description: Deploy the knowledge queue worker SAE application
+        required: false
+        type: boolean
+        default: false
+      deploy_scheduler:
+        description: Deploy the scheduler SAE application
+        required: false
+        type: boolean
+        default: false
+      deploy_reverb:
+        description: Deploy the Reverb SAE application
+        required: false
+        type: boolean
+        default: false
+      run_release:
+        description: Run the protected one-shot SAE release application before resident roles
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: geoflow-sae-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # ACR_LOGIN_REGISTRY is reachable by the GitHub-hosted runner. When SAE
+  # uses a VPC endpoint, set ACR_IMAGE_REGISTRY to that VPC image hostname.
+  ACR_LOGIN_REGISTRY: ${{ vars.ACR_LOGIN_REGISTRY }}
+  ACR_IMAGE_REGISTRY: ${{ vars.ACR_IMAGE_REGISTRY || vars.ACR_LOGIN_REGISTRY }}
+  ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE || 'fzzs' }}
+  ACR_REPOSITORY: ${{ vars.ACR_REPOSITORY || 'geoflow' }}
+  SAE_REGION_ID: ${{ vars.SAE_REGION_ID || 'cn-shenzhen' }}
+
+jobs:
+  build:
+    name: Build and push PHP image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, intl, pdo_mysql, pdo_sqlite, sqlite3, zip, pcntl, curl, fileinfo, sodium
+          coverage: none
+          tools: composer:v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Prepare test environment
+        run: touch .env
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Run deployment contract test
+        run: vendor/bin/phpunit --no-coverage tests/Unit/DeploymentWorkflowContractTest.php
+
+      - name: Check PHP formatting
+        run: vendor/bin/pint --test
+
+      - name: Run PHP test suite
+        run: composer test
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Run JavaScript test suite
+        run: npm run test:analytics
+
+      - name: Validate ACR configuration
+        env:
+          ACR_LOGIN_REGISTRY: ${{ env.ACR_LOGIN_REGISTRY }}
+          ACR_IMAGE_REGISTRY: ${{ env.ACR_IMAGE_REGISTRY }}
+          ACR_NAMESPACE: ${{ env.ACR_NAMESPACE }}
+          ACR_REPOSITORY: ${{ env.ACR_REPOSITORY }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$ACR_LOGIN_REGISTRY" || -z "$ACR_IMAGE_REGISTRY" || -z "$ACR_NAMESPACE" || -z "$ACR_REPOSITORY" ]]; then
+            echo "ACR_LOGIN_REGISTRY、ACR_IMAGE_REGISTRY、ACR_NAMESPACE 和 ACR_REPOSITORY 必须配置为仓库 Variables。" >&2
+            exit 1
+          fi
+
+          if [[ -z "$ACR_USERNAME" || -z "$ACR_PASSWORD" ]]; then
+            echo "缺少 ACR_USERNAME 或 ACR_PASSWORD repository/environment secrets。" >&2
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Log in to ACR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ${{ env.ACR_LOGIN_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push immutable commit image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: docker/Dockerfile.prod
+          platforms: linux/amd64
+          push: true
+          # ACR Personal does not accept BuildKit provenance/SBOM attestation manifests.
+          provenance: false
+          sbom: false
+          build-args: |
+            COMPOSER_PACKAGIST_MIRROR=${{ vars.COMPOSER_PACKAGIST_MIRROR }}
+          tags: |
+            ${{ env.ACR_LOGIN_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.ACR_REPOSITORY }}:${{ github.sha }}
+          cache-from: type=gha,scope=geoflow-sae-app
+          cache-to: type=gha,mode=max,scope=geoflow-sae-app
+
+      - name: Build and push the merged SAE Web image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: docker/Dockerfile.sae-web
+          platforms: linux/amd64
+          push: true
+          # ACR Personal does not accept BuildKit provenance/SBOM attestation manifests.
+          provenance: false
+          sbom: false
+          build-args: |
+            GEOFLOW_APP_IMAGE=${{ env.ACR_LOGIN_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.ACR_REPOSITORY }}:${{ github.sha }}
+          tags: |
+            ${{ env.ACR_LOGIN_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.ACR_REPOSITORY }}:${{ github.sha }}-web
+          cache-from: type=gha,scope=geoflow-sae-web
+          cache-to: type=gha,mode=max,scope=geoflow-sae-web
+
+  deploy:
+    name: Deploy selected SAE applications
+    needs: [build, release]
+    if: ${{ always() && needs.build.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Install aliyun CLI
+        run: |
+          set -euo pipefail
+          aliyun_cli_url='https://github.com/aliyun/aliyun-cli/releases/download/v3.5.1/aliyun-cli-linux-3.5.1-amd64.tgz'
+          aliyun_cli_sha256='3a9a45b9c7899228074135612d2b7ebbf32abb97826d825787cb454cd3011bdc'
+          curl -fsSL -o "$RUNNER_TEMP/aliyun-cli.tgz" "$aliyun_cli_url"
+          echo "${aliyun_cli_sha256}  $RUNNER_TEMP/aliyun-cli.tgz" | sha256sum --check --status
+          tar -xzf "$RUNNER_TEMP/aliyun-cli.tgz" -C "$RUNNER_TEMP"
+          sudo install -m 0755 "$RUNNER_TEMP/aliyun" /usr/local/bin/aliyun
+
+      - name: Deploy selected applications to SAE
+        env:
+          ALIBABACLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_SAE_AK_ID }}
+          ALIBABACLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_SAE_AK_SECRET }}
+          ALIBABACLOUD_REGION_ID: ${{ env.SAE_REGION_ID }}
+          ACR_IMAGE_REGISTRY: ${{ env.ACR_IMAGE_REGISTRY }}
+          ACR_NAMESPACE: ${{ env.ACR_NAMESPACE }}
+          ACR_REPOSITORY: ${{ env.ACR_REPOSITORY }}
+          SAE_WEB_APP_ID: ${{ secrets.SAE_WEB_APP_ID }}
+          SAE_WORKER_APP_ID: ${{ secrets.SAE_WORKER_APP_ID }}
+          SAE_AI_QUALITY_FRONT_APP_ID: ${{ secrets.SAE_AI_QUALITY_FRONT_APP_ID }}
+          SAE_AI_QUALITY_BACKFILL_APP_ID: ${{ secrets.SAE_AI_QUALITY_BACKFILL_APP_ID }}
+          SAE_AI_OPTIMIZATION_APP_ID: ${{ secrets.SAE_AI_OPTIMIZATION_APP_ID }}
+          SAE_KNOWLEDGE_APP_ID: ${{ secrets.SAE_KNOWLEDGE_APP_ID }}
+          SAE_SCHEDULER_APP_ID: ${{ secrets.SAE_SCHEDULER_APP_ID }}
+          SAE_REVERB_APP_ID: ${{ secrets.SAE_REVERB_APP_ID }}
+          DEPLOY_WEB: ${{ github.event_name == 'push' && 'true' || inputs.deploy_web }}
+          DEPLOY_WORKER: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_worker || 'false' }}
+          DEPLOY_AI_QUALITY_FRONT: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_ai_quality_front || 'false' }}
+          DEPLOY_AI_QUALITY_BACKFILL: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_ai_quality_backfill || 'false' }}
+          DEPLOY_AI_OPTIMIZATION: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_ai_optimization || 'false' }}
+          DEPLOY_KNOWLEDGE: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_knowledge || 'false' }}
+          DEPLOY_SCHEDULER: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_scheduler || 'false' }}
+          DEPLOY_REVERB: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_reverb || 'false' }}
+        run: |
+          set -euo pipefail
+
+          app_image="${ACR_IMAGE_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPOSITORY}:${GITHUB_SHA}"
+          web_image="${ACR_IMAGE_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPOSITORY}:${GITHUB_SHA}-web"
+
+          deploy_if_requested() {
+            local role="$1"
+            local enabled="$2"
+            local app_id="$3"
+            local image="$4"
+
+            if [[ "$enabled" != "true" ]]; then
+              echo "${role}: 未启用，跳过 SAE 部署"
+              return 0
+            fi
+
+            if [[ -z "$app_id" ]]; then
+              echo "${role}: 未配置 SAE 应用 ID，跳过 SAE 部署"
+              return 0
+            fi
+
+            if [[ -z "${ALIBABACLOUD_ACCESS_KEY_ID:-}" || -z "${ALIBABACLOUD_ACCESS_KEY_SECRET:-}" || -z "${ALIBABACLOUD_REGION_ID:-}" ]]; then
+              echo "${role}: 已请求部署，但缺少阿里云 SAE 凭据或地域配置" >&2
+              return 1
+            fi
+
+            echo "${role}: 部署镜像 ${image}"
+            aliyun sae DeployApplication \
+              --AppId "$app_id" \
+              --ImageUrl "$image"
+          }
+
+          # push main always considers Web. Other roles can only be selected by
+          # their explicit workflow_dispatch input; no role runs by default.
+          deploy_if_requested web "$DEPLOY_WEB" "$SAE_WEB_APP_ID" "$web_image"
+          deploy_if_requested worker "$DEPLOY_WORKER" "$SAE_WORKER_APP_ID" "$app_image"
+          deploy_if_requested ai-quality-front "$DEPLOY_AI_QUALITY_FRONT" "$SAE_AI_QUALITY_FRONT_APP_ID" "$app_image"
+          deploy_if_requested ai-quality-backfill "$DEPLOY_AI_QUALITY_BACKFILL" "$SAE_AI_QUALITY_BACKFILL_APP_ID" "$app_image"
+          deploy_if_requested ai-optimization "$DEPLOY_AI_OPTIMIZATION" "$SAE_AI_OPTIMIZATION_APP_ID" "$app_image"
+          deploy_if_requested knowledge "$DEPLOY_KNOWLEDGE" "$SAE_KNOWLEDGE_APP_ID" "$app_image"
+          deploy_if_requested scheduler "$DEPLOY_SCHEDULER" "$SAE_SCHEDULER_APP_ID" "$app_image"
+          deploy_if_requested reverb "$DEPLOY_REVERB" "$SAE_REVERB_APP_ID" "$app_image"
+
+  release:
+    name: Run protected SAE release application
+    needs: build
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_release == true }}
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 20
+
+    steps:
+      - name: Install pinned aliyun CLI
+        run: |
+          set -euo pipefail
+          aliyun_cli_url='https://github.com/aliyun/aliyun-cli/releases/download/v3.5.1/aliyun-cli-linux-3.5.1-amd64.tgz'
+          aliyun_cli_sha256='3a9a45b9c7899228074135612d2b7ebbf32abb97826d825787cb454cd3011bdc'
+          curl -fsSL -o "$RUNNER_TEMP/aliyun-cli.tgz" "$aliyun_cli_url"
+          echo "${aliyun_cli_sha256}  $RUNNER_TEMP/aliyun-cli.tgz" | sha256sum --check --status
+          tar -xzf "$RUNNER_TEMP/aliyun-cli.tgz" -C "$RUNNER_TEMP"
+          sudo install -m 0755 "$RUNNER_TEMP/aliyun" /usr/local/bin/aliyun
+
+      - name: Deploy and wait for the release application
+        env:
+          ALIBABACLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_SAE_AK_ID }}
+          ALIBABACLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_SAE_AK_SECRET }}
+          ALIBABACLOUD_REGION_ID: ${{ env.SAE_REGION_ID }}
+          ACR_IMAGE_REGISTRY: ${{ env.ACR_IMAGE_REGISTRY }}
+          ACR_NAMESPACE: ${{ env.ACR_NAMESPACE }}
+          ACR_REPOSITORY: ${{ env.ACR_REPOSITORY }}
+          SAE_RELEASE_APP_ID: ${{ secrets.SAE_RELEASE_APP_ID }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$SAE_RELEASE_APP_ID" ]]; then
+            echo "run_release=true 时必须配置 SAE_RELEASE_APP_ID" >&2
+            exit 1
+          fi
+          if [[ -z "${ALIBABACLOUD_ACCESS_KEY_ID:-}" || -z "${ALIBABACLOUD_ACCESS_KEY_SECRET:-}" ]]; then
+            echo "run_release=true 时必须配置阿里云 SAE 凭据" >&2
+            exit 1
+          fi
+
+          image="${ACR_IMAGE_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPOSITORY}:${GITHUB_SHA}"
+          before_status="$(aliyun sae DescribeApplicationStatus --AppId "$SAE_RELEASE_APP_ID" --output json)"
+          before_order_id="$(printf '%s' "$before_status" | jq -r '.Data.LastChangeOrderId // ""')"
+          echo "release: 部署镜像 ${image}"
+          aliyun sae DeployApplication \
+            --AppId "$SAE_RELEASE_APP_ID" \
+            --ImageUrl "$image"
+
+          for attempt in $(seq 1 60); do
+            status="$(aliyun sae DescribeApplicationStatus --AppId "$SAE_RELEASE_APP_ID" --output json)"
+            running="$(printf '%s' "$status" | jq -r '.Data.LastChangeOrderRunning // false')"
+            order_id="$(printf '%s' "$status" | jq -r '.Data.LastChangeOrderId // ""')"
+            order_status="$(printf '%s' "$status" | jq -r '.Data.LastChangeOrderStatus // ""')"
+            current_status="$(printf '%s' "$status" | jq -r '.Data.CurrentStatus // "UNKNOWN"')"
+            echo "release: attempt=${attempt} current=${current_status} running=${running} order=${order_id} change=${order_status}"
+
+            if [[ "$order_id" != "$before_order_id" && "$running" == "false" && "$order_status" == "SUCCESS" ]]; then
+                exit 0
+            fi
+            if [[ "$order_id" != "$before_order_id" && "$running" == "false" && "$order_status" == "FAILED" ]]; then
+              echo "SAE release application change order failed" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+
+          echo "等待 SAE release 应用变更完成超时" >&2
+          exit 1

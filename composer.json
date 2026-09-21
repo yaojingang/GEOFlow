@@ -13,6 +13,7 @@
         "laravel/horizon": "^5.45",
         "laravel/reverb": "^1.0",
         "laravel/sanctum": "^4.3",
+        "league/flysystem-aws-s3-v3": "^3.25",
         "laravel/tinker": "^2.10.1"
     },
     "require-dev": {

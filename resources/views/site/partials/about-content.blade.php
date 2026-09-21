@@ -93,12 +93,12 @@
 <h2 id="about-foundation">开放、可部署的技术基础</h2>
 
 <p>
-    GEOFlow 建立在 Laravel 12 与 PHP 8.3+ 之上，使用 PostgreSQL 保存业务数据，并推荐 pgvector 支撑知识向量。Redis 承担队列与缓存，Laravel Scheduler、Horizon 和 Reverb 分别服务于调度、队列运行与实时能力。
+    GEOFlow 建立在 Laravel 12 与 PHP 8.3+ 之上，支持 PostgreSQL/pgvector 与 MySQL 原生 VECTOR 保存业务和知识向量。Redis 承担队列与缓存，Laravel Scheduler、Horizon 和 Reverb 分别服务于调度、队列运行与实时能力。
 </p>
 
 <dl class="about-stack">
     <div><dt>应用层</dt><dd>Laravel 12、Blade、PHP 8.3+</dd></div>
-    <div><dt>数据层</dt><dd>PostgreSQL、pgvector、Redis</dd></div>
+    <div><dt>数据层</dt><dd>PostgreSQL/pgvector 或 MySQL VECTOR、Redis</dd></div>
     <div><dt>运行层</dt><dd>Scheduler、Queue、Horizon、Reverb</dd></div>
     <div><dt>部署层</dt><dd>Docker Compose、Nginx、PHP-FPM</dd></div>
 </dl>

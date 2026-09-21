@@ -88,6 +88,7 @@ return [
     'knowledge_fact_generation_finalizer_pending_seconds' => max(60, min(3600, (int) env('GEOFLOW_KNOWLEDGE_FACT_GENERATION_FINALIZER_PENDING_SECONDS', 900))),
     'knowledge_fact_generation_pending_batch_max_age_seconds' => max(60, min(86400, (int) env('GEOFLOW_KNOWLEDGE_FACT_GENERATION_PENDING_BATCH_MAX_AGE_SECONDS', 900))),
     'knowledge_fact_generation_retention_days' => 90,
+    'vector_capability_cache_ttl_seconds' => max(0, min(3600, (int) env('GEOFLOW_VECTOR_CAPABILITY_CACHE_TTL_SECONDS', 60))),
 
     // SEO 描述
     'site_description' => env('SITE_DESCRIPTION', ''),

@@ -17,10 +17,16 @@ return new class extends Migration
                 $table->longText('draft_content')->nullable();
                 $table->longText('structured_json')->nullable();
                 $table->longText('validation_json')->nullable();
-                $table->foreignId('published_knowledge_base_id')->nullable()->constrained('knowledge_bases')->nullOnDelete();
-                $table->foreignId('ai_model_id')->nullable()->constrained('ai_models')->nullOnDelete();
+                $table->foreignId('published_knowledge_base_id')->nullable();
+                $table->foreign('published_knowledge_base_id', 'ek_projects_published_kb_fk')
+                    ->references('id')->on('knowledge_bases')->nullOnDelete();
+                $table->foreignId('ai_model_id')->nullable();
+                $table->foreign('ai_model_id', 'ek_projects_ai_model_fk')
+                    ->references('id')->on('ai_models')->nullOnDelete();
                 $table->text('error_message')->nullable();
-                $table->foreignId('created_by_admin_id')->nullable()->constrained('admins')->nullOnDelete();
+                $table->foreignId('created_by_admin_id')->nullable();
+                $table->foreign('created_by_admin_id', 'ek_projects_created_admin_fk')
+                    ->references('id')->on('admins')->nullOnDelete();
                 $table->timestamps();
 
                 $table->index(['status', 'updated_at'], 'enterprise_knowledge_projects_status_updated_idx');
@@ -30,9 +36,9 @@ return new class extends Migration
         if (! Schema::hasTable('enterprise_knowledge_sources')) {
             Schema::create('enterprise_knowledge_sources', function (Blueprint $table): void {
                 $table->id();
-                $table->foreignId('enterprise_knowledge_project_id')
-                    ->constrained('enterprise_knowledge_projects')
-                    ->cascadeOnDelete();
+                $table->foreignId('enterprise_knowledge_project_id');
+                $table->foreign('enterprise_knowledge_project_id', 'ek_sources_project_fk')
+                    ->references('id')->on('enterprise_knowledge_projects')->cascadeOnDelete();
                 $table->string('original_name', 255);
                 $table->string('file_path', 500)->nullable();
                 $table->string('file_type', 40)->default('text');
@@ -48,13 +54,15 @@ return new class extends Migration
         if (! Schema::hasTable('enterprise_knowledge_revisions')) {
             Schema::create('enterprise_knowledge_revisions', function (Blueprint $table): void {
                 $table->id();
-                $table->foreignId('enterprise_knowledge_project_id')
-                    ->constrained('enterprise_knowledge_projects')
-                    ->cascadeOnDelete();
+                $table->foreignId('enterprise_knowledge_project_id');
+                $table->foreign('enterprise_knowledge_project_id', 'ek_revisions_project_fk')
+                    ->references('id')->on('enterprise_knowledge_projects')->cascadeOnDelete();
                 $table->longText('content');
                 $table->string('summary', 255)->nullable();
                 $table->string('source', 40)->default('manual');
-                $table->foreignId('created_by_admin_id')->nullable()->constrained('admins')->nullOnDelete();
+                $table->foreignId('created_by_admin_id')->nullable();
+                $table->foreign('created_by_admin_id', 'ek_revisions_created_admin_fk')
+                    ->references('id')->on('admins')->nullOnDelete();
                 $table->string('content_hash', 64)->nullable();
                 $table->timestamps();
 

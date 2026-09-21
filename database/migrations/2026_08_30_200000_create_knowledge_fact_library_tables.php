@@ -61,7 +61,7 @@ return new class extends Migration
             $table->foreignId('created_by_admin_id')->nullable()->constrained('admins')->nullOnDelete();
             $table->foreignId('updated_by_admin_id')->nullable()->constrained('admins')->nullOnDelete();
             $table->timestamps();
-            $table->index(['fact_id', 'review_status', 'conflict_status']);
+            $table->index(['fact_id', 'review_status', 'conflict_status'], 'knowledge_fact_values_state_idx');
             $table->index(['fact_id', 'scope_hash', 'valid_from', 'valid_to'], 'knowledge_fact_values_interval_idx');
         });
 
@@ -90,7 +90,9 @@ return new class extends Migration
             $table->longText('manifest_json');
             $table->foreignId('published_by_admin_id')->nullable()->constrained('admins')->nullOnDelete();
             $table->timestamp('published_at');
-            $table->foreignId('restored_from_revision_id')->nullable()->constrained('knowledge_fact_library_revisions')->nullOnDelete();
+            $table->foreignId('restored_from_revision_id')->nullable()
+                ->constrained('knowledge_fact_library_revisions', 'id', 'knowledge_fact_revisions_restore_fk')
+                ->nullOnDelete();
             $table->timestamps();
             $table->unique(['library_id', 'version']);
             $table->unique(['library_id', 'library_hash']);

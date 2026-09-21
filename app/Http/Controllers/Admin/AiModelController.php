@@ -37,6 +37,7 @@ use App\Services\Outbound\OutboundRequestFailedException;
 use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use App\Support\GeoFlow\VectorStoreAdapter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Response;
@@ -45,7 +46,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -84,13 +84,14 @@ class AiModelController extends Controller
         private readonly AdminAiSettingsService $aiSettingsService,
         private readonly AdminAiSystemSettingsService $systemSettingsService,
         private readonly GovernanceAiModelUsageSessionFactory $usageSessions,
+        private readonly VectorStoreAdapter $vectorStore,
     ) {}
 
     /**
      * AI 模型列表页。
      *
      * 输出页面所需完整数据：模型列表、可选 embedding 模型、默认 embedding 模型 ID、
-     * 以及 pgvector 可用状态，保证页面在一个请求内即可渲染。
+     * 以及数据库向量存储可用状态，保证页面在一个请求内即可渲染。
      */
     public function index(Request $request): View
     {
@@ -141,7 +142,7 @@ class AiModelController extends Controller
                 'chatModels' => $this->systemSettingsService->modelOptions($actor, 'chat'),
                 'defaultEmbeddingModelId' => $this->getDefaultEmbeddingModelId(),
                 'chunkingConfig' => $this->getChunkingConfig(),
-                'pgvectorEnabled' => $this->isPgvectorEnabled(),
+                'vectorStoreAvailable' => $this->vectorStore->isAvailable(),
             ];
         }
 
@@ -913,28 +914,6 @@ class AiModelController extends Controller
             'strategy' => in_array($strategy, ['rule', 'auto', 'semantic_llm'], true) ? $strategy : 'rule',
             'model_id' => max(0, (int) ($settings['knowledge_chunking_model_id'] ?? 0)),
         ];
-    }
-
-    /**
-     * pgvector 可用性检测（仅在 PostgreSQL 下尝试查询扩展）。
-     *
-     * 说明：
-     * - 非 pgsql 直接返回 false；
-     * - 查询异常统一回退为 false，避免阻塞页面主流程。
-     */
-    private function isPgvectorEnabled(): bool
-    {
-        if (DB::getDriverName() !== 'pgsql') {
-            return false;
-        }
-
-        try {
-            $row = DB::selectOne("SELECT extname FROM pg_extension WHERE extname = 'vector' LIMIT 1");
-
-            return $row !== null;
-        } catch (Throwable) {
-            return false;
-        }
     }
 
     /**

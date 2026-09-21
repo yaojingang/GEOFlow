@@ -41,6 +41,8 @@ use App\Services\SystemUpdater\RecoveryReconciliation;
 use App\Services\SystemUpdater\RecoveryState;
 use App\Services\SystemUpdater\UnixSocketAgentClient;
 use App\Support\AdminUiRegistry;
+use App\Support\GeoFlow\VectorDatabaseAdapter;
+use App\Support\GeoFlow\VectorStoreAdapter;
 use App\Support\Site\CurrentSite;
 use App\Support\Site\SiteThemePreviewContext;
 use App\Support\Site\ThemeRevisionContext;
@@ -85,6 +87,10 @@ class AppServiceProvider extends ServiceProvider
             fn (array $state) => $this->app->make(RecoveryReconciliation::class)->assertReady($state),
         ));
         $this->app->bind(AiModelWriteLock::class, DatabaseAiModelWriteLock::class);
+        $this->app->singleton(VectorStoreAdapter::class, fn ($app): VectorStoreAdapter => new VectorDatabaseAdapter(
+            $app['db']->connection(),
+            (int) config('geoflow.vector_capability_cache_ttl_seconds', 60),
+        ));
         $this->app->singleton(FinalOutboundSecurityPolicy::class);
         $this->app->bind(OutboundTransport::class, function () use ($fixedContextCapability): LaravelPinnedOutboundTransport {
             return new LaravelPinnedOutboundTransport($fixedContextCapability);

@@ -3,7 +3,8 @@
 /**
  * 数据库连接、迁移记录表名、Redis 客户端配置。
  *
- * GEOFlow 生产环境使用 `pgsql`；单元测试默认 `sqlite`（见 phpunit.xml）。
+ * GEOFlow 默认开发环境使用 `sqlite`；生产环境可使用 `pgsql`/pgvector 或
+ * 阿里云 RDS `mysql`/原生 VECTOR（见对应部署文档）。
  * 连接参数来自 .env：DB_*、REDIS_*。
  */
 

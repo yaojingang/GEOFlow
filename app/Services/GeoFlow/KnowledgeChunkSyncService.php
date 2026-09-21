@@ -25,6 +25,7 @@ use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use App\Support\GeoFlow\VectorStoreAdapter;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -71,6 +72,7 @@ class KnowledgeChunkSyncService
         private readonly AiModelFailoverDecider $failoverDecider,
         private readonly AiModelUsageAttemptFactory $usageAttempts,
         private readonly AiModelInvocationLock $invocationLocks,
+        private readonly VectorStoreAdapter $vectorStore,
     ) {}
 
     /**
@@ -524,13 +526,14 @@ class KnowledgeChunkSyncService
                 true,
             );
             $embeddingProfile = $this->assertSingleStagedEmbeddingProfile($stagedQuery, $currentMetadata);
+            $vectorStoreAvailable = $this->vectorStore->isAvailable();
 
             (clone $stagedQuery)
                 ->orderBy('id')
-                ->chunkById(100, function ($rows) use ($syncToken): void {
+                ->chunkById(100, function ($rows) use ($syncToken, $vectorStoreAvailable): void {
                     $inserts = [];
                     foreach ($rows as $row) {
-                        $inserts[] = [
+                        $insert = [
                             'knowledge_base_id' => (int) $row->knowledge_base_id,
                             'generation_key' => $syncToken,
                             'chunk_index' => (int) $row->chunk_index,
@@ -550,10 +553,15 @@ class KnowledgeChunkSyncService
                             'embedding_profile_version' => $row->embedding_profile_version,
                             'embedding_profile_digest' => $row->embedding_profile_digest,
                             'embedding_config_revision' => $row->embedding_config_revision,
-                            'embedding_vector' => $row->embedding_vector,
                             'created_at' => $row->created_at,
                             'updated_at' => $row->updated_at,
                         ];
+                        if ($vectorStoreAvailable) {
+                            $insert['embedding_vector'] = $this->vectorStore->writeValue(
+                                $row->embedding_vector !== null ? (string) $row->embedding_vector : null,
+                            );
+                        }
+                        $inserts[] = $insert;
                     }
 
                     if ($inserts !== []) {
@@ -1787,7 +1795,7 @@ class KnowledgeChunkSyncService
             return '';
         }
 
-        return $this->vectorLiteral($this->padVector($vector, $this->embeddingStorageDimensions()));
+        return $this->vectorStore->encode($vector, $this->embeddingStorageDimensions()) ?? '';
     }
 
     /** @return array{0:Admin,1:int,2:string} */
@@ -2265,7 +2273,7 @@ class KnowledgeChunkSyncService
                     'config_revision' => (string) $embeddingMetadata['config_revision'],
                     'vector' => $rawVector,
                     'vector_literal' => $canStoreEmbeddingVector
-                        ? $this->vectorLiteral($this->padVector($rawVector, $this->embeddingStorageDimensions()))
+                        ? $this->vectorStore->encode($rawVector, $this->embeddingStorageDimensions())
                         : null,
                 ];
             }
@@ -2494,26 +2502,9 @@ class KnowledgeChunkSyncService
         return trim(preg_replace('/\s+/u', ' ', $value) ?: $value);
     }
 
-    /**
-     * 对齐 bak：仅在 PostgreSQL + pgvector 可用时写入 embedding_vector。
-     */
     private function canStoreEmbeddingVector(): bool
     {
-        if (DB::getDriverName() !== 'pgsql') {
-            return false;
-        }
-
-        try {
-            $typeRow = DB::selectOne("
-                SELECT EXISTS (
-                    SELECT 1 FROM pg_type WHERE typname = 'vector'
-                ) AS ok
-            ");
-
-            return $typeRow !== null && (bool) ($typeRow->ok ?? false);
-        } catch (Throwable) {
-            return false;
-        }
+        return $this->vectorStore->isAvailable();
     }
 
     /**
@@ -2521,42 +2512,7 @@ class KnowledgeChunkSyncService
      */
     private function embeddingStorageDimensions(): int
     {
-        return 3072;
-    }
-
-    /**
-     * 对齐 bak：不足补 0，超长截断，保证可写入 vector(3072)。
-     *
-     * @param  list<float>  $vector
-     * @return list<float>
-     */
-    private function padVector(array $vector, int $storageDimensions): array
-    {
-        $storageDimensions = max(1, $storageDimensions);
-        $normalized = [];
-        foreach ($vector as $value) {
-            $normalized[] = (float) $value;
-        }
-
-        if (count($normalized) > $storageDimensions) {
-            $normalized = array_slice($normalized, 0, $storageDimensions);
-        }
-
-        while (count($normalized) < $storageDimensions) {
-            $normalized[] = 0.0;
-        }
-
-        return $normalized;
-    }
-
-    /**
-     * 转为 pgvector 可识别的文本字面量。
-     *
-     * @param  list<float>  $vector
-     */
-    private function vectorLiteral(array $vector): string
-    {
-        return json_encode($vector, JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION) ?: '[]';
+        return $this->vectorStore->dimensions();
     }
 
     /**

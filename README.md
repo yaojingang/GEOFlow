@@ -138,10 +138,10 @@ GEOFlow 适合拥有真实业务资料、明确审核责任和持续运营计划
 | 组件 | 要求 |
 |------|------|
 | PHP | 8.3 及以上，Docker 默认可使用 PHP 8.4 |
-| 数据库 | PostgreSQL，推荐使用 pgvector 镜像或兼容扩展 |
+| 数据库 | PostgreSQL + pgvector，或阿里云 RDS MySQL 8.0 原生 VECTOR |
 | Redis | 用于队列、缓存和运行状态 |
 | Node.js | 用于前端资源构建，CI 使用 Node.js 22 |
-| 容器部署 | Docker Compose，生产使用 Nginx 与 php-fpm |
+| 容器部署 | Docker Compose，或阿里云 SAE（Nginx + PHP-FPM 合并 Web 镜像） |
 
 ---
 

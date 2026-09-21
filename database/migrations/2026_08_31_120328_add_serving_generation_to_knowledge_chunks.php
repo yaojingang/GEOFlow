@@ -38,6 +38,10 @@ return new class extends Migration
             $table->dropUnique('knowledge_chunks_generation_index_unique');
             $table->dropColumn('generation_key');
             $table->unique(['knowledge_base_id', 'chunk_index']);
+
+            if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+                $table->dropIndex('knowledge_chunks_base_id_idx');
+            }
         });
 
         Schema::table('knowledge_bases', function (Blueprint $table): void {
@@ -59,6 +63,12 @@ return new class extends Migration
         }
 
         Schema::table('knowledge_chunks', function (Blueprint $table): void {
+            if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+                // InnoDB will not drop the old composite unique index while it
+                // is the only usable index for the knowledge_base_id FK.
+                $table->index(['knowledge_base_id'], 'knowledge_chunks_base_id_idx');
+            }
+
             $table->dropUnique(['knowledge_base_id', 'chunk_index']);
         });
     }

@@ -134,10 +134,10 @@ Runtime requirements:
 | Component | Requirement |
 |-----------|-------------|
 | PHP | 8.3 or later; Docker may use PHP 8.4 |
-| Database | PostgreSQL; pgvector image or compatible extension recommended |
+| Database | PostgreSQL + pgvector, or Alibaba Cloud RDS MySQL 8.0 native VECTOR |
 | Redis | Queues, cache, and runtime state |
 | Node.js | Frontend asset builds; CI uses Node.js 22 |
-| Container deployment | Docker Compose; production uses Nginx and php-fpm |
+| Container deployment | Docker Compose, or Alibaba Cloud SAE with a merged Nginx + PHP-FPM Web image |
 
 ---
 

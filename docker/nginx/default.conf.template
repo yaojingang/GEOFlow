@@ -8,6 +8,17 @@ map "${GEOFLOW_NGINX_PUBLIC_PORT}" $geoflow_forwarded_port {
 
 limit_req_zone $binary_remote_addr zone=geoflow_hosted_surface:10m rate=30r/s;
 
+# The local Compose image keeps the two compatibility defaults below. The SAE
+# Web entrypoint renders these values from GEOFLOW_PHP_FPM_UPSTREAM and
+# GEOFLOW_REVERB_UPSTREAM, so SAE never depends on Compose service names.
+map $http_host $geoflow_php_fpm_upstream {
+    default app:9000;
+}
+
+map $http_host $geoflow_reverb_upstream {
+    default reverb:18080;
+}
+
 map $geoflow_forwarded_proto $geoflow_https {
     default "";
     https on;
@@ -96,8 +107,7 @@ server {
         proxy_set_header X-Forwarded-Port $geoflow_forwarded_port;
         proxy_read_timeout 86400s;
         proxy_send_timeout 86400s;
-        set $reverb_upstream reverb:18080;
-        proxy_pass http://$reverb_upstream;
+        proxy_pass http://$geoflow_reverb_upstream;
     }
 }
 
