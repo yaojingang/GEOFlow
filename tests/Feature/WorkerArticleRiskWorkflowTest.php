@@ -84,6 +84,23 @@ class WorkerArticleRiskWorkflowTest extends TestCase
         $this->assertSame(0, (int) $task->fresh()->published_count);
     }
 
+    public function test_worker_downgrades_an_explicit_non_publication_verdict_to_pending(): void
+    {
+        [$task, $article] = $this->createTaskArticle([
+            'content' => "【待人工复核，禁止发布】\n原因：资料不足。",
+        ]);
+
+        $result = $this->publishDueDraft($task);
+
+        $this->assertNull($result);
+        $article->refresh();
+        $this->assertSame('draft', $article->status);
+        $this->assertSame('pending', $article->review_status);
+        $this->assertSame('blocked', $article->latestRiskScan?->status);
+        $this->assertSame('publication_verdict', $article->latestRiskScan?->matches[0]['category']);
+        $this->assertSame(0, (int) $task->fresh()->published_count);
+    }
+
     public function test_worker_publishes_manually_approved_warning_with_a_fresh_override(): void
     {
         SensitiveWord::query()->create(['word' => 'manual review']);

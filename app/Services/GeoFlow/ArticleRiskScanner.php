@@ -14,7 +14,7 @@ use RuntimeException;
 
 class ArticleRiskScanner
 {
-    public const SCAN_ALGORITHM_VERSION = '4';
+    public const SCAN_ALGORITHM_VERSION = '5';
 
     public const MAX_CONTENT_CHARACTERS = 200000;
 
@@ -133,6 +133,17 @@ class ArticleRiskScanner
             }
         }
 
+        foreach (self::FIELDS as $field) {
+            $verdict = $this->publicationVerdictMatch($field, $normalizedContent[$field]);
+            if ($verdict === null) {
+                continue;
+            }
+
+            $matchCount++;
+            $status = 'blocked';
+            $matches[] = $verdict;
+        }
+
         return [
             'status' => $status,
             'match_count' => $matchCount,
@@ -248,6 +259,54 @@ class ArticleRiskScanner
         $value = preg_replace('/\p{Default_Ignorable_Code_Point}+/u', '', $value) ?? $value;
 
         return $this->normalize($value);
+    }
+
+    /**
+     * AI or system generation may leave an explicit non-publication verdict in
+     * the draft. Treat that verdict as a generic hard blocker at every publish
+     * entry point, regardless of the article's business domain.
+     *
+     * @return array{word: string, field: string, count: int, severity: string, category: string, suggestion: ?string, snippet: string}|null
+     */
+    private function publicationVerdictMatch(string $field, string $value): ?array
+    {
+        $visible = $this->visibleText($field, $value);
+        if ($visible === '') {
+            return null;
+        }
+
+        $lines = preg_split('/\R/u', $visible) ?: [];
+        foreach (array_slice($lines, 0, 8) as $line) {
+            $line = trim($line);
+            if ($line === '' || ! $this->isExplicitPublicationVerdict($line)) {
+                continue;
+            }
+
+            return [
+                'word' => '不可发布判定',
+                'field' => $field,
+                'count' => 1,
+                'severity' => 'blocked',
+                'category' => 'publication_verdict',
+                'suggestion' => '移除不可发布判定并完成复核后再发布。',
+                'snippet' => mb_substr($line, 0, 200, 'UTF-8'),
+            ];
+        }
+
+        return null;
+    }
+
+    private function isExplicitPublicationVerdict(string $line): bool
+    {
+        $verdictTerms = '(?:禁止发布|不得发布|不可发布|禁止分发)';
+
+        return preg_match(
+            '/^[【\[（(]\s*(?:待人工复核(?:[，,:：]\s*)?'.$verdictTerms.'|'.$verdictTerms.')\s*[】\]）)]/u',
+            $line,
+        ) === 1 || preg_match(
+            '/^(?:待人工复核\s*[，,:：]\s*|(?:文章|内容)\s*)'.$verdictTerms.'(?:\s|$)/u',
+            $line,
+        ) === 1;
     }
 
     /**
