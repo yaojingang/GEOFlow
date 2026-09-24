@@ -3641,6 +3641,7 @@ return array_replace_recursive($base, [
         'field_block_hosts' => 'Hosts Bloqueados',
         'placeholder_name' => 'Exemplo: Doubao Search Custom',
         'placeholder_api_key' => 'Digite a chave da API Doubao Search',
+        'placeholder_deepseek_api_key' => 'Digite a chave da API DeepSeek Search',
         'placeholder_api_key_keep' => 'Deixe em branco para manter a chave atual',
         'placeholder_deepseek_model_id' => 'Exemplo: deepseek-v4-flash',
         'placeholder_ark_model_id' => 'Exemplo: doubao-seed-2-0-lite-260428',

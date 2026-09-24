@@ -2589,6 +2589,7 @@ return [
         'field_block_hosts' => 'Blocked Hosts',
         'placeholder_name' => 'Example: Doubao Search Custom',
         'placeholder_api_key' => 'Enter Doubao Search API key',
+        'placeholder_deepseek_api_key' => 'Enter DeepSeek Search API key',
         'placeholder_api_key_keep' => 'Leave blank to keep the current API key',
         'placeholder_deepseek_model_id' => 'Example: deepseek-v4-flash',
         'placeholder_ark_model_id' => 'Example: doubao-seed-2-0-lite-260428',

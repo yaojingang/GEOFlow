@@ -2637,6 +2637,7 @@ return [
         'field_block_hosts' => '屏蔽域名',
         'placeholder_name' => '例如：豆包搜索 Custom',
         'placeholder_api_key' => '输入豆包搜索 API Key',
+        'placeholder_deepseek_api_key' => '输入DeepSeek搜索API Key',
         'placeholder_api_key_keep' => '留空则保留当前 API Key',
         'placeholder_deepseek_model_id' => '例如：deepseek-v4-flash',
         'placeholder_ark_model_id' => '例如：doubao-seed-2-0-lite-260428',

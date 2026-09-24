@@ -2626,6 +2626,7 @@ return [
         'field_block_hosts' => '遮蔽域名',
         'placeholder_name' => '例如：豆包搜尋 Custom',
         'placeholder_api_key' => '輸入豆包搜尋 API Key',
+        'placeholder_deepseek_api_key' => '輸入 DeepSeek 搜尋 API Key',
         'placeholder_api_key_keep' => '留空則保留當前 API Key',
         'placeholder_deepseek_model_id' => '例如：deepseek-v4-flash',
         'placeholder_ark_model_id' => '例如：doubao-seed-2-0-lite-260428',
