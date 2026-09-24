@@ -2,13 +2,16 @@
 
 namespace App\Services\HostedSites;
 
-use App\Jobs\ProcessArticleDistributionJob;
 use App\Models\Article;
 use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\HostedSiteAllocationRequest;
 use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
+use App\Models\Task;
+use App\Services\GeoFlow\ArticlePublicationEligibilityService;
+use App\Services\GeoFlow\ArticlePublicationQualityGate;
+use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\Site\HostedSiteResolver;
 use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\Site\ArticlePermalinkPolicy;
@@ -303,7 +306,7 @@ final class HostedSiteLifecycleService
         }, 3);
     }
 
-    public function restorePublication(Article $candidate): HostedSiteArticleAssignment
+    public function restorePublication(Article $candidate, ?array $workflowFence = null): HostedSiteArticleAssignment
     {
         $candidateAssignment = HostedSiteArticleAssignment::query()
             ->with('profile:id,distribution_channel_id')
@@ -311,17 +314,27 @@ final class HostedSiteLifecycleService
             ->firstOrFail();
         $channelId = (int) $candidateAssignment->profile?->distribution_channel_id;
 
-        return DB::transaction(function () use ($candidate, $channelId): HostedSiteArticleAssignment {
+        $candidate->load('task');
+        $workflowFence ??= app(ArticlePublicationEligibilityService::class)->fence($candidate);
+
+        return DB::transaction(function () use ($candidate, $channelId, $workflowFence): HostedSiteArticleAssignment {
             $channel = DistributionChannel::query()->whereKey($channelId)->lockForUpdate()->firstOrFail();
             $profile = HostedSiteProfile::query()
                 ->where('distribution_channel_id', $channelId)
                 ->lockForUpdate()
                 ->firstOrFail();
+            $task = Task::query()->whereKey((int) $candidate->task_id)->lockForUpdate()->first();
+            $article = Article::query()->whereKey((int) $candidate->id)->lockForUpdate()->firstOrFail();
+            $article->setRelation('task', $task);
+            if ((int) $article->task_id !== (int) $candidate->task_id
+                || ! app(DistributionOrchestrator::class)->workflowFenceMatches($article, $workflowFence)) {
+                throw new DomainException('The hosted publication request no longer matches the article workflow.');
+            }
+            app(ArticlePublicationQualityGate::class)->check($article, 'hosted_site_restore');
             $request = HostedSiteAllocationRequest::query()
                 ->where('article_id', (int) $candidate->id)
                 ->lockForUpdate()
                 ->first();
-            $article = Article::query()->whereKey((int) $candidate->id)->lockForUpdate()->firstOrFail();
             $assignment = HostedSiteArticleAssignment::query()
                 ->where('article_id', (int) $article->id)
                 ->where('hosted_site_profile_id', (int) $profile->id)
@@ -346,7 +359,6 @@ final class HostedSiteLifecycleService
                 throw new DomainException('Hosted site must be online before restoring an article.');
             }
 
-            $task = $article->task()->lockForUpdate()->first();
             $hostedChannelIds = $task
                 ? DistributionChannel::query()
                     ->where('channel_type', DistributionChannel::TYPE_HOSTED_SITE)
@@ -402,6 +414,7 @@ final class HostedSiteLifecycleService
                 'task_id' => (int) $task->id,
                 'hosted_site_profile_id' => (int) $profile->id,
                 'hosted_site_article_assignment_id' => (int) $assignment->id,
+                'workflow_fence' => $workflowFence,
                 'status' => HostedSiteAllocationRequest::STATUS_ASSIGNED,
                 'next_attempt_at' => null,
                 'last_error_code' => null,
@@ -420,10 +433,9 @@ final class HostedSiteLifecycleService
                 'next_retry_at' => now(),
                 'payload_hash' => $assignment->content_fingerprint,
                 'last_error_message' => null,
+                'remote_meta' => ['workflow_fence' => $workflowFence],
             ])->save();
-            ProcessArticleDistributionJob::dispatch((int) $distribution->id)
-                ->onQueue('distribution')
-                ->afterCommit();
+            app(DistributionOrchestrator::class)->dispatchDeliveryAfterCommit((int) $distribution->id);
 
             return $assignment;
         }, 3);

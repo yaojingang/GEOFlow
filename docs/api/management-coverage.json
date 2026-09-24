@@ -74,6 +74,13 @@
             "idempotent": false
         },
         {
+            "name": "article.hold",
+            "method": "POST",
+            "path": "articles/{article}/hold",
+            "auth": true,
+            "idempotent": true
+        },
+        {
             "name": "article.list",
             "method": "GET",
             "path": "articles",
@@ -91,6 +98,13 @@
             "name": "article.review",
             "method": "POST",
             "path": "articles/{article}/review",
+            "auth": true,
+            "idempotent": true
+        },
+        {
+            "name": "article.schedule",
+            "method": "POST",
+            "path": "articles/{article}/schedule",
             "auth": true,
             "idempotent": true
         },

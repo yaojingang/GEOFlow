@@ -16,6 +16,37 @@ class Article extends Model
 
     protected $table = 'articles';
 
+    protected $attributes = ['workflow_version' => 1];
+
+    protected static function booted(): void
+    {
+        static::creating(function (Article $article): void {
+            $article->publication_intent ??= $article->status === 'published'
+                ? 'none'
+                : ($article->task_id ? 'scheduled' : 'hold');
+        });
+    }
+
+    public function reviewContentHash(): string
+    {
+        return hash('sha256', json_encode($this->only([
+            'title', 'content', 'excerpt', 'keywords', 'meta_description',
+        ]), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+    }
+
+    public function scopeScheduledCandidates(Builder $query, Task $task): Builder
+    {
+        return $query->where('task_id', $task->id)->where('status', 'draft')
+            ->where('publication_intent', 'scheduled')
+            ->whereIn('review_status', $task->need_review ? ['approved'] : ['approved', 'auto_approved', 'pending']);
+    }
+
+    /** SQL form for grouped task counts; aliases are internal constants. */
+    public static function scheduledCandidateSql(): string
+    {
+        return "articles.status = 'draft' AND articles.publication_intent = 'scheduled' AND (articles.review_status = 'approved' OR (articles.review_status IN ('pending','auto_approved') AND EXISTS (SELECT 1 FROM tasks workflow_task WHERE workflow_task.id = articles.task_id AND workflow_task.need_review = 0)))";
+    }
+
     protected $fillable = [
         'title',
         'slug',
@@ -30,6 +61,8 @@ class Article extends Model
         'meta_description',
         'status',
         'review_status',
+        'publication_intent',
+        'workflow_version',
         'view_count',
         'is_ai_generated',
         'is_hot',
@@ -50,6 +83,7 @@ class Article extends Model
             'task_id' => 'integer',
             'source_title_id' => 'integer',
             'view_count' => 'integer',
+            'workflow_version' => 'integer',
             'is_ai_generated' => 'integer',
             'is_hot' => 'boolean',
             'is_featured' => 'boolean',
@@ -99,6 +133,11 @@ class Article extends Model
     public function riskScans(): HasMany
     {
         return $this->hasMany(ArticleRiskScan::class, 'article_id');
+    }
+
+    public function latestPublicationHandoff(): HasOne
+    {
+        return $this->hasOne(DistributionLog::class)->where('event', 'publication.delivery_handoff')->latestOfMany();
     }
 
     public function latestRiskScan(): HasOne

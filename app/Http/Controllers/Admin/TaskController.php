@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\ApiException;
 use App\Exceptions\DistributionTaskRevisionMismatch;
 use App\Exceptions\TaskTitleReadinessException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\TaskTitleReadinessRequest;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
@@ -261,6 +263,8 @@ class TaskController extends Controller
             return back()
                 ->with('title_readiness_report', $this->presentTitleReadiness($report))
                 ->withErrors($e->getMessage());
+        } catch (ApiException $e) {
+            return back()->withInput()->withErrors($e->getDetails()['field_errors'] ?? $e->getMessage());
         } catch (Throwable $e) {
             return back()->withErrors(__('admin.tasks.message.status_update_failed'));
         }
@@ -376,6 +380,8 @@ class TaskController extends Controller
                 ->withInput()
                 ->with('title_readiness_report', $this->presentTitleReadiness($report))
                 ->withErrors($e->getMessage());
+        } catch (ApiException $e) {
+            return back()->withInput()->withErrors($e->getDetails()['field_errors'] ?? $e->getMessage());
         } catch (Throwable $e) {
             // 保留输入并回显服务层错误，便于在页面直接修正。
             return back()->withInput()->withErrors($e->getMessage());
@@ -441,6 +447,10 @@ class TaskController extends Controller
                 'ai_quality_pass_score' => (string) ($task['ai_quality_pass_score'] ?? 85),
                 'ai_quality_manual_override_min_score' => (string) ($task['ai_quality_manual_override_min_score'] ?? 70),
                 'ai_quality_policy_version' => (int) ($task['ai_quality_policy_version'] ?? 1),
+                'ai_quality_config_version' => (int) ($task['ai_quality_config_version'] ?? 1),
+                'affected_unpublished_count' => Article::query()->where('task_id', $taskId)->where('status', '!=', 'published')->count(),
+                'held_unpublished_count' => Article::query()->where('task_id', $taskId)->where('status', '!=', 'published')
+                    ->where(fn ($query) => $query->where('publication_intent', 'hold')->orWhere('review_status', 'rejected'))->count(),
                 'is_loop' => (int) ($task['is_loop'] ?? 1),
                 'auto_keywords' => (int) ($task['auto_keywords'] ?? 1),
                 'auto_description' => (int) ($task['auto_description'] ?? 1),
@@ -466,7 +476,7 @@ class TaskController extends Controller
         }
 
         $payload = $this->validateTaskForm($request);
-        $taskData = $this->buildTaskPayload($request, $payload);
+        $taskData = $this->buildTaskPayload($request, $payload, true);
         $channelIds = $this->selectedDistributionChannelIds($request);
         $this->validateHostedChannelContract($taskData, $channelIds);
         $taskRevision = (string) $payload['task_revision'];
@@ -834,6 +844,7 @@ class TaskController extends Controller
             'imageLibraries' => $imageLibraries,
             'knowledgeBases' => $knowledgeBases,
             'aiQualityRetrievalReadinessByKnowledgeBase' => $retrievalReadinessByKnowledgeBase,
+            'configurationCapabilities' => $this->taskLifecycleService->taskConfigurationCapabilities([]),
             'authors' => $authors,
             'categories' => $categories,
             'distributionChannels' => $distributionChannels,
@@ -999,16 +1010,13 @@ class TaskController extends Controller
      * @param  array<string, mixed>  $payload
      * @return array<string, int|string|null>
      */
-    private function buildTaskPayload(Request $request, array $payload): array
+    private function buildTaskPayload(Request $request, array $payload, bool $isUpdate = false): array
     {
         $categoryMode = (string) ($payload['category_mode'] ?? 'smart');
-        if ($categoryMode === 'random') {
-            $categoryMode = 'smart';
-        }
 
         $knowledgeBaseIds = $this->selectedKnowledgeBaseIds($payload);
 
-        return [
+        $data = [
             'name' => (string) $payload['task_name'],
             'title_library_id' => (int) $payload['title_library_id'],
             'image_library_id' => isset($payload['image_library_id']) ? (int) $payload['image_library_id'] : null,
@@ -1046,6 +1054,16 @@ class TaskController extends Controller
             'ai_quality_manual_override_min_score' => (int) ($payload['ai_quality_manual_override_min_score'] ?? 70),
             ...isset($payload['config_version']) ? ['config_version' => (int) $payload['config_version']] : [],
         ];
+
+        if ($isUpdate) {
+            foreach (['publish_interval', 'ai_quality_optimization_level', 'ai_quality_prompt_id', 'ai_quality_model_id', 'ai_quality_pass_score', 'ai_quality_manual_override_min_score'] as $field) {
+                if (! array_key_exists($field, $payload)) {
+                    unset($data[$field]);
+                }
+            }
+        }
+
+        return $data;
     }
 
     /**

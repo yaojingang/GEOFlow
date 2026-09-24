@@ -112,14 +112,10 @@ final class ArticleAiOptimizationCoordinator
                 $requestedByAdminId,
                 $requestKey,
             ): ArticleAiOptimizationRun {
-                $lockedArticle = Article::query()->whereKey((int) $article->id)->lockForUpdate()->first();
+                $lockedArticle = $this->lockWorkflowArticle((int) $article->id);
                 if (! $lockedArticle || $lockedArticle->trashed()) {
                     throw new ArticleAiOptimizationException('article_ai_optimization_article_unavailable', httpStatus: 404);
                 }
-                if ((string) $lockedArticle->status !== 'draft') {
-                    throw new ArticleAiOptimizationException('article_ai_optimization_draft_required', httpStatus: 409);
-                }
-
                 $lockedTask = null;
                 if ($lockedArticle->task_id) {
                     $lockedTask = Task::withTrashed()
@@ -189,6 +185,16 @@ final class ArticleAiOptimizationCoordinator
                             && (int) ($snapshot['resolver_policy_version'] ?? 0) === AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION
                             && array_values(array_map('intval', (array) ($snapshot['model_candidate_ids'] ?? []))) === $qualityCandidateIds;
                     });
+                $sourceFence = data_get($sourceCheck?->execution_meta, 'workflow_fence');
+                if (! $this->articleCanBeOptimized($lockedArticle, $sourceFence)) {
+                    throw new ArticleAiOptimizationException('article_ai_optimization_draft_required', httpStatus: 409);
+                }
+                $workflowOrigin = $trigger === ArticleAiOptimizationRun::TRIGGER_TASK_AUTO ? 'automatic' : 'manual';
+                if ($trigger === ArticleAiOptimizationRun::TRIGGER_TASK_AUTO
+                    && app(ArticlePublicationEligibilityService::class)->fenceAllows($lockedArticle, $sourceFence)
+                    && ($sourceFence['origin'] ?? '') === 'manual') {
+                    $workflowOrigin = 'manual';
+                }
                 $sourceCheckId = $sourceCheck?->id;
                 $policy = $this->optimizationPolicy->resolve(
                     $strategy,
@@ -247,6 +253,7 @@ final class ArticleAiOptimizationCoordinator
                         + 120,
                     ),
                     'execution_meta' => [
+                        'workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($lockedArticle, $workflowOrigin),
                         'policy' => $policy,
                         'optimization_model_id' => (int) $optimizationModel->id,
                         'optimization_model_ids' => array_values(array_map(
@@ -307,13 +314,40 @@ final class ArticleAiOptimizationCoordinator
 
     public function interceptCompletedWorkflow(int $checkId): bool
     {
-        $check = ArticleAiQualityCheck::query()->with(['article', 'task'])->find($checkId);
+        $articleId = (int) ArticleAiQualityCheck::query()->whereKey($checkId)->value('article_id');
+        if ($articleId <= 0) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($checkId, $articleId): bool {
+            $article = $this->lockWorkflowArticle($articleId);
+            if (! $article) {
+                return false;
+            }
+
+            return $this->interceptCompletedWorkflowForArticle($checkId, $article);
+        });
+    }
+
+    private function interceptCompletedWorkflowForArticle(int $checkId, Article $article): bool
+    {
+        $previousRun = ArticleAiOptimizationRun::query()
+            ->where('article_id', (int) $article->id)
+            ->where('source_check_id', $checkId)
+            ->latest('id')
+            ->lockForUpdate()
+            ->first();
+        $check = ArticleAiQualityCheck::query()->whereKey($checkId)->lockForUpdate()->first();
+        if ($check) {
+            $check->setRelation('article', $article);
+            $check->setRelation('task', $article->task);
+        }
         if (! $check
             || (string) $check->status !== 'completed'
             || ! (bool) $check->gate_applied
             || in_array((string) $check->evaluation_mode, ['optimization_candidate', 'optimization_final'], true)
             || ! $check->article
-            || (string) $check->article->status !== 'draft') {
+            || ! $this->articleCanBeOptimized($check->article, data_get($check->execution_meta, 'workflow_fence'))) {
             return false;
         }
 
@@ -333,6 +367,9 @@ final class ArticleAiOptimizationCoordinator
             return $continue === 'hold';
         }
 
+        if (! app(ArticlePublicationEligibilityService::class)->fenceAllows($check->article, data_get($check->execution_meta, 'workflow_fence'))) {
+            return false;
+        }
         $task = $check->task;
         if (! (bool) config('geoflow.ai_quality_optimization_enabled', false)
             || ! $task
@@ -341,6 +378,26 @@ final class ArticleAiOptimizationCoordinator
             || ! $task->aiModel
             || ! $this->rolloutSelected((int) $task->id, 'ai_quality_optimization_percent')) {
             return false;
+        }
+
+        if ($previousRun && in_array($previousRun->status, ArticleAiOptimizationRun::TERMINAL_STATUSES, true)) {
+            if ($previousRun->status === ArticleAiOptimizationRun::STATUS_COMPLETED) {
+                $policy = $this->optimizationPolicy->resolve((string) $task->ai_quality_optimization_level,
+                    (int) ($this->qualityPolicyResolver->resolve($article)['pass_score'] ?? 85));
+                if ($check->decision === 'passed' && (int) $check->score >= (int) $policy['target_score']) {
+                    return false;
+                }
+            } else {
+                $levelChanged = $previousRun->trigger === ArticleAiOptimizationRun::TRIGGER_TASK_AUTO
+                    && $previousRun->status === ArticleAiOptimizationRun::STATUS_STALE
+                    && $previousRun->stop_reason === 'task_optimization_level_changed';
+                if (! $levelChanged && ! $this->canRestartForCurrentIntent($article, $previousRun)) {
+                    $this->setWorkflowStatusOnCheck($check, 'held_for_review',
+                        (string) ($previousRun->stop_reason ?: $previousRun->error_code ?: 'optimization_unavailable'));
+
+                    return true;
+                }
+            }
         }
 
         $this->holdWorkflowForOptimization($checkId);
@@ -368,6 +425,53 @@ final class ArticleAiOptimizationCoordinator
         }
 
         return true;
+    }
+
+    public function canRestartForCurrentIntent(Article $article, ArticleAiOptimizationRun $run): bool
+    {
+        return app(ArticlePublicationEligibilityService::class)->canRestartOptimizationForCurrentIntent($article, $run);
+    }
+
+    /** Reuse the current full inspection, while discarding every candidate from the superseded run. */
+    public function resumeForCurrentPublication(ArticleAiQualityCheck $candidate): ?ArticleAiOptimizationRun
+    {
+        return DB::transaction(function () use ($candidate): ?ArticleAiOptimizationRun {
+            $article = $this->lockWorkflowArticle((int) $candidate->article_id);
+            if (! $article || ! $this->currentAutomaticIntentAllowsOptimization($article)) {
+                return null;
+            }
+            $run = $article->aiOptimizationRuns()->latest('id')->lockForUpdate()->first();
+            if ($run && ! $this->canRestartForCurrentIntent($article, $run)) {
+                return null;
+            }
+            $check = $article->aiQualityChecks()->where('gate_applied', true)->latest('id')->lockForUpdate()->first();
+            $policy = $this->qualityPolicyResolver->resolve($article);
+            if (! $check || $check->id !== $candidate->id || $check->status !== 'completed'
+                || $check->inspection_scope !== 'full'
+                || ! app(ArticlePublicationEligibilityService::class)->qualityBasisCurrent($article, $check, $policy)) {
+                return null;
+            }
+            if ($run && in_array($run->status, ArticleAiOptimizationRun::ACTIVE_STATUSES, true)) {
+                $this->markRunStale($run, 'workflow_intent_changed');
+            }
+            $meta = (array) $check->execution_meta;
+            $meta['workflow_fence'] = app(ArticlePublicationEligibilityService::class)->fence(
+                $article, $article->publication_intent === 'immediate' ? 'manual' : 'automatic',
+            );
+            unset($meta['publication_committed'], $meta['requested_workflow_state']);
+            if ($article->publication_intent === 'immediate') {
+                $meta['requested_workflow_state'] = ['status' => 'published', 'published_at' => null];
+            }
+            $check->update(['execution_meta' => $meta]);
+            $this->interceptCompletedWorkflow((int) $check->id);
+
+            return $article->aiOptimizationRuns()->latest('id')->first();
+        });
+    }
+
+    private function currentAutomaticIntentAllowsOptimization(Article $article): bool
+    {
+        return app(ArticlePublicationEligibilityService::class)->currentIntentAllowsOptimization($article);
     }
 
     public function recoverWaitingWorkflow(int $checkId): bool
@@ -610,7 +714,7 @@ final class ArticleAiOptimizationCoordinator
                 ->whereKey(1)
                 ->lockForUpdate()
                 ->value('epoch') ?? 1));
-            $article = Article::query()->whereKey((int) $runInfo->article_id)->lockForUpdate()->first();
+            $article = $this->lockWorkflowArticle((int) $runInfo->article_id);
             if (! $article) {
                 return ['action' => 'none'];
             }
@@ -772,7 +876,7 @@ final class ArticleAiOptimizationCoordinator
                 ->whereKey(1)
                 ->lockForUpdate()
                 ->value('epoch') ?? 1));
-            $article = Article::query()->whereKey((int) $runInfo->article_id)->lockForUpdate()->firstOrFail();
+            $article = $this->lockWorkflowArticle((int) $runInfo->article_id) ?? throw new \RuntimeException('article_unavailable');
             if ($runInfo->task_id) {
                 $task = Task::withTrashed()->whereKey((int) $runInfo->task_id)->lockForUpdate()->first();
                 if ($task instanceof Task && ! $task->trashed()) {
@@ -791,13 +895,19 @@ final class ArticleAiOptimizationCoordinator
                 && hash_equals((string) $run->applied_article_hash, $currentHash)) {
                 return ['final_check_id' => 0];
             }
+            if ($run->trigger === ArticleAiOptimizationRun::TRIGGER_TASK_AUTO
+                && ! app(ArticlePublicationEligibilityService::class)->fenceAllows($article, data_get($run->execution_meta, 'workflow_fence'))) {
+                $this->markRunStale($run, 'workflow_intent_changed');
+
+                return ['error_code' => 'article_ai_optimization_stale'];
+            }
             $manualFallback = (string) $run->status === ArticleAiOptimizationRun::STATUS_NEEDS_REVIEW
                 && in_array((string) $run->trigger, [
                     ArticleAiOptimizationRun::TRIGGER_ADMIN_MANUAL,
                     ArticleAiOptimizationRun::TRIGGER_API_MANUAL,
                 ], true);
             if (((string) $run->status !== ArticleAiOptimizationRun::STATUS_CANDIDATE_READY && ! $manualFallback)
-                || (string) $article->status !== 'draft'
+                || ! $this->articleCanBeOptimized($article, data_get($run->execution_meta, 'workflow_fence'))
                 || ! hash_equals((string) $run->candidate_hash, $candidateHash)) {
                 throw new ArticleAiOptimizationException('article_ai_optimization_candidate_conflict');
             }
@@ -863,6 +973,7 @@ final class ArticleAiOptimizationCoordinator
             $article->forceFill(array_intersect_key($snapshot, array_flip([
                 'title', 'excerpt', 'content', 'keywords', 'meta_description',
             ])))->save();
+            $article = app(ArticleWorkflowTransitionService::class)->contentChanged($article, $adminId);
             $appliedHash = $this->riskScanner->contentHash($this->qualityPolicyResolver->articleSnapshot($article));
             if (! hash_equals($candidateHash, $appliedHash)) {
                 throw new ArticleAiOptimizationException('article_ai_optimization_apply_hash_mismatch');
@@ -880,6 +991,9 @@ final class ArticleAiOptimizationCoordinator
                         'error_code' => null,
                         'updated_at' => now()->toIso8601String(),
                     ],
+                    'workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article,
+                        (string) data_get($run->execution_meta, 'workflow_fence.origin', 'automatic')),
+                    'requested_workflow_state' => data_get($source->execution_meta, 'requested_workflow_state'),
                     'optimization_applied_by_admin_id' => $adminId,
                 ]),
             ])->save();
@@ -942,7 +1056,7 @@ final class ArticleAiOptimizationCoordinator
         $runInfo = ArticleAiOptimizationRun::query()->whereKey($runId)->firstOrFail(['article_id', 'task_id']);
 
         return DB::transaction(function () use ($runId, $runInfo, $reason, $adminId): ArticleAiOptimizationRun {
-            $article = Article::query()->whereKey((int) $runInfo->article_id)->lockForUpdate()->firstOrFail();
+            $article = $this->lockWorkflowArticle((int) $runInfo->article_id) ?? throw new \RuntimeException('article_unavailable');
             if ($runInfo->task_id) {
                 $task = Task::withTrashed()->whereKey((int) $runInfo->task_id)->lockForUpdate()->first();
                 if ($task instanceof Task && ! $task->trashed()) {
@@ -994,7 +1108,7 @@ final class ArticleAiOptimizationCoordinator
     {
         $runInfo = ArticleAiOptimizationRun::query()->whereKey($runId)->firstOrFail(['article_id', 'task_id']);
         $rolledBack = DB::transaction(function () use ($runId, $runInfo, $adminId): bool {
-            $article = Article::query()->whereKey((int) $runInfo->article_id)->lockForUpdate()->firstOrFail();
+            $article = $this->lockWorkflowArticle((int) $runInfo->article_id) ?? throw new \RuntimeException('article_unavailable');
             if ($runInfo->task_id) {
                 Task::withTrashed()->whereKey((int) $runInfo->task_id)->lockForUpdate()->first();
             }
@@ -1273,7 +1387,7 @@ final class ArticleAiOptimizationCoordinator
     private function activateAwaitingRun(ArticleAiOptimizationRun $awaiting, ArticleAiQualityCheck $completedCheck): string
     {
         return DB::transaction(function () use ($awaiting, $completedCheck): string {
-            $article = Article::query()->whereKey((int) $awaiting->article_id)->lockForUpdate()->first();
+            $article = $this->lockWorkflowArticle((int) $awaiting->article_id);
             if (! $article) {
                 return 'hold';
             }
@@ -1332,7 +1446,7 @@ final class ArticleAiOptimizationCoordinator
             return;
         }
         DB::transaction(function () use ($checkId, $checkInfo): void {
-            Article::query()->whereKey((int) $checkInfo->article_id)->lockForUpdate()->first();
+            $this->lockWorkflowArticle((int) $checkInfo->article_id);
             if ($checkInfo->task_id) {
                 Task::withTrashed()->whereKey((int) $checkInfo->task_id)->lockForUpdate()->first();
             }
@@ -1360,7 +1474,7 @@ final class ArticleAiOptimizationCoordinator
             return;
         }
         DB::transaction(function () use ($checkId, $checkInfo, $status, $errorCode): void {
-            Article::query()->whereKey((int) $checkInfo->article_id)->lockForUpdate()->first();
+            $this->lockWorkflowArticle((int) $checkInfo->article_id);
             if ($checkInfo->task_id) {
                 Task::withTrashed()->whereKey((int) $checkInfo->task_id)->lockForUpdate()->first();
             }
@@ -1407,7 +1521,7 @@ final class ArticleAiOptimizationCoordinator
         }
 
         return DB::transaction(function () use ($runId, $runInfo, $attemptOwner): ?string {
-            $article = Article::query()->whereKey((int) $runInfo->article_id)->lockForUpdate()->first();
+            $article = $this->lockWorkflowArticle((int) $runInfo->article_id);
             if (! $article) {
                 return null;
             }
@@ -1420,6 +1534,12 @@ final class ArticleAiOptimizationCoordinator
             }
             $run = ArticleAiOptimizationRun::query()->whereKey($runId)->lockForUpdate()->first();
             if (! $run || (string) $run->status !== ArticleAiOptimizationRun::STATUS_QUEUED) {
+                return null;
+            }
+            if ($run->trigger === ArticleAiOptimizationRun::TRIGGER_TASK_AUTO
+                && ! app(ArticlePublicationEligibilityService::class)->fenceAllows($article, data_get($run->execution_meta, 'workflow_fence'))) {
+                $this->markRunStale($run, 'workflow_intent_changed');
+
                 return null;
             }
             $inputCheckId = (int) ($run->best_check_id ?: $run->source_check_id);
@@ -1443,7 +1563,7 @@ final class ArticleAiOptimizationCoordinator
                 return null;
             }
 
-            if ((string) $article->status !== 'draft'
+            if (! $this->articleCanBeOptimized($article, data_get($run->execution_meta, 'workflow_fence'))
                 || ! $input
                 || (string) $input->status !== 'completed'
                 || (string) $input->inspection_scope !== 'full') {
@@ -1753,7 +1873,7 @@ final class ArticleAiOptimizationCoordinator
         array $selectedIssues,
     ): ArticleAiOptimizationStep {
         return DB::transaction(function () use ($run, $inputCheck, $model, $roundIndex, $beforeHash, $leaseOwner, $selectedIssues): ArticleAiOptimizationStep {
-            Article::query()->whereKey((int) $run->article_id)->lockForUpdate()->firstOrFail();
+            $this->lockWorkflowArticle((int) $run->article_id) ?? throw new \RuntimeException('article_unavailable');
             if ($run->task_id) {
                 Task::withTrashed()->whereKey((int) $run->task_id)->lockForUpdate()->first();
             }
@@ -1796,7 +1916,7 @@ final class ArticleAiOptimizationCoordinator
         string $leaseOwner,
     ): int {
         return DB::transaction(function () use ($run, $step, $leaseOwner): int {
-            Article::query()->whereKey((int) $run->article_id)->lockForUpdate()->firstOrFail();
+            $this->lockWorkflowArticle((int) $run->article_id) ?? throw new \RuntimeException('article_unavailable');
             if ($run->task_id) {
                 Task::withTrashed()->whereKey((int) $run->task_id)->lockForUpdate()->first();
             }
@@ -1923,7 +2043,7 @@ final class ArticleAiOptimizationCoordinator
         string $leaseOwner,
     ): void {
         DB::transaction(function () use ($run, $step, $inputCheck, $candidate, $validated, $response, $beforeHash, $afterHash, $leaseOwner): void {
-            Article::query()->whereKey((int) $run->article_id)->lockForUpdate()->firstOrFail();
+            $this->lockWorkflowArticle((int) $run->article_id) ?? throw new \RuntimeException('article_unavailable');
             if ($run->task_id) {
                 Task::withTrashed()->whereKey((int) $run->task_id)->lockForUpdate()->first();
             }
@@ -1985,7 +2105,7 @@ final class ArticleAiOptimizationCoordinator
             if (! $info) {
                 return false;
             }
-            Article::query()->whereKey((int) $info->article_id)->lockForUpdate()->first();
+            $this->lockWorkflowArticle((int) $info->article_id);
             if ($info->task_id) {
                 Task::withTrashed()->whereKey((int) $info->task_id)->lockForUpdate()->first();
             }
@@ -2617,7 +2737,7 @@ final class ArticleAiOptimizationCoordinator
             return;
         }
         DB::transaction(function () use ($run, $step, $leaseOwner, $attempts): void {
-            Article::query()->whereKey((int) $run->article_id)->lockForUpdate()->first();
+            $this->lockWorkflowArticle((int) $run->article_id);
             if ($run->task_id) {
                 Task::withTrashed()->whereKey((int) $run->task_id)->lockForUpdate()->first();
             }
@@ -2718,6 +2838,13 @@ final class ArticleAiOptimizationCoordinator
         } catch (Throwable) {
             return false;
         }
+    }
+
+    public function articleCanBeOptimized(Article $article, mixed $fence): bool
+    {
+        return $article->status === 'draft'
+            || ($article->status === 'private' && $article->publication_intent === 'immediate'
+                && app(ArticlePublicationEligibilityService::class)->fenceAllows($article, $fence));
     }
 
     private function autoApplySelected(ArticleAiOptimizationRun $run): bool
@@ -2844,5 +2971,20 @@ final class ArticleAiOptimizationCoordinator
             ->onConnection('redis')
             ->onQueue($queue)
             ->afterCommit();
+    }
+
+    private function lockWorkflowArticle(int $articleId): ?Article
+    {
+        $taskId = (int) Article::query()->whereKey($articleId)->value('task_id');
+        $task = $taskId ? Task::withTrashed()->whereKey($taskId)->lockForUpdate()->first() : null;
+        $article = Article::query()->whereKey($articleId)->lockForUpdate()->first();
+        if ($article && (int) $article->task_id !== $taskId) {
+            throw new \RuntimeException('workflow_version_conflict');
+        }
+        if ($article) {
+            $article->setRelation('task', $task && ! $task->trashed() ? $task : null);
+        }
+
+        return $article;
     }
 }

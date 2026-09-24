@@ -242,7 +242,22 @@ class ArticleAiQualityProgressPresenter
                     : null,
                 'operator_retryable' => $workflowApplyStatus === 'exhausted',
             ],
+            'technical_retry' => [
+                'attempt' => (int) data_get($executionMeta, 'technical_retry.attempt', 0),
+                'max_additional_attempts' => 2,
+                'next_at' => data_get($executionMeta, 'technical_retry.next_at'),
+                'replacement_check_id' => data_get($executionMeta, 'technical_retry.replacement_id'),
+            ],
+            'diagnostics' => [
+                'check_id' => $check?->id,
+                'model_id' => $check?->ai_model_id,
+                'failure_stage' => data_get($executionMeta, 'failure.stage'),
+                'reason_code' => $safeErrorCode,
+                'gate_reasons' => (array) $check?->gate_reasons,
+                'evidence_count' => count((array) $check?->evidence_snapshot),
+            ],
             'next_action' => match (true) {
+                $effectiveStatus === 'failed' && data_get($executionMeta, 'technical_retry.next_at') => 'wait_retry',
                 $active => 'wait',
                 $workflowApplyStatus === 'exhausted' => 'retry_workflow',
                 $effectiveStatus === 'completed' => 'view_result',

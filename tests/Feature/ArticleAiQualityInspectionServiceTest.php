@@ -21,9 +21,11 @@ use App\Models\ArticleAiQualityRollout;
 use App\Models\ArticleAiQualitySegment;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\DistributionLog;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
 use App\Models\Prompt;
+use App\Models\SensitiveWord;
 use App\Models\Task;
 use App\Services\GeoFlow\ArticleAiQualityExecutionBoundaryHook;
 use App\Services\GeoFlow\ArticleAiQualityInspectionService;
@@ -32,10 +34,14 @@ use App\Services\GeoFlow\ArticleAiQualityReconciliationService;
 use App\Services\GeoFlow\ArticleAiQualityRetrievalCoordinator;
 use App\Services\GeoFlow\ArticleAiQualityRolloutPolicy;
 use App\Services\GeoFlow\ArticleFactCandidateExtractor;
+use App\Services\GeoFlow\ArticlePublicationDeliveryService;
+use App\Services\GeoFlow\ArticlePublicationEligibilityService;
 use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\KnowledgeFacts\ArticleAtomicFactInspector;
 use App\Services\GeoFlow\KnowledgeRetrievalService;
+use App\Services\GeoFlow\TaskLifecycleService;
+use App\Services\GeoFlow\WorkerExecutionService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Carbon\Carbon;
 use GuzzleHttp\Psr7\Response as PsrResponse;
@@ -48,6 +54,7 @@ use Illuminate\Support\Facades\Queue;
 use InvalidArgumentException;
 use Mockery;
 use PHPUnit\Framework\Attributes\DataProvider;
+use ReflectionMethod;
 use Tests\TestCase;
 use UnexpectedValueException;
 
@@ -562,6 +569,7 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
 
     public function test_sampling_enabled_checks_persist_primary_and_final_deadlines_with_an_immutable_policy_snapshot(): void
     {
+        $this->freezeTime();
         config()->set('geoflow.ai_quality_deadline_seconds', 180);
         config()->set('geoflow.ai_quality_sampled_fallback_seconds', 45);
         config()->set('geoflow.ai_quality_persistence_reserve_seconds', 10);
@@ -1242,7 +1250,7 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $this->assertSame('stale', $stale->segments->first()->status);
         $this->assertSame('input_changed', $stale->segments->first()->error_code);
         $this->assertSame('draft', $article->fresh()->status);
-        $this->assertSame('pending', $article->fresh()->review_status);
+        $this->assertSame('approved', $article->fresh()->review_status);
     }
 
     public function test_smart_failover_uses_the_next_active_model_and_records_a_sanitized_attempt_trace(): void
@@ -2239,7 +2247,7 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
 
         $this->assertSame('passed', $completed->decision);
         $this->assertSame('private', $article->fresh()->status);
-        $this->assertSame('approved', $article->fresh()->review_status);
+        $this->assertSame('auto_approved', $article->fresh()->review_status);
     }
 
     public function test_passing_inspection_enqueues_a_publish_target_already_normalized_to_private(): void
@@ -2308,7 +2316,7 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
 
         $this->assertSame('passed', $completed->decision);
         $this->assertSame('private', $article->fresh()->status);
-        $this->assertSame('private', data_get($check->execution_meta, 'requested_workflow_state.status'));
+        $this->assertNull(data_get($check->execution_meta, 'requested_workflow_state'));
         $this->assertNotNull(data_get($check->execution_meta, 'distribution_intent_cancelled_at'));
     }
 
@@ -2335,7 +2343,7 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
 
         $this->assertSame('passed', $completed->decision);
         $this->assertSame('private', $article->fresh()->status);
-        $this->assertSame('approved', $article->fresh()->review_status);
+        $this->assertSame('auto_approved', $article->fresh()->review_status);
         $this->assertNull($article->fresh()->published_at);
     }
 
@@ -2382,7 +2390,7 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         (new ReconcileArticleAiQualityJob((int) $article->id, (int) $article->id, 1))->handle($service);
 
         $this->assertSame('succeeded', data_get($completed->fresh()->execution_meta, 'workflow_apply.status'));
-        $this->assertSame('approved', $article->fresh()->review_status);
+        $this->assertSame('auto_approved', $article->fresh()->review_status);
         $this->assertSame(2, $transition->calls);
     }
 
@@ -2431,7 +2439,7 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         (new ReconcileArticleAiQualityJob((int) $article->id, (int) $article->id, 1))->handle($service);
 
         $this->assertSame('succeeded', data_get($completed->fresh()->execution_meta, 'workflow_apply.status'));
-        $this->assertSame('approved', $article->fresh()->review_status);
+        $this->assertSame('auto_approved', $article->fresh()->review_status);
         $this->assertSame(2, $transition->calls);
     }
 
@@ -2522,7 +2530,7 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $this->assertSame(4, $transition->calls);
     }
 
-    public function test_manual_inspection_persists_an_article_policy_even_when_the_task_is_currently_enabled(): void
+    public function test_manual_inspection_preserves_creation_history_and_respects_the_current_task_switch(): void
     {
         $article = $this->createQualityFixture('manual-snapshot-enabled-task', needReview: false);
         $article->forceFill([
@@ -2534,9 +2542,9 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $article->task()->update(['ai_quality_enabled' => false]);
 
         $article->refresh();
-        $this->assertTrue($article->ai_quality_required_at_creation);
-        $this->assertSame('manual_article', data_get($article->ai_quality_policy_snapshot, 'source'));
-        $this->assertTrue((bool) app(ArticleAiQualityPolicyResolver::class)
+        $this->assertFalse($article->ai_quality_required_at_creation);
+        $this->assertNull($article->ai_quality_policy_snapshot);
+        $this->assertFalse((bool) app(ArticleAiQualityPolicyResolver::class)
             ->resolve($article)['required']);
     }
 
@@ -2552,11 +2560,11 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         ]);
         $article->task->knowledgeBases()->sync([$replacement->id => ['sort_order' => 0]]);
 
-        $service->requestManualInspection($article->fresh(), dispatch: false);
+        $check = $service->requestManualInspection($article->fresh(), dispatch: false);
 
         $this->assertSame(
             [(int) $replacement->id],
-            data_get($article->fresh()->ai_quality_policy_snapshot, 'knowledge_base_ids'),
+            data_get($check->execution_meta, 'policy_snapshot.knowledge_base_ids'),
         );
     }
 
@@ -2580,7 +2588,7 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         $completed = $service->process($check->id);
 
         $this->assertSame($activeTaskModelId, (int) $check->ai_model_id);
-        $this->assertSame($activeTaskModelId, (int) data_get($article->fresh()->ai_quality_policy_snapshot, 'model_id'));
+        $this->assertSame($activeTaskModelId, (int) data_get($check->execution_meta, 'policy_snapshot.model_id'));
         $this->assertSame('completed', $completed->status);
         $this->assertSame('passed', $completed->decision);
     }
@@ -2942,6 +2950,288 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         app(ArticleAiQualityRolloutPolicy::class)->forget();
     }
 
+    public function test_workflow_four_combinations_respect_manual_review_and_current_ai_policy(): void
+    {
+        Queue::fake();
+        $this->bindPassingReviewer();
+        foreach ([false, true] as $review) {
+            foreach ([false, true] as $ai) {
+                $article = $this->createQualityFixture('comb-'.(int) $review.(int) $ai, $review);
+                $article->task->update(['status' => 'active', 'schedule_enabled' => 1, 'next_publish_at' => now()->subMinute(), 'publish_scope' => 'local_only', 'ai_quality_enabled' => $ai]);
+                if ($ai) {
+                    $service = app(ArticleAiQualityInspectionService::class);
+                    $done = $service->process($service->createOrReuse($article->fresh(), dispatch: false));
+                    $this->assertSame('passed', $done->decision);
+                    $this->assertSame('draft', $article->fresh()->status);
+                }
+                $worker = app(WorkerExecutionService::class);
+                $result = (new ReflectionMethod($worker, 'publishDueDraftArticle'))->invoke($worker, $article->fresh()->task);
+                $this->assertSame($review ? 'draft' : 'published', $article->fresh()->status);
+                $this->assertSame($review ? 'pending' : 'auto_approved', $article->fresh()->review_status);
+                $this->assertSame(0, $article->reviews()->count());
+            }
+        }
+    }
+
+    public function test_workflow_late_quality_completion_does_not_advance_paused_task(): void
+    {
+        Queue::fake();
+        $this->bindPassingReviewer();
+        $article = $this->createQualityFixture('paused-completion', false);
+        $article->task->update(['status' => 'active', 'schedule_enabled' => 1]);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+        $article->task->update(['status' => 'paused', 'automation_version' => (int) $article->task->automation_version + 1]);
+        $done = $service->process($check);
+        $this->assertSame('passed', $done->decision);
+        $this->assertSame('superseded', data_get($done->fresh()->execution_meta, 'workflow_apply.status'));
+        $this->assertSame('draft', $article->fresh()->status);
+        $this->assertSame('scheduled', $article->fresh()->publication_intent);
+    }
+
+    public function test_workflow_callback_reuses_current_audited_risk_override(): void
+    {
+        Queue::fake();
+        $this->bindPassingReviewer();
+        $article = $this->createQualityFixture('override-callback', false);
+        $article->task->update(['publish_scope' => 'local_only']);
+        $article = $article->fresh();
+        $admin = Admin::query()->create(['username' => 'override-review-admin', 'password' => 'secret', 'role' => 'admin', 'status' => 'active']);
+        SensitiveWord::query()->create(['word' => '服务客户', 'severity' => 'warning']);
+        $article = app(ArticleWorkflowTransitionService::class)->humanAction($article, 'publish', $admin->id, 'Audited same-content warning.');
+        $this->assertSame('immediate', $article->publication_intent);
+        $this->assertTrue((bool) $article->latestRiskScan->is_overridden);
+        $check = $article->latestAiQualityCheck;
+        $this->assertNotNull($check);
+        $completed = app(ArticleAiQualityInspectionService::class)->process($check);
+        $this->assertSame('passed', $completed->decision);
+        $this->assertSame('succeeded', data_get($completed->fresh()->execution_meta, 'workflow_apply.status'));
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertTrue((bool) data_get($completed->fresh()->execution_meta, 'publication_committed'));
+    }
+
+    public function test_workflow_post_commit_delivery_failure_retries_without_losing_intent(): void
+    {
+        Queue::fake();
+        $this->bindPassingReviewer();
+        $article = $this->createQualityFixture('delivery-retry', false);
+        $calls = 0;
+        $orchestrator = Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldReceive('enqueueForArticle')->twice()->andReturnUsing(function () use (&$calls) {
+            if (++$calls === 1) {
+                throw new \RuntimeException('one temporary delivery failure');
+            }
+
+            return [];
+        });
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+        $article = app(ArticleWorkflowTransitionService::class)->humanAction($article, 'publish');
+        $service = app(ArticleAiQualityInspectionService::class);
+        $completed = $service->process($article->latestAiQualityCheck);
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertSame('none', $article->fresh()->publication_intent);
+        $this->assertSame('succeeded', data_get($completed->fresh()->execution_meta, 'workflow_apply.status'));
+        $this->assertSame('pending', DistributionLog::query()->where('event', ArticlePublicationDeliveryService::EVENT)->value('context')['status']);
+        $this->travel(61)->seconds();
+        $this->assertSame(1, app(ArticlePublicationDeliveryService::class)->recoverPending());
+        $service->applyCompletedWorkflow($completed->id);
+        $this->assertSame('succeeded', data_get($completed->fresh()->execution_meta, 'workflow_apply.status'));
+        $this->assertSame(2, $calls);
+    }
+
+    public function test_threshold_only_change_reuses_complete_results_without_another_model_call(): void
+    {
+        Queue::fake();
+        $this->bindPassingReviewer();
+        $article = $this->createQualityFixture('threshold-reuse', needReview: false);
+        $article->task()->update(['status' => 'paused']);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $source = $service->process($service->createOrReuse($article->fresh(), dispatch: false));
+        $this->assertSame('completed', $source->status);
+        app(TaskLifecycleService::class)->updateTask((int) $article->task_id, ['ai_quality_pass_score' => 90]);
+        $replacement = $article->fresh()->latestAiQualityCheck;
+        $this->assertNotSame($source->id, $replacement->id);
+        $this->assertSame('completed', $source->fresh()->status);
+        $this->assertSame('completed', $replacement->status);
+        $this->assertSame(90, $replacement->pass_score);
+        $this->assertSame($source->id, $replacement->supersedes_check_id);
+        $this->assertSame([], $replacement->usage_meta);
+        $this->assertTrue(app(ArticlePublicationEligibilityService::class)->qualityBasisCurrent(
+            $article->fresh(), $replacement, app(ArticleAiQualityPolicyResolver::class)->resolve($article->fresh()),
+        ));
+        Queue::assertNotPushed(ProcessArticleAiQualityJob::class);
+    }
+
+    public function test_distribution_only_callback_rechecks_new_risk_even_when_article_is_already_private(): void
+    {
+        Queue::fake();
+        $this->bindPassingReviewer();
+        $article = $this->createQualityFixture('private-new-risk', needReview: false);
+        $article->task()->update(['publish_scope' => 'distribution_only']);
+        $article->update(['status' => 'private']);
+        $article = app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), 'publish');
+        $check = $article->latestAiQualityCheck;
+        SensitiveWord::query()->create(['word' => '服务客户', 'severity' => 'blocked']);
+        app(ArticleAiQualityInspectionService::class)->process($check);
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertSame('immediate', $article->fresh()->publication_intent);
+        $this->assertDatabaseMissing('distribution_logs', ['article_id' => $article->id, 'event' => ArticlePublicationDeliveryService::EVENT]);
+    }
+
+    public function test_threshold_change_preserves_manual_immediate_request_and_approval_resumes_it(): void
+    {
+        Queue::fake();
+        $this->bindPassingReviewer();
+        foreach (['draft', 'private'] as $status) {
+            $article = $this->createQualityFixture('immediate-threshold-'.$status, needReview: false);
+            $article->task()->update(['status' => 'paused', 'schedule_enabled' => 0, 'publish_scope' => 'local_only']);
+            $inspection = app(ArticleAiQualityInspectionService::class);
+            $source = $inspection->process($inspection->createOrReuse($article->fresh(), dispatch: false));
+            $article->update(['status' => $status, 'publication_intent' => 'immediate']);
+            $meta = $source->fresh()->execution_meta;
+            $meta['workflow_fence'] = app(ArticlePublicationEligibilityService::class)->fence($article->fresh(), 'manual');
+            $meta['requested_workflow_state'] = ['status' => 'published', 'review_status' => 'auto_approved', 'published_at' => null];
+            $source->update(['execution_meta' => $meta]);
+            $article->task()->update(['need_review' => 1]);
+            app(TaskLifecycleService::class)->updateTask($article->task_id, ['ai_quality_pass_score' => 90]);
+            $replacement = $article->fresh()->latestAiQualityCheck;
+            $this->assertSame('manual', data_get($replacement->execution_meta, 'workflow_fence.origin'));
+            $this->assertSame('published', data_get($replacement->execution_meta, 'requested_workflow_state.status'));
+            $this->assertSame('immediate', $article->fresh()->publication_intent);
+            $this->assertSame($status, $article->fresh()->status);
+            $approved = app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), 'approve');
+            $this->assertSame('published', $approved->status);
+            $this->assertSame('none', $approved->publication_intent);
+            $this->assertSame(2, $article->aiQualityChecks()->count());
+        }
+        Queue::assertNotPushed(ProcessArticleAiQualityJob::class);
+    }
+
+    public function test_score_based_release_keeps_manual_intent_task_and_interval_conditions(): void
+    {
+        Queue::fake();
+        $this->travelTo(now()->startOfSecond());
+        $reviewer = Mockery::mock(ArticleAiQualityReviewer::class);
+        $reviewer->shouldReceive('review')->andReturn([
+            'result' => ['summary' => '有普通证据缺口。', 'promotion_context' => 'informational', 'knowledge_coverage' => 'insufficient', 'issues' => [], 'uncertainties' => []],
+            'usage' => [], 'mode' => 'structured',
+        ]);
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        foreach (['due', 'manual', 'future', 'paused', 'hold', 'rejected'] as $condition) {
+            $article = $this->createQualityFixture('score-release-'.$condition, $condition === 'manual');
+            $article->task->update([
+                'status' => $condition === 'paused' ? 'paused' : 'active',
+                'schedule_enabled' => $condition === 'paused' ? 0 : 1,
+                'next_publish_at' => $condition === 'future' ? now()->addMinute() : now()->subMinute(),
+                'publish_interval' => 60, 'publish_scope' => 'local_only', 'ai_quality_pass_score' => 90,
+            ]);
+            $article->update([
+                'publication_intent' => $condition === 'hold' ? 'hold' : 'scheduled',
+                'review_status' => match ($condition) {
+                    'manual' => 'pending', 'rejected' => 'rejected', default => 'auto_approved'
+                },
+            ]);
+            $service = app(ArticleAiQualityInspectionService::class);
+            $done = $service->process($service->createOrReuse($article->fresh(), dispatch: false));
+            $this->assertSame('completed', $done->status, $condition);
+            $this->assertSame(90, $done->score, $condition);
+            $this->assertSame('passed', $done->decision, $condition);
+            $this->assertSame([], $done->gate_reasons, $condition);
+            $this->assertSame('score-release-1', data_get($done->execution_meta, 'score_policy.version'));
+            $worker = app(WorkerExecutionService::class);
+            if ($condition === 'paused') {
+                try {
+                    (new ReflectionMethod($worker, 'publishDueDraftArticle'))->invoke($worker, $article->fresh()->task);
+                    $this->fail('Paused tasks must reject execution.');
+                } catch (\RuntimeException $exception) {
+                    $this->assertSame('任务未激活', $exception->getMessage());
+                }
+            } else {
+                (new ReflectionMethod($worker, 'publishDueDraftArticle'))->invoke($worker, $article->fresh()->task);
+            }
+            $this->assertSame($condition === 'due' ? 'published' : 'draft', $article->fresh()->status, $condition);
+            if ($condition === 'future') {
+                $this->travel(61)->seconds();
+                (new ReflectionMethod($worker, 'publishDueDraftArticle'))->invoke($worker, $article->fresh()->task);
+                $this->assertSame('published', $article->fresh()->status);
+            }
+        }
+    }
+
+    public function test_complete_sampled_inspection_uses_the_same_score_release_policy(): void
+    {
+        Queue::fake();
+        $this->setQualityRollout();
+        $reviewer = Mockery::mock(ArticleAiQualityReviewer::class);
+        $reviewer->shouldReceive('review')->once()->andReturn([
+            'result' => ['summary' => '抽样完成，普通证据不足已计分。', 'promotion_context' => 'informational', 'knowledge_coverage' => 'insufficient', 'issues' => [], 'uncertainties' => []],
+            'usage' => [], 'mode' => 'structured',
+        ]);
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        $article = $this->createQualityFixture('sample-score-policy', false);
+        $article->task->update(['ai_quality_timeout_sampling_enabled' => true, 'ai_quality_pass_score' => 90, 'next_publish_at' => now()->subMinute(), 'publish_scope' => 'local_only']);
+        $service = app(ArticleAiQualityInspectionService::class);
+        $check = $service->createOrReuse($article->fresh(), dispatch: false);
+        $this->assertTrue($service->tryStartSampledFallback($check, new ArticleAiQualityRuntimeException('inspection_primary_deadline_exceeded', false), dispatch: false));
+        $done = $service->process($check->id);
+        $this->assertSame('completed', $done->status);
+        $this->assertSame(90, $done->score);
+        $this->assertSame('passed', $done->decision);
+        $this->assertSame('insufficient', $done->knowledge_coverage);
+        $this->assertTrue(data_get($done->coverage_meta, 'safe_for_auto_release'));
+        $this->assertSame('score-release-1', data_get($done->execution_meta, 'score_policy.version'));
+        $worker = app(WorkerExecutionService::class);
+        (new ReflectionMethod($worker, 'publishDueDraftArticle'))->invoke($worker, $article->fresh()->task);
+        $this->assertSame('published', $article->fresh()->status);
+    }
+
+    public function test_lowering_threshold_clears_score_reason_and_preserves_external_blockers(): void
+    {
+        Queue::fake();
+        $reviewer = Mockery::mock(ArticleAiQualityReviewer::class);
+        $reviewer->shouldReceive('review')->twice()->andReturn([
+            'result' => ['summary' => '有普通证据缺口。', 'promotion_context' => 'informational', 'knowledge_coverage' => 'insufficient', 'issues' => [], 'uncertainties' => []],
+            'usage' => [], 'mode' => 'structured',
+        ]);
+        $this->app->instance(ArticleAiQualityReviewer::class, $reviewer);
+        foreach ([false, true] as $externalBlocker) {
+            $article = $this->createQualityFixture('score-threshold-'.(int) $externalBlocker, false);
+            $article->task->update(['status' => 'paused', 'schedule_enabled' => 0, 'ai_quality_pass_score' => 91]);
+            $service = app(ArticleAiQualityInspectionService::class);
+            $source = $service->process($service->createOrReuse($article->fresh(), dispatch: false));
+            $this->assertSame(90, $source->score);
+            $this->assertSame('needs_review', $source->decision);
+            $this->assertSame(['score_below_threshold'], $source->gate_reasons);
+            if ($externalBlocker) {
+                $source->update(['gate_reasons' => [...$source->gate_reasons, 'knowledge_prompt_injection_review_required']]);
+            }
+            app(TaskLifecycleService::class)->updateTask((int) $article->task_id, ['ai_quality_pass_score' => 90]);
+            $replacement = $article->fresh()->latestAiQualityCheck;
+            $this->assertSame($source->id, $replacement->supersedes_check_id);
+            $this->assertSame(90, $replacement->score);
+            $this->assertSame($externalBlocker ? 'needs_review' : 'passed', $replacement->decision);
+            $this->assertSame($externalBlocker ? ['knowledge_prompt_injection_review_required'] : [], $replacement->gate_reasons);
+            $this->assertSame($source->dimension_scores, $replacement->dimension_scores);
+            $this->assertSame('draft', $article->fresh()->status);
+            $this->assertSame('paused', $article->fresh()->task->status);
+        }
+        Queue::assertNotPushed(ProcessArticleAiQualityJob::class);
+    }
+
+    public function test_model_keeps_bounded_retrieved_context_when_lexical_claim_matching_finds_no_refs(): void
+    {
+        $service = app(ArticleAiQualityInspectionService::class);
+        $method = new ReflectionMethod($service, 'evidenceForFacts');
+        $evidence = [['id' => 'K1', 'content' => '品牌资料'], ['id' => 'K2', 'content' => '相关语义上下文']];
+        $this->assertSame($evidence, $method->invoke($service, $evidence, [['knowledge_refs' => []]]));
+        $this->assertSame([$evidence[1], $evidence[0]], $method->invoke($service, $evidence, [['knowledge_refs' => ['K2']]]));
+        $large = array_map(static fn (int $id): array => ['id' => 'A'.$id, 'content' => str_repeat('字', 5000)], range(1, 24));
+        $this->assertSame([$large[0]], $method->invoke($service, $large, [['knowledge_refs' => ['A1']]]));
+        $this->assertSame([$large[0]], $method->invoke($service, $large, [['knowledge_refs' => []]]));
+        // References retain their exact content even when they consume the context budget.
+        $this->assertSame([$large[0], $large[1]], $method->invoke($service, $large, [['knowledge_refs' => ['A1', 'A2']]]));
+    }
+
     private function createQualityFixture(string $suffix, bool $needReview): Article
     {
         $prompt = Prompt::query()->where('system_key', 'article_quality.cn_ads_knowledge.v1')->firstOrFail();
@@ -2972,6 +3262,7 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         ]);
         $task = Task::query()->create([
             'name' => '质检任务 '.$suffix,
+            'status' => 'active', 'schedule_enabled' => 1,
             'ai_model_id' => $model->id,
             'need_review' => $needReview ? 1 : 0,
             'ai_quality_enabled' => true,
@@ -3036,5 +3327,30 @@ class ArticleAiQualityInspectionServiceTest extends TestCase
         ])->save();
 
         return $model;
+    }
+
+    public function test_bad_stored_result_does_not_interrupt_threshold_recalculation_for_other_articles(): void
+    {
+        Queue::fake();
+        $this->bindPassingReviewer();
+        $article = $this->createQualityFixture('bad-threshold-reuse', false);
+        $article->task()->update(['status' => 'paused']);
+        $other = $article->replicate();
+        $other->slug .= '-second';
+        $other->save();
+        $service = app(ArticleAiQualityInspectionService::class);
+        $source = $service->process($service->createOrReuse($article->fresh(), dispatch: false));
+        $second = $service->process($service->createOrReuse($other->fresh(), dispatch: false));
+        $this->assertSame('completed', $source->status);
+        $this->assertSame('completed', $second->status);
+        $source->update(['issues' => [['code' => 'legacy_or_corrupt_issue_code', 'severity' => 'warning', 'message' => 'Old stored issue', 'evidence' => '服务客户为 800 家。']]]);
+        app(TaskLifecycleService::class)->updateTask((int) $article->task_id, ['ai_quality_pass_score' => 90]);
+        $this->assertSame('stale', $source->fresh()->status);
+        $this->assertSame(90, $article->task()->first()->ai_quality_pass_score);
+        $this->assertNotSame($second->id, $other->fresh()->latestAiQualityCheck->id);
+        $this->assertSame(90, $other->fresh()->latestAiQualityCheck->pass_score);
+        $this->assertSame('completed', $other->fresh()->latestAiQualityCheck->status);
+        $this->assertSame('completed', $second->fresh()->status);
+        $this->assertSame(90, $other->fresh()->latestAiQualityCheck->pass_score);
     }
 }

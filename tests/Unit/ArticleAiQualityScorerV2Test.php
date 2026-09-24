@@ -70,7 +70,7 @@ class ArticleAiQualityScorerV2Test extends TestCase
         $this->assertContains('confirmed_hard_blocker', $result['gate_reasons']);
     }
 
-    public function test_unverified_evidence_changes_the_gate_without_deducting_quality_points(): void
+    public function test_unverified_evidence_deducts_points_and_follows_threshold(): void
     {
         $result = (new ArticleAiQualityScorerV2)->score($this->qualityResult([[
             'code' => 'citation_missing',
@@ -81,12 +81,12 @@ class ArticleAiQualityScorerV2Test extends TestCase
             'evidence_status' => 'unverified',
         ]]), 85, 70);
 
-        $this->assertSame(100, $result['score']);
-        $this->assertSame('needs_review', $result['decision']);
-        $this->assertContains('unverified_material_claim', $result['gate_reasons']);
+        $this->assertSame(96, $result['score']);
+        $this->assertSame('passed', $result['decision']);
+        $this->assertSame([], $result['gate_reasons']);
     }
 
-    public function test_confirmed_high_severity_issue_requires_review_above_the_pass_threshold(): void
+    public function test_high_severity_deduction_passes_above_threshold(): void
     {
         $result = (new ArticleAiQualityScorerV2)->score($this->qualityResult([[
             'code' => 'data_mismatch',
@@ -98,8 +98,8 @@ class ArticleAiQualityScorerV2Test extends TestCase
         ]]), 85, 70);
 
         $this->assertSame(92, $result['score']);
-        $this->assertSame('needs_review', $result['decision']);
-        $this->assertContains('confirmed_high_severity_issue', $result['gate_reasons']);
+        $this->assertSame('passed', $result['decision']);
+        $this->assertSame([], $result['gate_reasons']);
     }
 
     public function test_removed_ai_generation_disclosure_code_is_rejected(): void

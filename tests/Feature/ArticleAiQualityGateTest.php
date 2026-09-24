@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Contracts\ArticleAiQualityReviewer;
 use App\Exceptions\ArticleAiQualityGateException;
+use App\Exceptions\ArticleAiQualityRuntimeException;
 use App\Jobs\ProcessArticleAiQualityJob;
 use App\Jobs\ReconcileArticleAiQualityJob;
 use App\Models\Admin;
@@ -22,7 +23,10 @@ use App\Services\GeoFlow\ArticleAiQualityInvalidationService;
 use App\Services\GeoFlow\ArticleAiQualityPolicyResolver;
 use App\Services\GeoFlow\ArticleAiQualityReconciliationService;
 use App\Services\GeoFlow\ArticleAiQualitySampleBuilder;
+use App\Services\GeoFlow\ArticleGeoFlowService;
+use App\Services\GeoFlow\ArticlePublicationEligibilityService;
 use App\Services\GeoFlow\ArticlePublicationQualityGate;
+use App\Services\GeoFlow\ArticleRiskScanner;
 use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Support\GeoFlow\AiQualityRetrievalMode;
@@ -224,6 +228,7 @@ class ArticleAiQualityGateTest extends TestCase
     public function test_a_failed_optimization_blocks_publication_even_when_the_source_check_passed(): void
     {
         $article = $this->qualityArticle();
+        $article->task()->update(['ai_quality_auto_optimize_enabled' => true, 'ai_quality_optimization_level' => 'excellent_90']);
         $inspection = app(ArticleAiQualityInspectionService::class);
         $source = $inspection->createOrReuse($article, dispatch: false);
         $source->forceFill([
@@ -258,7 +263,7 @@ class ArticleAiQualityGateTest extends TestCase
         }
     }
 
-    public function test_an_article_created_under_quality_control_keeps_its_snapshot_gate_after_the_task_switches_off(): void
+    public function test_current_task_switch_removes_the_historical_snapshot_gate(): void
     {
         $article = $this->qualityArticle();
         $policyResolver = app(ArticleAiQualityPolicyResolver::class);
@@ -280,7 +285,8 @@ class ArticleAiQualityGateTest extends TestCase
 
         $allowed = app(ArticleAiQualityGate::class)->check($article, 'test_publish');
 
-        $this->assertTrue($allowed?->is($check));
+        $this->assertNull($allowed);
+        $this->assertSame('completed', $check->fresh()->status);
     }
 
     public function test_a_soft_deleted_task_uses_the_article_policy_snapshot_for_a_new_check(): void
@@ -400,7 +406,7 @@ class ArticleAiQualityGateTest extends TestCase
         $this->assertNotNull($article->published_at);
     }
 
-    public function test_invalidation_holds_an_approved_unpublished_article_for_review(): void
+    public function test_invalidation_preserves_human_approval_while_marking_the_ai_result_stale(): void
     {
         $article = $this->qualityArticle();
         $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
@@ -421,7 +427,7 @@ class ArticleAiQualityGateTest extends TestCase
 
         $article->refresh();
         $this->assertSame('draft', $article->status);
-        $this->assertSame('pending', $article->review_status);
+        $this->assertSame('approved', $article->review_status);
         $this->assertSame('stale', $check->fresh()->status);
     }
 
@@ -974,8 +980,98 @@ class ArticleAiQualityGateTest extends TestCase
             'need_review' => ! (bool) $task->need_review,
         ]);
 
+        $this->assertSame('completed', $check->fresh()->status);
+        Queue::assertNotPushed(ReconcileArticleAiQualityJob::class);
+    }
+
+    public function test_transient_failure_retries_twice_and_respects_retry_after_without_duplicate_checks(): void
+    {
+        Queue::fake();
+        $article = $this->qualityArticle();
+        $article->task()->update(['status' => 'active', 'schedule_enabled' => 1]);
+        $inspection = app(ArticleAiQualityInspectionService::class);
+        $reconciliation = app(ArticleAiQualityReconciliationService::class);
+        $check = $inspection->createOrReuse($article, dispatch: false);
+        $failure = new ArticleAiQualityRuntimeException('provider_gateway_error', true, retryAfterSeconds: 90);
+        $inspection->markFailed($check, $failure);
+        $this->travel(60)->seconds();
+        $this->assertSame(0, $reconciliation->retryFailedChecks());
+        $this->travel(30)->seconds();
+        $this->assertSame(1, $reconciliation->retryFailedChecks());
+        $this->assertSame(0, $reconciliation->retryFailedChecks());
+        $second = $article->latestAiQualityCheck()->firstOrFail();
+        $this->assertSame(1, data_get($second->execution_meta, 'technical_retry.attempt'));
+        $inspection->markFailed($second, $failure);
+        $this->travel(299)->seconds();
+        $this->assertSame(0, $reconciliation->retryFailedChecks());
+        $this->travel(1)->seconds();
+        $this->assertSame(1, $reconciliation->retryFailedChecks());
+        $third = $article->latestAiQualityCheck()->firstOrFail();
+        $inspection->markFailed($third, $failure);
+        $this->travel(600)->seconds();
+        $this->assertSame(0, $reconciliation->retryFailedChecks());
+        $this->assertSame(3, $article->aiQualityChecks()->count());
+        $this->assertSame('failed', $third->fresh()->status);
+    }
+
+    public function test_authentication_quota_and_unknown_failures_never_schedule_technical_retries(): void
+    {
+        Queue::fake();
+        $inspection = app(ArticleAiQualityInspectionService::class);
+        foreach (['provider_authentication_failed', 'provider_quota_exhausted', 'inspection_failed', 'invalid_model_output'] as $code) {
+            $article = $this->qualityArticle();
+            $check = $inspection->createOrReuse($article, dispatch: false);
+            $inspection->markFailed($check, new ArticleAiQualityRuntimeException($code, true));
+            $this->assertNull(data_get($check->fresh()->execution_meta, 'technical_retry.next_at'));
+        }
+        $this->travel(600)->seconds();
+        $this->assertSame(0, app(ArticleAiQualityReconciliationService::class)->retryFailedChecks());
+        Queue::assertNotPushed(ProcessArticleAiQualityJob::class);
+    }
+
+    public function test_disabling_ai_completes_an_existing_explicit_private_publish_request(): void
+    {
+        Queue::fake();
+        $article = $this->qualityArticle();
+        $article->task->update(['need_review' => 0, 'publish_scope' => 'local_only', 'status' => 'paused', 'schedule_enabled' => 0]);
+        $article->update(['status' => 'private']);
+        $service = app(ArticleWorkflowTransitionService::class);
+        $requested = $service->humanAction($article->fresh(), 'publish');
+        $this->assertSame('immediate', $requested->publication_intent);
+        $check = $article->latestAiQualityCheck()->firstOrFail();
+
+        app(TaskLifecycleService::class)->updateTask($article->task_id, ['ai_quality_enabled' => false]);
+
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertSame('none', $article->fresh()->publication_intent);
         $this->assertSame('stale', $check->fresh()->status);
-        Queue::assertPushed(ReconcileArticleAiQualityJob::class);
+        $this->assertSame(1, $article->aiQualityChecks()->count());
+    }
+
+    public function test_resuming_unchanged_scheduled_technical_retry_preserves_budget_and_hold_is_never_adopted(): void
+    {
+        Queue::fake();
+        $article = $this->qualityArticle();
+        $article->task()->update(['status' => 'active', 'schedule_enabled' => 1]);
+        $inspection = app(ArticleAiQualityInspectionService::class);
+        $retry = app(ArticleAiQualityReconciliationService::class);
+        $check = $inspection->createOrReuse($article->fresh(), dispatch: false);
+        $inspection->markFailed($check, new ArticleAiQualityRuntimeException('provider_gateway_error', true));
+        app(TaskLifecycleService::class)->stopTask($article->task_id);
+        $this->travel(61)->seconds();
+        $this->assertSame(0, $retry->retryFailedChecks());
+        $article->task()->update(['status' => 'active', 'schedule_enabled' => 1, 'automation_version' => 3]);
+        $this->assertSame(1, $retry->resumeForTask($article->task_id));
+        $this->assertSame(1, $retry->retryFailedChecks());
+        $replacement = $article->latestAiQualityCheck()->firstOrFail();
+        $this->assertSame(1, data_get($replacement->execution_meta, 'technical_retry.attempt'));
+        $inspection->markFailed($replacement, new ArticleAiQualityRuntimeException('provider_gateway_error', true));
+        app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), 'hold');
+        $article->task()->increment('automation_version');
+        $this->travel(301)->seconds();
+        $this->assertSame(0, $retry->resumeForTask($article->task_id));
+        $this->assertSame(0, $retry->retryFailedChecks());
+        $this->assertSame(2, $article->aiQualityChecks()->count());
     }
 
     private function qualityArticle(): Article
@@ -1015,5 +1111,122 @@ class ArticleAiQualityGateTest extends TestCase
             'status' => 'draft',
             'review_status' => 'pending',
         ]);
+    }
+
+    public function test_display_and_execution_ignore_old_optimization_after_current_goal_is_met(): void
+    {
+        Queue::fake();
+        foreach (['ai_quality_optimization', 'ai_quality_optimization_auto_apply'] as $cap) {
+            config()->set('geoflow.'.$cap.'_enabled', true);
+            config()->set('geoflow.'.$cap.'_percent', 100);
+        }
+        $article = $this->qualityArticle();
+        $article->task->update(['ai_quality_auto_optimize_enabled' => true, 'ai_quality_optimization_level' => 'excellent_90', 'need_review' => 0, 'status' => 'active', 'schedule_enabled' => 1]);
+        $article->update(['publication_intent' => 'immediate']);
+        $article = $article->fresh();
+        app(ArticleRiskScanner::class)->record($article, 'review_probe');
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill(['status' => 'completed', 'decision' => 'passed', 'score' => 96, 'active_dedupe_key' => null, 'finished_at' => now()])->save();
+        ArticleAiOptimizationRun::query()->create(['article_id' => $article->id, 'task_id' => $article->task_id, 'source_check_id' => $check->id, 'request_key' => (string) Str::uuid(), 'trigger' => 'task_auto', 'strategy' => 'excellent_90', 'target_score' => 99, 'max_rounds' => 2, 'status' => 'failed', 'base_article_hash' => str_repeat('a', 64), 'policy_hash' => str_repeat('b', 64), 'finished_at' => now()]);
+        $actual = app(ArticlePublicationEligibilityService::class)->evaluate($article->fresh());
+        $this->assertSame([], $actual['blocking_reasons']);
+        $this->assertTrue($actual['can_publish']);
+        $this->assertTrue(app(ArticleAiQualityGate::class)->check($article->fresh(), 'worker_publish')->is($check));
+    }
+
+    public function test_display_and_execution_block_sampled_result_after_emergency_auto_release_off(): void
+    {
+        Queue::fake();
+        $article = $this->qualityArticle();
+        $article->task->update(['ai_quality_timeout_sampling_enabled' => true, 'need_review' => 0, 'status' => 'active', 'schedule_enabled' => 1]);
+        $article->update(['publication_intent' => 'immediate']);
+        $article = $article->fresh();
+        app(ArticleRiskScanner::class)->record($article, 'review_probe');
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill(['status' => 'completed', 'decision' => 'passed', 'score' => 100, 'inspection_scope' => 'fallback_sampled', 'active_dedupe_key' => null,
+            'coverage_meta' => ['algorithm_version' => ArticleAiQualitySampleBuilder::ALGORITHM_VERSION, 'checked_chars' => 6, 'total_chars' => 6, 'mandatory_claims_total' => 0, 'mandatory_claims_covered' => 0, 'mandatory_overflow' => false, 'regions_covered' => ['front', 'middle', 'back'], 'safe_for_auto_release' => true]])->save();
+        $this->assertTrue(app(ArticleAiQualityGate::class)->check($article->fresh(), 'worker_publish')->is($check));
+        config()->set('geoflow.ai_quality_sampled_auto_release_enabled', false);
+        $actual = app(ArticlePublicationEligibilityService::class)->evaluate($article->fresh());
+        $this->assertContains('ai_quality_sampled_stale', $actual['blocking_reasons']);
+        $this->assertFalse($actual['can_publish']);
+        try {
+            app(ArticleAiQualityGate::class)->check($article->fresh(), 'worker_publish');
+            $this->fail('should reject');
+        } catch (ArticleAiQualityGateException $e) {
+            $this->assertSame('article_ai_quality_sampled_stale', $e->getErrorCode());
+        }
+    }
+
+    private function failedReviewArticle(): array
+    {
+        $article = $this->qualityArticle();
+        $article->task()->update(['status' => 'active', 'schedule_enabled' => 1]);
+        $article->update(['publication_intent' => 'scheduled']);
+        $article = $article->fresh();
+        $inspection = app(ArticleAiQualityInspectionService::class);
+        $check = $inspection->createOrReuse($article, dispatch: false);
+        $inspection->markFailed($check, new ArticleAiQualityRuntimeException('provider_gateway_error', true, retryAfterSeconds: 90));
+
+        return [$article, $check];
+    }
+
+    public function test_hold_and_supported_task_rebind_fence_old_retries(): void
+    {
+        Queue::fake();
+        $admin = Admin::query()->create(['username' => 'review-retry-admin', 'password' => 'secret', 'role' => 'super_admin', 'status' => 'active']);
+        [$held,$heldCheck] = $this->failedReviewArticle();
+        app(ArticleWorkflowTransitionService::class)->humanAction($held, 'hold', $admin->id);
+        [$moved,$movedCheck] = $this->failedReviewArticle();
+        $target = $this->qualityArticle();
+        app(ArticleGeoFlowService::class)->updateArticle($moved->id, ['task_id' => $target->task_id], $admin->id);
+        $this->travel(90)->seconds();
+        $this->assertSame(0, app(ArticleAiQualityReconciliationService::class)->retryFailedChecks());
+        $this->assertSame('hold', $held->fresh()->publication_intent);
+        $this->assertSame(1, $held->aiQualityChecks()->count());
+        $this->assertSame($target->task_id, $moved->fresh()->task_id);
+        $this->assertSame('stale', $movedCheck->fresh()->status);
+        $this->assertSame(1, $moved->aiQualityChecks()->count());
+    }
+
+    public function test_held_old_failure_does_not_starve_due_retries(): void
+    {
+        Queue::fake();
+        [$held,$heldCheck] = $this->failedReviewArticle();
+        app(ArticleWorkflowTransitionService::class)->humanAction($held, 'hold');
+        [$ready,$readyCheck] = $this->failedReviewArticle();
+        $this->travel(90)->seconds();
+        $retry = app(ArticleAiQualityReconciliationService::class);
+        $this->assertSame(1, $retry->retryFailedChecks(1));
+        $this->travel(600)->seconds();
+        $this->assertSame(0, $retry->retryFailedChecks(1));
+        $this->assertSame(2, $ready->aiQualityChecks()->count());
+        $this->assertSame(0, $retry->retryFailedChecks(1, [$ready->id]));
+        $this->assertSame(2, $ready->aiQualityChecks()->count());
+    }
+
+    public function test_disabled_old_optimization_does_not_hide_quality_dispatch_from_worker_preflight(): void
+    {
+        Queue::fake();
+        $article = $this->qualityArticle();
+        $article->task->update(['ai_quality_auto_optimize_enabled' => false, 'need_review' => 0, 'status' => 'active', 'schedule_enabled' => 1]);
+        $article = $article->fresh();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill(['status' => 'completed', 'decision' => 'passed', 'score' => 96, 'active_dedupe_key' => null, 'finished_at' => now()])->save();
+        ArticleAiOptimizationRun::query()->create(['article_id' => $article->id, 'task_id' => $article->task_id, 'source_check_id' => $check->id, 'request_key' => (string) Str::uuid(), 'trigger' => 'task_auto', 'strategy' => 'excellent_90', 'target_score' => 99, 'max_rounds' => 2, 'status' => 'failed', 'base_article_hash' => str_repeat('a', 64), 'policy_hash' => str_repeat('b', 64), 'finished_at' => now()]);
+        $admin = Admin::query()->create(['username' => 'preflight-review', 'password' => 'secret', 'role' => 'super_admin', 'status' => 'active']);
+        app(ArticleGeoFlowService::class)->updateArticle($article->id, ['content' => '内容发生了新的修改。'], $admin->id);
+        $this->assertSame('stale', $check->fresh()->status);
+        $gate = app(ArticleAiQualityGate::class);
+        $this->assertSame((int) $article->task->ai_model_id, $gate->modelIdThatWouldBeDispatched($article->fresh()));
+        try {
+            $gate->check($article->fresh(), 'worker_publish');
+            $this->fail('expected reinspection');
+        } catch (ArticleAiQualityGateException $e) {
+            $this->assertSame('article_ai_quality_stale', $e->getErrorCode());
+            $this->assertNotSame($check->id, $e->getCheck()->id);
+        }
+        $this->assertSame(2, $article->aiQualityChecks()->count());
+        Queue::assertPushed(ProcessArticleAiQualityJob::class);
     }
 }

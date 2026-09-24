@@ -106,13 +106,16 @@ final readonly class ArticleAiOptimizationReconciliationService
             ->all();
 
         $result = DB::transaction(function () use ($runId, $info, $stepInfo, $candidateCheckIds): array {
+            $taskId = (int) Article::query()->whereKey((int) $info->article_id)->value('task_id');
+            $task = $taskId > 0 ? Task::withTrashed()->whereKey($taskId)->lockForUpdate()->first() : null;
             $article = Article::query()->whereKey((int) $info->article_id)->lockForUpdate()->first();
             if (! $article) {
                 return ['action' => 'none'];
             }
-            if ($info->task_id) {
-                Task::withTrashed()->whereKey((int) $info->task_id)->lockForUpdate()->first();
+            if ((int) $article->task_id !== $taskId) {
+                throw new \RuntimeException('workflow_version_conflict');
             }
+            $article->setRelation('task', $task && ! $task->trashed() ? $task : null);
             $run = ArticleAiOptimizationRun::query()->whereKey($runId)->lockForUpdate()->first();
             if (! $run || ! in_array((string) $run->status, ArticleAiOptimizationRun::ACTIVE_STATUSES, true)) {
                 return ['action' => 'none'];
@@ -155,7 +158,13 @@ final readonly class ArticleAiOptimizationReconciliationService
                 ];
             }
 
-            if ((string) $article->status !== 'draft') {
+            if ($run->trigger === ArticleAiOptimizationRun::TRIGGER_TASK_AUTO
+                && ! app(ArticlePublicationEligibilityService::class)->fenceAllows($article, data_get($run->execution_meta, 'workflow_fence'))) {
+                $this->finish($run, ArticleAiOptimizationRun::STATUS_STALE, 'workflow_intent_changed');
+
+                return ['action' => 'stale'];
+            }
+            if (! $this->coordinator->articleCanBeOptimized($article, data_get($run->execution_meta, 'workflow_fence'))) {
                 $this->finish($run, ArticleAiOptimizationRun::STATUS_STALE, 'article_unavailable');
 
                 return ['action' => 'stale'];

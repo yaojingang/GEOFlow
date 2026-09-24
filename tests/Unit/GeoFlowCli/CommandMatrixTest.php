@@ -24,6 +24,7 @@ class CommandMatrixTest extends TestCase
         mkdir($this->root.'/home', 0700, true);
         mkdir($this->root.'/cwd', 0700, true);
         file_put_contents($this->root.'/payload.json', '{"name":"sample","ids":[3]}');
+        file_put_contents($this->root.'/task-payload.json', '{"name":"sample","ids":[3],"need_review":true}');
         file_put_contents($this->root.'/image.png', 'image bytes');
     }
 
@@ -39,6 +40,7 @@ class CommandMatrixTest extends TestCase
     {
         $tokens = array_map(fn (string $token): string => strtr($token, [
             '{json}' => $this->root.'/payload.json',
+            '{task_json}' => $this->root.'/task-payload.json',
             '{image}' => $this->root.'/image.png',
         ]), $contract['tokens']);
         $tokens = array_merge($tokens, ['--base-url', 'https://api.example.com']);
@@ -110,11 +112,11 @@ class CommandMatrixTest extends TestCase
     }
 
     #[Test]
-    public function public_contract_keeps_37_operations_on_35_routes(): void
+    public function public_contract_keeps_39_operations_on_37_routes(): void
     {
-        $this->assertCount(37, self::contracts());
-        $this->assertCount(37, OperationRegistry::all());
-        $this->assertCount(35, OperationRegistry::routeSignatures());
+        $this->assertCount(39, self::contracts());
+        $this->assertCount(39, OperationRegistry::all());
+        $this->assertCount(37, OperationRegistry::routeSignatures());
     }
 
     /** @return iterable<string,array{array<string,mixed>}> */
@@ -152,11 +154,11 @@ class CommandMatrixTest extends TestCase
             'catalog' => self::contract(['catalog'], 'GET', 'catalog'),
             'task.list' => self::contract(['task', 'list'], 'GET', 'tasks?page=1&per_page=20'),
             'task.create' => self::contract(
-                ['task', 'create', '--json', '{json}'],
+                ['task', 'create', '--json', '{task_json}'],
                 'POST',
                 'tasks',
                 idempotencyKey: 'task-create-1',
-                body: ['name' => 'sample', 'ids' => [3]],
+                body: ['name' => 'sample', 'ids' => [3], 'need_review' => true],
             ),
             'task.get' => self::contract(['task', 'get', '7'], 'GET', 'tasks/7'),
             'task.update' => self::contract(
@@ -284,6 +286,20 @@ class CommandMatrixTest extends TestCase
                 'articles/10/publish',
                 idempotencyKey: 'article-publish-10',
                 body: [],
+            ),
+            'article.schedule' => self::contract(
+                ['article', 'schedule', '10'],
+                'POST',
+                'articles/10/schedule',
+                idempotencyKey: 'article-schedule-10',
+                body: [],
+            ),
+            'article.hold' => self::contract(
+                ['article', 'hold', '10', '--status', 'private'],
+                'POST',
+                'articles/10/hold',
+                idempotencyKey: 'article-hold-10',
+                body: ['status' => 'private'],
             ),
             'article.ai-quality-status' => self::contract(
                 ['article', 'ai-quality-status', '10'],

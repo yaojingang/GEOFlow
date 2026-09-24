@@ -114,7 +114,7 @@ class ArticleFactCandidateExtractor
             'ranking' => '/(?:第\s*[一二三四五六七八九十\d]+|排名|领先|唯一|首个|最高|最佳|国家级)/u',
             'qualification' => '/(?:(?:获得|取得|通过|拥有|持有|具备|获批)\D{0,12}(?:资质|认证|证书|许可|专利)|(?:资质|认证|证书|许可|专利)\D{0,8}(?:编号|号码|号为)\s*[A-Z0-9-]+|ISO\s*\d+)/iu',
             'guarantee' => '/(?:保证|确保|承诺|零风险|稳赚|百分百|100%|绝对)/u',
-            'citation' => '/(?:据.{0,20}(?:报告|研究|数据|统计|显示|披露)|(?:来源|引用|参考资料|文献|报告)\s*[:：]|“[^”]{4,}”|「[^」]{4,}」)/u',
+            'citation' => '/(?:(?<![数证])据.{0,20}(?:报告|研究|数据|统计|显示|披露)|(?:来源|引用|参考资料|文献|报告)\s*[:：]|“[^”]{4,}”|「[^」]{4,}」)/u',
             'comparison' => '/(?:高于|低于|超过|优于|不低于|不少于|同比|环比)/u',
             'quantity' => '/(?:\d[\d,.]*\s*(?:家|人|户|次|项|个|台|套|份|篇|件|所|名)|(?:客户|用户|门店|员工|项目|案例|企业|机构)\D{0,8}\d[\d,.]*)/u',
         ];
@@ -123,8 +123,13 @@ class ArticleFactCandidateExtractor
             return null;
         }
 
+        $assertion = preg_replace('/(?:空洞承诺|虚假承诺|反面示例|错误示例)[：:\s]*(?:保证|承诺)?[“「][^”」]+[”」]/u', '', $claim) ?? $claim;
+        $assertion = preg_replace('/(?:不能不|不得不|不可能不|并非不能|并非不会|并非无法|并非不)(?:作出|做出)?(?:任何)?(?:保证|确保|承诺)(*SKIP)(*F)|(?:不能|无法|不会|不作|不做|不予|难以|不)(?:作出|做出)?(?:任何)?(?:保证|确保|承诺)/u', '', $assertion) ?? $assertion;
         foreach ($patterns as $type => $pattern) {
-            if (preg_match($pattern, $claim) === 1) {
+            $subject = $type === 'ranking'
+                ? (preg_replace('/第\s*[一二三四五六七八九十\d]+\s*(?:轮|步|阶段|批|次|项)/u', '', $assertion) ?? $assertion)
+                : $assertion;
+            if (preg_match($pattern, $subject) === 1) {
                 return $type;
             }
         }

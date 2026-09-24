@@ -1080,15 +1080,13 @@ class JobQueueService
     /** @return array{requested_model_required:bool,quality_model_id:?int} */
     private function taskRunAiRequirement(TaskRun $run): array
     {
-        $task = Task::query()->whereKey((int) $run->task_id)->first(['id', 'next_publish_at']);
+        $task = Task::query()->whereKey((int) $run->task_id)->first(['id', 'next_publish_at', 'need_review']);
         if (! $task instanceof Task || ($task->next_publish_at !== null && $task->next_publish_at->isFuture())) {
             return ['requested_model_required' => true, 'quality_model_id' => null];
         }
 
         $dueDraft = Article::query()
-            ->where('task_id', (int) $task->getKey())
-            ->where('status', 'draft')
-            ->whereIn('review_status', ['approved', 'auto_approved'])
+            ->scheduledCandidates($task)
             ->whereNull('deleted_at')
             ->orderBy('id')
             ->first();

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Article;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Services\GeoFlow\JobQueueService;
@@ -83,8 +84,8 @@ class GeoFlowScheduleTasksCommand extends Command
             ->selectRaw("
                 task_id,
                 SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_articles,
-                SUM(CASE WHEN status = 'draft' AND review_status IN ('approved','auto_approved') THEN 1 ELSE 0 END) AS publishable_drafts
-            ")
+                SUM(CASE WHEN ".Article::scheduledCandidateSql().' THEN 1 ELSE 0 END) AS publishable_drafts
+            ')
             ->whereIn('task_id', $taskIds)
             ->whereNull('deleted_at')
             ->groupBy('task_id')

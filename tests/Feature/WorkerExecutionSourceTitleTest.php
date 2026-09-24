@@ -19,16 +19,19 @@ use App\Services\GeoFlow\AiExecutionContextFactory;
 use App\Services\GeoFlow\WorkerExecutionService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class WorkerExecutionSourceTitleTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_generated_article_keeps_the_selected_source_title_relation(): void
+    #[DataProvider('generationOptions')]
+    public function test_generated_article_keeps_source_and_applies_category_seo_options(bool $keywords, bool $description, string $categoryMode): void
     {
         Http::fake([
             'https://ai.test/v1/chat/completions' => Http::response([
@@ -41,11 +44,17 @@ class WorkerExecutionSourceTitleTest extends TestCase
                 'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 20, 'total_tokens' => 30],
             ]),
         ]);
-        Category::query()->create([
+        $defaultCategory = Category::query()->create([
             'name' => '默认分类',
             'slug' => 'default-category',
             'sort_order' => 1,
         ]);
+        $fixedCategory = Category::query()->create(['name' => 'Fixed category', 'slug' => 'fixed-category', 'sort_order' => 2]);
+        $pastPublishTime = now()->subMinutes(2)->startOfSecond();
+        $queries = [];
+        DB::listen(function ($query) use (&$queries): void {
+            $queries[] = $query->sql;
+        });
         $model = AiModel::query()->create([
             'name' => 'Worker Chat',
             'version' => 'test',
@@ -64,6 +73,9 @@ class WorkerExecutionSourceTitleTest extends TestCase
         ]);
         $task = Task::query()->create([
             'name' => '自动文章任务',
+            'auto_keywords' => $keywords, 'auto_description' => $description,
+            'category_mode' => $categoryMode, 'fixed_category_id' => $fixedCategory->id,
+            'next_publish_at' => $pastPublishTime, 'need_review' => 1,
             'title_library_id' => $library->id,
             'ai_model_id' => $model->id,
             'draft_limit' => 10,
@@ -98,6 +110,15 @@ class WorkerExecutionSourceTitleTest extends TestCase
         $this->assertSame(1, (int) $title->fresh()->usage_count);
         $this->assertSame((int) $chunk->id, $article->generation_evidence_snapshot[0]['chunk_id']);
         $this->assertSame('generation-source-v1', $article->generation_evidence_snapshot[0]['source_hash']);
+        $this->assertSame($keywords ? 'GEO' : '', $article->keywords);
+        $this->assertSame($description ? mb_substr($article->excerpt, 0, 120) : '', $article->meta_description);
+        $this->assertTrue($task->fresh()->next_publish_at->equalTo($pastPublishTime));
+        if ($categoryMode === 'random') {
+            $this->assertContains($article->category_id, [$defaultCategory->id, $fixedCategory->id]);
+            $this->assertTrue(collect($queries)->contains(fn ($sql) => str_contains(strtolower($sql), 'random()')));
+        } else {
+            $this->assertSame($categoryMode === 'fixed' ? $fixedCategory->id : $defaultCategory->id, $article->category_id);
+        }
     }
 
     public function test_generation_uses_the_locked_fresh_task_quality_policy(): void
@@ -171,9 +192,20 @@ class WorkerExecutionSourceTitleTest extends TestCase
 
         $this->assertTrue($article->ai_quality_required_at_creation);
         $this->assertTrue((bool) data_get($article->ai_quality_policy_snapshot, 'required'));
-        $this->assertSame('pending', $article->review_status);
+        $this->assertSame('auto_approved', $article->review_status);
         $this->assertSame(1, ArticleAiQualityCheck::query()->where('article_id', $article->id)->count());
         $this->assertTrue((bool) data_get($result, 'meta.ai_quality.required'));
+    }
+
+    public static function generationOptions(): iterable
+    {
+        foreach (['smart', 'fixed', 'random'] as $mode) {
+            foreach ([false, true] as $keywords) {
+                foreach ([false, true] as $description) {
+                    yield $mode.'-'.(int) $keywords.'-'.(int) $description => [$keywords, $description, $mode];
+                }
+            }
+        }
     }
 
     private function executionContext(Task $task, AiModel $model, string $username): AiExecutionContext

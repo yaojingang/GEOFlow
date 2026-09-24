@@ -2,6 +2,7 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Exceptions\DistributionAcknowledgedResponseException;
 use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
@@ -200,29 +201,29 @@ class DistributionHttpClient
 
         $endpoint = $this->endpoint($channel, $path);
         $response = $this->postSignedJson($secret, $endpoint, $path, $body, $event, $idempotencyKey, 30);
-        $failedResponse = $response;
-
+        $resolvedEndpoint = null;
         if ($response->status() === 404 && $this->canUseIndexPhpFallback($channel)) {
             $fallbackBaseUrl = $this->indexPhpBaseUrl($channel);
-            $fallbackEndpoint = $this->indexPhpEndpoint($channel, $path);
-            $fallbackResponse = $this->postSignedJson($secret, $fallbackEndpoint, $path, $body, $event, $idempotencyKey, 30);
-            $failedResponse = $fallbackResponse;
-
+            $fallbackResponse = $this->postSignedJson($secret, $this->indexPhpEndpoint($channel, $path), $path, $body, $event, $idempotencyKey, 30);
+            $response = $fallbackResponse;
             if (! $fallbackResponse->failed()) {
-                $channel->forceFill(['endpoint_url' => $fallbackBaseUrl])->save();
-                $secret->forceFill(['last_used_at' => now()])->save();
-
-                return $this->decodeJson($fallbackResponse);
+                $resolvedEndpoint = $fallbackBaseUrl;
             }
         }
-
-        $secret->forceFill(['last_used_at' => now()])->save();
-
-        if ($failedResponse->failed()) {
-            throw new DistributionHttpException($this->failureMessage($operation, $failedResponse), $failedResponse->status());
+        if ($response->failed()) {
+            throw new DistributionHttpException($this->failureMessage($operation, $response), $response->status());
+        }
+        $result = $this->decodeJson($response);
+        try {
+            if ($resolvedEndpoint !== null) {
+                $channel->forceFill(['endpoint_url' => $resolvedEndpoint])->save();
+            }
+            $secret->forceFill(['last_used_at' => now()])->save();
+        } catch (\Throwable $exception) {
+            throw new DistributionAcknowledgedResponseException($result, $exception);
         }
 
-        return $this->decodeJson($response);
+        return $result;
     }
 
     private function postSignedJson(DistributionChannelSecret $secret, string $endpoint, string $path, string $body, string $event, string $idempotencyKey, int $timeout): Response

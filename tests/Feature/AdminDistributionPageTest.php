@@ -21,6 +21,7 @@ use App\Models\Prompt;
 use App\Models\SiteSetting;
 use App\Models\Task;
 use App\Models\TitleLibrary;
+use App\Services\GeoFlow\ArticlePublicationEligibilityService;
 use App\Services\GeoFlow\DistributionHttpClient;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionPayloadBuilder;
@@ -4394,6 +4395,7 @@ class AdminDistributionPageTest extends TestCase
             'distribution_channel_id' => (int) $channel->id,
             'action' => 'publish',
             'status' => 'queued',
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article)],
             'idempotency_key' => 'article-'.$article->id.'-channel-'.$channel->id.'-publish-v1',
         ]);
 
@@ -4473,6 +4475,7 @@ MD,
             'distribution_channel_id' => (int) $channel->id,
             'action' => 'publish',
             'status' => 'queued',
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article)],
             'idempotency_key' => 'article-'.$article->id.'-channel-'.$channel->id.'-publish-v1',
         ]);
 
@@ -4542,6 +4545,7 @@ MD,
             'distribution_channel_id' => (int) $channel->id,
             'action' => 'publish',
             'status' => 'queued',
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article)],
             'idempotency_key' => 'article-'.$article->id.'-channel-'.$channel->id.'-publish-v1',
         ]);
 
@@ -5230,6 +5234,7 @@ MD,
             'distribution_channel_id' => (int) $channel->id,
             'action' => 'publish',
             'status' => 'queued',
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article)],
             'idempotency_key' => 'article-'.$article->id.'-channel-'.$channel->id.'-publish-v1',
         ]);
 

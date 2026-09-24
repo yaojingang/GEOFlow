@@ -40,6 +40,7 @@
     $plannedRemaining = max(0, $articleLimit - $createdCount);
     $taskFormI18n = [
         'checking' => $t('task_create.readiness.checking'),
+        'publishCadence' => $t('task_create.ai_quality.publish_cadence', ['minutes' => '__MINUTES__']),
         'blockedTitle' => $t('task_create.readiness.dialog_blocked_title'),
         'warningTitle' => $t('task_create.readiness.dialog_warning_title'),
         'requestFailed' => $t('task_create.readiness.request_failed'),
@@ -70,7 +71,9 @@
     $qualityRetrievalMode = (string) old('ai_quality_retrieval_mode', (string) ($taskForm['ai_quality_retrieval_mode'] ?? ''));
     $qualityAutoOptimizeEnabled = $qualityEnabled && (bool) old('ai_quality_auto_optimize_enabled', (bool) ($taskForm['ai_quality_auto_optimize_enabled'] ?? false));
     $qualityOptimizationLevel = (string) old('ai_quality_optimization_level', (string) ($taskForm['ai_quality_optimization_level'] ?? 'excellent_80'));
-    $optimizationStrategies = (array) config('geoflow.ai_quality_optimization_strategies', []);
+    $configurationCapabilities = $formOptions['configurationCapabilities'] ?? [];
+    $optimizationAvailable = (bool) ($configurationCapabilities['optimization_available'] ?? false);
+    $optimizationBlockedMessage = implode('；', array_column($configurationCapabilities['optimization_blockers'] ?? [], 'message'));
     $optimizationStrategyOptions = [
         'pass' => ['minimum' => 0, 'label' => $t('task_create.ai_quality.optimization_pass'), 'desc' => $t('task_create.ai_quality.optimization_pass_help')],
         'excellent_80' => ['minimum' => 80, 'label' => $t('task_create.ai_quality.optimization_80'), 'desc' => $t('task_create.ai_quality.optimization_80_help')],
@@ -468,10 +471,11 @@
                             <span>
                                 <span class="block text-sm font-medium text-amber-950">{{ $t('task_create.ai_quality.timeout_sampling_label') }}</span>
                                 <span class="mt-1 block text-sm leading-6 text-amber-800">{{ $t('task_create.ai_quality.timeout_sampling_help') }}</span>
+                                <span class="mt-2 block text-sm font-medium text-amber-900" data-ai-quality-sampling-note>{{ $t('task_create.ai_quality.sampling_incompatible') }}</span>
                             </span>
                         </label>
 
-                        <fieldset class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-4" data-ai-quality-optimization>
+                        <fieldset class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-4" data-ai-quality-optimization data-available="{{ $optimizationAvailable ? 'true' : 'false' }}" data-blocked-message="{{ $optimizationBlockedMessage }}">
                             <legend class="sr-only">{{ $t('task_create.ai_quality.optimization_title') }}</legend>
                             <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <div class="max-w-3xl">
@@ -486,11 +490,14 @@
                                 </label>
                             </div>
 
+                            @if (! $optimizationAvailable)
+                                <p class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">{{ $optimizationBlockedMessage }} {{ $t('task_create.ai_quality.optimization_unavailable_help') }}</p>
+                            @endif
+                            @error('ai_quality_auto_optimize_enabled')<p class="mt-2 text-sm text-red-600">{{ $message }}</p>@enderror
                             <div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3" data-ai-quality-optimization-options>
                                 @foreach ($optimizationStrategyOptions as $strategyValue => $strategy)
                                     @php
-                                        $strategyConfig = (array) ($optimizationStrategies[$strategyValue] ?? []);
-                                        $strategyRounds = max(1, min(3, (int) ($strategyConfig['max_rounds'] ?? ($strategyValue === 'pass' ? 1 : ($strategyValue === 'excellent_80' ? 2 : 3)))));
+                                        $strategyRounds = app(\App\Services\GeoFlow\ArticleAiOptimizationPolicy::class)->resolve($strategyValue, $qualityPassScore)['max_rounds'];
                                         $actualTarget = max($qualityPassScore, (int) $strategy['minimum']);
                                     @endphp
                                     <label class="flex cursor-pointer gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
@@ -512,22 +519,28 @@
                             <p class="mt-3 text-xs leading-5 text-gray-500">{{ $t('task_create.ai_quality.optimization_sampling_note') }}</p>
                         </fieldset>
 
-                        <div class="rounded-md border border-blue-100 bg-blue-50 px-4 py-4">
+                    </div>
+                        <div class="mx-6 mb-5 mt-5 rounded-md border border-blue-100 bg-blue-50 px-4 py-4">
                             <p class="text-xs font-semibold uppercase tracking-wide text-blue-700">{{ $t('task_create.ai_quality.workflow_title') }}</p>
                             <div class="mt-3 flex flex-wrap items-center gap-2 text-sm text-gray-700" data-ai-quality-workflow
                                  data-manual-label="{{ $t('task_create.ai_quality.workflow_manual') }}"
                                  data-auto-label="{{ $t('task_create.ai_quality.workflow_auto') }}">
                                 <span class="rounded-md bg-white px-3 py-2 shadow-sm">{{ $t('task_create.ai_quality.workflow_generate') }}</span>
                                 <i data-lucide="arrow-right" class="h-4 w-4 text-gray-400"></i>
-                                <span class="rounded-md bg-white px-3 py-2 font-medium text-blue-700 shadow-sm">{{ $t('task_create.ai_quality.workflow_inspect') }}</span>
+                                <span class="rounded-md bg-white px-3 py-2 shadow-sm">{{ $t('task_create.ai_quality.workflow_base_risk') }}</span>
                                 <i data-lucide="arrow-right" class="h-4 w-4 text-gray-400"></i>
-                                <span @class(['rounded-md bg-white px-3 py-2 font-medium text-blue-700 shadow-sm', 'hidden' => ! $qualityAutoOptimizeEnabled]) data-ai-quality-workflow-optimization>{{ $t('task_create.ai_quality.workflow_optimize') }}</span>
-                                <i @class(['h-4 w-4 text-gray-400', 'hidden' => ! $qualityAutoOptimizeEnabled]) data-ai-quality-workflow-optimization data-lucide="arrow-right"></i>
-                                <span class="rounded-md bg-white px-3 py-2 shadow-sm" data-ai-quality-workflow-tail>{{ $t('task_create.ai_quality.workflow_manual') }}</span>
+                                <span @class(['rounded-md bg-white px-3 py-2 font-medium text-blue-700 shadow-sm', 'hidden' => ! $qualityEnabled]) data-ai-quality-workflow-inspect>{{ $t('task_create.ai_quality.workflow_inspect') }}</span>
+                                <i data-lucide="arrow-right" @class(['h-4 w-4 text-gray-400', 'hidden' => ! $qualityEnabled]) data-ai-quality-workflow-inspect></i>
+                                <span @class(['rounded-md bg-white px-3 py-2 font-medium text-blue-700 shadow-sm', 'hidden' => ! $qualityAutoOptimizeEnabled || ! $optimizationAvailable]) data-ai-quality-workflow-optimization>{{ $t('task_create.ai_quality.workflow_optimize') }}</span>
+                                <i @class(['h-4 w-4 text-gray-400', 'hidden' => ! $qualityAutoOptimizeEnabled || ! $optimizationAvailable]) data-ai-quality-workflow-optimization data-lucide="arrow-right"></i>
+                                <span class="rounded-md bg-white px-3 py-2 shadow-sm" data-ai-quality-workflow-tail>{{ (bool) old('need_review', (bool) ($taskForm['need_review'] ?? false)) ? $t('task_create.ai_quality.workflow_manual') : $t('task_create.ai_quality.workflow_auto') }}</span>
                             </div>
+                            <p class="mt-3 text-sm font-medium text-blue-900" data-task-publish-cadence>{{ $t('task_create.ai_quality.publish_cadence', ['minutes' => old('publish_interval', (int) ($taskForm['publish_interval'] ?? 60))]) }}</p>
                             <p class="mt-3 text-xs leading-5 text-blue-800">{{ $t('task_create.ai_quality.workflow_help') }}</p>
+                            @if($isEdit)
+                                <p class="mt-2 text-xs leading-5 text-blue-800" data-workflow-impact>{{ __('article_workflow.configuration_impact', ['total' => (int) ($taskForm['affected_unpublished_count'] ?? 0), 'held' => (int) ($taskForm['held_unpublished_count'] ?? 0)]) }}</p>
+                            @endif
                         </div>
-                    </div>
                 </section>
 
                 <div class="bg-white shadow rounded-lg xl:col-span-12">

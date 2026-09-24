@@ -615,7 +615,7 @@ class AdminAiExecutionIdentityTest extends TestCase
         $distribution = Mockery::mock(DistributionOrchestrator::class);
         $distribution->shouldReceive('enqueueForArticle')
             ->once()
-            ->with((int) $article->id)
+            ->with((int) $article->id, 'publish', [], true, Mockery::type('array'))
             ->andReturnUsing(function () use ($runId, &$observedRunStatus): array {
                 $observedRunStatus = TaskRun::query()->findOrFail((int) $runId)->status;
 

@@ -15,6 +15,7 @@ use App\Models\HostedSiteAllocationRequest;
 use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
 use App\Models\LeadSubmission;
+use App\Services\GeoFlow\ArticlePublicationEligibilityService;
 use App\Services\HostedSites\HostedSiteAllocationRequestService;
 use App\Services\HostedSites\HostedSiteAllocator;
 use App\Services\HostedSites\HostedSiteLifecycleService;
@@ -317,7 +318,9 @@ class HostedSiteController extends Controller
             if ($boundHostedChannelIds !== [(int) $channel->id]) {
                 throw new DomainException('文章任务没有精确绑定当前托管站点。');
             }
-            $allocationRequest = $this->allocationRequests->request($article);
+            $allocationRequest = $this->allocationRequests->request(
+                $article, app(ArticlePublicationEligibilityService::class)->fence($article, 'manual'),
+            );
             $assignment = $this->allocator->allocate($allocationRequest);
             if ($assignment === null
                 || (int) $assignment->hosted_site_profile_id !== (int) $channel->hostedSiteProfile?->id) {

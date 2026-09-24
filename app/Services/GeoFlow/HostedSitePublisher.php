@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow;
 
 use App\Exceptions\HostedSitesDisabled;
+use App\Models\Article;
 use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\HostedSiteAllocationRequest;
@@ -92,12 +93,17 @@ final class HostedSitePublisher implements DistributionPublisherInterface
                 ->where('distribution_channel_id', (int) $channel->id)
                 ->lockForUpdate()
                 ->firstOrFail();
+            $taskId = (int) Article::query()->whereKey((int) $distribution->article_id)->value('task_id');
+            $task = Task::query()->whereKey($taskId)->lockForUpdate()->first();
+            $article = $distribution->article()->lockForUpdate()->firstOrFail();
+            if ((int) $article->task_id !== $taskId) {
+                throw new RuntimeException('workflow_version_conflict');
+            }
+            $article->setRelation('task', $task);
             $request = HostedSiteAllocationRequest::query()
                 ->where('article_id', (int) $distribution->article_id)
                 ->lockForUpdate()
                 ->first();
-            $article = $distribution->article()->lockForUpdate()->firstOrFail();
-            $task = Task::query()->whereKey((int) $article->task_id)->lockForUpdate()->first();
             $assignment = HostedSiteArticleAssignment::query()
                 ->where('article_id', (int) $distribution->article_id)
                 ->where('hosted_site_profile_id', (int) $profile->id)

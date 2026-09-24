@@ -137,9 +137,11 @@ class KnowledgeBroadEvidenceStrategy implements ArticleAiQualityEvidenceStrategy
             ['high', 'medium'],
             true,
         ));
-        $coverage = $materialFacts->isEmpty() || $materialFacts->every(
-            static fn (array $fact): bool => (string) ($fact['coverage_status'] ?? '') === 'sufficient',
-        ) ? 'sufficient' : 'insufficient';
+        $coverage = match (true) {
+            $materialFacts->contains(static fn (array $fact): bool => ($fact['coverage_status'] ?? '') === 'insufficient') => 'insufficient',
+            $materialFacts->contains(static fn (array $fact): bool => ($fact['coverage_status'] ?? '') === 'partial') => 'partial',
+            default => 'sufficient',
+        };
 
         return new AiQualityRetrievalResult([
             'evidence' => $evidence,

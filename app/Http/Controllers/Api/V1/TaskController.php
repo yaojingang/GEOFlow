@@ -278,6 +278,7 @@ class TaskController extends BaseApiController
             'ai_quality_model_accessible',
             'ai_quality_model_access_reason',
             'batch_error_message',
+            'effective_configuration',
         ] as $key) {
             $data[$key] = $current[$key] ?? null;
         }

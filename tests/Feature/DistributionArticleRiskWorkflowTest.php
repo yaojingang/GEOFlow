@@ -11,22 +11,37 @@ use App\Models\ArticleDistribution;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
+use App\Models\DistributionChannelOperation;
 use App\Models\DistributionChannelSecret;
+use App\Models\DistributionLog;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\SensitiveWord;
 use App\Models\Task;
+use App\Models\Title;
+use App\Models\TitleLibrary;
 use App\Services\GeoFlow\ArticleAiQualityInspectionService;
+use App\Services\GeoFlow\ArticleAiQualityReconciliationService;
 use App\Services\GeoFlow\ArticleAiQualitySampleBuilder;
+use App\Services\GeoFlow\ArticlePublicationDeliveryService;
+use App\Services\GeoFlow\ArticlePublicationEligibilityService;
+use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionPayloadBuilder;
+use App\Services\GeoFlow\DistributionPublisherInterface;
+use App\Services\GeoFlow\DistributionPublisherManager;
 use App\Services\GeoFlow\DistributionRetryPolicy;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Queue\Connectors\ConnectorInterface;
+use Illuminate\Queue\QueueManager;
+use Illuminate\Queue\SyncQueue;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Mockery;
+use RuntimeException;
 use Tests\TestCase;
 
 class DistributionArticleRiskWorkflowTest extends TestCase
@@ -106,6 +121,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         [$article, $task, $channel] = $this->createDistributionArticle('Pending quality content.');
         $this->enableQualityPolicy($task);
         $distribution = ArticleDistribution::query()->create([
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article->fresh())],
             'article_id' => $article->id,
             'distribution_channel_id' => $channel->id,
             'action' => 'publish',
@@ -140,6 +156,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
             'finished_at' => now(),
         ])->save();
         $distribution = ArticleDistribution::query()->create([
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article->fresh())],
             'article_id' => $article->id,
             'distribution_channel_id' => $channel->id,
             'action' => 'publish',
@@ -278,7 +295,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         );
     }
 
-    public function test_distribution_execution_rejects_a_guard_whose_current_quality_policy_disappeared(): void
+    public function test_distribution_execution_rejects_a_guard_when_enabled_quality_configuration_becomes_unavailable(): void
     {
         [$article, $task] = $this->createDistributionArticle('Guarded quality content.');
         $this->enableQualityPolicy($task);
@@ -293,7 +310,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         app(DistributionOrchestrator::class)->enqueueForArticle($article->fresh());
         $distribution = ArticleDistribution::query()->firstOrFail();
 
-        $task->forceFill(['ai_quality_enabled' => false])->save();
+        $task->forceFill(['ai_quality_prompt_id' => null])->save();
         (new ProcessArticleDistributionJob((int) $distribution->id))->handle(
             app(DistributionOrchestrator::class),
             app(DistributionRetryPolicy::class),
@@ -302,7 +319,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         $distribution->refresh();
         $this->assertSame('failed', $distribution->status);
         $this->assertSame(
-            'article_ai_quality_basis_changed',
+            'article_ai_quality_failed',
             data_get($distribution->remote_meta, 'ai_quality_dispatch.error_code'),
         );
     }
@@ -322,12 +339,176 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         $orchestrator = app(DistributionOrchestrator::class);
         $orchestrator->enqueueForArticle($article->fresh());
         $distribution = ArticleDistribution::query()->firstOrFail();
+        $this->assertSame('queued', $distribution->status);
         $this->assertIsArray(data_get($distribution->remote_meta, 'ai_quality_guard'));
 
         $task->forceFill(['ai_quality_enabled' => false])->save();
         $orchestrator->enqueueForArticle($article->fresh());
 
         $this->assertNull(data_get($distribution->fresh()->remote_meta, 'ai_quality_guard'));
+    }
+
+    public function test_disabling_task_quality_releases_an_existing_queued_delivery_without_reenqueue(): void
+    {
+        [$article, $task, $delivery] = $this->queuedDeliveryAfterDisablingQuality();
+        $payload = data_get($delivery->remote_meta, 'distribution_payload');
+        $idempotencyKey = $delivery->idempotency_key;
+
+        (new ProcessArticleDistributionJob((int) $delivery->id))->handle(
+            app(DistributionOrchestrator::class), app(DistributionRetryPolicy::class),
+        );
+
+        $this->assertSame('synced', $delivery->fresh()->status);
+        $this->assertSame($idempotencyKey, $delivery->fresh()->idempotency_key);
+        $this->assertSame($payload, data_get($delivery->fresh()->remote_meta, 'distribution_payload'));
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertFalse($task->fresh()->ai_quality_enabled);
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request): bool => data_get($request->data(), 'article.content') === 'Approved content before quality was disabled.');
+    }
+
+    public function test_reenabling_quality_before_transport_rejects_the_old_queued_report(): void
+    {
+        [, $task, $delivery] = $this->queuedDeliveryAfterDisablingQuality();
+        DistributionChannelOperation::created(function ($operation) use ($task): void {
+            if ($operation->operation === 'article_publish') {
+                app(TaskLifecycleService::class)->updateTask($task->id, ['ai_quality_enabled' => true]);
+            }
+        });
+
+        (new ProcessArticleDistributionJob((int) $delivery->id))->handle(
+            app(DistributionOrchestrator::class), app(DistributionRetryPolicy::class),
+        );
+
+        $this->assertTrue($task->fresh()->ai_quality_enabled, (string) $delivery->fresh()->last_error_message);
+        $this->assertNotSame('synced', $delivery->fresh()->status);
+        Http::assertNothingSent();
+    }
+
+    public function test_quality_disabled_delivery_still_honors_a_hold_before_transport(): void
+    {
+        [$article, , $delivery] = $this->queuedDeliveryAfterDisablingQuality();
+        DistributionChannelOperation::created(function ($operation) use ($article): void {
+            if ($operation->operation === 'article_publish') {
+                app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), 'hold');
+            }
+        });
+
+        (new ProcessArticleDistributionJob((int) $delivery->id))->handle(
+            app(DistributionOrchestrator::class), app(DistributionRetryPolicy::class),
+        );
+
+        $this->assertSame('cancelled', $delivery->fresh()->status);
+        $this->assertSame('hold', $article->fresh()->publication_intent);
+        Http::assertNothingSent();
+    }
+
+    public function test_quality_disabled_delivery_still_honors_pause_before_transport(): void
+    {
+        [, $task, $delivery] = $this->queuedDeliveryAfterDisablingQuality();
+        DistributionChannelOperation::created(function ($operation) use ($task): void {
+            if ($operation->operation === 'article_publish') {
+                app(TaskLifecycleService::class)->stopTask($task->id);
+            }
+        });
+
+        (new ProcessArticleDistributionJob((int) $delivery->id))->handle(
+            app(DistributionOrchestrator::class), app(DistributionRetryPolicy::class),
+        );
+
+        $this->assertSame('cancelled', $delivery->fresh()->status);
+        $this->assertSame('paused', $task->fresh()->status);
+        Http::assertNothingSent();
+    }
+
+    public function test_enabling_manual_review_blocks_queued_delivery_until_current_content_is_approved(): void
+    {
+        [$article, $task, $delivery] = $this->queuedDeliveryAfterDisablingQuality();
+        app(TaskLifecycleService::class)->updateTask($task->id, ['need_review' => false]);
+        $article->update(['review_status' => 'auto_approved']);
+        app(TaskLifecycleService::class)->updateTask($task->id, ['need_review' => true]);
+
+        (new ProcessArticleDistributionJob((int) $delivery->id))->handle(
+            app(DistributionOrchestrator::class), app(DistributionRetryPolicy::class),
+        );
+
+        $this->assertSame('failed', $delivery->fresh()->status);
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertSame('auto_approved', $article->fresh()->review_status);
+        Http::assertNothingSent();
+
+        $workflow = app(ArticleWorkflowTransitionService::class);
+        $workflow->humanAction($article->fresh(), 'approve');
+        $workflow->humanAction($article->fresh(), 'publish');
+        (new ProcessArticleDistributionJob((int) $delivery->id))->handle(
+            app(DistributionOrchestrator::class), app(DistributionRetryPolicy::class),
+        );
+
+        $this->assertSame('synced', $delivery->fresh()->status);
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertSame('approved', $article->fresh()->review_status);
+        Http::assertSentCount(1);
+    }
+
+    public function test_enabling_manual_review_before_immediate_update_transport_blocks_the_update(): void
+    {
+        [$article, $task, $delivery] = $this->queuedDeliveryAfterDisablingQuality();
+        app(TaskLifecycleService::class)->updateTask($task->id, ['need_review' => false]);
+        $article->update(['review_status' => 'auto_approved']);
+        $delivery->update(['status' => 'synced', 'remote_id' => 'previous-publication']);
+        DistributionChannelOperation::created(function ($operation) use ($task): void {
+            if ($operation->operation === 'article_update') {
+                app(TaskLifecycleService::class)->updateTask($task->id, ['need_review' => true]);
+            }
+        });
+
+        try {
+            app(DistributionOrchestrator::class)->updateRemoteArticle($delivery);
+            $this->fail('The current manual review requirement must block the pending update.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('distribution_workflow_superseded', $exception->getMessage());
+        }
+
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertTrue((bool) $task->fresh()->need_review);
+        $this->assertDatabaseHas('article_distributions', [
+            'article_id' => $article->id, 'action' => 'update', 'status' => 'cancelled',
+        ]);
+        Http::assertNothingSent();
+    }
+
+    /** @return array{Article, Task, ArticleDistribution} */
+    private function queuedDeliveryAfterDisablingQuality(): array
+    {
+        Http::preventStrayRequests();
+        [$article, $task, $channel] = $this->createDistributionArticle('Approved content before quality was disabled.');
+        $library = TitleLibrary::query()->create(['name' => 'Quality switch titles']);
+        Title::query()->create(['library_id' => $library->id, 'title' => 'A future quality switch article', 'used_count' => 0]);
+        $task->update(['title_library_id' => $library->id, 'article_limit' => 1, 'created_count' => 0, 'ai_quality_retrieval_mode' => 'knowledge_broad']);
+        $this->enableQualityPolicy($task);
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article->fresh(), dispatch: false);
+        $check->forceFill([
+            'status' => 'completed', 'decision' => 'passed', 'score' => 95,
+            'active_dedupe_key' => null, 'finished_at' => now(),
+        ])->save();
+        app(DistributionOrchestrator::class)->enqueueForArticle($article->fresh(), throwOnFailure: true);
+        $delivery = ArticleDistribution::query()->sole();
+        $this->assertIsArray(data_get($delivery->remote_meta, 'ai_quality_guard'));
+        app(TaskLifecycleService::class)->updateTask($task->id, ['ai_quality_enabled' => false]);
+        $this->assertSame('stale', $check->fresh()->status);
+        $this->assertSame('queued', $delivery->fresh()->status);
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => $channel->id,
+            'key_id' => 'gfk_quality_switch',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('gfsec_quality_switch'),
+            'status' => 'active', 'scopes' => ['article.publish'],
+        ]);
+        Http::fake(['https://risk-target.example.com/*' => Http::response([
+            'ok' => true, 'remote_id' => 'quality-switch-remote',
+            'remote_url' => 'https://risk-target.example.com/articles/quality-switch-remote',
+        ])]);
+
+        return [$article, $task, $delivery];
     }
 
     public function test_ai_workspace_enqueue_surfaces_an_approved_payload_mismatch(): void
@@ -339,7 +520,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
                 'expected_payload_digest' => str_repeat('f', 64),
             ]);
             $this->fail('Expected the AI workspace payload mismatch to be surfaced.');
-        } catch (\RuntimeException $exception) {
+        } catch (RuntimeException $exception) {
             $this->assertSame('AI 工作台分发载荷在审批后已变化。', $exception->getMessage());
             $this->assertDatabaseCount('article_distributions', 0);
             Queue::assertNothingPushed();
@@ -365,7 +546,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         try {
             app(DistributionOrchestrator::class)->process(ArticleDistribution::query()->findOrFail($distributionIds[0]));
             $this->fail('Expected the changed AI workspace target to be rejected.');
-        } catch (\RuntimeException $exception) {
+        } catch (RuntimeException $exception) {
             $this->assertSame('AI 工作台分发目标在审批后已变化。', $exception->getMessage());
             Http::assertNothingSent();
         }
@@ -411,7 +592,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         try {
             app(DistributionOrchestrator::class)->process(ArticleDistribution::query()->findOrFail($distributionIds[0]));
             $this->fail('Expected the changed AI workspace credential target to be rejected.');
-        } catch (\RuntimeException $exception) {
+        } catch (RuntimeException $exception) {
             $this->assertSame('AI 工作台分发目标在审批后已变化。', $exception->getMessage());
             Http::assertNothingSent();
         }
@@ -477,7 +658,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         try {
             $orchestrator->process($distribution);
             $this->fail('Expected distribution to reject an article that is no longer publishable.');
-        } catch (\RuntimeException) {
+        } catch (RuntimeException) {
             $this->assertSame('queued', $distribution->fresh()->status);
             Http::assertNothingSent();
         }
@@ -493,6 +674,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         $staleArticle = Article::query()->findOrFail($article->id);
         $article->update(['content' => 'Fresh safe content.']);
         $distribution = ArticleDistribution::query()->create([
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article->fresh())],
             'article_id' => $article->id,
             'distribution_channel_id' => $channel->id,
             'action' => 'publish',
@@ -526,7 +708,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         });
     }
 
-    public function test_legacy_published_distribution_without_a_task_remains_sendable(): void
+    public function test_legacy_distribution_without_a_workflow_fence_is_cancelled_before_sending(): void
     {
         [$article, , $channel] = $this->createDistributionArticle('Legacy safe content.');
         $article->update([
@@ -557,14 +739,16 @@ class DistributionArticleRiskWorkflowTest extends TestCase
 
         app(DistributionOrchestrator::class)->process($distribution);
 
-        $this->assertSame('synced', $distribution->fresh()->status);
-        Http::assertSentCount(1);
+        $this->assertSame('cancelled', $distribution->fresh()->status);
+        $this->assertSame(0, $distribution->fresh()->attempt_count);
+        Http::assertNothingSent();
     }
 
     public function test_distribution_send_holds_a_channel_operation_lease_until_the_result_is_saved(): void
     {
         [$article, , $channel] = $this->createDistributionArticle('Lease protected content.');
         $distribution = ArticleDistribution::query()->create([
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article->fresh())],
             'article_id' => $article->id,
             'distribution_channel_id' => $channel->id,
             'action' => 'publish',
@@ -605,6 +789,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
     {
         [$article, $task, $channel] = $this->createDistributionArticle('Delete during external delivery.');
         $distribution = ArticleDistribution::query()->create([
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article->fresh())],
             'article_id' => $article->id,
             'distribution_channel_id' => $channel->id,
             'action' => 'publish',
@@ -644,6 +829,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
     {
         [$article, $task, $channel] = $this->createDistributionArticle('Fail after task deletion.');
         $distribution = ArticleDistribution::query()->create([
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article->fresh())],
             'article_id' => $article->id,
             'distribution_channel_id' => $channel->id,
             'action' => 'publish',
@@ -677,19 +863,20 @@ class DistributionArticleRiskWorkflowTest extends TestCase
     {
         [$article, $task, $channel] = $this->createDistributionArticle('Delete during retry decision.');
         $distribution = ArticleDistribution::query()->create([
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article->fresh())],
             'article_id' => $article->id,
             'distribution_channel_id' => $channel->id,
             'action' => 'publish',
             'status' => 'queued',
             'idempotency_key' => 'task-delete-during-retry-decision',
         ]);
-        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator = Mockery::mock(DistributionOrchestrator::class);
         $orchestrator->shouldReceive('process')
             ->once()
             ->andReturnUsing(function (ArticleDistribution $candidate): never {
                 $candidate->forceFill(['status' => 'sending', 'attempt_count' => 1])->save();
 
-                throw new \RuntimeException('500 remote failure');
+                throw new RuntimeException('500 remote failure');
             });
         $retryPolicy = new class((int) $task->id) extends DistributionRetryPolicy
         {
@@ -713,7 +900,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
     public function test_stale_enqueue_snapshot_cannot_queue_after_task_deletion(): void
     {
         [$article, $task] = $this->createDistributionArticle('Delete after payload snapshot.');
-        $payloadBuilder = \Mockery::mock(DistributionPayloadBuilder::class);
+        $payloadBuilder = Mockery::mock(DistributionPayloadBuilder::class);
         $payloadBuilder->shouldReceive('build')
             ->once()
             ->andReturnUsing(function () use ($task): array {
@@ -736,6 +923,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         Http::fake();
         [$article, $task, $channel] = $this->createDistributionArticle('Delete after immediate update payload.');
         $distribution = ArticleDistribution::query()->create([
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article->fresh())],
             'article_id' => $article->id,
             'distribution_channel_id' => $channel->id,
             'action' => 'publish',
@@ -743,7 +931,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
             'remote_id' => 'remote-before-update-delete',
             'idempotency_key' => 'immediate-update-after-task-delete',
         ]);
-        $payloadBuilder = \Mockery::mock(DistributionPayloadBuilder::class);
+        $payloadBuilder = Mockery::mock(DistributionPayloadBuilder::class);
         $payloadBuilder->shouldReceive('build')
             ->once()
             ->andReturnUsing(function () use ($task): array {
@@ -756,7 +944,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         try {
             app(DistributionOrchestrator::class)->updateRemoteArticle($distribution);
             $this->fail('Expected immediate update claim to reject a deleted task.');
-        } catch (\RuntimeException) {
+        } catch (RuntimeException) {
             $this->assertSame('synced', (string) $distribution->fresh()->status);
         }
 
@@ -768,6 +956,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
     {
         [$article, $task, $channel] = $this->createDistributionArticle('Delete during immediate remote delete.');
         $distribution = ArticleDistribution::query()->create([
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article->fresh())],
             'article_id' => $article->id,
             'distribution_channel_id' => $channel->id,
             'action' => 'publish',
@@ -803,6 +992,304 @@ class DistributionArticleRiskWorkflowTest extends TestCase
     }
 
     /** @return array{Article, Task, DistributionChannel} */
+    public function test_pause_after_claim_before_transport_can_resume(): void
+    {
+        Http::preventStrayRequests();
+        [$article, $task] = $this->createDistributionArticle('Safe content for pre-send pause.');
+        $orchestrator = app(DistributionOrchestrator::class);
+        $orchestrator->enqueueForArticle($article, throwOnFailure: true);
+        $delivery = ArticleDistribution::query()->firstOrFail();
+        DistributionChannelOperation::created(function ($operation) use ($task): void {
+            if ($operation->operation === 'article_publish') {
+                app(TaskLifecycleService::class)->stopTask($task->id);
+            }
+        });
+
+        $this->assertFalse($orchestrator->process($delivery));
+        $delivery->refresh();
+        $this->assertSame('cancelled', $delivery->status);
+        $this->assertSame(1, $delivery->attempt_count);
+        $this->assertNotNull($delivery->last_attempt_at);
+        Http::assertNothingSent();
+        $this->resumeDistributionTask($task);
+        $this->assertSame('active', $task->fresh()->status);
+        $this->assertSame(0, $orchestrator->resumeUnsentForTask($task->id));
+        $this->assertSame('queued', $delivery->fresh()->status);
+    }
+
+    public function test_failed_after_commit_push_is_requeued_on_retry(): void
+    {
+        Http::preventStrayRequests();
+        [$article] = $this->createDistributionArticle('Safe content for queue outage.');
+        $adapter = $this->installFailingDistributionQueue();
+        $orchestrator = app(DistributionOrchestrator::class);
+        try {
+            $orchestrator->enqueueForArticle($article, throwOnFailure: true);
+            $this->fail('Queue push should throw after committing the delivery row.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('Simulated queue connection', $e->getMessage());
+        }
+        $delivery = ArticleDistribution::query()->firstOrFail();
+        $this->assertSame('queued', $delivery->status);
+        $this->assertSame(1, $adapter->pushAttempts);
+        $this->assertSame(0, $delivery->attempt_count);
+        $adapter->failPush = false;
+        $this->assertSame([], $orchestrator->enqueueForArticle($article->fresh(), throwOnFailure: true));
+        $this->assertSame(2, $adapter->pushAttempts, 'Retry must re-dispatch the committed queued delivery.');
+        $this->assertNotNull(data_get($delivery->fresh()->remote_meta, 'queue_dispatched_at'));
+        $this->assertSame([], $orchestrator->enqueueForArticle($article->fresh(), throwOnFailure: true));
+        $this->assertSame(2, $adapter->pushAttempts, 'Successful queue submission must suppress duplicate submission.');
+        $this->assertSame('queued', $delivery->fresh()->status);
+        Http::assertNothingSent();
+    }
+
+    public function test_queue_failure_during_resume_retries_current_cycle(): void
+    {
+        Http::preventStrayRequests();
+        [$article, $task] = $this->createDistributionArticle('Safe content for resume queue outage.');
+        $orchestrator = app(DistributionOrchestrator::class);
+        $orchestrator->enqueueForArticle($article, throwOnFailure: true);
+        $delivery = ArticleDistribution::query()->firstOrFail();
+        $this->assertNotNull(data_get($delivery->remote_meta, 'queue_dispatched_at'));
+        app(TaskLifecycleService::class)->stopTask($task->id);
+        $this->assertFalse($orchestrator->process($delivery));
+        $this->assertSame('cancelled', $delivery->fresh()->status);
+        $adapter = $this->installFailingDistributionQueue();
+
+        $this->resumeDistributionTask($task);
+        $this->assertSame(1, $adapter->pushAttempts);
+        $this->assertSame('queued', $delivery->fresh()->status);
+        $this->assertSame(1, data_get($delivery->fresh()->remote_meta, 'queue_submit_attempts'));
+        $this->assertNull(data_get($delivery->fresh()->remote_meta, 'queue_dispatched_at'));
+        $adapter->failPush = false;
+        $this->assertSame(0, $orchestrator->recoverUndispatched(), 'Queue recovery observes the retry backoff.');
+        $this->travel(61)->seconds();
+        $this->artisan('geoflow:converge-ai-quality', ['--json' => true])->assertSuccessful();
+        $this->assertNotNull(data_get($delivery->fresh()->remote_meta, 'queue_dispatched_at'));
+        $this->assertSame(0, $orchestrator->resumeUnsentForTask($task->id));
+        $this->assertSame([], $orchestrator->enqueueForArticle($article->fresh(), throwOnFailure: true));
+        $this->assertSame(2, $adapter->pushAttempts, 'Current-cycle retry must submit exactly once after recovering from the queue failure.');
+        Http::assertNothingSent();
+    }
+
+    public function test_channel_refresh_binds_the_current_workflow_after_article_edit(): void
+    {
+        Http::preventStrayRequests();
+        [$article, $task, $channel] = $this->createDistributionArticle('Safe content before channel refresh.');
+        $orchestrator = app(DistributionOrchestrator::class);
+        $orchestrator->enqueueForArticle($article, throwOnFailure: true);
+        $delivery = ArticleDistribution::query()->firstOrFail();
+        $delivery->update(['status' => 'synced', 'remote_id' => 'existing-remote']);
+        $oldVersion = (int) data_get($delivery->remote_meta, 'workflow_fence.workflow_version');
+        $task->update(['need_review' => false]);
+        $article->update(['content' => 'Safe edited content to synchronize.']);
+        app(ArticleWorkflowTransitionService::class)->contentChanged($article);
+        $this->assertGreaterThan($oldVersion, (int) $article->fresh()->workflow_version);
+        $this->assertSame(1, $orchestrator->enqueueChannelContentRefresh($channel));
+        $this->assertSame('queued', $delivery->fresh()->status);
+        $this->assertSame('update', $delivery->fresh()->action);
+        $this->assertSame((int) $article->fresh()->workflow_version, (int) data_get($delivery->fresh()->remote_meta, 'workflow_fence.workflow_version'));
+        $this->assertSame('manual', data_get($delivery->fresh()->remote_meta, 'workflow_fence.origin'));
+        DistributionChannelSecret::query()->create([
+            'distribution_channel_id' => $channel->id, 'key_id' => 'refresh-fence-test',
+            'secret_ciphertext' => app(ApiKeyCrypto::class)->encrypt('local-test-secret'),
+            'status' => 'active', 'scopes' => ['article.publish', 'article.update'],
+        ]);
+        Http::fake(['https://risk-target.example.com/*' => Http::response(['ok' => true, 'remote_id' => 'existing-remote'])]);
+        $this->assertTrue($orchestrator->process($delivery->fresh()));
+        $this->assertSame('synced', $delivery->fresh()->status);
+        Http::assertSentCount(1);
+    }
+
+    public function test_completed_local_receipt_does_not_suppress_explicit_distribution_publish(): void
+    {
+        [$article, $task] = $this->createDistributionArticle('Safe factual article.');
+        $task->update(['publish_scope' => 'local_only', 'need_review' => 0]);
+        $article->update(['status' => 'draft', 'publication_intent' => 'scheduled']);
+        $workflow = app(ArticleWorkflowTransitionService::class);
+        $workflow->humanAction($article->fresh(), 'publish');
+        $this->assertSame('published', $article->fresh()->status);
+        $receipt = DistributionLog::where('event', ArticlePublicationDeliveryService::EVENT)->sole();
+        $this->assertSame('completed', data_get($receipt->context, 'status'));
+        $this->assertSame(0, ArticleDistribution::count());
+        $task->update(['publish_scope' => 'local_and_distribution']);
+        $workflow->humanAction($article->fresh(), 'publish');
+        $this->assertSame(1, ArticleDistribution::count(), 'A new explicit publish must deliver to the currently configured channels.');
+    }
+
+    public function test_retryable_distribution_resumes_after_pause(): void
+    {
+        [$article, $task] = $this->createDistributionArticle('Safe factual article.');
+        $publisher = Mockery::mock(DistributionPublisherInterface::class);
+        $publisher->shouldReceive('publish')->once()->ordered()->andThrow(new RuntimeException('connection refused'));
+        $publisher->shouldReceive('publish')->once()->ordered()->andReturn(['remote_id' => 'retry-success']);
+        $manager = Mockery::mock(DistributionPublisherManager::class);
+        $manager->shouldReceive('forChannel')->andReturn($publisher);
+        $this->app->instance(DistributionPublisherManager::class, $manager);
+        $orch = app(DistributionOrchestrator::class);
+        $orch->enqueueForArticle($article, throwOnFailure: true);
+        $delivery = ArticleDistribution::sole();
+        (new ProcessArticleDistributionJob($delivery->id))->handle($orch, app(DistributionRetryPolicy::class));
+        $this->assertSame('queued', $delivery->fresh()->status);
+        $this->assertSame(1, $delivery->fresh()->attempt_count);
+        $retryAt = $delivery->fresh()->next_retry_at;
+        $this->assertNotNull($retryAt);
+        app(TaskLifecycleService::class)->stopTask($task->id);
+        (new ProcessArticleDistributionJob($delivery->id))->handle($orch, app(DistributionRetryPolicy::class));
+        $this->assertSame('cancelled', $delivery->fresh()->status);
+        $this->resumeDistributionTask($task);
+        $this->assertSame('active', $task->fresh()->status);
+        $this->assertSame('queued', $delivery->fresh()->status, 'A previously scheduled safe retry should continue after resume.');
+        $this->assertSame(1, $delivery->fresh()->attempt_count);
+        $this->assertTrue($retryAt->equalTo($delivery->fresh()->next_retry_at));
+        (new ProcessArticleDistributionJob($delivery->id))->handle($orch, app(DistributionRetryPolicy::class));
+        $this->assertSame(1, $delivery->fresh()->attempt_count, 'An early duplicate job must preserve backoff.');
+        $this->travelTo($retryAt->addSecond());
+        (new ProcessArticleDistributionJob($delivery->id))->handle($orch, app(DistributionRetryPolicy::class));
+        $this->assertSame('synced', $delivery->fresh()->status);
+        $this->assertSame(2, $delivery->fresh()->attempt_count);
+        $this->assertNull(data_get($delivery->fresh()->remote_meta, 'safe_retry_at'));
+    }
+
+    public function test_immediate_remote_update_respects_a_newer_hold_before_transport(): void
+    {
+        [$article] = $this->createDistributionArticle('Safe factual article.');
+        $sent = 0;
+        $publisher = Mockery::mock(DistributionPublisherInterface::class);
+        $publisher->shouldReceive('update')->andReturnUsing(function () use (&$sent): array {
+            $sent++;
+
+            return ['remote_id' => 'known-id', 'remote_url' => 'https://risk-target.example.com/known'];
+        });
+        $manager = Mockery::mock(DistributionPublisherManager::class);
+        $manager->shouldReceive('forChannel')->andReturn($publisher);
+        $this->app->instance(DistributionPublisherManager::class, $manager);
+        $orch = app(DistributionOrchestrator::class);
+        $orch->enqueueForArticle($article, throwOnFailure: true);
+        $delivery = ArticleDistribution::sole();
+        $delivery->update(['status' => 'synced', 'remote_id' => 'known-id']);
+        DistributionChannelOperation::created(function ($operation) use ($article): void {
+            if ($operation->operation === 'article_update') {
+                app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), 'hold');
+            }
+        });
+        try {
+            $orch->updateRemoteArticle($delivery);
+            $this->fail('The superseded update must report a conflict.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('distribution_workflow_superseded', $exception->getMessage());
+        }
+        $this->assertSame('hold', $article->fresh()->publication_intent);
+        $this->assertSame(0, $sent, 'A hold committed before publisher entry must prevent the old update.');
+    }
+
+    public function test_queue_submission_recovery_stops_after_three_failures(): void
+    {
+        [$article] = $this->createDistributionArticle('Safe content with an unavailable queue.');
+        $adapter = $this->installFailingDistributionQueue();
+        $orchestrator = app(DistributionOrchestrator::class);
+        try {
+            $orchestrator->enqueueForArticle($article, throwOnFailure: true);
+            $this->fail('The unavailable queue must report failure.');
+        } catch (RuntimeException) {
+            $this->assertSame(1, $adapter->pushAttempts);
+        }
+        $delivery = ArticleDistribution::query()->sole();
+        $this->travel(61)->seconds();
+        $this->assertSame(0, $orchestrator->recoverUndispatched());
+        $this->assertSame(2, $adapter->pushAttempts);
+        $this->travel(301)->seconds();
+        $this->assertSame(0, $orchestrator->recoverUndispatched());
+        $this->assertSame(3, $adapter->pushAttempts);
+        $this->travel(301)->seconds();
+        $this->assertSame(0, $orchestrator->recoverUndispatched());
+        $this->assertSame(3, $adapter->pushAttempts);
+        $this->assertSame('distribution_queue_retry_exhausted', $delivery->fresh()->last_error_message);
+        $this->assertSame(0, $delivery->fresh()->attempt_count);
+    }
+
+    public function test_task_resume_attempts_other_recoveries_when_one_service_fails(): void
+    {
+        [, $task] = $this->createDistributionArticle('Independent task recovery services.');
+        app(TaskLifecycleService::class)->stopTask($task->id);
+        $orchestrator = Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldReceive('resumeUnsentForTask')->once()->with($task->id)
+            ->andThrow(new RuntimeException('Simulated recovery failure'));
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+        foreach ([ArticlePublicationDeliveryService::class,
+            ArticleAiQualityReconciliationService::class,
+        ] as $service) {
+            $mock = Mockery::mock($service)->makePartial();
+            $mock->shouldReceive('resumeForTask')->once()->with($task->id);
+            $this->app->instance($service, $mock);
+        }
+        $this->resumeDistributionTask($task);
+        $this->assertSame('active', $task->fresh()->status);
+    }
+
+    public function test_superseded_unsubmitted_delivery_does_not_starve_later_recovery_batches(): void
+    {
+        [$first, $task] = $this->createDistributionArticle('Old paused publication.');
+        [$second] = $this->createDistributionArticle('Current active publication.');
+        $service = app(DistributionOrchestrator::class);
+        foreach ([$first, $second] as $article) {
+            $service->enqueueForArticle($article, throwOnFailure: true);
+            $delivery = ArticleDistribution::query()->where('article_id', $article->id)->sole();
+            $meta = (array) $delivery->remote_meta;
+            unset($meta['queue_dispatched_at']);
+            $delivery->update(['remote_meta' => $meta]);
+        }
+        $task->update(['status' => 'paused', 'schedule_enabled' => false]);
+        $this->assertSame(0, $service->recoverUndispatched(1));
+        $this->assertSame('cancelled', ArticleDistribution::query()->where('article_id', $first->id)->sole()->status);
+        $this->assertSame(1, $service->recoverUndispatched(1));
+        $this->assertNotNull(data_get(ArticleDistribution::query()->where('article_id', $second->id)->sole()->remote_meta, 'queue_dispatched_at'));
+    }
+
+    private function resumeDistributionTask(Task $task): void
+    {
+        $library = TitleLibrary::query()->create(['name' => 'Distribution resume titles']);
+        Title::query()->create(['library_id' => $library->id, 'title' => 'A future article title', 'used_count' => 0]);
+        $task->update(['title_library_id' => $library->id, 'article_limit' => 1, 'created_count' => 0]);
+        app(TaskLifecycleService::class)->startTask($task->id);
+    }
+
+    private function installFailingDistributionQueue(): SyncQueue
+    {
+        $adapter = new class extends SyncQueue
+        {
+            public int $pushAttempts = 0;
+
+            public bool $failPush = true;
+
+            protected function executeJob($job, $data = '', $queue = null)
+            {
+                $this->pushAttempts++;
+                if ($this->failPush) {
+                    throw new RuntimeException('Simulated queue connection unavailable after database commit');
+                }
+
+                return 0;
+            }
+        };
+        $connector = new class($adapter) implements ConnectorInterface
+        {
+            public function __construct(private $adapter) {}
+
+            public function connect(array $config)
+            {
+                return $this->adapter;
+            }
+        };
+        $manager = new QueueManager(app());
+        $manager->addConnector('distribution-failure-test', fn () => $connector);
+        config(['queue.default' => 'distribution-failure-test', 'queue.connections.distribution-failure-test' => ['driver' => 'distribution-failure-test']]);
+        Queue::swap($manager);
+
+        return $adapter;
+    }
+
+    /** @return array{Article,Task,DistributionChannel} */
     private function createDistributionArticle(string $content): array
     {
         $task = Task::query()->create([

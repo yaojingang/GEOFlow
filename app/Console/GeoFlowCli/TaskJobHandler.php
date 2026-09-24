@@ -31,7 +31,7 @@ final class TaskJobHandler
                 'status' => $this->runtime->context->options['status'] ?? null,
                 'search' => $this->runtime->context->options['search'] ?? null,
             ]),
-            'create' => $this->runtime->send('task.create', body: $this->runtime->jsonBody(), idempotencyKey: $this->runtime->idempotencyKey()),
+            'create' => $this->runtime->send('task.create', body: $this->createTaskBody(), idempotencyKey: $this->runtime->idempotencyKey()),
             'get' => $this->runtime->send('task.get', ['task' => $taskId()]),
             'update' => $this->runtime->send('task.update', ['task' => $taskId()], body: $this->runtime->jsonBody(), idempotencyKey: $this->runtime->idempotencyKey()),
             'start' => $this->runtime->send('task.start', ['task' => $taskId()], body: ['enqueue_now' => $this->runtime->flag('enqueue-now')], idempotencyKey: $this->runtime->idempotencyKey()),
@@ -42,6 +42,17 @@ final class TaskJobHandler
                 'limit' => $this->runtime->integerOption('limit', 20),
             ]),
         };
+    }
+
+    /** @return array<string,mixed> */
+    private function createTaskBody(): array
+    {
+        $body = $this->runtime->jsonBody();
+        if (! array_key_exists('need_review', $body) || ! in_array($body['need_review'], [true, false, 1, 0, '1', '0'], true)) {
+            throw new CliException('创建任务必须显式设置 need_review：true/1 表示每篇需要人工审核，false/0 表示通过基础风险与已启用的 AI 质检后自动发布。');
+        }
+
+        return $body;
     }
 
     private function job(): int

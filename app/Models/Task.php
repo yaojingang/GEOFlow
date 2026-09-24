@@ -133,6 +133,7 @@ class Task extends Model
         'last_error_at',
         'last_error_message',
         'schedule_enabled',
+        'automation_version',
         'max_retry_count',
         'ai_quality_enabled',
         'ai_quality_retrieval_mode',
@@ -148,6 +149,7 @@ class Task extends Model
     ];
 
     protected $attributes = [
+        'automation_version' => 1,
         'ai_quality_enabled' => false,
         'ai_quality_policy_version' => 1,
         'ai_quality_config_version' => 1,
@@ -187,6 +189,7 @@ class Task extends Model
             'last_success_at' => 'datetime',
             'last_error_at' => 'datetime',
             'schedule_enabled' => 'integer',
+            'automation_version' => 'integer',
             'max_retry_count' => 'integer',
             'ai_quality_enabled' => 'boolean',
             'ai_quality_policy_version' => 'integer',

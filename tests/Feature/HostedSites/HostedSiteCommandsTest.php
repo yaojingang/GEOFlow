@@ -118,6 +118,7 @@ class HostedSiteCommandsTest extends TestCase
         $task = Task::query()->create([
             'name' => 'Hosted command task',
             'status' => 'active',
+            'schedule_enabled' => true,
             'publish_scope' => 'distribution_only',
         ]);
         $task->distributionChannels()->attach($channel->id, [
@@ -143,6 +144,7 @@ class HostedSiteCommandsTest extends TestCase
             'author_id' => $author->id,
             'task_id' => $task->id,
             'status' => 'private',
+            'publication_intent' => 'none',
             'review_status' => 'approved',
         ]);
 

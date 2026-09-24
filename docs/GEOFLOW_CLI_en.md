@@ -207,7 +207,7 @@ geoflow task jobs TASK_ID [--status STATUS] [--limit N]
 geoflow job get JOB_ID
 ```
 
-Task creation requires `name`, `title_library_id`, `prompt_id`, and `ai_model_id`:
+Task creation requires `name`, `title_library_id`, `prompt_id`, `ai_model_id`, and an explicit `need_review`. Set `true`/`1` to require human approval for every article, or `false`/`0` to publish at the task cadence after basic risk checks and any enabled AI inspection pass. The CLI rejects a missing policy before sending a request. The external API retains its legacy human-review default and returns `compatibility` and `effective_configuration`:
 
 ```json
 {
@@ -289,6 +289,8 @@ geoflow article update ARTICLE_ID (--json FILE | direct fields) [--idempotency-k
 geoflow article review ARTICLE_ID --status STATUS [--note TEXT]
   [--risk-override-reason TEXT] [--idempotency-key KEY]
 geoflow article publish ARTICLE_ID [--idempotency-key KEY]
+geoflow article schedule ARTICLE_ID [--workflow-version N] [--idempotency-key KEY]
+geoflow article hold ARTICLE_ID --status draft|private [--workflow-version N] [--idempotency-key KEY]
 geoflow article ai-quality-status ARTICLE_ID
 geoflow article ai-quality-recheck ARTICLE_ID [--idempotency-key KEY]
 geoflow article ai-quality-override ARTICLE_ID --reason TEXT [--idempotency-key KEY]
@@ -299,6 +301,10 @@ geoflow article ai-optimization-apply ARTICLE_ID --run-id RUN_ID --candidate-has
 geoflow article ai-optimization-cancel ARTICLE_ID --run-id RUN_ID --idempotency-key KEY
 geoflow article trash ARTICLE_ID [--idempotency-key KEY]
 ```
+
+`article review` records human approval and preserves the current publication plan; an existing explicit request to publish immediately resumes once the remaining requirements are met. `article schedule` joins the task publication schedule, `article publish` explicitly requests immediate publication after required checks, and `article hold --status draft|private` preserves a manual hold. All four support `--workflow-version N`; stale versions return 409. Their API routes are `POST /articles/{id}/review|schedule|publish|hold`, with `workflow_version` in the body and `status` for hold. All require `articles:publish`.
+
+Updating a published article with `article update` also requires `articles:publish`. A token without that scope receives 403 and no changes are saved. Content updates still have to satisfy the current risk, human-review, and AI quality requirements.
 
 `ai-quality-status` returns the current phase, elapsed time, business deadline, and safe error code. An AI quality recheck invalidates the previous result and queues a new run against the current article and task policy. Manual approval applies only above the configured floor when no critical issue remains, and `--reason` must contain an auditable basis.
 

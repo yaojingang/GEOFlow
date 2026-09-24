@@ -30,6 +30,20 @@ class LaravelArticleAiQualityReviewerTest extends TestCase
         Http::preventStrayRequests();
     }
 
+    public function test_provider_retry_after_survives_transport_redaction(): void
+    {
+        $model = $this->model();
+        Http::fake(['*' => Http::response(['error' => ['code' => 'rate_limit', 'message' => 'Slow down']], 429, ['Retry-After' => '127'])]);
+        try {
+            app(LaravelArticleAiQualityReviewer::class)->reviewWithinVersion($model, 'Review.', 30, 'legacy');
+            $this->fail('A provider rate limit must be reported.');
+        } catch (ArticleAiQualityRuntimeException $exception) {
+            $this->assertSame('provider_rate_limited', $exception->safeCode());
+            $this->assertSame(127, $exception->retryAfterSeconds());
+            $this->assertStringNotContainsString('Slow down', $exception->getMessage());
+        }
+    }
+
     #[DataProvider('wrappedResponses')]
     public function test_complete_wrapped_json_is_recovered_without_another_provider_call(string $prefix, string $suffix, string $version): void
     {

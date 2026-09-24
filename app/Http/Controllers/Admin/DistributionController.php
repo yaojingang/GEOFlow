@@ -737,6 +737,8 @@ class DistributionController extends Controller
             if ((string) $channel->status !== DistributionChannel::STATUS_ACTIVE) {
                 return 'unavailable';
             }
+            $taskId = (int) Article::query()->whereKey((int) $candidate->article_id)->value('task_id');
+            $task = $taskId ? Task::query()->whereKey($taskId)->lockForUpdate()->first(['id']) : null;
             $article = Article::query()
                 ->whereKey((int) $candidate->article_id)
                 ->lockForUpdate()
@@ -744,10 +746,7 @@ class DistributionController extends Controller
             if (! $article) {
                 return 'article_unavailable';
             }
-            $task = $article->task_id
-                ? Task::query()->whereKey((int) $article->task_id)->lockForUpdate()->first(['id'])
-                : null;
-            if ($article->task_id && ! $task) {
+            if ((int) $article->task_id !== $taskId || ($taskId && ! $task)) {
                 return 'article_unavailable';
             }
             $distribution = ArticleDistribution::query()

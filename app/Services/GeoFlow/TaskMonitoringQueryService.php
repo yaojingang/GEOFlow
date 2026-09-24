@@ -5,6 +5,7 @@ namespace App\Services\GeoFlow;
 use App\Exceptions\AiModelAccessException;
 use App\Exceptions\ApiException;
 use App\Models\Admin;
+use App\Models\Article;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\WorkerHeartbeat;
@@ -191,7 +192,7 @@ class TaskMonitoringQueryService
     public function getTaskMonitoringDetail(int $taskId, ?Admin $modelViewer = null): array
     {
         $task = Task::query()->whereKey($taskId)->firstOrFail();
-        $decorated = $this->decorateTasks(collect([$task]), $modelViewer)->first();
+        $decorated = $this->decorateTasks(collect([$task]), $modelViewer, diagnostics: true)->first();
 
         return is_array($decorated) ? $decorated : [];
     }
@@ -200,7 +201,7 @@ class TaskMonitoringQueryService
      * @param  Collection<int, Task>  $tasks
      * @return Collection<int, array<string,mixed>>
      */
-    private function decorateTasks(Collection $tasks, ?Admin $modelViewer = null): Collection
+    private function decorateTasks(Collection $tasks, ?Admin $modelViewer = null, bool $diagnostics = false): Collection
     {
         if ($tasks->isEmpty()) {
             return collect([]);
@@ -216,8 +217,8 @@ class TaskMonitoringQueryService
                 COUNT(*) AS total_articles,
                 SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END) AS published_articles,
                 SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_articles,
-                SUM(CASE WHEN status = 'draft' AND review_status IN ('approved','auto_approved') THEN 1 ELSE 0 END) AS publishable_drafts
-            ")
+                SUM(CASE WHEN ".Article::scheduledCandidateSql().' THEN 1 ELSE 0 END) AS publishable_drafts
+            ')
             ->whereIn('task_id', $taskIds)
             ->whereNull('deleted_at')
             ->groupBy('task_id')
@@ -368,7 +369,21 @@ class TaskMonitoringQueryService
 
         $taskKnowledgeBaseLinks = $this->loadTaskKnowledgeBaseLinks($taskIds);
 
-        return $tasks->map(function (Task $task) use ($articleStats, $distributionStats, $qualityStats, $optimizationStats, $runStats, $latestRuns, $titleNames, $modelNames, $qualityPromptNames, $legacyKnowledgeBaseNames, $taskKnowledgeBaseLinks, $modelViewer): array {
+        $workflowStats = [];
+        if ($diagnostics) {
+            foreach (Article::query()->whereIn('task_id', $taskIds)->where('status', '!=', 'published')
+                ->with(['task', 'latestRiskScan', 'latestPublicationHandoff', 'latestAiQualityCheck', 'latestAiOptimizationRun'])->lazyById(100) as $article) {
+                $workflow = app(ArticlePublicationEligibilityService::class)->evaluate($article);
+                $id = (int) $article->task_id;
+                $state = $workflow['state'];
+                $workflowStats[$id]['states'][$state] = ($workflowStats[$id]['states'][$state] ?? 0) + 1;
+                foreach ($workflow['blocking_reasons'] as $reason) {
+                    $workflowStats[$id]['blocking_reasons'][$reason] = ($workflowStats[$id]['blocking_reasons'][$reason] ?? 0) + 1;
+                }
+            }
+        }
+
+        return $tasks->map(function (Task $task) use ($diagnostics, $workflowStats, $articleStats, $distributionStats, $qualityStats, $optimizationStats, $runStats, $latestRuns, $titleNames, $modelNames, $qualityPromptNames, $legacyKnowledgeBaseNames, $taskKnowledgeBaseLinks, $modelViewer): array {
             $taskId = (int) $task->id;
             $articles = $articleStats->get($taskId, ['total_articles' => 0, 'published_articles' => 0, 'draft_articles' => 0, 'publishable_drafts' => 0]);
             $distributions = $distributionStats->get($taskId, ['distribution_total_count' => 0, 'distribution_synced_count' => 0, 'distribution_failed_count' => 0]);
@@ -527,6 +542,11 @@ class TaskMonitoringQueryService
                 'latest_max_attempts' => (int) (($latestRun?->meta['max_attempts'] ?? 0)),
                 // 新契约字段：业务层进度（文章维度），用于“任务成果”视图。
                 'task_progress' => [
+                    'diagnostics_loaded' => $diagnostics,
+                    ...($diagnostics ? [
+                        'workflow' => $workflowStats[$taskId] ?? ['states' => [], 'blocking_reasons' => []],
+                        'ready_articles' => (int) ($workflowStats[$taskId]['states']['ready'] ?? 0),
+                    ] : []),
                     'created_articles' => (int) $articles['total_articles'],
                     'published_articles' => (int) $articles['published_articles'],
                     'draft_articles' => (int) $articles['draft_articles'],

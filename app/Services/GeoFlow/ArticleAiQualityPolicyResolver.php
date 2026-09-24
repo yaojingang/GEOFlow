@@ -30,10 +30,7 @@ class ArticleAiQualityPolicyResolver
         $task = $this->taskForArticle($article);
 
         if ($task instanceof Task && ! $task->trashed()) {
-            $taskPolicy = $this->fromTask($task, $article);
-            if (($taskPolicy['required'] ?? false) || ! (bool) $article->ai_quality_required_at_creation) {
-                return $taskPolicy;
-            }
+            return $this->fromTask($task, $article);
         }
 
         if (! $required) {
@@ -125,8 +122,8 @@ class ArticleAiQualityPolicyResolver
             'retrieval_mode_explicit' => $this->retrievalModeIsExplicit($article, $task, $current),
             'policy_version' => max(1, (int) ($article->ai_quality_policy_version ?? $task?->ai_quality_policy_version ?? 1)),
             'config_version' => max(1, (int) ($task?->ai_quality_config_version ?? $task?->ai_quality_policy_version ?? 1)),
-            'pass_score' => (int) ($task?->ai_quality_pass_score ?: ($current['pass_score'] ?? 85)),
-            'manual_override_min_score' => (int) ($task?->ai_quality_manual_override_min_score ?: ($current['manual_override_min_score'] ?? 70)),
+            'pass_score' => (int) ($task?->ai_quality_pass_score ?? ($current['pass_score'] ?? 85)),
+            'manual_override_min_score' => (int) ($task?->ai_quality_manual_override_min_score ?? ($current['manual_override_min_score'] ?? 70)),
             'timeout_sampling_enabled' => (bool) ($task?->ai_quality_timeout_sampling_enabled ?? ($current['timeout_sampling_enabled'] ?? false)),
             'manual_review_required' => (bool) ($task?->need_review ?? ($current['manual_review_required'] ?? true)),
             'publication_context' => array_replace(Arr::except(
@@ -176,8 +173,8 @@ class ArticleAiQualityPolicyResolver
             'retrieval_mode_explicit' => $this->retrievalModeIsExplicit($article, $task),
             'policy_version' => max(1, (int) ($article?->ai_quality_policy_version ?? $task->ai_quality_policy_version ?? 1)),
             'config_version' => max(1, (int) ($task->ai_quality_config_version ?? $task->ai_quality_policy_version ?? 1)),
-            'pass_score' => (int) ($task->ai_quality_pass_score ?: 85),
-            'manual_override_min_score' => (int) ($task->ai_quality_manual_override_min_score ?: 70),
+            'pass_score' => (int) ($task->ai_quality_pass_score ?? 85),
+            'manual_override_min_score' => (int) ($task->ai_quality_manual_override_min_score ?? 70),
             'timeout_sampling_enabled' => (bool) $task->ai_quality_timeout_sampling_enabled,
             'manual_review_required' => (bool) $task->need_review,
             'publication_context' => [
@@ -388,7 +385,6 @@ class ArticleAiQualityPolicyResolver
                 'pass_score' => (int) ($policy['pass_score'] ?? 85),
                 'manual_override_min_score' => (int) ($policy['manual_override_min_score'] ?? 70),
                 'model_selection_mode' => (string) ($policy['model_selection_mode'] ?? 'fixed'),
-                'manual_review_required' => (bool) ($policy['manual_review_required'] ?? true),
                 'retrieval_mode' => (string) ($policy['retrieval_mode'] ?? AiQualityRetrievalMode::legacyDefault()),
                 'policy_version' => max(1, (int) ($policy['policy_version'] ?? 1)),
             ],
@@ -408,7 +404,7 @@ class ArticleAiQualityPolicyResolver
             ],
             'knowledge' => $knowledge,
             'rules' => ['version' => $rules['version'] ?? null, 'hash' => hash('sha256', json_encode($rules, JSON_UNESCAPED_UNICODE))],
-            'publication_context' => $policy['publication_context'] ?? [],
+            'publication_context' => Arr::except($policy['publication_context'] ?? [], ['publish_scope', 'distribution_strategy']),
             'schema_version' => 'article-quality-schema-1.0.0',
             'segmentation_version' => 'article-quality-segments-1.0.0',
             'scoring_version' => 'article-quality-score-1.0.0',

@@ -20,6 +20,7 @@ use App\Models\TaskRun;
 use App\Models\TaskSchedule;
 use App\Models\TitleLibrary;
 use App\Services\Admin\AdminAiModelAccessResolver;
+use App\Services\HostedSites\HostedSiteAllocationRequestService;
 use App\Support\GeoFlow\AiQualityRetrievalMode;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
@@ -71,7 +72,15 @@ class TaskLifecycleService
         int $apiTokenId,
         Admin $viewer,
     ): array {
-        return $this->createTask($data, $auditAdminId, $apiTokenId, $viewer);
+        $defaultedReview = ! array_key_exists('need_review', $data);
+        $task = $this->createTask($data, $auditAdminId, $apiTokenId, $viewer);
+        $task['compatibility'] = [
+            'need_review_defaulted' => $defaultedReview,
+            'need_review' => (bool) $task['need_review'],
+            'message' => $defaultedReview ? __('admin.task_create.help.api_review_default') : null,
+        ];
+
+        return $task;
     }
 
     /** @return array<string,mixed> */
@@ -155,7 +164,13 @@ class TaskLifecycleService
         array $filters = [],
         ?Admin $modelViewer = null,
     ): array {
-        return $this->taskMonitoringQueryService->listTasksPaginated($page, $perPage, $filters, $modelViewer);
+        $result = $this->taskMonitoringQueryService->listTasksPaginated($page, $perPage, $filters, $modelViewer);
+        $result['items'] = array_map(fn (array $task): array => [
+            ...$task,
+            'effective_configuration' => $this->taskConfigurationCapabilities($task),
+        ], $result['items']);
+
+        return $result;
     }
 
     /**
@@ -186,6 +201,7 @@ class TaskLifecycleService
         } else {
             $normalized['ai_quality_retrieval_mode'] = AiQualityRetrievalMode::legacyDefault();
         }
+        $this->assertEffectiveAiQualityConfiguration(new Task, $normalized, $normalized['knowledge_base_ids'] ?? [], false);
         if ($normalized['status'] === 'active') {
             $this->taskTitleReadinessService->assertCanActivate(
                 $this->taskTitleReadinessService->inspect(
@@ -397,7 +413,9 @@ class TaskLifecycleService
     public function getTask(int $taskId, ?Admin $modelViewer = null): array
     {
         try {
-            return $this->taskMonitoringQueryService->getTaskMonitoringDetail($taskId, $modelViewer);
+            $task = $this->taskMonitoringQueryService->getTaskMonitoringDetail($taskId, $modelViewer);
+
+            return [...$task, 'effective_configuration' => $this->taskConfigurationCapabilities($task)];
         } catch (ModelNotFoundException) {
             throw new ApiException('task_not_found', '任务不存在', 404);
         }
@@ -456,13 +474,9 @@ class TaskLifecycleService
         unset($normalized['knowledge_base_ids']);
         $samplingWasDisabled = false;
         $preserveWorkflowArticleIds = [];
+        $thresholdsOnlyChanged = false;
 
-        DB::transaction(function () use (&$qualityConfigurationChanged, &$qualityControlConfigurationChanged, &$optimizationLevelChanged, &$optimizationWasDisabled, &$samplingWasDisabled, &$preserveWorkflowArticleIds, $normalized, $knowledgeBaseIdsProvided, $knowledgeBaseIds, $status, $taskId, $canManageHostedTask, $auditAdminId, $apiTokenId, $qualityConfigurationRequested, $expectedQualityVersion, $accessAdmin): void {
-            Article::withTrashed()
-                ->where('task_id', $taskId)
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->get(['id']);
+        DB::transaction(function () use (&$thresholdsOnlyChanged, &$qualityConfigurationChanged, &$qualityControlConfigurationChanged, &$optimizationLevelChanged, &$optimizationWasDisabled, &$samplingWasDisabled, &$preserveWorkflowArticleIds, $normalized, $knowledgeBaseIdsProvided, $knowledgeBaseIds, $status, $taskId, $canManageHostedTask, $auditAdminId, $apiTokenId, $qualityConfigurationRequested, $expectedQualityVersion, $accessAdmin): void {
             $current = Task::query()
                 ->whereKey($taskId)
                 ->lockForUpdate()
@@ -494,6 +508,11 @@ class TaskLifecycleService
                     'model_access_admin_role',
                     'model_access_policy_version',
                 ]);
+            Article::withTrashed()
+                ->where('task_id', $taskId)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get(['id']);
             $this->assertCanManageHostedTask($current, $canManageHostedTask);
             $changedModels = [];
             foreach (['ai_model_id', 'ai_quality_model_id'] as $modelField) {
@@ -580,6 +599,7 @@ class TaskLifecycleService
                 $normalizedCurrentKnowledgeBaseIds,
             );
             $qualityConfigurationChanged = $normalizedCurrentKnowledgeBaseIds !== $normalizedEffectiveKnowledgeBaseIds;
+            $changedQualityFields = [];
             $qualityControlConfigurationChanged = $qualityConfigurationChanged;
             foreach ([
                 'ai_quality_enabled',
@@ -590,16 +610,16 @@ class TaskLifecycleService
                 'ai_quality_manual_override_min_score',
                 'ai_model_id',
                 'model_selection_mode',
-                'publish_scope',
-                'distribution_strategy',
-                'need_review',
             ] as $field) {
                 if (array_key_exists($field, $normalized)
                     && (string) ($normalized[$field] ?? '') !== (string) ($current->{$field} ?? '')) {
                     $qualityConfigurationChanged = true;
-                    break;
+                    $changedQualityFields[] = $field;
                 }
             }
+            $thresholdsOnlyChanged = $normalizedCurrentKnowledgeBaseIds === $normalizedEffectiveKnowledgeBaseIds
+                && $changedQualityFields !== []
+                && array_diff($changedQualityFields, ['ai_quality_pass_score', 'ai_quality_manual_override_min_score']) === [];
             foreach ([
                 'ai_quality_enabled',
                 'ai_quality_retrieval_mode',
@@ -724,12 +744,17 @@ class TaskLifecycleService
         });
 
         if ($qualityConfigurationChanged) {
+            $recalculated = $thresholdsOnlyChanged ? app(ArticleAiQualityThresholdRecalculator::class)->forTask($taskId) : [];
             $this->articleAiQualityInvalidationService->invalidateTask(
                 $taskId,
                 '任务质检配置或知识依据已更新',
                 preserveWorkflowArticleIds: $preserveWorkflowArticleIds,
+                recalculatedArticleIds: $recalculated,
             );
         }
+
+        app(ArticleWorkflowTransitionService::class)->recomputeTaskReviews($taskId);
+        app(ArticleWorkflowTransitionService::class)->reconcileImmediateForTask($taskId);
 
         $task = $this->getTask($taskId, $responseViewer);
         $this->broadcastOverviewAfterCommit();
@@ -749,11 +774,6 @@ class TaskLifecycleService
         ?int $apiTokenId = null,
     ): array {
         $taskName = DB::transaction(function () use ($taskId, $canManageHostedTask, $auditAdminId, $apiTokenId): string {
-            Article::withTrashed()
-                ->where('task_id', $taskId)
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->get(['id']);
             $task = Task::query()
                 ->whereKey($taskId)
                 ->lockForUpdate()
@@ -1443,7 +1463,7 @@ class TaskLifecycleService
 
         if (array_key_exists('category_mode', $data)) {
             $categoryMode = trim((string) $data['category_mode']);
-            if (! in_array($categoryMode, ['smart', 'fixed'], true)) {
+            if (! in_array($categoryMode, ['smart', 'fixed', 'random'], true)) {
                 $fieldErrors['category_mode'] = '分类模式无效';
             } else {
                 $output['category_mode'] = $categoryMode;
@@ -1615,6 +1635,14 @@ class TaskLifecycleService
         $manualScore = (int) ($normalized['ai_quality_manual_override_min_score'] ?? $current->ai_quality_manual_override_min_score ?? 70);
         $fieldErrors = [];
 
+        $configuration = $this->taskConfigurationCapabilities(array_replace($current->getAttributes(), $normalized));
+        if ($configuration['optimization_requested'] && ! $configuration['optimization_available']) {
+            $fieldErrors['ai_quality_auto_optimize_enabled'] = implode(' ', array_column($configuration['optimization_blockers'], 'message'));
+        }
+        if ($configuration['sampling_requested'] && ! $configuration['sampling_supported']) {
+            $fieldErrors['ai_quality_timeout_sampling_enabled'] = __('admin.task_create.ai_quality.sampling_incompatible');
+        }
+
         if (empty($promptId)) {
             $fieldErrors['ai_quality_prompt_id'] = '开启 AI 质检后必须选择质检方案';
         }
@@ -1642,6 +1670,45 @@ class TaskLifecycleService
                 'field_errors' => $fieldErrors,
             ]);
         }
+    }
+
+    /** @param array<string,mixed> $task @return array<string,mixed> */
+    public function taskConfigurationCapabilities(array $task): array
+    {
+        $optimizationBlockers = [];
+        foreach ([
+            'ai_quality_optimization' => 'optimization',
+            'ai_quality_optimization_auto_apply' => 'auto_apply',
+        ] as $setting => $code) {
+            if (! (bool) config('geoflow.'.$setting.'_enabled', false)) {
+                $optimizationBlockers[] = ['code' => $code.'_disabled', 'message' => __('admin.task_create.ai_quality.'.$code.'_disabled')];
+            } elseif ((int) config('geoflow.'.$setting.'_percent', 0) !== 100) {
+                $optimizationBlockers[] = ['code' => $code.'_trial', 'message' => __('admin.task_create.ai_quality.'.$code.'_trial')];
+            }
+        }
+
+        $quality = (bool) ($task['ai_quality_enabled'] ?? false);
+        $optimizationRequested = $quality && (bool) ($task['ai_quality_auto_optimize_enabled'] ?? false);
+        $samplingRequested = $quality && (bool) ($task['ai_quality_timeout_sampling_enabled'] ?? false);
+        $mode = (string) ($task['ai_quality_retrieval_mode'] ?? AiQualityRetrievalMode::legacyDefault());
+        $samplingSupported = ! $optimizationRequested && in_array($mode, [AiQualityRetrievalMode::ATOMIC_FIRST, AiQualityRetrievalMode::CHUNK], true);
+
+        return [
+            'manual_review_required' => (bool) ($task['need_review'] ?? true),
+            'legacy_need_review_default' => true,
+            'base_risk_check_enabled' => true,
+            'ai_quality_enabled' => $quality,
+            'optimization_available' => $optimizationBlockers === [],
+            'optimization_state' => $optimizationBlockers === [] ? 'available' : (collect($optimizationBlockers)->contains(fn (array $blocker): bool => str_ends_with($blocker['code'], '_disabled')) ? 'unavailable' : 'trial'),
+            'optimization_blockers' => $optimizationBlockers,
+            'optimization_requested' => $optimizationRequested,
+            'optimization_enabled' => $optimizationRequested && $optimizationBlockers === [],
+            'sampling_requested' => $samplingRequested,
+            'sampling_supported' => $samplingSupported,
+            'sampling_enabled' => $samplingRequested && $samplingSupported,
+            'publish_interval_seconds' => max(60, (int) ($task['publish_interval'] ?? 3600)),
+            'paused' => ($task['status'] ?? 'paused') !== 'active',
+        ];
     }
 
     /** @param  array<string,mixed>  $readiness */
@@ -1699,12 +1766,30 @@ class TaskLifecycleService
      */
     private function activateTask(int $taskId, bool $resetNextRun): void
     {
-        $task = Task::query()->whereKey($taskId)->first(['id', 'next_run_at']);
+        $task = Task::query()->whereKey($taskId)->lockForUpdate()->first(['id', 'next_run_at', 'status', 'schedule_enabled', 'automation_version']);
         $updates = [
             'status' => 'active',
             'schedule_enabled' => 1,
             'updated_at' => now(),
         ];
+
+        if ($task && ($task->status !== 'active' || ! $task->schedule_enabled)) {
+            $updates['automation_version'] = (int) $task->automation_version + 1;
+            DB::afterCommit(static function () use ($taskId): void {
+                foreach ([
+                    fn () => app(DistributionOrchestrator::class)->resumeUnsentForTask($taskId),
+                    fn () => app(ArticlePublicationDeliveryService::class)->resumeForTask($taskId),
+                    fn () => app(HostedSiteAllocationRequestService::class)->resumeForTask($taskId),
+                    fn () => app(ArticleAiQualityReconciliationService::class)->resumeForTask($taskId),
+                ] as $resume) {
+                    try {
+                        $resume();
+                    } catch (\Throwable $exception) {
+                        report($exception);
+                    }
+                }
+            });
+        }
 
         if ($resetNextRun || $task?->next_run_at === null) {
             $updates['next_run_at'] = now();
@@ -1721,12 +1806,19 @@ class TaskLifecycleService
      */
     private function pauseTask(int $taskId, string $reason): int
     {
+        $task = Task::query()->whereKey($taskId)->lockForUpdate()->firstOrFail();
+        $cycleChanged = $task->status !== 'paused' || (bool) $task->schedule_enabled;
         Task::query()->whereKey($taskId)->update([
+            'automation_version' => (int) $task->automation_version + ($cycleChanged ? 1 : 0),
             'status' => 'paused',
             'schedule_enabled' => 0,
             'next_run_at' => null,
             'updated_at' => now(),
         ]);
+        if ($cycleChanged) {
+            Article::query()->where('task_id', $taskId)->where('publication_intent', 'immediate')
+                ->update(['publication_intent' => 'hold', 'workflow_version' => DB::raw('workflow_version + 1')]);
+        }
         $this->articleAiQualityInvalidationService->cancelTaskOptimization($taskId, $reason);
 
         return TaskRun::query()

@@ -1809,6 +1809,30 @@ class AdminTasksPageTest extends TestCase
             ->assertSee('flex items-center justify-end gap-1.5 sm:gap-2', false);
     }
 
+    public function test_review_probe_second_browser_save_uses_current_config_version(): void
+    {
+        Queue::fake();
+        $admin = $this->createTaskFormAdmin('config-review-admin');
+        $deps = $this->createTaskFormDependencies($admin);
+        $kb = KnowledgeBase::query()->create(['name' => 'Review KB', 'content' => 'Service period one year.']);
+        $qualityPrompt = Prompt::query()->where('system_key', 'article_quality.cn_ads_knowledge.v1')->value('id');
+        $task = Task::query()->create(['name' => 'Config review task', 'title_library_id' => $deps['title_library']->id, 'prompt_id' => $deps['prompt']->id, 'ai_model_id' => $deps['ai_model']->id, 'fixed_category_id' => $deps['category']->id, 'category_mode' => 'fixed', 'model_selection_mode' => 'fixed', 'need_review' => false, 'status' => 'paused', 'publish_scope' => 'local_only', 'publish_interval' => 900, 'ai_quality_enabled' => true, 'ai_quality_prompt_id' => $qualityPrompt, 'knowledge_base_id' => $kb->id, 'ai_quality_retrieval_mode' => 'knowledge_broad', 'ai_quality_pass_score' => 85, 'ai_quality_manual_override_min_score' => 70]);
+        $task->knowledgeBases()->sync([$kb->id => ['sort_order' => 0]]);
+        $payload = $this->validTaskPayload($deps, ['task_name' => $task->name, 'need_review' => '1', 'ai_quality_enabled' => '1', 'ai_quality_prompt_id' => $qualityPrompt, 'ai_quality_retrieval_mode' => 'knowledge_broad', 'knowledge_base_ids' => [$kb->id], 'ai_quality_pass_score' => 85, 'ai_quality_manual_override_min_score' => 70, 'config_version' => 1, 'task_revision' => app(DistributionOrchestrator::class)->taskRevision($task)]);
+        $this->actingAs($admin, 'admin')->put(route('admin.tasks.update', $task->id), $payload)->assertSessionHasNoErrors();
+        $task->refresh();
+        $this->assertSame(2, (int) $task->ai_quality_config_version);
+        $this->assertSame(1, (int) $task->ai_quality_policy_version);
+        $html = $this->get(route('admin.tasks.edit', $task->id))->assertOk()->getContent();
+        preg_match('/name="config_version" value="(\d+)"/', $html, $matches);
+        $this->assertSame('2', $matches[1]);
+        $payload['task_name'] = 'Second save';
+        $payload['config_version'] = (int) $matches[1];
+        $payload['task_revision'] = app(DistributionOrchestrator::class)->taskRevision($task);
+        $this->put(route('admin.tasks.update', $task->id), $payload)->assertSessionHasNoErrors();
+        $this->assertSame('Second save', $task->fresh()->name);
+    }
+
     private function ensureWorkerHeartbeatTable(): void
     {
         if (Schema::hasTable('worker_heartbeats')) {
@@ -1922,6 +1946,73 @@ class AdminTasksPageTest extends TestCase
         ]);
 
         return [$task, $article];
+    }
+
+    public function test_editing_a_manual_review_task_preserves_omitted_interval_and_quality_preferences(): void
+    {
+        $admin = $this->createTaskFormAdmin('task_configuration_preservation_admin');
+        $dependencies = $this->createTaskFormDependencies($admin);
+        $task = Task::query()->create([
+            'name' => '保留配置任务',
+            'title_library_id' => $dependencies['title_library']->id,
+            'prompt_id' => $dependencies['prompt']->id,
+            'ai_model_id' => $dependencies['ai_model']->id,
+            'need_review' => true,
+            'status' => 'paused',
+            'publish_scope' => 'local_only',
+            'publish_interval' => 900,
+            'ai_quality_enabled' => false,
+            'ai_quality_prompt_id' => Prompt::query()->where('system_key', 'article_quality.cn_ads_knowledge.v1')->value('id'),
+            'ai_quality_pass_score' => 91,
+            'ai_quality_manual_override_min_score' => 0,
+            'ai_quality_optimization_level' => 'excellent_90',
+        ]);
+        $payload = $this->validTaskPayload($dependencies, [
+            'task_name' => $task->name,
+            'need_review' => '1',
+            'category_mode' => 'random',
+            'task_revision' => app(DistributionOrchestrator::class)->taskRevision($task),
+            'config_version' => $task->ai_quality_config_version,
+        ]);
+        unset($payload['publish_interval']);
+
+        $this->actingAs($admin, 'admin')->put(route('admin.tasks.update', $task->id), $payload)
+            ->assertRedirect(route('admin.tasks.index'))->assertSessionHasNoErrors();
+
+        $task->refresh();
+        $this->assertSame(900, (int) $task->publish_interval);
+        $this->assertSame(91, $task->ai_quality_pass_score);
+        $this->assertSame(0, $task->ai_quality_manual_override_min_score);
+        $this->assertNotNull($task->ai_quality_prompt_id);
+        $this->assertSame('excellent_90', $task->ai_quality_optimization_level);
+        $this->assertSame('random', $task->category_mode);
+        $this->actingAs($admin, 'admin')->get(route('admin.tasks.edit', $task->id))
+            ->assertOk()->assertSee('每 15 分钟发布一篇')->assertSee('基础风险检查（始终启用）');
+    }
+
+    public function test_api_task_creation_exposes_compatible_review_default_and_explicit_policy(): void
+    {
+        $admin = $this->createTaskFormAdmin('task_compatible_policy_admin');
+        $dependencies = $this->createTaskFormDependencies($admin);
+        foreach ([null, true, false] as $review) {
+            $input = [
+                'name' => 'API policy '.var_export($review, true),
+                'title_library_id' => $dependencies['title_library']->id,
+                'prompt_id' => $dependencies['prompt']->id,
+                'ai_model_id' => $dependencies['ai_model']->id,
+                'status' => 'paused',
+                'category_mode' => 'random',
+            ];
+            if ($review !== null) {
+                $input['need_review'] = $review;
+            }
+            $created = app(TaskLifecycleService::class)->createTaskForApi($input, $admin->id, 0, $admin);
+            $this->assertSame($review === null, $created['compatibility']['need_review_defaulted']);
+            $this->assertSame($review ?? true, $created['effective_configuration']['manual_review_required']);
+            $this->assertSame($review === null, $created['compatibility']['message'] !== null);
+            $this->assertSame('random', $created['category_mode']);
+            $this->assertSame(3600, $created['publish_interval']);
+        }
     }
 
     /**

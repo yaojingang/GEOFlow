@@ -34,7 +34,7 @@ class UpdateTaskRequest extends FormRequest
             'article_limit' => ['sometimes', 'integer', 'min:1', 'max:99999'],
             'draft_limit' => ['sometimes', 'integer', 'min:1', 'max:9999'],
             'publish_interval' => ['sometimes', 'integer', 'min:60'],
-            'category_mode' => ['sometimes', 'string', 'in:smart,fixed'],
+            'category_mode' => ['sometimes', 'string', 'in:smart,fixed,random'],
             'model_selection_mode' => ['sometimes', 'string', 'in:fixed,smart_failover'],
             'publish_scope' => ['sometimes', 'string', 'in:local_and_distribution,distribution_only,local_only'],
             'distribution_strategy' => ['sometimes', 'string', 'in:'.implode(',', TaskDistributionChannelSelector::strategies())],

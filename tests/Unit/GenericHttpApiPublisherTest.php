@@ -8,6 +8,7 @@ use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
+use App\Services\GeoFlow\ArticlePublicationEligibilityService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\GenericHttpApiPublisher;
 use App\Support\GeoFlow\ApiKeyCrypto;
@@ -261,6 +262,7 @@ class GenericHttpApiPublisherTest extends TestCase
             'action' => 'publish',
             'status' => 'queued',
             'idempotency_key' => 'generic-test-key',
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article)],
         ], $distributionOverrides));
 
         return [$channel, $distribution];

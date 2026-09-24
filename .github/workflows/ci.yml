@@ -73,6 +73,24 @@ jobs:
       - name: Run JavaScript test suite
         run: npm run test:analytics
 
+      - name: Install isolated browser test tools
+        run: |
+          python3 -m venv "$RUNNER_TEMP/geoflow-browser-venv"
+          "$RUNNER_TEMP/geoflow-browser-venv/bin/pip" install playwright==1.58.0
+          "$RUNNER_TEMP/geoflow-browser-venv/bin/playwright" install --with-deps chromium
+
+      - name: Test article workflow through real browser forms
+        run: '"$RUNNER_TEMP/geoflow-browser-venv/bin/python" tests/Browser/article_workflow_smoke.py --output-dir "$RUNNER_TEMP/geoflow-workflow-browser-proof"'
+
+      - name: Upload browser workflow evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: article-workflow-browser-proof
+          path: ${{ runner.temp }}/geoflow-workflow-browser-proof
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Audit PHP dependencies
         run: composer audit --locked --no-interaction
 

@@ -2,7 +2,6 @@
 
 namespace App\Services\HostedSites;
 
-use App\Jobs\ProcessArticleDistributionJob;
 use App\Models\Article;
 use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
@@ -12,6 +11,7 @@ use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
 use App\Models\Task;
 use App\Services\GeoFlow\ArticlePublicationQualityGate;
+use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\Site\UrlChangeInspector;
 use App\Support\GeoFlow\ArticleWorkflow;
 use Carbon\CarbonImmutable;
@@ -34,9 +34,6 @@ final class HostedSiteAllocator
         if (! $channel instanceof DistributionChannel) {
             return $this->recordFailure($candidate, 'no_hosted_channel', 'No hosted channel is attached to the task.');
         }
-        if ($candidate->article instanceof Article) {
-            $this->publicationQualityGate->check($candidate->article, 'hosted_site_allocate');
-        }
 
         try {
             $result = DB::transaction(function () use ($candidate, $channel): array {
@@ -48,19 +45,21 @@ final class HostedSiteAllocator
                     ->where('distribution_channel_id', (int) $channel->id)
                     ->lockForUpdate()
                     ->first();
+                $task = Task::query()->whereKey((int) $candidate->task_id)->lockForUpdate()->first();
+                $article = Article::query()->whereKey((int) $candidate->article_id)->lockForUpdate()->first();
+                $article?->setRelation('task', $task);
                 $request = HostedSiteAllocationRequest::query()
                     ->whereKey((int) $candidate->id)
                     ->lockForUpdate()
                     ->first();
-                $article = $request instanceof HostedSiteAllocationRequest
-                    ? Article::query()->whereKey((int) $request->article_id)->lockForUpdate()->first()
-                    : null;
 
                 if (! $lockedChannel || ! $profile || ! $request || ! $article) {
                     return [null, 'missing_dependency', 'Hosted allocation dependency is missing.'];
                 }
 
-                $task = Task::query()->whereKey((int) $article->task_id)->lockForUpdate()->first();
+                if ($candidate->workflow_fence != $request->workflow_fence) {
+                    return [null, null, null];
+                }
                 $hostedChannelIds = $task
                     ? DistributionChannel::query()
                         ->where('channel_type', DistributionChannel::TYPE_HOSTED_SITE)
@@ -72,6 +71,8 @@ final class HostedSiteAllocator
                     : [];
                 if (! $task
                     || (int) $request->task_id !== (int) $task->id
+                    || (int) $article->task_id !== (int) $task->id
+                    || (int) $request->article_id !== (int) $article->id
                     || (int) $request->hosted_site_profile_id !== (int) $profile->id
                     || (string) $task->publish_scope !== 'distribution_only'
                     || $hostedChannelIds !== [(int) $lockedChannel->id]
@@ -86,6 +87,18 @@ final class HostedSiteAllocator
 
                     return [null, 'allocation_contract_changed', 'The article or task no longer satisfies the hosted allocation contract.'];
                 }
+
+                if (! app(DistributionOrchestrator::class)->workflowFenceMatches($article, $request->workflow_fence)) {
+                    $request->forceFill([
+                        'status' => HostedSiteAllocationRequest::STATUS_CANCELLED,
+                        'next_attempt_at' => null,
+                        'last_error_code' => 'distribution_workflow_superseded',
+                        'last_error_message' => 'The hosted publication request no longer matches the article workflow.',
+                    ])->save();
+
+                    return [null, null, null];
+                }
+                $this->publicationQualityGate->check($article, 'hosted_site_allocate');
 
                 $existing = HostedSiteArticleAssignment::query()
                     ->where('article_id', (int) $article->id)
@@ -111,6 +124,23 @@ final class HostedSiteAllocator
                         'last_error_code' => null,
                         'last_error_message' => null,
                     ])->save();
+
+                    if ($existing->status === HostedSiteArticleAssignment::STATUS_RESERVED) {
+                        $delivery = ArticleDistribution::query()->where('article_id', $article->id)
+                            ->where('distribution_channel_id', $lockedChannel->id)->where('action', 'publish')
+                            ->lockForUpdate()->first();
+                        if ($delivery && in_array($delivery->status, ['queued', 'cancelled'], true)) {
+                            $meta = (array) $delivery->remote_meta;
+                            if (data_get($meta, 'workflow_fence') != $request->workflow_fence) {
+                                unset($meta['queue_dispatched_at'], $meta['distribution_payload'], $meta['ai_quality_guard']);
+                            }
+                            $meta['workflow_fence'] = $request->workflow_fence;
+                            $delivery->update(['status' => 'queued', 'next_retry_at' => now(), 'remote_meta' => $meta]);
+                            if (! data_get($meta, 'queue_dispatched_at')) {
+                                app(DistributionOrchestrator::class)->dispatchDeliveryAfterCommit((int) $delivery->id);
+                            }
+                        }
+                    }
 
                     return [$existing, null, null];
                 }
@@ -184,6 +214,7 @@ final class HostedSiteAllocator
                     'attempt_count' => 0,
                     'next_retry_at' => now(),
                     'payload_hash' => $fingerprint,
+                    'remote_meta' => ['workflow_fence' => $request->workflow_fence],
                 ]);
 
                 $request->forceFill([
@@ -206,9 +237,7 @@ final class HostedSiteAllocator
                     'created_at' => now(),
                 ]);
 
-                ProcessArticleDistributionJob::dispatch((int) $distribution->id)
-                    ->onQueue('distribution')
-                    ->afterCommit();
+                app(DistributionOrchestrator::class)->dispatchDeliveryAfterCommit((int) $distribution->id);
 
                 return [$assignment, null, null];
             }, 3);
@@ -228,7 +257,7 @@ final class HostedSiteAllocator
             return $assignment;
         }
 
-        return $this->recordFailure($candidate, (string) $errorCode, (string) $errorMessage);
+        return $errorCode === null ? null : $this->recordFailure($candidate, (string) $errorCode, (string) $errorMessage);
     }
 
     /** @return array{string,string}|null */
@@ -257,46 +286,55 @@ final class HostedSiteAllocator
         string $errorCode,
         string $errorMessage,
     ): null {
-        $safeMessage = mb_substr($errorMessage, 0, 1000);
-        $terminal = in_array($errorCode, [
-            'allocation_contract_changed',
-            'duplicate_content',
-            'missing_dependency',
-            'no_hosted_channel',
-        ], true);
-        $requestUpdate = HostedSiteAllocationRequest::query()
-            ->whereKey((int) $candidate->id);
-        $eligibleStatuses = [
-            HostedSiteAllocationRequest::STATUS_PENDING,
-            HostedSiteAllocationRequest::STATUS_ALLOCATING,
-        ];
-        if ($errorCode === 'assignment_requires_recovery') {
-            $eligibleStatuses[] = HostedSiteAllocationRequest::STATUS_ASSIGNED;
-            $requestUpdate->whereHas('assignment', fn ($assignment) => $assignment->whereIn('status', [
-                HostedSiteArticleAssignment::STATUS_FAILED,
-                HostedSiteArticleAssignment::STATUS_WITHDRAWN,
-            ]));
-        } else {
-            $requestUpdate->whereNull('hosted_site_article_assignment_id');
-        }
-        $requestUpdate->whereIn('status', $eligibleStatuses);
-        $requestUpdate->update([
-            'status' => $terminal
-                ? HostedSiteAllocationRequest::STATUS_CANCELLED
-                : HostedSiteAllocationRequest::STATUS_PENDING,
-            'next_attempt_at' => $terminal ? null : now()->addMinutes(5),
-            'last_error_code' => mb_substr($errorCode, 0, 64),
-            'last_error_message' => $safeMessage,
-            'updated_at' => now(),
-        ]);
-        DistributionLog::query()->create([
-            'article_id' => (int) $candidate->article_id,
-            'level' => 'warning',
-            'event' => 'hosted_site.allocation_deferred',
-            'message' => '托管站点分配已延期',
-            'context' => ['error_code' => $errorCode],
-            'created_at' => now(),
-        ]);
+        DB::transaction(function () use ($candidate, $errorCode, $errorMessage): void {
+            $current = HostedSiteAllocationRequest::query()->whereKey($candidate->id)->lockForUpdate()->first();
+            if (! $current || $current->workflow_fence != $candidate->workflow_fence) {
+                return;
+            }
+            $safeMessage = mb_substr($errorMessage, 0, 1000);
+            $terminal = in_array($errorCode, [
+                'allocation_contract_changed',
+                'duplicate_content',
+                'missing_dependency',
+                'no_hosted_channel',
+            ], true);
+            $requestUpdate = HostedSiteAllocationRequest::query()
+                ->whereKey((int) $candidate->id);
+            $eligibleStatuses = [
+                HostedSiteAllocationRequest::STATUS_PENDING,
+                HostedSiteAllocationRequest::STATUS_ALLOCATING,
+            ];
+            if ($errorCode === 'assignment_requires_recovery') {
+                $eligibleStatuses[] = HostedSiteAllocationRequest::STATUS_ASSIGNED;
+                $requestUpdate->whereHas('assignment', fn ($assignment) => $assignment->whereIn('status', [
+                    HostedSiteArticleAssignment::STATUS_FAILED,
+                    HostedSiteArticleAssignment::STATUS_WITHDRAWN,
+                ]));
+            } else {
+                $requestUpdate->whereNull('hosted_site_article_assignment_id');
+            }
+            $requestUpdate->whereIn('status', $eligibleStatuses);
+            $updated = $requestUpdate->update([
+                'status' => $terminal
+                    ? HostedSiteAllocationRequest::STATUS_CANCELLED
+                    : HostedSiteAllocationRequest::STATUS_PENDING,
+                'next_attempt_at' => $terminal ? null : now()->addMinutes(5),
+                'last_error_code' => mb_substr($errorCode, 0, 64),
+                'last_error_message' => $safeMessage,
+                'updated_at' => now(),
+            ]);
+            if (! $updated) {
+                return;
+            }
+            DistributionLog::query()->create([
+                'article_id' => (int) $candidate->article_id,
+                'level' => 'warning',
+                'event' => 'hosted_site.allocation_deferred',
+                'message' => '托管站点分配已延期',
+                'context' => ['error_code' => $errorCode],
+                'created_at' => now(),
+            ]);
+        }, 3);
 
         return null;
     }

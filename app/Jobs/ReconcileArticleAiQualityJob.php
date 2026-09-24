@@ -35,6 +35,7 @@ class ReconcileArticleAiQualityJob implements ShouldQueue
     public function handle(ArticleAiQualityInspectionService $inspection): void
     {
         $reconciliation = app(ArticleAiQualityReconciliationService::class);
+        $reconciliation->retryFailedChecks($this->limit, $this->articleIds);
         if ($this->articleIds === []) {
             $reconciliation->recoverCompletedWorkflows($this->limit);
         } else {

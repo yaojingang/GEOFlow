@@ -19,6 +19,8 @@ final class OutboundRequestFailedException extends RuntimeException
 
     public readonly ?string $providerCode;
 
+    public readonly ?int $retryAfterSeconds;
+
     public function __construct(
         ?Throwable $previous = null,
         ?int $httpStatus = null,
@@ -26,6 +28,7 @@ final class OutboundRequestFailedException extends RuntimeException
     ) {
         [$derivedStatus, $derivedProviderCode, $providerCategory] = $this->providerFailureContext($previous);
         $this->httpStatus = $httpStatus ?? $derivedStatus;
+        $this->retryAfterSeconds = self::retryAfterSeconds($previous);
         $this->providerCode = $this->safeProviderCode($providerCode ?? $derivedProviderCode);
         $this->reasonCode = 'outbound_request_failed';
         $this->causeType = $previous?->getPrevious() instanceof OutboundRequestCauseException
@@ -87,6 +90,28 @@ final class OutboundRequestFailedException extends RuntimeException
         }
 
         return 'unknown';
+    }
+
+    /** Retain only a bounded delay while the original response is redacted. */
+    public static function retryAfterSeconds(?Throwable $exception): ?int
+    {
+        for ($depth = 0; $depth < 8 && $exception; $depth++, $exception = $exception->getPrevious()) {
+            if ($exception instanceof self && $exception->retryAfterSeconds !== null) {
+                return $exception->retryAfterSeconds;
+            }
+            $response = $exception->response ?? (method_exists($exception, 'getResponse') ? $exception->getResponse() : null);
+            $value = is_object($response) && method_exists($response, 'header') ? $response->header('Retry-After')
+                : (is_object($response) && method_exists($response, 'getHeaderLine') ? $response->getHeaderLine('Retry-After') : null);
+            if (! is_string($value) || trim($value) === '') {
+                continue;
+            }
+            $seconds = ctype_digit(trim($value)) ? (int) trim($value) : (($timestamp = strtotime($value)) === false ? null : max(0, $timestamp - time()));
+            if ($seconds !== null) {
+                return min(604800, max(0, $seconds));
+            }
+        }
+
+        return null;
     }
 
     /** @return array{?int,?string,string} */

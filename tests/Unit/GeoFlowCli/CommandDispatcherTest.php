@@ -451,6 +451,43 @@ class CommandDispatcherTest extends TestCase
     }
 
     #[Test]
+    public function task_creation_requires_an_explicit_manual_review_choice_before_http(): void
+    {
+        $path = $this->root.'/task.json';
+        file_put_contents($path, '{"name":"new task"}');
+        $factory = $this->successfulFactory('{"success":true}');
+        [$dispatcher, $input, $stdout, $stderr] = $this->harness($factory, [
+            'task', 'create', '--json', $path,
+            '--base-url', 'https://api.example.com', '--token', 'secret-token',
+        ]);
+
+        $this->expectException(CliException::class);
+        $this->expectExceptionMessage('need_review');
+        try {
+            $dispatcher->dispatch($input->getRawTokens(), $input, $stdout, $stderr);
+        } finally {
+            $this->assertCount(0, $factory->recorded());
+        }
+    }
+
+    #[Test]
+    public function task_creation_can_explicitly_skip_manual_review(): void
+    {
+        $path = $this->root.'/task.json';
+        file_put_contents($path, '{"name":"automatic task","need_review":false}');
+        $factory = $this->successfulFactory('{"success":true}');
+        [$dispatcher, $input, $stdout, $stderr] = $this->harness($factory, [
+            'task', 'create', '--json', $path,
+            '--base-url', 'https://api.example.com', '--token', 'secret-token',
+        ]);
+
+        $this->assertSame(0, $dispatcher->dispatch($input->getRawTokens(), $input, $stdout, $stderr));
+        $requests = $factory->recorded(static fn ($request): bool => $request->method() === 'POST' && $request->url() === 'https://api.example.com/api/v1/tasks');
+        $this->assertCount(1, $requests);
+        $this->assertFalse($requests->first()[0]->data()['need_review']);
+    }
+
+    #[Test]
     public function oversized_json_input_is_rejected_before_http(): void
     {
         $path = $this->root.'/oversized.json';

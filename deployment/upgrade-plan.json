@@ -832,6 +832,16 @@
       "name": "2026_09_16_144419_create_recovery_reconciliations_tables",
       "sha256": "370b18a227ba6e9b14caf1aaf6314d56ce83b68b38547642ff97ccd23bbe1be1",
       "online": false
+    },
+    {
+      "name": "2026_09_23_214005_add_publication_intent_to_article_workflow",
+      "sha256": "4f9c2f8793d5d70dad6b3e405b21a9e6fa946e70eb88caeaae26dc3325fd4aeb",
+      "online": false
+    },
+    {
+      "name": "2026_09_23_223537_add_workflow_fence_to_hosted_site_allocation_requests",
+      "sha256": "7969a61d4e7fee7c3311abcd59f1c562ed33de7a891c46bbdc0a4585f059176e",
+      "online": false
     }
   ],
   "compatibility": {

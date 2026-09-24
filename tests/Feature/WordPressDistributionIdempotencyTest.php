@@ -11,8 +11,12 @@ use App\Models\Category;
 use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
 use App\Models\Task;
+use App\Models\Title;
+use App\Models\TitleLibrary;
+use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionRetryPolicy;
+use App\Services\GeoFlow\TaskLifecycleService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -22,6 +26,245 @@ use Tests\TestCase;
 class WordPressDistributionIdempotencyTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_known_remote_success_then_local_deadlock_requires_reconciliation_before_republish(): void
+    {
+        Queue::fake();
+        [$article] = $this->createWordPressArticle();
+        $posts = 0;
+        Http::fake(function ($request) use (&$posts) {
+            if ($request->method() === 'POST' && str_ends_with($request->url(), '/wp/v2/posts')) {
+                $posts++;
+
+                return Http::response(['id' => 100 + $posts, 'link' => 'https://wp.example.com/post-'.(100 + $posts)], 201);
+            }
+
+            return Http::response([], 200);
+        });
+        $orch = app(DistributionOrchestrator::class);
+        $orch->enqueueForArticle($article, throwOnFailure: true);
+        $delivery = ArticleDistribution::sole();
+        $once = false;
+        ArticleDistribution::updating(function ($row) use (&$once): void {
+            if (! $once && $row->isDirty('status') && $row->status === 'synced') {
+                $once = true;
+                throw new \PDOException('deadlock detected');
+            }
+        });
+        (new ProcessArticleDistributionJob($delivery->id))->handle($orch, app(DistributionRetryPolicy::class));
+        $this->assertSame(1, $posts);
+        $this->assertSame('outcome_unknown', $delivery->fresh()->status);
+        $this->assertSame('101', $delivery->fresh()->remote_id);
+        app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), 'publish');
+        (new ProcessArticleDistributionJob($delivery->id))->handle($orch, app(DistributionRetryPolicy::class));
+        $this->assertSame(1, $posts, 'An acknowledged remote create must not be created again after losing its local commit.');
+    }
+
+    public function test_geoflow_delete_then_explicit_republish_recreates_remote_copy(): void
+    {
+        Queue::fake();
+        [$article, $task, $channel] = $this->createWordPressArticle();
+        $channel->update(['channel_type' => 'geoflow_agent']);
+        $channel->secrets()->update(['scopes' => ['article.publish', 'article.delete', 'article.update']]);
+        $posts = 0;
+        Http::fake(function ($request) use (&$posts) {
+            if (str_ends_with($request->url(), '/delete')) {
+                return Http::response(['ok' => true, 'deleted' => true, 'remote_id' => 'remote-1']);
+            }
+            $posts++;
+
+            return Http::response(['ok' => true, 'remote_id' => 'remote-1', 'remote_url' => 'https://wp.example.com/post-1']);
+        });
+        $orch = app(DistributionOrchestrator::class);
+        app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), 'publish');
+        $delivery = ArticleDistribution::where('action', 'publish')->sole();
+        $orch->process($delivery);
+        $this->assertSame(1, $posts);
+        $firstKey = $delivery->fresh()->idempotency_key;
+        $orch->deleteRemoteArticle($delivery->fresh());
+        $firstDeleteKey = ArticleDistribution::where('action', 'delete')->sole()->idempotency_key;
+        $this->assertSame('synced', ArticleDistribution::where('action', 'delete')->sole()->status);
+        app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), 'publish');
+        $this->assertSame('queued', $delivery->fresh()->status, 'The successful deletion must invalidate publish deduplication.');
+        $this->assertNotSame($firstKey, $delivery->fresh()->idempotency_key);
+        $orch->process($delivery->fresh());
+        $this->assertSame(2, $posts);
+        $this->assertFalse((bool) data_get($delivery->fresh()->remote_meta, 'remote_deleted'));
+        app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), 'publish');
+        $this->assertSame('synced', $delivery->fresh()->status);
+        $orch->deleteRemoteArticle($delivery->fresh());
+        $this->assertNotSame($firstDeleteKey, ArticleDistribution::where('action', 'delete')->sole()->idempotency_key);
+        app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), 'publish');
+        $orch->process($delivery->fresh());
+        $this->assertSame(3, $posts);
+        $this->assertSame(2, data_get($delivery->fresh()->remote_meta, 'remote_copy_version'));
+    }
+
+    public function test_removed_automatic_channel_is_not_reauthorized_by_task_resume(): void
+    {
+        Queue::fake();
+        [$article, $task, $removedChannel] = $this->createWordPressArticle();
+        $sent = 0;
+        Http::fake(function () use (&$sent) {
+            $sent++;
+
+            return Http::response(['id' => 123, 'link' => 'https://wp.example.com/post-123'], 201);
+        });
+        $orch = app(DistributionOrchestrator::class);
+        $orch->enqueueForArticle($article, throwOnFailure: true);
+        $delivery = ArticleDistribution::sole();
+        $newChannel = DistributionChannel::create(['name' => 'New target', 'domain' => 'new.example.test', 'endpoint_url' => 'https://new.example.test', 'status' => 'active']);
+        $orch->syncTaskChannels($task, [$newChannel->id]);
+        $this->assertFalse($task->distributionChannels()->whereKey($removedChannel->id)->exists());
+        app(TaskLifecycleService::class)->stopTask($task->id);
+        $orch->process($delivery);
+        $library = TitleLibrary::create(['name' => 'Resume library']);
+        Title::create(['library_id' => $library->id, 'title' => 'Available title']);
+        $task->update(['title_library_id' => $library->id, 'article_limit' => 1, 'created_count' => 0]);
+        app(TaskLifecycleService::class)->startTask($task->id);
+        $orch->process($delivery->fresh());
+        $this->assertSame(0, $sent, 'Task resume must not authorize sending to a channel removed from the task.');
+    }
+
+    public function test_immediate_update_acknowledgement_survives_local_commit_failure(): void
+    {
+        Queue::fake();
+        [$article] = $this->createWordPressArticle();
+        Http::fake(['*' => Http::response(['id' => 123, 'link' => 'https://wp.example.com/article'])]);
+        $service = app(DistributionOrchestrator::class);
+        $service->enqueueForArticle($article, throwOnFailure: true);
+        $delivery = ArticleDistribution::query()->sole();
+        $this->assertTrue($service->process($delivery));
+        $failed = false;
+        ArticleDistribution::updating(function ($row) use (&$failed): void {
+            if (! $failed && $row->action === 'update' && $row->isDirty('status') && $row->status === 'synced') {
+                $failed = true;
+                throw new \PDOException('deadlock detected');
+            }
+        });
+        try {
+            $service->updateRemoteArticle($delivery->fresh());
+            $this->fail('Failed local commit must be reported.');
+        } catch (\PDOException $exception) {
+            $this->assertSame('deadlock detected', $exception->getMessage());
+        }
+        $update = ArticleDistribution::query()->where('action', 'update')->sole();
+        $this->assertTrue($failed);
+        $this->assertSame('outcome_unknown', $update->status);
+        $this->assertSame('123', $update->remote_id);
+        $this->assertSame('distribution_local_commit_failed', data_get($update->remote_meta, 'acknowledged_response.error_code'));
+        $this->assertSame([], $service->enqueueForArticle($article->fresh(), throwOnFailure: true));
+        Http::assertSentCount(2);
+    }
+
+    public function test_three_remote_copy_cycles_keep_delete_idempotency_fresh_from_update_row(): void
+    {
+        Queue::fake();
+        [$article] = $this->createAgentArticle();
+        $remoteExists = false;
+        $receipts = [];
+        $deleteKeys = [];
+        Http::fake(function ($request) use (&$remoteExists, &$receipts, &$deleteKeys) {
+            $key = $request->header('X-GEOFlow-Idempotency-Key')[0];
+            if (str_ends_with($request->url(), '/delete')) {
+                $deleteKeys[] = $key;
+            }
+            if (isset($receipts[$key])) {
+                return Http::response($receipts[$key]);
+            }
+            $deleted = str_ends_with($request->url(), '/delete');
+            $remoteExists = ! $deleted;
+            $receipts[$key] = ['ok' => true, 'deleted' => $deleted, 'remote_id' => 'remote-1', 'remote_url' => $deleted ? null : 'https://wp.example.com/post-1'];
+
+            return Http::response($receipts[$key]);
+        });
+        $orch = app(DistributionOrchestrator::class);
+        app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), 'publish');
+        $publish = ArticleDistribution::where('action', 'publish')->sole();
+        $orch->process($publish);
+        $update = $orch->updateRemoteArticle($publish->fresh());
+        $this->assertTrue($remoteExists);
+        for ($cycle = 0; $cycle < 3; $cycle++) {
+            $orch->deleteRemoteArticle($update->fresh());
+            $this->assertFalse($remoteExists, 'Delete cycle '.($cycle + 1).' must remove the current remote copy. Keys: '.json_encode($deleteKeys));
+            $this->assertSame($cycle + 1, count(array_unique($deleteKeys)));
+            if ($cycle < 2) {
+                app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), 'publish');
+                $orch->process($publish->fresh());
+                $this->assertTrue($remoteExists);
+            }
+        }
+    }
+
+    public function test_remote_ack_survives_secret_metadata_save_failure(): void
+    {
+        Queue::fake();
+        [$article] = $this->createAgentArticle();
+        $calls = 0;
+        Http::fake(function () use (&$calls) {
+            $calls++;
+
+            return Http::response(['ok' => true, 'remote_id' => 'remote-1', 'remote_url' => 'https://wp.example.com/post-1']);
+        });
+        $orch = app(DistributionOrchestrator::class);
+        $orch->enqueueForArticle($article, throwOnFailure: true);
+        $delivery = ArticleDistribution::sole();
+        $once = false;
+        DistributionChannelSecret::updating(function ($secret) use (&$once): void {
+            if (! $once && $secret->isDirty('last_used_at')) {
+                $once = true;
+                throw new \PDOException('deadlock detected');
+            }
+        });
+        (new ProcessArticleDistributionJob($delivery->id))->handle($orch, app(DistributionRetryPolicy::class));
+        $this->assertSame(1, $calls);
+        $this->assertSame('outcome_unknown', $delivery->fresh()->status, 'HTTP acknowledgement must survive a publisher-internal metadata save failure.');
+        $this->assertSame('remote-1', $delivery->fresh()->remote_id);
+    }
+
+    public function test_immediate_update_does_not_bypass_unknown_sibling(): void
+    {
+        Queue::fake();
+        [$article] = $this->createAgentArticle();
+        $calls = 0;
+        Http::fake(function () use (&$calls) {
+            $calls++;
+
+            return Http::response(['ok' => true, 'remote_id' => 'remote-1', 'remote_url' => 'https://wp.example.com/post-1']);
+        });
+        $orch = app(DistributionOrchestrator::class);
+        $orch->enqueueForArticle($article, throwOnFailure: true);
+        $publish = ArticleDistribution::sole();
+        $orch->process($publish);
+        $update = $orch->updateRemoteArticle($publish->fresh());
+        $once = false;
+        ArticleDistribution::updating(function ($row) use (&$once): void {
+            if (! $once && $row->isDirty('status') && $row->status === 'synced') {
+                $once = true;
+                throw new \PDOException('deadlock detected');
+            }
+        });
+        try {
+            $orch->deleteRemoteArticle($publish->fresh());
+        } catch (\PDOException) {
+        }
+        $this->assertSame('outcome_unknown', ArticleDistribution::where('action', 'delete')->sole()->status);
+        $before = $calls;
+        try {
+            $orch->updateRemoteArticle($update->fresh());
+        } catch (\RuntimeException) {
+        }
+        $this->assertSame($before, $calls, 'The channel must be reconciled before an immediate update can overwrite its uncertain deletion.');
+    }
+
+    private function createAgentArticle(): array
+    {
+        $fixture = $this->createWordPressArticle();
+        $fixture[2]->update(['channel_type' => 'geoflow_agent']);
+        $fixture[2]->secrets()->update(['scopes' => ['article.publish', 'article.delete', 'article.update']]);
+
+        return $fixture;
+    }
 
     public function test_unchanged_synced_article_is_not_queued_for_wordpress_again(): void
     {

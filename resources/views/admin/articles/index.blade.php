@@ -350,6 +350,7 @@
                                 @if(__('admin.articles.bulk.selected_prefix') !== '')
                                     <span>{{ __('admin.articles.bulk.selected_prefix') }}</span>
                                 @endif
+                                <span>{{ __('article_workflow.select_page') }} · </span>
                                 <span id="selected-count">0</span>
                                 <span>{{ __('admin.articles.bulk.selected_suffix') }}</span>
                             </span>
@@ -367,18 +368,18 @@
                             </select>
                             @if(!$isTrashView)
                             <select name="new_status" id="status-select" data-article-batch-control class="hidden border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm disabled:cursor-wait disabled:opacity-60">
-                                <option value="draft">{{ __('admin.articles.status.draft') }}</option>
-                                <option value="published">{{ __('admin.articles.status.published') }}</option>
-                                <option value="private">{{ __('admin.articles.status.private') }}</option>
+                                <option value="draft">{{ __('article_workflow.hold') }}</option>
+                                <option value="published">{{ __('article_workflow.publish') }}</option>
+                                <option value="scheduled">{{ __('article_workflow.schedule') }}</option>
+                                <option value="private">{{ __('article_workflow.private') }}</option>
                             </select>
                             <select name="review_status" id="review-select" data-article-batch-control class="hidden border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm disabled:cursor-wait disabled:opacity-60">
                                 <option value="pending">{{ __('admin.articles.review.pending') }}</option>
                                 <option value="approved">{{ __('admin.articles.review.approved') }}</option>
                                 <option value="rejected">{{ __('admin.articles.review.rejected') }}</option>
-                                <option value="auto_approved">{{ __('admin.articles.review.auto_approved') }}</option>
                             </select>
                             @endif
-                            <button type="submit" data-batch-execute data-article-batch-control class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60">
+                            <button type="submit" data-batch-execute disabled data-article-batch-control class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60">
                                 {{ __('admin.button.execute') }}
                             </button>
                             <button type="button" onclick="toggleBatchActions()" data-article-batch-control class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
@@ -388,12 +389,28 @@
                     </form>
                 </div>
 
+                @if(session('article_batch_results'))
+                    <details open class="px-6 py-3" data-article-batch-results>
+                        <summary>{{ __('article_workflow.results') }}</summary>
+                        <ul>
+                            @foreach(session('article_batch_results.results', []) as $result)
+                                <li>
+                                    #{{ (int) $result['article_id'] }} · {{ __('article_workflow.outcomes.'.$result['status']) }} · {{ $result['message'] }}
+                                    @if($result['actual_state'])
+                                        · {{ __('article_workflow.state') }}: {{ __('admin.articles.status.'.$result['actual_state']['status']) }} / {{ __('admin.articles.review.'.$result['actual_state']['review_status']) }}
+                                    @endif
+                                </li>
+                            @endforeach
+                        </ul>
+                    </details>
+                @endif
+
                 <div class="overflow-x-auto">
                     <table class="w-full min-w-[1080px] table-fixed divide-y divide-gray-200" data-sticky-actions data-article-list-table>
                         <thead class="bg-gray-50">
                         <tr>
                             <th class="batch-checkbox hidden w-12 px-3 py-3 text-left">
-                                <input type="checkbox" id="select-all" data-article-batch-control class="rounded border-gray-300 text-blue-600 shadow-sm disabled:cursor-wait disabled:opacity-60">
+                                <input type="checkbox" id="select-all" aria-label="{{ __('article_workflow.select_page') }}" title="{{ __('article_workflow.select_page') }}" data-article-batch-control class="rounded border-gray-300 text-blue-600 shadow-sm disabled:cursor-wait disabled:opacity-60">
                             </th>
                             <th class="w-16 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.articles.column.id') }}</th>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.articles.column.info') }}</th>
@@ -424,8 +441,7 @@
                                 $reviewStatusLabel = __('admin.articles.review_prefix').': '.__('admin.articles.review.'.(string) $article->review_status);
                                 $distributionTotal = (int) ($article->distribution_total_count ?? 0);
                                 $aiQualityCheck = $article->latestAiQualityCheck;
-                                $aiQualityEnabled = (bool) $article->ai_quality_required_at_creation
-                                    || (bool) ($article->task->ai_quality_enabled ?? false);
+                                $aiQualityEnabled = (bool) ($article->task?->ai_quality_enabled ?? $article->ai_quality_required_at_creation);
                                 $aiQualityPresentation = [
                                     'label' => __('admin.articles.ai_quality.disabled_short'),
                                     'class' => 'bg-gray-100 text-gray-600 ring-gray-200',
@@ -433,7 +449,7 @@
                                 ];
                                 if ($aiQualityEnabled && $aiQualityCheck === null) {
                                     $aiQualityPresentation = ['label' => __('admin.articles.ai_quality.pending'), 'class' => 'bg-sky-50 text-sky-700 ring-sky-100', 'icon' => 'loader-circle'];
-                                } elseif ($aiQualityCheck !== null) {
+                                } elseif ($aiQualityEnabled && $aiQualityCheck !== null) {
                                     $aiQualityPresentation = match (true) {
                                         in_array((string) $aiQualityCheck->status, ['queued', 'running'], true) => ['label' => __('admin.articles.ai_quality.pending'), 'class' => 'bg-sky-50 text-sky-700 ring-sky-100', 'icon' => 'loader-circle'],
                                         (string) $aiQualityCheck->status === 'stale' => ['label' => __('admin.articles.ai_quality.stale'), 'class' => 'bg-slate-100 text-slate-700 ring-slate-200', 'icon' => 'refresh-cw'],
@@ -445,6 +461,15 @@
                                     };
                                 }
                                 $aiQualityScore = $aiQualityCheck?->score === null ? null : (int) $aiQualityCheck->score;
+                                $aiQualityVisibleLabel = $aiQualityPresentation['label'];
+                                if ($aiQualityEnabled && $aiQualityCheck?->status === 'completed') {
+                                    $aiQualityVisibleLabel = match ($aiQualityCheck->decision) {
+                                        'passed' => __('article_workflow.quality_decisions.passed'),
+                                        'needs_review' => $aiQualityCheck->is_overridden ? __('article_workflow.quality_decisions.overridden') : __('article_workflow.quality_decisions.needs_review'),
+                                        'blocked' => __('article_workflow.quality_decisions.blocked'),
+                                        default => $aiQualityPresentation['label'],
+                                    };
+                                }
                                 $aiQualityAccessibleLabel = $aiQualityPresentation['label'];
                                 if ($aiQualityScore !== null) {
                                     $aiQualityAccessibleLabel .= ' · '.__('admin.articles.ai_quality.score').' '.$aiQualityScore;
@@ -537,7 +562,7 @@
                             @endphp
                             <tr class="hover:bg-gray-50">
                                 <td class="batch-checkbox hidden px-3 py-4">
-                                    <input type="checkbox" value="{{ (int) $article->id }}" class="article-checkbox rounded border-gray-300 text-blue-600 shadow-sm">
+                                    <input type="checkbox" value="{{ (int) $article->id }}" data-workflow-version="{{ (int) $article->workflow_version }}" class="article-checkbox rounded border-gray-300 text-blue-600 shadow-sm">
                                 </td>
                                 <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">#{{ (int) $article->id }}</td>
                                 <td class="px-4 py-4">
@@ -609,6 +634,15 @@
                                         <span class="inline-flex max-w-full self-start rounded px-2 py-0.5 text-xs font-medium {{ $reviewClass }}" title="{{ $reviewStatusLabel }}">
                                             <span class="min-w-0 whitespace-normal break-words leading-4 [overflow-wrap:anywhere]">{{ $reviewStatusLabel }}</span>
                                         </span>
+                                        @if(in_array(data_get($article->workflow_summary, 'delivery_handoff.status'), ['pending', 'sending', 'exhausted'], true))
+                                    <p class="text-xs text-amber-700">{{ __('article_workflow.'.(data_get($article->workflow_summary, 'delivery_handoff.status') === 'exhausted' ? 'delivery_exhausted' : 'delivery_pending')) }}</p>
+                                @endif
+                                @foreach(($article->workflow_summary['blocking_reasons'] ?? []) as $reason)
+                                            <span class="text-xs text-slate-600">{{ __('article_workflow.blocking.'.$reason) }}</span>
+                                        @endforeach
+                                        @if($article->publication_intent === 'scheduled' && ($article->workflow_summary['next_publish_at'] ?? null))
+                                            <span class="text-xs text-slate-500">{{ __('article_workflow.next_publish') }} {{ $article->task->next_publish_at->format('m-d H:i') }}</span>
+                                        @endif
                                     </div>
                                 </td>
                                 <td class="px-4 py-4 whitespace-nowrap">
@@ -622,10 +656,12 @@
                                         <i data-lucide="{{ $aiQualityPresentation['icon'] }}" aria-hidden="true" class="h-3.5 w-3.5 shrink-0"></i>
                                         @if($aiQualityScore !== null)
                                             <span class="shrink-0 font-mono">{{ $aiQualityScore }}</span>
-                                        @else
-                                            <span class="truncate">{{ $aiQualityPresentation['label'] }}</span>
                                         @endif
+                                        <span>{{ $aiQualityVisibleLabel }}</span>
                                     </a>
+                                    @if($aiQualityScore !== null)
+                                        <div class="mt-1 text-xs text-slate-500">{{ __('admin.articles.ai_quality.pass_score', ['score' => (int) $aiQualityCheck->pass_score]) }}</div>
+                                    @endif
                                 </td>
                                 @endif
                                 <td class="px-3 py-4 whitespace-nowrap text-sm leading-5 text-gray-500">
@@ -856,6 +892,13 @@
         }
 
         function toggleBatchActions() {
+            const batchForm = document.getElementById('batch-form');
+            if (batchForm?.dataset.articleBatchSubmitted === 'true') return;
+            if (batchForm) {
+                batchForm.dataset.articleBatchGeneration = String(Number(batchForm.dataset.articleBatchGeneration || 0) + 1);
+                delete batchForm.dataset.articleBatchBusy;
+                document.getElementById('batch-selected-ids')?.replaceChildren();
+            }
             const batchActions = document.getElementById('batch-actions');
             const checkboxes = document.querySelectorAll('.batch-checkbox');
             if (!batchActions) {
@@ -884,7 +927,10 @@
             if (!countElement) {
                 return;
             }
-            countElement.textContent = String(document.querySelectorAll('.article-checkbox:checked').length);
+            const selectedCount = document.querySelectorAll('.article-checkbox:checked').length;
+            countElement.textContent = String(selectedCount);
+            const execute = document.querySelector('[data-batch-execute]');
+            if (execute) execute.disabled = selectedCount === 0 || document.getElementById('batch-form')?.dataset.articleBatchBusy === 'true';
         }
 
         const ARTICLE_BATCH_ROUTES = @json($articleBatchRoutes);
@@ -916,6 +962,8 @@
                 <input type="hidden" name="_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="article_ids[]" value="${articleId}">
             `;
+            const checkbox = document.querySelector(`.article-checkbox[value="${articleId}"]`);
+            if (checkbox?.dataset.workflowVersion !== undefined) extra[`workflow_versions[${articleId}]`] = checkbox.dataset.workflowVersion;
             Object.entries(extra).forEach(([key, value]) => {
                 const input = document.createElement('input');
                 input.type = 'hidden';
@@ -1023,72 +1071,7 @@
                 });
             }
 
-            const batchForm = document.getElementById('batch-form');
-            if (batchForm) {
-                batchForm.addEventListener('submit', async function(event) {
-                    if (batchForm.dataset.articleBatchConfirmed === 'true') {
-                        delete batchForm.dataset.articleBatchConfirmed;
-                        return;
-                    }
-                    event.preventDefault();
-                    const selected = document.querySelectorAll('.article-checkbox:checked');
-                    if (selected.length === 0) {
-                        showArticleNotice(IS_TRASH_VIEW ? TRASH_I18N.alertSelect : ARTICLES_I18N.selectArticles, document.getElementById('select-all'));
-                        return;
-                    }
-
-                    const action = document.getElementById('batch-action')?.value ?? '';
-                    if (action === '') {
-                        showArticleNotice(ARTICLES_I18N.selectAction, document.getElementById('batch-action'));
-                        return;
-                    }
-
-                    const targetAction = ARTICLE_BATCH_ROUTES[action] ?? '';
-                    if (targetAction === '') {
-                        showArticleNotice(ARTICLES_I18N.selectAction, document.getElementById('batch-action'));
-                        return;
-                    }
-                    batchForm.action = targetAction;
-
-                    if (IS_TRASH_VIEW) {
-                        if (action === 'batch_restore' && !await confirmArticleAction(TRASH_I18N.confirmBatchRestore.replace('__COUNT__', String(selected.length)), 'success', event.submitter)) {
-                            return;
-                        }
-                        if (action === 'batch_force_delete' && !await confirmArticleAction(TRASH_I18N.confirmBatchForceDelete.replace('__COUNT__', String(selected.length)), 'danger', event.submitter)) {
-                            return;
-                        }
-                    } else {
-                    if (action === 'batch_update_status' && !(document.getElementById('status-select')?.value ?? '')) {
-                        showArticleNotice(ARTICLES_I18N.selectStatus, document.getElementById('status-select'));
-                        return;
-                    }
-
-                    if (action === 'batch_update_review' && !(document.getElementById('review-select')?.value ?? '')) {
-                        showArticleNotice(ARTICLES_I18N.selectReview, document.getElementById('review-select'));
-                        return;
-                    }
-
-                    if (action === 'delete_articles' && !await confirmArticleAction(ARTICLES_I18N.confirmDeleteSelected.replace('__COUNT__', selected.length), 'danger', event.submitter)) {
-                        return;
-                    }
-                    }
-
-                    const selectedIdsContainer = document.getElementById('batch-selected-ids');
-                    if (!selectedIdsContainer) {
-                        return;
-                    }
-                    selectedIdsContainer.innerHTML = '';
-                    selected.forEach((checkbox) => {
-                        const input = document.createElement('input');
-                        input.type = 'hidden';
-                        input.name = 'article_ids[]';
-                        input.value = checkbox.value;
-                        selectedIdsContainer.appendChild(input);
-                    });
-                    batchForm.dataset.articleBatchConfirmed = 'true';
-                    batchForm.requestSubmit(event.submitter instanceof HTMLButtonElement ? event.submitter : undefined);
-                });
-            }
+            @include('admin.articles._batch-submit')
         });
     </script>
 @endpush

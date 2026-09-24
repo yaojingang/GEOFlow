@@ -30,18 +30,6 @@ final class ArticleWorkflow
             $status = 'draft';
         }
 
-        if ($status === 'published' && in_array($reviewStatus, ['pending', 'rejected'], true)) {
-            $reviewStatus = 'approved';
-        }
-
-        if ($status !== 'published' && $reviewStatus === 'auto_approved') {
-            $status = 'published';
-        }
-
-        if ($status === 'published' && $reviewStatus === 'pending') {
-            $reviewStatus = 'approved';
-        }
-
         if ($status === 'published') {
             $publishedAt = $publishedAt ?: date('Y-m-d H:i:s');
         } else {
