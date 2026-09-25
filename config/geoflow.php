@@ -183,10 +183,11 @@ return [
     'theme_replication_package_lock_timeout_milliseconds' => max(1, (int) env('GEOFLOW_THEME_REPLICATION_PACKAGE_LOCK_TIMEOUT_MS', 5000)),
 
     'theme_packages' => [
-        'max_archive_bytes' => 10 * 1024 * 1024,
+        'max_archive_bytes' => 32 * 1024 * 1024,
         'max_files' => 500,
         'max_file_bytes' => 5 * 1024 * 1024,
-        'max_total_bytes' => 25 * 1024 * 1024,
+        'max_video_file_bytes' => 25 * 1024 * 1024,
+        'max_total_bytes' => 40 * 1024 * 1024,
         'ttl_minutes' => 60,
         'lock_timeout_milliseconds' => 5000,
     ],

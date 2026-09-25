@@ -56,7 +56,7 @@ final class ThemeWorkspaceService
             'urls' => ['article_pattern' => app(ArticlePermalinkService::class)->policy()->currentPattern, 'pagination_query' => 'page', 'search_query' => 'search', 'helper' => 'App\\Services\\Site\\SiteUrlGenerator', 'preview_navigation' => 'Use the signed links returned by preview; preserve their complete query string.'],
             'empty_state' => 'Render an empty collection; preview never inserts demonstration articles.',
             'configuration' => ['editable' => false, 'reason' => 'remote_configuration_adapter_pending', 'homepage_module_types' => HomepageModuleBuilder::TYPES, 'style_keys' => ['accent_color', 'background_color', 'surface_color', 'text_color', 'muted_color', 'container_width', 'section_spacing', 'radius']],
-            'limits' => ['file_bytes' => $this->guard->limit('max_file_bytes'), 'total_bytes' => $this->guard->limit('max_total_bytes'), 'files' => $this->guard->limit('max_files'), 'changes_bytes' => 1048576, 'read_chunk_bytes' => 262144],
+            'limits' => ['file_bytes' => $this->guard->limit('max_file_bytes'), 'video_file_bytes' => $this->guard->limit('max_video_file_bytes'), 'total_bytes' => $this->guard->limit('max_total_bytes'), 'files' => $this->guard->limit('max_files'), 'changes_bytes' => 1048576, 'read_chunk_bytes' => 262144],
             'code_authorization' => ['required' => true, 'lifetime_seconds' => 1800, 'password_reauthentication' => true],
             'dependencies' => $revision?->dependencies ?? $this->revisions->dependencies(),
             'current_dependencies' => $this->revisions->dependencies(),
@@ -136,7 +136,7 @@ final class ThemeWorkspaceService
             throw new ApiException('invalid_range', '读取分块应在 1 至 262144 字节之间', 422);
         }
         $absolute = $this->revisions->path($revision, $path);
-        $bytes = $this->revisions->read($absolute, $this->guard->limit('max_file_bytes'));
+        $bytes = $this->revisions->read($absolute, $this->guard->fileLimit($path));
         if (! hash_equals($revision->files[$path]['sha256'], hash('sha256', $bytes))) {
             throw new ApiException('revision_integrity_failed', '文件与版本清单不符', 409);
         }
@@ -213,7 +213,7 @@ final class ThemeWorkspaceService
         if ($source === 'installed') {
             $installed = $this->installed->find($theme);
             foreach ($installed['package']['files'] ?? [] as $record) {
-                $bytes = $this->revisions->read($root.'/'.$record['path'], $this->guard->limit('max_file_bytes'));
+                $bytes = $this->revisions->read($root.'/'.$record['path'], $this->guard->fileLimit($record['path']));
                 if (! hash_equals($record['sha256'], hash('sha256', $bytes))) {
                     throw new ApiException('theme_integrity_failed', '安装主题已偏离安装记录', 409);
                 }
@@ -230,7 +230,7 @@ final class ThemeWorkspaceService
                     }
                     $path = substr($file->getPathname(), strlen($root) + 1);
                     $this->revisions->validatePath($path, $theme);
-                    $contents[$path] = $this->revisions->read($file->getPathname(), $this->guard->limit('max_file_bytes'));
+                    $contents[$path] = $this->revisions->read($file->getPathname(), $this->guard->fileLimit($path));
                     if (count($contents) > $this->guard->limit('max_files') || array_sum(array_map('strlen', $contents)) > $this->guard->limit('max_total_bytes')) {
                         throw new ApiException('theme_limit_exceeded', '主题超过工作区配额', 422);
                     }
@@ -243,7 +243,7 @@ final class ThemeWorkspaceService
                 continue;
             }
             $path = 'resources/views/site/'.substr($file->getPathname(), strlen(resource_path('views/site')) + 1);
-            $contents[$path] = $this->revisions->read($file->getPathname(), $this->guard->limit('max_file_bytes'));
+            $contents[$path] = $this->revisions->read($file->getPathname(), $this->guard->fileLimit($path));
             if (count($contents) > $this->guard->limit('max_files') || array_sum(array_map('strlen', $contents)) > $this->guard->limit('max_total_bytes')) {
                 throw new ApiException('theme_limit_exceeded', '主题及回退页面超过工作区配额', 422);
             }

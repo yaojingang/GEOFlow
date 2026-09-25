@@ -15,7 +15,7 @@ class UploadSiteThemePackageRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'package_file' => ['required', 'file', 'mimes:zip', 'extensions:zip', 'max:'.(int) ceil(config('geoflow.theme_packages.max_archive_bytes', 10485760) / 1024)],
+            'package_file' => ['required', 'file', 'mimes:zip', 'extensions:zip', 'max:'.(int) ceil(config('geoflow.theme_packages.max_archive_bytes', 33554432) / 1024)],
         ];
     }
 }

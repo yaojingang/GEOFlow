@@ -22,7 +22,7 @@ final class ThemeRevisionStorage
         $total = 0;
         foreach ($contents as $path => $bytes) {
             $this->validatePath($path, $theme);
-            if (isset($folded[strtolower($path)]) || strlen($bytes) > $this->guard->limit('max_file_bytes')) {
+            if (isset($folded[strtolower($path)]) || strlen($bytes) > $this->guard->fileLimit($path)) {
                 throw new ApiException('invalid_theme_file', '主题文件重复或超过大小限制', 422);
             }
             $prefix = '';
@@ -81,6 +81,7 @@ final class ThemeRevisionStorage
                     fclose($handle);
                 }
                 $this->storage->regular($absolute);
+                $this->guard->validateVideo($path, $absolute);
                 if (! hash_equals($files[$path]['sha256'], (string) hash_file('sha256', $absolute))) {
                     throw new ApiException('theme_storage_failed', '主题文件校验失败', 507);
                 }
@@ -101,7 +102,7 @@ final class ThemeRevisionStorage
         $contents = [];
         foreach ($revision->files as $path => $record) {
             $absolute = $this->path($revision, $path);
-            $bytes = $this->read($absolute, $this->guard->limit('max_file_bytes'));
+            $bytes = $this->read($absolute, $this->guard->fileLimit($path));
             if (strlen($bytes) !== $record['bytes'] || ! hash_equals($record['sha256'], hash('sha256', $bytes))) {
                 throw new ApiException('revision_integrity_failed', '主题版本文件校验失败', 409);
             }

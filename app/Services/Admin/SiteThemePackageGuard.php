@@ -8,6 +8,7 @@ use Composer\Semver\Semver;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Symfony\Component\Process\Process;
 use Throwable;
 use ZipArchive;
 
@@ -24,7 +25,8 @@ final class SiteThemePackageGuard
         'jpeg' => 'image/jpeg', 'jpg' => 'image/jpeg', 'gif' => 'image/gif',
         'svg' => 'image/svg+xml', 'webp' => 'image/webp', 'avif' => 'image/avif',
         'ico' => 'image/x-icon', 'woff' => 'font/woff', 'woff2' => 'font/woff2',
-        'ttf' => 'font/ttf', 'otf' => 'font/otf',
+        'ttf' => 'font/ttf', 'otf' => 'font/otf', 'mp4' => 'video/mp4',
+        'webm' => 'video/webm', 'ogv' => 'video/ogg',
     ];
 
     public function __construct(
@@ -43,9 +45,47 @@ final class SiteThemePackageGuard
 
     public function limit(string $name): int
     {
-        $defaults = ['max_archive_bytes' => 10 * 1024 * 1024, 'max_files' => 500, 'max_file_bytes' => 5 * 1024 * 1024, 'max_total_bytes' => 25 * 1024 * 1024];
+        $defaults = ['max_archive_bytes' => 32 * 1024 * 1024, 'max_files' => 500, 'max_file_bytes' => 5 * 1024 * 1024, 'max_video_file_bytes' => 25 * 1024 * 1024, 'max_total_bytes' => 40 * 1024 * 1024];
 
         return max(1, (int) config('geoflow.theme_packages.'.$name, $defaults[$name]));
+    }
+
+    public function fileLimit(string $path): int
+    {
+        return in_array(strtolower(pathinfo($path, PATHINFO_EXTENSION)), ['mp4', 'webm', 'ogv'], true)
+            ? $this->limit('max_video_file_bytes')
+            : $this->limit('max_file_bytes');
+    }
+
+    public function validateVideo(string $logicalPath, string $absolutePath): void
+    {
+        $extension = strtolower(pathinfo($logicalPath, PATHINFO_EXTENSION));
+        if (! in_array($extension, ['mp4', 'webm', 'ogv'], true)) {
+            return;
+        }
+
+        $probe = new Process(['ffprobe', '-v', 'error', '-show_entries', 'format=format_name,duration:stream=codec_type,codec_name,width,height,avg_frame_rate', '-of', 'json', $absolutePath]);
+        $probe->setTimeout(10);
+        try {
+            $probe->run();
+        } catch (Throwable) {
+            $this->storage->fail('invalid_package');
+        }
+        $metadata = json_decode($probe->getOutput(), true);
+        $format = (string) ($metadata['format']['format_name'] ?? '');
+        $expected = ['mp4' => 'mp4', 'webm' => 'webm', 'ogv' => 'ogg'][$extension];
+        $duration = (float) ($metadata['format']['duration'] ?? 0);
+        $video = collect($metadata['streams'] ?? [])->first(fn ($stream): bool => ($stream['codec_type'] ?? null) === 'video');
+        $codecs = ['mp4' => ['h264'], 'webm' => ['vp8', 'vp9', 'av1'], 'ogv' => ['theora']];
+        $frameRate = (string) ($video['avg_frame_rate'] ?? '0/0');
+        [$frames, $seconds] = array_pad(explode('/', $frameRate, 2), 2, '1');
+        $fps = (float) $seconds > 0 ? (float) $frames / (float) $seconds : 0;
+        if (! $probe->isSuccessful() || ! str_contains($format, $expected) || $duration <= 0 || $duration > 120 || ! is_array($video)
+            || (int) ($video['width'] ?? 0) < 1 || (int) ($video['height'] ?? 0) < 1
+            || (int) $video['width'] > 1920 || (int) $video['height'] > 1080
+            || ! in_array($video['codec_name'] ?? null, $codecs[$extension], true) || $fps <= 0 || $fps > 60) {
+            $this->storage->fail('invalid_package');
+        }
     }
 
     public function filePath(string $path, string $id): void
@@ -113,7 +153,7 @@ final class SiteThemePackageGuard
                 if (($stat['encryption_method'] ?? ZipArchive::EM_NONE) !== ZipArchive::EM_NONE) {
                     $this->storage->fail('encrypted_archive');
                 }
-                if (! is_int($stat['size'] ?? null) || $stat['size'] < 0 || $stat['size'] > ($name === 'package.json' ? 1024 * 1024 : $this->limit('max_file_bytes'))) {
+                if (! is_int($stat['size'] ?? null) || $stat['size'] < 0 || $stat['size'] > ($name === 'package.json' ? 1024 * 1024 : $this->fileLimit($name))) {
                     $this->storage->fail('file_too_large');
                 }
                 if ($directory && $stat['size'] !== 0) {
@@ -155,7 +195,8 @@ final class SiteThemePackageGuard
                 }
                 $target = $destination.'/'.$name;
                 $this->storage->directory(dirname($target));
-                $result = $this->readEntry($zip, $entry, $this->storage->path($target), $this->limit('max_file_bytes'), $this->limit('max_total_bytes') - $total);
+                $result = $this->readEntry($zip, $entry, $this->storage->path($target), $this->fileLimit($name), $this->limit('max_total_bytes') - $total);
+                $this->validateVideo($name, $this->storage->path($target));
                 $total += $result['bytes'];
                 if ($files[$name]['bytes'] !== $result['bytes'] || ! hash_equals($files[$name]['sha256'], $result['sha256'])) {
                     $this->storage->fail('manifest_mismatch');
@@ -227,7 +268,7 @@ final class SiteThemePackageGuard
             if (isset($folded[strtolower($file['path'])])) {
                 $this->storage->fail('duplicate_path');
             }
-            if ($checkLimits && $file['bytes'] > $this->limit('max_file_bytes')) {
+            if ($checkLimits && $file['bytes'] > $this->fileLimit($file['path'])) {
                 $this->storage->fail('file_too_large');
             }
             $total += $file['bytes'];
