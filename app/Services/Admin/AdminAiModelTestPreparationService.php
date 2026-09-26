@@ -57,6 +57,11 @@ final class AdminAiModelTestPreparationService
                 providerModelId: (string) $lockedModel->model_id,
                 maxTokens: $lockedModel->max_tokens === null ? null : (int) $lockedModel->max_tokens,
                 gemini: OpenAiRuntimeProvider::isGeminiProviderUrl($endpoint),
+                volcengineMultimodal: $modelType === 'embedding'
+                    && OpenAiRuntimeProvider::isVolcengineMultimodalEmbedding(
+                        (string) $lockedModel->api_url,
+                        (string) $lockedModel->model_id,
+                    ),
                 usesOpenAiResponses: $modelType === 'chat'
                     && OpenAiRuntimeProvider::resolveChatDriver(
                         (string) $lockedModel->api_url,
@@ -114,6 +119,7 @@ final class AdminAiModelTestPreparationService
                 providerModelId: (string) $lockedModel->model_id,
                 maxTokens: $lockedModel->max_tokens === null ? null : (int) $lockedModel->max_tokens,
                 gemini: false,
+                volcengineMultimodal: false,
                 usesOpenAiResponses: $bindingType === 'ark',
                 preparedAsSuperAdmin: true,
                 reservation: $reservation,
@@ -340,6 +346,11 @@ final class AdminAiModelTestPreparationService
         if ($modelType === 'chat'
             && OpenAiRuntimeProvider::resolveChatDriver($baseUrl, (string) $model->model_id) === 'openai') {
             return rtrim($baseUrl, '/').'/responses';
+        }
+
+        if ($modelType === 'embedding'
+            && OpenAiRuntimeProvider::isVolcengineMultimodalEmbedding((string) $model->api_url, (string) $model->model_id)) {
+            return rtrim($baseUrl, '/').OpenAiRuntimeProvider::volcengineMultimodalEmbeddingPath();
         }
 
         return rtrim($baseUrl, '/').($modelType === 'embedding' ? '/embeddings' : '/chat/completions');
