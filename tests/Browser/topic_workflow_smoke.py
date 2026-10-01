@@ -462,14 +462,25 @@ def run_browser(base_url, database, fixture, output, v3, execute_task):
                 expect(page.locator(".topic-layout-" + template)).to_be_visible()
                 expect(page.locator(f'[data-topic-template="{template}"]')).to_be_visible()
                 expect(page.locator(".topic-group-title")).to_have_count(3)
-                expect(page.locator('[aria-label="专题分组目录"] a')).to_have_count(3)
-                for anchor in page.locator('[aria-label="专题分组目录"] a').all():
-                    assert page.locator(anchor.get_attribute("href")).count() == 1
+                group_targets = ["#" + heading.get_attribute("id") for heading in page.locator(".topic-group-title").all()]
+                for navigation_name in ["专题阅读路线", "本页目录"]:
+                    group_links = page.get_by_role("navigation", name=navigation_name, exact=True).locator('a[href^="#topic-group-"]')
+                    expect(group_links).to_have_count(3)
+                    assert [anchor.get_attribute("href") for anchor in group_links.all()] == group_targets
+                    for anchor in group_links.all():
+                        target = page.locator(anchor.get_attribute("href"))
+                        expect(target).to_have_count(1)
+                        expect(anchor).to_contain_text(target.inner_text())
+                route_link = page.get_by_role("navigation", name="专题阅读路线", exact=True).locator('a[href^="#topic-group-"]').last
+                route_link.click()
+                assert page.url.endswith(group_targets[-1])
+                expect(page.locator(group_targets[-1])).to_be_in_viewport()
                 if template == "default":
                     expect(page.locator(".topic-source-cards")).to_be_visible()
                     first_card = page.locator(".topic-source-cards .topic-source").nth(0).bounding_box()
                     second_card = page.locator(".topic-source-cards .topic-source").nth(1).bounding_box()
-                    assert second_card["x"] > first_card["x"] and abs(second_card["y"] - first_card["y"]) < 2
+                    assert abs(first_card["x"] - second_card["x"]) < 2 and second_card["y"] >= first_card["y"] + first_card["height"]
+                    expect(page.locator(".topic-source-cards .topic-source")).to_have_count(6)
                     assert page.locator(".topic-source-number").evaluate_all("""nodes => nodes.every(node=>{const range=document.createRange();range.selectNodeContents(node);return range.getClientRects().length===1;})""")
                     expect(page.locator(".topic-reading-index")).to_have_count(0)
                     expect(page.locator(".topic-roundup-list")).to_have_count(0)
@@ -503,10 +514,14 @@ def run_browser(base_url, database, fixture, output, v3, execute_task):
                     expect(page.locator(".topic-roundup-date time")).to_have_count(6)
                     expect(page.locator(".topic-reading-index")).to_have_count(0)
                     expect(page.locator(".topic-score")).to_have_count(0)
+                expect(page.locator(".topic-fact-evidence summary")).not_to_be_visible()
+                page.locator(".topic-key-points > summary").click()
+                expect(page.locator(".topic-fact-evidence summary")).to_be_visible()
                 page.locator(".topic-fact-evidence summary").click()
+                expect(page.locator(".topic-fact-evidence blockquote")).to_be_visible()
                 expect(page.locator(".topic-fact-evidence blockquote")).to_have_text("明确文章的来源")
                 screenshot("09-layout-" + template + ".png")
-                check(template + " uses its actual internal card/reading/timeline layout with three group anchors")
+                check(template + " uses its actual source list/reading/timeline layout with matching group navigation and expandable evidence")
             guide = fixture["published"]["guide"]
             goto(f"/{ADMIN}/topics/{guide['id']}/edit")
             page.get_by_text("搜索展示与地址，高级设置", exact=True).click()
@@ -556,7 +571,7 @@ def run_browser(base_url, database, fixture, output, v3, execute_task):
             expect(mpage.locator('.topic-score')).not_to_be_visible()
             auxiliary.locator('summary').first.click()
             expect(mpage.locator('.topic-score')).to_be_visible()
-            expect(auxiliary).to_contain_text('来源说明')
+            expect(auxiliary.get_by_role('heading', name='来源与审核', exact=True)).to_be_visible()
             screenshot("16-mobile-auxiliary-expanded.png", mpage)
             check("mobile has one closed auxiliary group, all score/time/source information expands together")
             responsive_paths = ["/topics", "/topics/" + fixture['published']['default']['slug'], "/topics/geo-browser-renamed-guide", "/topics/" + fixture['published']['roundup']['slug'], f"/{ADMIN}/topics/{topic_id}/edit", f"/{ADMIN}/topics/batches/{batch_id}", f"/{ADMIN}/tasks/create?content_type=topic", f"/{ADMIN}/topics/settings"]
