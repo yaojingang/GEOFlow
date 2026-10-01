@@ -587,11 +587,27 @@ def run_browser(base_url, database, fixture, output, v3, execute_task):
                         assert response and response.status == 200, (width, path)
                         probe_page.wait_for_load_state("networkidle")
                         sizes = probe_page.evaluate("({width:innerWidth,scroll:document.documentElement.scrollWidth})")
+                        if sizes['scroll'] > sizes['width'] + 1:
+                            overflow = probe_page.evaluate('''() => Array.from(document.querySelectorAll('body *')).map(node => {
+                                const rect = node.getBoundingClientRect(), css = getComputedStyle(node);
+                                return {tag: node.tagName, classes: node.className, text: (node.textContent || '').trim().slice(0, 70), left: rect.left, right: rect.right, width: rect.width, minWidth: css.minWidth, whiteSpace: css.whiteSpace};
+                            }).filter(row => row.width > 0 && row.right > innerWidth + 1).slice(0, 30)''')
+                            (output / 'responsive-overflow.json').write_text(json.dumps({'path': path, 'width': width, 'scale': scale, 'sizes': sizes, 'elements': overflow}, ensure_ascii=False, indent=2), encoding='utf-8')
+                            screenshot(f'responsive-failure-{width}px.png', probe_page)
                         assert sizes['scroll'] <= sizes['width'] + 1, (width, scale, path, sizes)
                         if path.endswith('/edit'):
                             for label in ['保存工作稿', '保存并发布', '保存并预览']:
                                 box = probe_page.get_by_role('button', name=label, exact=True).bounding_box()
                                 assert box and box['height'] >= 44 and box['x'] >= 0 and box['x'] + box['width'] <= width + 1, (width, label, box)
+                    if width <= 820:
+                        for sibling_path in ['/', '/topics', '/article/topic-browser-0']:
+                            probe_page.goto(base_url + sibling_path)
+                            probe_page.wait_for_load_state("networkidle")
+                            brand = probe_page.locator('.tt-brand').bounding_box()
+                            menu = probe_page.get_by_role('button', name='分类', exact=True).bounding_box()
+                            assert brand and menu and brand['x'] >= 0 and brand['x'] + brand['width'] <= menu['x'] + 1, (width, sibling_path, brand, menu)
+                            assert menu['width'] >= 44 and menu['height'] >= 44 and menu['x'] + menu['width'] <= width + 1, (width, sibling_path, menu)
+                        check("shared public header wraps the full site name and keeps a usable mobile menu", {"width": width, "pages": 3})
                     check("responsive reflow and usable controls", {"width": width, "scale": scale, "pages": len(responsive_paths), "zoom_equivalent": "200% reflow at 720 CSS pixels / 2x device scale" if scale == 2 else None})
                     if width == 320:
                         probe_page.goto(base_url + '/topics/geo-browser-renamed-guide')
