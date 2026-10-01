@@ -56,7 +56,7 @@ class ArticlePermalinkService
     public function path(Article $article, ?ArticlePermalinkPolicy $policy = null): string
     {
         $policy ??= $this->policy();
-        $compiled = ArticlePermalinkPattern::compile($policy->currentPattern);
+        $compiled = ArticlePermalinkPattern::compileStored($policy->currentPattern);
 
         return $compiled->render($this->values($article, tokens: $compiled->tokens()));
     }
@@ -67,7 +67,7 @@ class ArticlePermalinkService
         ArticlePermalinkPolicy $policy,
     ): string {
         $this->slugRegistry->assertValid($slug);
-        $compiled = ArticlePermalinkPattern::compile($policy->currentPattern);
+        $compiled = ArticlePermalinkPattern::compileStored($policy->currentPattern);
 
         return $compiled->render($this->values($article, $slug, $compiled->tokens()));
     }
@@ -84,7 +84,7 @@ class ArticlePermalinkService
     {
         return in_array(
             $token,
-            ArticlePermalinkPattern::compile($this->policy()->currentPattern)->tokens(),
+            ArticlePermalinkPattern::compileStored($this->policy()->currentPattern)->tokens(),
             true,
         );
     }
@@ -93,7 +93,7 @@ class ArticlePermalinkService
     {
         $candidate = $this->matchingPath($encodedPath);
         foreach ($this->policy()->patterns() as $pattern) {
-            if (ArticlePermalinkPattern::compile($pattern)->match($candidate) !== null) {
+            if (ArticlePermalinkPattern::compileStored($pattern)->match($candidate) !== null) {
                 return true;
             }
         }
@@ -119,7 +119,7 @@ class ArticlePermalinkService
         $matchedValues = [];
 
         foreach ($policy->patterns() as $position => $pattern) {
-            $values = ArticlePermalinkPattern::compile($pattern)->match($matchingPath);
+            $values = ArticlePermalinkPattern::compileStored($pattern)->match($matchingPath);
             if ($values === null) {
                 continue;
             }
@@ -226,7 +226,7 @@ class ArticlePermalinkService
     {
         $usesRootCategory = false;
         foreach ($policy->patterns() as $pattern) {
-            $usesRootCategory = ArticlePermalinkPattern::compile($pattern, $adminBasePath)->usesRootCategorySegment() || $usesRootCategory;
+            $usesRootCategory = ArticlePermalinkPattern::compileStored($pattern, $adminBasePath)->usesRootCategorySegment() || $usesRootCategory;
         }
 
         return $usesRootCategory;
@@ -346,7 +346,7 @@ class ArticlePermalinkService
         ?string $adminBasePath = null,
     ): array {
         $usesRootCategory = collect($policy->patterns())
-            ->contains(static fn (string $pattern): bool => ArticlePermalinkPattern::compile($pattern, $adminBasePath)->usesRootCategorySegment());
+            ->contains(static fn (string $pattern): bool => ArticlePermalinkPattern::compileStored($pattern, $adminBasePath)->usesRootCategorySegment());
         if (! $usesRootCategory || ! Schema::hasTable('categories')) {
             return [];
         }
@@ -415,7 +415,7 @@ class ArticlePermalinkService
                 static fn (string $slug): bool => $slug !== (string) $article->slug,
             ) as $historicalSlug) {
                 foreach ($policy->patterns() as $knownPattern) {
-                    $compiled = ArticlePermalinkPattern::compile($knownPattern);
+                    $compiled = ArticlePermalinkPattern::compileStored($knownPattern);
                     if (! in_array('slug', $compiled->tokens(), true)) {
                         continue;
                     }
@@ -529,7 +529,7 @@ class ArticlePermalinkService
     ): array {
         $paths = [];
         foreach ($policy->patterns() as $pattern) {
-            $compiled = ArticlePermalinkPattern::compile($pattern);
+            $compiled = ArticlePermalinkPattern::compileStored($pattern);
             $slugs = in_array('slug', $compiled->tokens(), true)
                 ? $knownSlugs
                 : [(string) $article->slug];
@@ -560,7 +560,7 @@ class ArticlePermalinkService
             $patternIndex['fixed'][$firstSegment] ?? [],
         );
         foreach ($patterns as $pattern) {
-            $values = ArticlePermalinkPattern::compile($pattern)->match($knownPath);
+            $values = ArticlePermalinkPattern::compileStored($pattern)->match($knownPath);
             if ($values === null) {
                 continue;
             }

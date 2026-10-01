@@ -10,6 +10,7 @@ use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\WorkerHeartbeat;
 use App\Services\Admin\AdminAiModelAccessResolver;
+use App\Services\Topics\TopicTaskProgress;
 use App\Support\GeoFlow\PublicExecutionErrorProjector;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -210,6 +211,8 @@ class TaskMonitoringQueryService
         // 一次性收集 task_id，后续所有聚合都基于该集合批量查询，避免 N+1。
         $taskIds = $tasks->pluck('id')->map(fn ($id) => (int) $id)->all();
 
+        $topicStats = app(TopicTaskProgress::class)->forTasks($taskIds);
+
         // 文章统计（业务真相）：总文章数 + 已发布数。
         $articleStats = DB::table('articles')
             ->selectRaw("
@@ -383,7 +386,7 @@ class TaskMonitoringQueryService
             }
         }
 
-        return $tasks->map(function (Task $task) use ($diagnostics, $workflowStats, $articleStats, $distributionStats, $qualityStats, $optimizationStats, $runStats, $latestRuns, $titleNames, $modelNames, $qualityPromptNames, $legacyKnowledgeBaseNames, $taskKnowledgeBaseLinks, $modelViewer): array {
+        return $tasks->map(function (Task $task) use ($topicStats, $diagnostics, $workflowStats, $articleStats, $distributionStats, $qualityStats, $optimizationStats, $runStats, $latestRuns, $titleNames, $modelNames, $qualityPromptNames, $legacyKnowledgeBaseNames, $taskKnowledgeBaseLinks, $modelViewer): array {
             $taskId = (int) $task->id;
             $articles = $articleStats->get($taskId, ['total_articles' => 0, 'published_articles' => 0, 'draft_articles' => 0, 'publishable_drafts' => 0]);
             $distributions = $distributionStats->get($taskId, ['distribution_total_count' => 0, 'distribution_synced_count' => 0, 'distribution_failed_count' => 0]);
@@ -500,9 +503,14 @@ class TaskMonitoringQueryService
                 'created_at' => $task->created_at?->toDateTimeString(),
                 'updated_at' => $task->updated_at?->toDateTimeString(),
                 'loop_count' => (int) ($task->loop_count ?? 0),
-                'created_count' => (int) ($task->created_count ?? 0),
-                'published_count' => (int) ($task->published_count ?? 0),
-                'article_limit' => (int) ($task->article_limit ?? $task->draft_limit ?? 10),
+                'content_type' => $task->content_type ?: 'article',
+                'target_site_key' => $task->target_site_key,
+                'topic_limit' => (int) $task->topic_limit,
+                'topic_settings' => $task->topic_settings ?? [],
+                'topic_config_version' => (int) $task->topic_config_version,
+                'created_count' => $task->content_type === 'topic' ? (int) ($topicStats[$taskId]['created_topics'] ?? 0) : (int) ($task->created_count ?? 0),
+                'published_count' => $task->content_type === 'topic' ? (int) ($topicStats[$taskId]['published_topics'] ?? 0) : (int) ($task->published_count ?? 0),
+                'article_limit' => ($task->content_type === 'topic' ? (int) $task->topic_limit : (int) ($task->article_limit ?? $task->draft_limit ?? 10)),
                 'draft_limit' => (int) ($task->draft_limit ?? 10),
                 'publish_interval' => (int) ($task->publish_interval ?? 3600),
                 'batch_status' => $batchStatus,
@@ -512,6 +520,7 @@ class TaskMonitoringQueryService
                 'next_run_at' => $task->next_run_at?->toDateTimeString(),
                 'next_publish_at' => $task->next_publish_at?->toDateTimeString(),
                 'schedule_enabled' => (int) ($task->schedule_enabled ?? 1),
+                'total_topics' => $task->content_type === 'topic' ? (int) ($topicStats[$taskId]['created_topics'] ?? 0) : 0, 'published_topics' => $task->content_type === 'topic' ? (int) ($topicStats[$taskId]['published_topics'] ?? 0) : 0,
                 'total_articles' => (int) $articles['total_articles'],
                 'published_articles' => (int) $articles['published_articles'],
                 'draft_articles' => (int) $articles['draft_articles'],
@@ -542,6 +551,8 @@ class TaskMonitoringQueryService
                 'latest_max_attempts' => (int) (($latestRun?->meta['max_attempts'] ?? 0)),
                 // 新契约字段：业务层进度（文章维度），用于“任务成果”视图。
                 'task_progress' => [
+                    'content_type' => $task->content_type ?: 'article',
+                    ...($task->content_type === 'topic' ? [...($topicStats[$taskId] ?? []), 'topic_limit' => (int) $task->topic_limit] : []),
                     'diagnostics_loaded' => $diagnostics,
                     ...($diagnostics ? [
                         'workflow' => $workflowStats[$taskId] ?? ['states' => [], 'blocking_reasons' => []],
@@ -550,7 +561,7 @@ class TaskMonitoringQueryService
                     'created_articles' => (int) $articles['total_articles'],
                     'published_articles' => (int) $articles['published_articles'],
                     'draft_articles' => (int) $articles['draft_articles'],
-                    'article_limit' => (int) ($task->article_limit ?? $task->draft_limit ?? 10),
+                    'article_limit' => ($task->content_type === 'topic' ? (int) $task->topic_limit : (int) ($task->article_limit ?? $task->draft_limit ?? 10)),
                     'draft_limit' => (int) ($task->draft_limit ?? 10),
                     'last_run_at' => $task->last_run_at?->toDateTimeString(),
                     'last_error_message' => $taskErrorMessage,
@@ -728,7 +739,7 @@ class TaskMonitoringQueryService
             return 'idle';
         }
 
-        $articleLimit = (int) ($task->article_limit ?? $task->draft_limit ?? 10);
+        $articleLimit = ($task->content_type === 'topic' ? (int) $task->topic_limit : (int) ($task->article_limit ?? $task->draft_limit ?? 10));
         $createdCount = (int) ($task->created_count ?? 0);
         $draftLimit = (int) ($task->draft_limit ?? 10);
         $draftCount = (int) ($articleStats['draft_articles'] ?? 0);
@@ -814,10 +825,11 @@ class TaskMonitoringQueryService
         $runs = TaskRun::query()
             ->whereIn('id', $runIds)
             ->with([
-                'task' => fn ($query) => $query->withTrashed()->select(['id', 'name', 'deleted_at']),
+                'task' => fn ($query) => $query->withTrashed()->select(['id', 'name', 'target_site_key', 'deleted_at']),
                 'article' => fn ($query) => $query->withTrashed()->select(['id', 'title', 'deleted_at']),
+                'topic' => fn ($query) => $query->withTrashed()->select(['id', 'title', 'deleted_at']),
             ])
-            ->get(['id', 'task_id', 'article_id', 'status'])
+            ->get(['id', 'task_id', 'article_id', 'topic_id', 'content_type', 'status'])
             ->keyBy('id');
         $staleAfterSeconds = max(30, (int) config('geoflow.worker_stale_seconds', 120));
 
@@ -852,6 +864,9 @@ class TaskMonitoringQueryService
                 'task_deleted' => $run?->task_id
                     ? $run->task === null || $run->task->trashed()
                     : false,
+                'topic_id' => $run?->topic_id ? (int) $run->topic_id : null,
+                'content_type' => $run?->content_type ?: 'article',
+                'topic_deleted' => (bool) ($run?->topic?->trashed() ?? false), 'topic_title' => (string) ($run?->topic?->title ?? ''),
                 'article_id' => $run?->article_id ? (int) $run->article_id : null,
                 'article_title' => (string) ($run?->article?->title ?? ''),
                 'article_deleted' => $run?->article_id
@@ -871,10 +886,11 @@ class TaskMonitoringQueryService
     private function recentRuns(): array
     {
         $runs = TaskRun::query()
-            ->select(['id', 'task_id', 'status', 'article_id', 'error_message', 'duration_ms', 'meta', 'started_at', 'finished_at', 'created_at'])
+            ->select(['id', 'task_id', 'status', 'article_id', 'topic_id', 'content_type', 'error_message', 'duration_ms', 'meta', 'started_at', 'finished_at', 'created_at'])
             ->with([
-                'task' => fn ($query) => $query->withTrashed()->select(['id', 'name', 'deleted_at']),
+                'task' => fn ($query) => $query->withTrashed()->select(['id', 'name', 'target_site_key', 'deleted_at']),
                 'article' => fn ($query) => $query->withTrashed()->select(['id', 'title', 'deleted_at']),
+                'topic' => fn ($query) => $query->withTrashed()->select(['id', 'title', 'deleted_at']),
             ])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
@@ -889,11 +905,12 @@ class TaskMonitoringQueryService
         $page = max(1, $page);
         $perPage = max(1, min(50, $perPage));
         $runs = TaskRun::query()
-            ->select(['id', 'task_id', 'status', 'article_id', 'error_message', 'duration_ms', 'meta', 'started_at', 'finished_at', 'created_at'])
+            ->select(['id', 'task_id', 'status', 'article_id', 'topic_id', 'content_type', 'error_message', 'duration_ms', 'meta', 'started_at', 'finished_at', 'created_at'])
             ->when($runId !== null, fn (Builder $query) => $query->whereKey($runId))
             ->with([
-                'task' => fn ($query) => $query->withTrashed()->select(['id', 'name', 'deleted_at']),
+                'task' => fn ($query) => $query->withTrashed()->select(['id', 'name', 'target_site_key', 'deleted_at']),
                 'article' => fn ($query) => $query->withTrashed()->select(['id', 'title', 'deleted_at']),
+                'topic' => fn ($query) => $query->withTrashed()->select(['id', 'title', 'deleted_at']),
             ])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
@@ -911,7 +928,7 @@ class TaskMonitoringQueryService
         return $runs->map(function (TaskRun $row): array {
             $status = (string) $row->status;
             $taskName = (string) ($row->task?->name ?? __('admin.tasks.jobs.unknown_task'));
-            $articleTitle = (string) ($row->article?->title ?? '');
+            $articleTitle = $row->content_type === 'topic' ? (string) ($row->topic?->title ?? '') : (string) ($row->article?->title ?? '');
             $meta = is_array($row->meta) ? $row->meta : [];
             $statusLabel = in_array($status, ['pending', 'running', 'completed', 'failed', 'cancelled'], true)
                 ? __('admin.tasks.jobs.status.'.$status)
@@ -926,13 +943,17 @@ class TaskMonitoringQueryService
                     : false,
                 'status' => $status,
                 'status_label' => $statusLabel,
-                'summary' => $this->taskRunSummary($status, $taskName, $articleTitle),
+                'summary' => $this->taskRunSummary($status, $taskName, $articleTitle, $row->content_type === 'topic'),
                 'explanation' => $this->taskRunExplanation(
                     $status,
                     (string) ($meta['error_code'] ?? ''),
                     (string) ($row->error_message ?? ''),
                     $articleTitle,
+                    $row->content_type === 'topic',
                 ),
+                'topic_id' => $row->topic_id ? (int) $row->topic_id : null,
+                'topic_deleted' => (bool) ($row->topic?->trashed() ?? false), 'topic_title' => (string) ($row->topic?->title ?? ''), 'target_site_key' => $row->task?->target_site_key ?? 'primary',
+                'content_type' => $row->content_type ?: 'article',
                 'article_id' => $row->article_id ? (int) $row->article_id : null,
                 'article_title' => $articleTitle,
                 'article_deleted' => $row->article_id
@@ -949,12 +970,13 @@ class TaskMonitoringQueryService
         });
     }
 
-    private function taskRunSummary(string $status, string $taskName, string $articleTitle): string
+    private function taskRunSummary(string $status, string $taskName, string $articleTitle, bool $isTopic): string
     {
         if ($status === 'completed' && $articleTitle !== '') {
-            return __('admin.tasks.jobs.summary.completed_with_article', [
+            return __($isTopic ? 'ai-task.topic_runtime.completed_with_topic' : 'admin.tasks.jobs.summary.completed_with_article', [
                 'task' => $taskName,
                 'article' => $articleTitle,
+                'topic' => $articleTitle,
             ]);
         }
 
@@ -970,6 +992,7 @@ class TaskMonitoringQueryService
         string $errorCode,
         string $errorMessage,
         string $articleTitle,
+        bool $isTopic,
     ): string {
         if ($status === 'failed') {
             $reason = match ($errorCode) {
@@ -981,15 +1004,15 @@ class TaskMonitoringQueryService
             };
 
             return $articleTitle !== ''
-                ? __('admin.tasks.jobs.failed_article', ['article' => $articleTitle, 'reason' => $reason])
-                : __('admin.tasks.jobs.failed_before_article', ['reason' => $reason]);
+                ? __($isTopic ? 'ai-task.topic_runtime.failed_with_topic' : 'admin.tasks.jobs.failed_article', ['article' => $articleTitle, 'topic' => $articleTitle, 'reason' => $reason])
+                : __($isTopic ? 'ai-task.topic_runtime.failed_before_topic' : 'admin.tasks.jobs.failed_before_article', ['reason' => $reason]);
         }
 
         if (! in_array($status, ['pending', 'running', 'completed', 'cancelled'], true)) {
             return __('admin.tasks.jobs.explanation.unknown');
         }
 
-        return __('admin.tasks.jobs.explanation.'.$status);
+        return __($isTopic && $status === 'running' ? 'ai-task.topic_runtime.running_explanation' : 'admin.tasks.jobs.explanation.'.$status);
     }
 
     private function legacyFailureReason(string $errorMessage): string

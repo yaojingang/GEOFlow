@@ -1,6 +1,6 @@
 # GEOFlow 远程管理预览版覆盖说明
 
-版本：CLI `0.3.0-preview.1`；管理协议 `1.0`。本页描述当前实现，完整目标见已确认升级方案 v1.1。
+版本：CLI `0.4.0-preview.1`；管理协议 `1.0`。本页描述当前实现，完整目标见已确认升级方案 v1.1。
 
 ## 已实现的入口
 
@@ -13,7 +13,13 @@
 
 `api tasks.enqueue` 使用 `--client-request-id` 续接；旧 `task enqueue` 继续使用 `--idempotency-key`。收据操作拒绝后者，服务端也拒绝同时提供两种请求头，避免去重保护被静默忽略。
 
-草稿创建和修改当前没有新管理收据，不能自动重发。`idempotent` 声明只用于已实现相应保护的操作。文件上限 5 MiB、单次文本读取 256 KiB、JSON 修改批次 1 MiB；大文件传输仍待实现。原生 Blade 必须由获得显式代码权限和短期草稿授权的可信超级管理员执行。
+草稿创建和修改当前没有新管理收据，不能自动重发。`idempotent` 声明只用于已实现相应保护的操作。普通文件上限 5 MiB；通过 MIME、结构及 `ffprobe` 校验的视频上限 25 MiB。单次文本读取 256 KiB、JSON 修改批次 1 MiB；其他大文件传输仍待后续实现。原生 Blade 必须由获得显式代码权限和短期草稿授权的可信超级管理员执行。
+
+## 专题相关能力
+
+专题内容的创建、编辑、审核、发布及批量操作通过登录后的内容管理执行。现有任务 API/CLI 可使用 `content_type=topic` 创建和管理专题任务，仍需满足实例权限、模型访问、标题资产和来源规则；当前没有独立的专题内容 CRUD 管理 API。
+
+主题契约及草稿预览支持专题列表、专题详情和专题空态。预览继续使用签名、修订版本和代码授权约束，不会切换正式模板。专题模板设计、复刻及修改流程见 [Skill 专题工作流](../../.agents/skills/geoflow/references/topic-workflow.md)。
 
 ## 明确未开放
 
@@ -23,14 +29,14 @@ A 的剩余工作包括统一新旧操作契约、完整业务 schema、官方�
 
 ## 覆盖台账与契约
 
-- [management-coverage.json](management-coverage.json)：完整后台路由清单、旧 CLI 操作、新管理操作及分批未完成项。当前为 355 条后台路由、37 个旧 CLI 操作、18 个管理操作。
+- [management-coverage.json](management-coverage.json)：完整后台路由清单、旧 CLI 操作、新管理操作及分批未完成项。当前为 388 条后台路由、39 个旧 CLI 操作、24 个管理操作。
 - [management-openapi.json](management-openapi.json)：从同一管理注册表导出的 OpenAPI 3.1 预览契约；嵌套业务 schema 尚不完整，以 `x-schema-completeness` 明示。
 - 后台路由的 `pending_domain_mapping` 表示领域操作映射尚待逐项审核，不能按路由数量声称管理覆盖率。后台页面路由和领域操作并非一一对应。
 - 使用 `php scripts/export-management-coverage.php` 更新；CI 运行 `--check` 阻止清单漂移。此脚本只导出静态路由元数据，不读取用户凭据或业务记录。仓库台账使用默认后台前缀 `geo_admin`；本机 `.env` 自定义前缀时，用 `ADMIN_BASE_PATH=geo_admin php scripts/export-management-coverage.php --check` 复核公开台账。
 
 ## 数据升级
 
-新增 5 个表已纳入 `deployment/upgrade-plan.json` 的 163 项迁移清单，沿用维护模式，新增迁移未标记为可在线执行。此更新修复升级清单遗漏；受管主题与升级、备份系统的完整联锁仍待实现。不要据此启用尚未开放的发布能力。
+远程管理及恢复迁移与新增 7 项专题迁移均已纳入 `deployment/upgrade-plan.json` 的 175 项迁移清单，新增专题迁移采用维护模式。此更新修复升级清单遗漏；受管主题与升级、备份系统的完整联锁仍待实现。不要据此启用尚未开放的发布能力。
 
 ## 使用与验收
 

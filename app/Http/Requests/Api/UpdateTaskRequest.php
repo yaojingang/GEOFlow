@@ -19,12 +19,17 @@ class UpdateTaskRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'content_type' => ['sometimes', 'in:article,topic'],
+            'target_site_key' => ['sometimes', 'string', 'max:80'],
+            'topic_limit' => ['sometimes', 'integer', 'between:1,99999'],
+            'topic_config_version' => ['sometimes', 'integer', 'min:1'],
+            'topic_settings' => ['sometimes', 'array'],
             'name' => ['sometimes', 'string', 'max:200'],
-            'title_library_id' => ['sometimes', 'integer', 'min:1'],
+            'title_library_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'image_library_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'image_count' => ['sometimes', 'integer', 'min:0', 'max:5'],
-            'prompt_id' => ['sometimes', 'integer', 'min:1'],
-            'ai_model_id' => ['sometimes', 'integer', 'min:1'],
+            'prompt_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'ai_model_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'author_id' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'knowledge_base_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'knowledge_base_ids' => ['sometimes', 'array', 'max:5'],

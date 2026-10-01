@@ -215,3 +215,7 @@ Current GEOFlow does not expose an isolated `/preview/{theme}` runtime route by 
 - a future dedicated preview route if the application adds one.
 
 Never claim a live preview route exists until `routes/web.php` confirms it.
+
+## Topic contract
+
+See [topic-workflow.md](topic-workflow.md) for `topic-view` contract 1, `topics/index.blade.php`, `topics/show.blade.php`, custom `topics/templates/{id}.blade.php`, `/topics` routes and `TopicTemplateCatalog`. `homeTopics`, `relatedTopics`, and homepage builder `topic_collection` are available in the current Laravel application. Theme overrides fall back to `site.topics.*`; installed and immutable revisions must be resolved through the running instance. Preserve `topics.css` and `topics.js` alongside topic Blade files.

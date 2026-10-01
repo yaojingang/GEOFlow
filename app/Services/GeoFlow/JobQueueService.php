@@ -10,6 +10,7 @@ use App\Models\Article;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Services\SystemUpdater\RecoveryState;
+use App\Services\Topics\TopicTaskService;
 use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -32,7 +33,7 @@ use Throwable;
  */
 class JobQueueService
 {
-    private const ALLOWED_JOB_TYPES = ['generate_article'];
+    private const ALLOWED_JOB_TYPES = ['generate_article', 'generate_topic'];
 
     private const ALLOWED_PAYLOAD_SOURCES = ['api_enqueue', 'api_manual_start', 'follow_up_generation'];
 
@@ -121,6 +122,7 @@ class JobQueueService
                     'status',
                     'schedule_enabled',
                     'max_retry_count',
+                    'content_type',
                     'ai_model_id',
                     'model_access_admin_id',
                     'model_access_admin_role',
@@ -142,6 +144,7 @@ class JobQueueService
                 return null;
             }
 
+            $jobType = $taskRow->content_type === 'topic' ? 'generate_topic' : 'generate_article';
             $maxAttempts = max(1, (int) ($taskRow->max_retry_count ?? 3));
             $availableAtValue = $availableAt ? Carbon::parse($availableAt) : now();
             $executionIdentity = $this->aiExecutionContextFactory->taskRunIdentity($taskRow);
@@ -149,6 +152,7 @@ class JobQueueService
             // 建立“待执行记录”，作为后续状态流转的唯一主记录。
             $run = TaskRun::query()->create([
                 'task_id' => $taskId,
+                'content_type' => $taskRow->content_type ?: 'article',
                 'status' => 'pending',
                 'meta' => [
                     'job_type' => $jobType,
@@ -1080,7 +1084,10 @@ class JobQueueService
     /** @return array{requested_model_required:bool,quality_model_id:?int} */
     private function taskRunAiRequirement(TaskRun $run): array
     {
-        $task = Task::query()->whereKey((int) $run->task_id)->first(['id', 'next_publish_at', 'need_review']);
+        $task = Task::query()->whereKey((int) $run->task_id)->first(['id', 'next_publish_at', 'need_review', 'content_type', 'topic_settings', 'target_site_key', 'topic_config_version']);
+        if ($task?->content_type === 'topic') {
+            return ['requested_model_required' => app(TopicTaskService::class)->dueRun($task) === null, 'quality_model_id' => null];
+        }
         if (! $task instanceof Task || ($task->next_publish_at !== null && $task->next_publish_at->isFuture())) {
             return ['requested_model_required' => true, 'quality_model_id' => null];
         }

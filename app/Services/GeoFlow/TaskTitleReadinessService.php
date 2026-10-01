@@ -7,9 +7,12 @@ use App\Exceptions\TaskTitleReadinessException;
 use App\Models\Task;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\Topics\TopicTaskRunner;
 
 class TaskTitleReadinessService
 {
+    public function __construct(private readonly TopicTaskRunner $topics) {}
+
     /** @param array<string,mixed> $report */
     public function assertCanActivate(array $report, int $httpStatus = 422): void
     {
@@ -21,6 +24,10 @@ class TaskTitleReadinessService
     /** @return array<string,mixed> */
     public function inspectTask(Task $task, string $status = 'active'): array
     {
+        if ($task->content_type === 'topic') {
+            return $this->topics->readiness($task);
+        }
+
         return $this->inspect(
             (int) ($task->title_library_id ?? 0),
             max(1, (int) ($task->article_limit ?? 1)),
@@ -78,7 +85,7 @@ class TaskTitleReadinessService
             );
         }
 
-        $conflictQuery = Task::query()
+        $conflictQuery = Task::query()->where('content_type', 'article')
             ->where('title_library_id', $titleLibraryId)
             ->where('status', 'active')
             ->where('schedule_enabled', 1)

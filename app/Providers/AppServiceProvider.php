@@ -16,6 +16,8 @@ use App\Jobs\GenerateKnowledgeFactBatchJob;
 use App\Jobs\ProcessTitleGenerationBatchJob;
 use App\Models\Admin;
 use App\Models\KnowledgeFactGenerationRun;
+use App\Models\Topic;
+use App\Models\TopicSourceInvalidation;
 use App\Services\Admin\AdminUpdateMetadataService;
 use App\Services\Admin\AdminWelcomeModalService;
 use App\Services\Admin\DatabaseAiModelWriteLock;
@@ -40,6 +42,9 @@ use App\Services\Site\SiteUrlGenerator;
 use App\Services\SystemUpdater\RecoveryReconciliation;
 use App\Services\SystemUpdater\RecoveryState;
 use App\Services\SystemUpdater\UnixSocketAgentClient;
+use App\Services\Topics\TopicReadModel;
+use App\Services\Topics\TopicSiteSettings;
+use App\Services\Topics\TopicViewBuilder;
 use App\Support\AdminUiRegistry;
 use App\Support\Site\CurrentSite;
 use App\Support\Site\SiteThemePreviewContext;
@@ -70,6 +75,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->scoped(TopicViewBuilder::class);
+        $this->app->scoped(TopicReadModel::class);
         $this->app->scoped(ThemeRevisionContext::class);
         $fixedContextCapability = new \stdClass;
         $trustedTerminal = Closure::fromCallable(Utils::chooseHandler());
@@ -120,6 +127,17 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        TopicSourceInvalidation::registerSourceObservers();
+        Topic::saved(function (): void {
+            if (app()->resolved(TopicReadModel::class)) {
+                app(TopicReadModel::class)->reset();
+            }
+        });
+        Topic::deleted(function (): void {
+            if (app()->resolved(TopicReadModel::class)) {
+                app(TopicReadModel::class)->reset();
+            }
+        });
         BaseQueue::createPayloadUsing(static function (): array {
             app(RecoveryState::class)->assertBackgroundReady();
 
@@ -135,6 +153,10 @@ class AppServiceProvider extends ServiceProvider
         });
         View::composer(['site.*', 'theme.*'], function ($view): void {
             $view->with('siteUrls', app(SiteUrlGenerator::class));
+            $topicSettings = app(TopicSiteSettings::class);
+            $key = $topicSettings->currentKey();
+            $navigation = $topicSettings->get($key)['navigation_enabled'] && app(TopicReadModel::class)->all($key, [], 1)->isNotEmpty();
+            $view->with('showTopicNavigation', $navigation);
         });
         $this->assertHostedSiteConfiguration();
         Event::listen(WorkerStarting::class, function (WorkerStarting $event): void {

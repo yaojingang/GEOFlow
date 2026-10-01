@@ -156,13 +156,14 @@
                         <tbody class="bg-white divide-y divide-gray-200">
                         @foreach ($tasks as $task)
                             @php
+                                $isTopicTask = ($task['content_type'] ?? 'article') === 'topic';
                                 $failureInfo = $describeTaskFailure($task['batch_error_message'] ?? '');
                                 $failureClasses = $getFailureToneClasses($failureInfo['tone']);
                                 $hasVisibleFailure = !empty($task['batch_error_message']) && in_array($task['batch_status'], ['failed', 'cancelled'], true);
                             @endphp
                             <tr class="hover:bg-gray-50">
                                 <td class="px-5 py-4 align-top">
-                                    <div class="text-sm font-medium leading-6 text-gray-900 break-words">{{ $task['name'] ?? '' }}</div>
+                                    <div class="text-sm font-medium leading-6 text-gray-900 break-words">{{ $task['name'] ?? '' }}</div>@if($isTopicTask)<span class="text-xs text-blue-700">专题任务</span>@endif
                                     <div class="mt-1 text-sm text-gray-500 break-words">{{ __('admin.tasks.label.title_library') }}: {{ $task['title_library_name'] ?? '' }}</div>
                                     @if ($hasVisibleFailure)
                                         <div class="mt-2 rounded-md border px-3 py-2 text-xs {{ $failureClasses['card'] }}">
@@ -218,9 +219,9 @@
                                             }
                                         }
                                     @endphp
-                                    <div id="task-created-{{ (int) $task['id'] }}">{{ __('admin.tasks.label.created_of_limit', ['created' => (int) ($task['created_count'] ?? $task['total_articles'] ?? 0), 'limit' => $articleLimit]) }}</div>
-                                    <div id="task-published-{{ (int) $task['id'] }}">{{ __('admin.tasks.label.published_articles', ['count' => (int) ($task['published_articles'] ?? 0)]) }}</div>
-                                    <div id="task-drafts-{{ (int) $task['id'] }}">{{ __('admin.tasks.label.draft_articles', ['count' => (int) ($task['draft_articles'] ?? 0)]) }}</div>
+                                    <div id="task-created-{{ (int) $task['id'] }}">{{ $isTopicTask?'已生成 '.(int)($task['created_count']??0).' / '.$articleLimit.' 个专题':__('admin.tasks.label.created_of_limit', ['created' => (int) ($task['created_count'] ?? $task['total_articles'] ?? 0), 'limit' => $articleLimit]) }}</div>
+                                    <div id="task-published-{{ (int) $task['id'] }}">{{ $isTopicTask?'已公开 '.(int)($task['published_count']??0).' 个专题':__('admin.tasks.label.published_articles', ['count' => (int) ($task['published_articles'] ?? 0)]) }}</div>
+                                    <div id="task-drafts-{{ (int) $task['id'] }}">{{ $isTopicTask?'工作稿 '.max(0,(int)($task['created_count']??0)-(int)($task['published_count']??0)).' 个专题':__('admin.tasks.label.draft_articles', ['count' => (int) ($task['draft_articles'] ?? 0)]) }}</div>
                                     <div class="mt-2 h-1.5 w-28 overflow-hidden rounded-full bg-gray-200">
                                         <div id="task-progress-{{ (int) $task['id'] }}" class="h-full rounded-full bg-blue-600" style="width: {{ $progressPercent }}%"></div>
                                     </div>
@@ -260,7 +261,7 @@
                                     @endif
                                 </td>
                                 <td class="px-5 py-4 align-top whitespace-nowrap text-sm text-gray-500">
-                                    <span id="task-loop-{{ (int) $task['id'] }}">{{ __('admin.tasks.label.loop_times', ['count' => (int) ($task['loop_count'] ?? 0)]) }}</span>
+                                    <span id="task-loop-{{ (int) $task['id'] }}">{{ $isTopicTask?'专题发布间隔':__('admin.tasks.label.loop_times', ['count' => (int) ($task['loop_count'] ?? 0)]) }}</span>
                                     <div id="task-publish-interval-{{ (int) $task['id'] }}" class="mt-1 text-xs text-gray-400">
                                         {{ __('admin.tasks.label.publish_interval_minutes', ['count' => max(1, (int) ceil(((int) ($task['publish_interval'] ?? 3600)) / 60))]) }}
                                     </div>
@@ -302,7 +303,7 @@
                                             </a>
                                         @endif
 
-                                        <a href="{{ route('admin.articles.index', ['task_id' => (int) $task['id']]) }}" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="{{ __('admin.tasks.action.articles') }}">
+                                        <a href="{{ $isTopicTask?route('admin.topics.index',['task_id'=>(int)$task['id'],'site'=>$task['target_site_key']??'primary']):route('admin.articles.index', ['task_id' => (int) $task['id']]) }}" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="{{ __('admin.tasks.action.articles') }}">
                                             <i data-lucide="file-text" class="w-4 h-4"></i>
                                         </a>
 
@@ -645,7 +646,7 @@ function updateBatchStatus(task) {
         } else if (task.batch_status === 'draft_pool_full') {
             statusDiv.innerHTML = `<span class="text-xs text-orange-700 bg-orange-50 px-2 py-1 rounded-full border border-orange-200">${escapeHtml(TASK_I18N.draftPoolFull)}</span>`;
         } else if (task.batch_status === 'limit_reached') {
-            statusDiv.innerHTML = `<span class="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded-full border border-amber-200">${escapeHtml(TASK_I18N.limitReached)}</span>`;
+            statusDiv.innerHTML = `<span class="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded-full border border-amber-200">${escapeHtml(task.content_type === 'topic' ? TASK_I18N.topicLimitReached : TASK_I18N.limitReached)}</span>`;
         } else { statusDiv.innerHTML = ''; }
         return;
     }
@@ -686,22 +687,23 @@ function updateTaskCounters(task) {
     const loopEl = document.getElementById(`task-loop-${task.id}`);
     const publishIntervalEl = document.getElementById(`task-publish-interval-${task.id}`);
     const createdCount = Number(task.created_count || task.total_articles || 0);
-    const articleLimit = Math.max(1, Number(task.article_limit || task.draft_limit || 10));
+    const articleLimit = Math.max(1, Number(task.content_type === 'topic' ? task.topic_limit || task.article_limit || 10 : task.article_limit || task.draft_limit || 10));
+    const isTopic = task.content_type === 'topic';
     if (createdEl) {
-        createdEl.textContent = TASK_I18N.createdOfLimitLabel.replace('__CREATED__', String(createdCount)).replace('__LIMIT__', String(articleLimit));
+        createdEl.textContent = isTopic ? `已生成 ${createdCount} / ${articleLimit} 个专题` : TASK_I18N.createdOfLimitLabel.replace('__CREATED__', String(createdCount)).replace('__LIMIT__', String(articleLimit));
     }
     if (publishedEl) {
-        publishedEl.textContent = TASK_I18N.publishedArticlesLabel.replace('__COUNT__', String(Number(task.published_articles || 0)));
+        publishedEl.textContent = isTopic ? `已公开 ${Number(task.published_count || 0)} 个专题` : TASK_I18N.publishedArticlesLabel.replace('__COUNT__', String(Number(task.published_articles || 0)));
     }
     if (draftsEl) {
-        draftsEl.textContent = TASK_I18N.draftArticlesLabel.replace('__COUNT__', String(Number(task.draft_articles || 0)));
+        draftsEl.textContent = isTopic ? `工作稿 ${Math.max(0, createdCount - Number(task.published_count || 0))} 个专题` : TASK_I18N.draftArticlesLabel.replace('__COUNT__', String(Number(task.draft_articles || 0)));
     }
     if (progressEl) {
         const percent = Math.max(0, Math.min(100, Math.floor((createdCount / articleLimit) * 100)));
         progressEl.style.width = `${percent}%`;
     }
     if (loopEl) {
-        loopEl.textContent = TASK_I18N.loopTimesLabel.replace('__COUNT__', String(Number(task.loop_count || 0)));
+        loopEl.textContent = isTopic ? '专题发布间隔' : TASK_I18N.loopTimesLabel.replace('__COUNT__', String(Number(task.loop_count || 0)));
     }
     if (publishIntervalEl) {
         const minutes = Math.max(1, Math.ceil(Number(task.publish_interval || 3600) / 60));

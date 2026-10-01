@@ -42,13 +42,15 @@ final class ThemeWorkspaceService
         return [
             'version' => 1, 'site_kinds' => ['primary'], 'renderer' => 'trusted-native-blade',
             'workspace_id' => $workspace?->id, 'revision_id' => $revision?->id,
-            'pages' => SiteThemePackageGuard::PAGES, 'fallback' => 'site.*',
+            'pages' => SiteThemePackageGuard::PAGES, 'page_paths' => SiteThemePackageGuard::PAGE_PATHS, 'contracts' => SiteThemePackageGuard::CONTRACTS, 'fallback' => 'site.*',
             'paths' => ['resources/views/theme/{theme_id}/', 'public/themes/{theme_id}/', 'resources/views/site/'],
             'page_variables' => [
                 'common' => ['siteTitle' => 'string', 'siteDescription' => 'string', 'siteKeywords' => 'string', 'pageTitle' => 'string', 'pageDescription' => 'string', 'pageKeywords' => 'string', 'pageOgType' => 'string', 'canonicalUrl' => 'string', 'activeNav' => 'string'],
-                'home' => ['articles' => 'LengthAwarePaginator<Article>', 'category' => 'Category|null', 'categoryMissing' => 'bool', 'categoryId' => 'int', 'search' => 'string', 'featuredArticles' => 'Collection<Article>', 'hotArticles' => 'Collection<Article>', 'cardSummaries' => 'array', 'siteSubtitle' => 'string', 'homepageCarouselSlides' => 'list<array>', 'homepageModules' => 'array', 'homepageStyle' => 'array', 'leadForms' => 'Collection<string,LeadForm>', 'showHomepageModules' => 'bool', 'friendLinks' => 'list<array>', 'viewTitle' => 'string', 'perPage' => 'int'],
+                'topics-index' => ['topics' => 'LengthAwarePaginator<TopicView>', 'search' => 'string', 'tag' => 'string', 'topicTags' => 'Collection<string>'],
+                'topics-show' => ['topic' => 'TopicView', 'topicArticles' => 'list<PublicArticleView>', 'topicSummary' => 'array', 'topicScore' => 'array|null'],
+                'home' => ['homeTopics' => 'Collection<TopicView>', 'articles' => 'LengthAwarePaginator<Article>', 'category' => 'Category|null', 'categoryMissing' => 'bool', 'categoryId' => 'int', 'search' => 'string', 'featuredArticles' => 'Collection<Article>', 'hotArticles' => 'Collection<Article>', 'cardSummaries' => 'array', 'siteSubtitle' => 'string', 'homepageCarouselSlides' => 'list<array>', 'homepageModules' => 'array', 'homepageStyle' => 'array', 'leadForms' => 'Collection<string,LeadForm>', 'showHomepageModules' => 'bool', 'friendLinks' => 'list<array>', 'viewTitle' => 'string', 'perPage' => 'int'],
                 'category' => ['category' => 'Category', 'articles' => 'LengthAwarePaginator<Article>', 'hotArticles' => 'Collection<Article>', 'cardSummaries' => 'array'],
-                'article' => ['article' => 'Article', 'contentHtml' => 'string', 'excerptPlain' => 'string', 'tags' => 'array<string>', 'relatedArticles' => 'Collection<Article>', 'stickyAd' => 'array|null'],
+                'article' => ['relatedTopics' => 'Collection<TopicView>', 'article' => 'Article', 'contentHtml' => 'string', 'excerptPlain' => 'string', 'tags' => 'array<string>', 'relatedArticles' => 'Collection<Article>', 'stickyAd' => 'array|null'],
                 'about' => ['aboutTitle' => 'string', 'aboutContent' => 'string', 'contactEmail' => 'string', 'repositoryUrl' => 'string', 'isHostedAbout' => 'bool'],
                 'archive-index' => ['archives' => 'list<array{year:string,month:string,count:int}>'],
                 'archive-month' => ['articles' => 'LengthAwarePaginator<Article>', 'year' => 'string', 'month' => 'string', 'periodLabel' => 'string', 'cardSummaries' => 'array'],
@@ -206,7 +208,7 @@ final class ThemeWorkspaceService
     }
 
     /** @return array<string, string> */
-    private function sourceContents(string $theme, string $source): array
+    public function sourceContents(string $theme, string $source): array
     {
         $root = $source === 'installed' ? $this->revisions->storage->path('installed/'.$theme) : base_path();
         $contents = [];

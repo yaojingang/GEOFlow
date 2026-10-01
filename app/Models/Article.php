@@ -125,6 +125,11 @@ class Article extends Model
         return $this->hasMany(ArticleSlugHistory::class);
     }
 
+    public function latestTopicReview(): HasOne
+    {
+        return $this->hasOne(ArticleReview::class)->latestOfMany();
+    }
+
     public function reviews(): HasMany
     {
         return $this->hasMany(ArticleReview::class, 'article_id');

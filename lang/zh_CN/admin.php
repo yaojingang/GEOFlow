@@ -4973,7 +4973,7 @@ return [
         'group_security' => '安全与合规',
         'group_security_desc' => '维护发布前内容风险控制',
         'module_basic_desc' => '配置站点名称、Logo、SEO 模板、统计代码和首页基础展示',
-        'module_theme_desc' => '选择前台展示主题，预览或编辑首页、分类页和文章页模板',
+        'module_theme_desc' => '选择网站样式，预览首页、文章与专题，管理模板和版本',
         'module_ads_desc' => '配置文章详情页悬浮 CTA 卡片和正文顶部/底部文本广告',
         'ai_workspace_runtime' => [
             'title' => 'AI 工作台',

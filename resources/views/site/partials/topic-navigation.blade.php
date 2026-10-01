@@ -1,0 +1,1 @@
+@if($showTopicNavigation??false)<a href="{{ $siteUrls->topics() }}" data-nav-item="topics" class="topic-nav-link {{ $topicNavigationClass ?? '' }}" @if(request()->routeIs('site.topics.*')) aria-current="page" @endif>{{ app(\App\Services\Topics\TopicSiteSettings::class)->get(app(\App\Services\Topics\TopicSiteSettings::class)->currentKey())['channel_name'] }}</a>@endif

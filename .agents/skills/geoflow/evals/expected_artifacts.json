@@ -63,7 +63,9 @@
     "references/remote-cli-workflow.md",
     "reports/remote-cli-review.md",
     "references/remote-updater-workflow.md",
-    "reports/coordinated-updater-review.md"
+    "reports/coordinated-updater-review.md",
+    "references/topic-workflow.md",
+    "evals/test_topic_support.py"
   ],
   "mode_outputs": {
     "development": [

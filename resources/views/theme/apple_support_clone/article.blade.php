@@ -95,6 +95,7 @@
             </aside>
         @endif
     </div>
+@include('site.partials.related-topics')
 @endsection
 
 @if($stickyAd)

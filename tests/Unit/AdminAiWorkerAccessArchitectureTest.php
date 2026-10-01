@@ -131,6 +131,7 @@ class AdminAiWorkerAccessArchitectureTest extends TestCase
             'App\\Services\\GeoFlow\\JobQueueService',
             'App\\Services\\Site\\UrlChangeInspector',
             'App\\Services\\GeoFlow\\ArticlePublicationEligibilityService',
+            'App\\Services\\Topics\\TopicTaskRunner',
         ], $dependencies);
 
         $modelBoundaryClasses = [
@@ -201,6 +202,7 @@ class AdminAiWorkerAccessArchitectureTest extends TestCase
             'jobQueueService' => ['completeJob', 'lockRunningJobForWorker'],
             'knowledgeRetrievalService' => ['retrieveContextBundleFromMany'],
             'taskTitleReadinessService' => ['inspectTask'],
+            'topicTaskRunner' => ['execute'],
             'urlChangeInspector' => ['assertArticleCompatible'],
         ];
         foreach ($expected as &$methods) {

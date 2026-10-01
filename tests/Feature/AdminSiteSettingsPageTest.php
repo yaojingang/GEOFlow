@@ -45,7 +45,7 @@ class AdminSiteSettingsPageTest extends TestCase
             ->assertDontSee('id="homepage-module-form"', false)
             ->assertSee('value="'.AdminWeb::basePath().'"', false);
 
-        $this->assertSame(1, substr_count($response->getContent(), route('admin.site-settings.homepage-modules.edit')));
+        $this->assertSame(2, substr_count($response->getContent(), route('admin.site-settings.homepage-modules.edit')));
     }
 
     public function test_site_settings_page_renders_before_lead_forms_table_is_migrated(): void
@@ -77,7 +77,7 @@ class AdminSiteSettingsPageTest extends TestCase
             ->assertSee(__('admin.site_settings.homepage.lead_form_none'));
     }
 
-    public function test_apple_support_theme_is_listed_without_becoming_active_theme(): void
+    public function test_apple_support_theme_can_be_found_in_archive_without_becoming_active_theme(): void
     {
         $admin = Admin::query()->create([
             'username' => 'site_theme_admin',
@@ -89,11 +89,11 @@ class AdminSiteSettingsPageTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
-            ->get(route('admin.site-settings.index'))
+            ->get(route('admin.site-settings.index', ['theme_tab' => 'archived', 'theme_search' => 'apple_support_clone']))
             ->assertOk()
             ->assertSee('Apple Support Inspired')
             ->assertSee('value="apple_support_clone"', false)
-            ->assertDontSee('value="apple_support_clone" class="mt-1 text-blue-600 focus:ring-blue-500" checked', false);
+            ->assertViewHas('themeLibrary', fn (array $library): bool => $library['current']['id'] !== 'apple_support_clone');
     }
 
     public function test_generated_netease_theme_variants_are_listed_with_public_assets(): void
@@ -143,11 +143,14 @@ class AdminSiteSettingsPageTest extends TestCase
             $this->assertContains($themeId, $catalogIds);
             $this->assertFileExists(resource_path("views/theme/{$themeId}/layout.blade.php"));
             $this->assertFileExists(public_path("themes/{$themeId}/theme.css"));
-
-            $response
-                ->assertSee($themeName)
-                ->assertSee('value="'.$themeId.'"', false);
         }
+
+        $response->assertSee(__('theme_library.selections.enterprise.name'))
+            ->assertSee('value="geoflow-template-21-enterprise-signature"', false)
+            ->assertDontSee('GEOFlow 02 Market Briefing');
+        $this->get(route('admin.site-settings.index', ['theme_tab' => 'archived', 'theme_search' => 'geoflow-template-02-market-briefing']))
+            ->assertOk()->assertSee('GEOFlow 02 Market Briefing')
+            ->assertSee('value="geoflow-template-02-market-briefing"', false);
     }
 
     public function test_frontend_theme_headers_keep_home_as_first_navigation_item(): void

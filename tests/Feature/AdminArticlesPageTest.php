@@ -78,6 +78,7 @@ class AdminArticlesPageTest extends TestCase
 
         foreach ([
             route('admin.articles.index') => 'article-list',
+            route('admin.topics.index') => 'topics',
             route('admin.categories.index') => 'categories',
             route('admin.articles.index', ['review_status' => 'pending']) => 'review',
             route('admin.articles.index', ['trashed' => 1]) => 'trash',
@@ -89,6 +90,7 @@ class AdminArticlesPageTest extends TestCase
                 ->assertSee('data-articles-navigation', false)
                 ->assertSee(AdminWeb::routePath('admin.articles.index'), false)
                 ->assertSee(AdminWeb::routePath('admin.categories.index'), false)
+                ->assertSee(AdminWeb::routePath('admin.topics.index'), false)
                 ->assertSee(AdminWeb::routePath('admin.articles.index', ['review_status' => 'pending']).'#article-list', false)
                 ->assertSee(AdminWeb::routePath('admin.articles.index', ['trashed' => 1]), false);
 
@@ -100,16 +102,16 @@ class AdminArticlesPageTest extends TestCase
             $activeItems = $xpath->query('.//*[@aria-current="page"]', $navigation);
 
             self::assertNotNull($navigation, $url);
-            self::assertSame(4, $items?->length, $url);
+            self::assertSame(5, $items?->length, $url);
             self::assertSame(
-                ['article-list', 'categories', 'review', 'trash'],
+                ['article-list', 'topics', 'categories', 'review', 'trash'],
                 array_map(
                     static fn (\DOMNode $item): string => (string) $item->attributes?->getNamedItem('data-articles-navigation-item')?->nodeValue,
                     iterator_to_array($items),
                 ),
                 $url,
             );
-            self::assertSame(4, $xpath->query('.//*[@data-articles-navigation-dot]', $navigation)?->length, $url);
+            self::assertSame(5, $xpath->query('.//*[@data-articles-navigation-dot]', $navigation)?->length, $url);
             self::assertSame(1, $activeItems?->length, $url);
             self::assertSame(
                 $activeKey,

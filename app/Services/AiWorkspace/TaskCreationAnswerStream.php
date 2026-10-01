@@ -57,7 +57,12 @@ final readonly class TaskCreationAnswerStream
             if (! is_array($previous) || (! $staleInput && ! $confirm && ! $cancel && $choice === null && in_array($previous['status'], ['created', 'cancelled'], true))) {
                 $previous = $this->flow->emptyDraft();
             }
-            $persist = function (array $response = [], ?AiWorkspaceModelExecutionReceipt $receipt = null) use ($admin, $conversation, $generationId, $context, $previous, $expected, $staleInput, $confirm, $cancel, $choice, $input): ?AiConversationMessage {
+            $requestedType = $this->flow->requestedContentType($prompt)
+                ?? (($previous['revision'] ?? 0) > 0 ? ($previous['data']['content_type'] ?? 'article') : null);
+            if ($requestedType !== null && ! $confirm && ! $cancel && $choice === null && ! $staleInput) {
+                $previous['data']['content_type'] = $requestedType;
+            }
+            $persist = function (array $response = [], ?AiWorkspaceModelExecutionReceipt $receipt = null) use ($admin, $conversation, $generationId, $context, $previous, $expected, $staleInput, $confirm, $cancel, $choice, $input, $requestedType): ?AiConversationMessage {
                 if (connection_aborted()) {
                     return null;
                 }
@@ -71,7 +76,7 @@ final readonly class TaskCreationAnswerStream
                             $this->access->assertReceiptCurrent($context, $receipt);
                         }
                     },
-                    prepareMessage: function (AiConversation $locked) use ($admin, $previous, $expected, $staleInput, $confirm, $cancel, $choice, $response, $input): array {
+                    prepareMessage: function (AiConversation $locked) use ($admin, $previous, $expected, $staleInput, $confirm, $cancel, $choice, $response, $input, $requestedType): array {
                         $currentAdmin = Admin::query()->whereKey($admin->id)->lockForUpdate()->first();
                         if (! $currentAdmin || $currentAdmin->status !== 'active' || (int) $currentAdmin->auth_version !== (int) $admin->auth_version
                             || $locked->participant_type !== $admin->getMorphClass() || (int) $locked->participant_id !== (int) $admin->id) {
@@ -86,6 +91,12 @@ final readonly class TaskCreationAnswerStream
                             || ! in_array($previous['status'], ['collecting', 'ready'], true)))) {
                             [$draft, $content] = [$previous, __('ai-task.stale')];
                         } else {
+                            if ($choice !== null && ! $this->flow->supportsChoice($previous, $choice['field'])) {
+                                return ['content' => __('ai-task.invalid_option', ['field' => __('ai-task.fields.'.$choice['field'])]), 'meta' => ['task_card' => $this->flow->card($previous, $catalog)]];
+                            }
+                            if ($choice === null && $requestedType !== null && is_array($response['draft'] ?? null)) {
+                                $response['draft']['content_type'] = $requestedType;
+                            }
                             if ($choice !== null) {
                                 $value = $choice['field'] === 'knowledge_base_ids' ? [(int) $choice['id']] : (int) $choice['id'];
                                 $response = ['intent' => 'collect', 'reply' => __('ai-task.choice_saved'), 'draft' => [...$previous['data'], $choice['field'] => $value]];

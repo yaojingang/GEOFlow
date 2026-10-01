@@ -1,32 +1,31 @@
 ---
 name: geoflow
-description: Develop or operate GEOFlow through its remote CLI, Laravel backend/admin/API, default site, themes, leads, and Agent sites. Use for source-free connections, remote theme drafts/previews, planned Updater operations and receipt recovery, code changes, channel sync, legacy migration, or retired yao-geoflow-cli/design/template IDs. Discover capabilities first. Excludes unrelated work, database shortcuts, invented routes, auth bypass, secret exposure, and unapproved live or destructive actions.
+description: Operate/develop GEOFlow CLI/Laravel/admin/API, topics/专题 and topic tasks, theme libraries/replication, sites/leads/Agent, channel sync and legacy yao-geoflow-cli/design/template migration. Use for source-free previews, planned Updater operations and receipt recovery. Discover capabilities; exclude unrelated work, SQL shortcuts, invented routes, auth bypass, secrets and unapproved live/destructive actions.
 ---
 
 # GEOFlow
 
 ## Route
 
-1. For a running instance, use installed `geoflow`: read help, select the profile, run `whoami`, `capabilities`, and `doctor`. Source is optional. Follow [remote-cli-workflow.md](references/remote-cli-workflow.md). For source edits, run `scripts/discover_geoflow_workspace.py <workspace>`.
-2. Load one route:
+Instance: installed `geoflow` help/profile, `whoami`, `capabilities`, `doctor`; [CLI](references/remote-cli-workflow.md). Source optional; edits: `scripts/discover_geoflow_workspace.py <workspace>`.
 
 - `development`: [workflow](references/development-workflow.md), [discovery](references/system-capability-discovery.md).
-- `operations`: [remote Updater](references/remote-updater-workflow.md), [boundaries](references/operation-boundary.md), [commands](references/command-map.md), [capabilities](references/geoflow-current-capability-map.md).
+- `operations`: [Updater](references/remote-updater-workflow.md), [boundaries](references/operation-boundary.md), [commands](references/command-map.md), [capabilities](references/geoflow-current-capability-map.md).
 - `public_frontend`: [resources](references/frontend-resource-index.md), [site map](references/geoflow-frontend-map.md).
 - `channel_frontend`: [resources](references/frontend-resource-index.md), [contract](references/channel-frontend-contract.md).
 - `legacy_migration`: [templates](references/legacy-template-migration.md), [skill IDs](references/legacy-skill-id-migration.md).
 
-## Mode Boundaries
+[Topics/tasks/themes](references/topic-workflow.md), [libraries](references/theme-edit-workflow.md).
 
-Use one mode per phase: `development` edits source/tests; `operations` uses runtime interfaces; frontend modes prepare themes/payloads. Authenticated form creation, sync, activation, and publication are authorized operations. Discover → implement → verify → authorized finalize.
+## Boundaries
 
-## Guardrails
+One mode: source/tests→development; runtime writes→operations; themes/payloads→frontend. Forms/sync/activation/publication need authorization. Discover→implement→verify→authorized finalize.
 
-- Follow repository rules and focused tests; preserve auth, CSRF, scopes, contracts, readback and secret redaction.
-- Helpers require macOS/Linux/WSL, Python 3.10+, Bash; preflight needs curl, live channel reports need PHP and project artisan. Missing dependencies permit read-only discovery; report unverified layers.
-- Use operations supported by both instance and client. Preview supports draft editing and preview links. Publication, rollback, remote configuration, large-file staging and full administration remain unavailable. Report gaps; never invent routes or substitute template uploads.
-- Retain request IDs for task-enqueue receipts; query uncertain results. A missing receipt, including 404 for a prepared journal, never authorizes resending: reconcile business state before an explicitly authorized new request. Draft create/change have no receipt recovery: inspect state after lost responses; never blindly repeat writes.
-- Remote Updater actions require actual v2 capabilities, explicit updater scopes, a saved plan and stable request ID. Follow the Updater route for credential input and recovery. Held background work requires attention; retain its receipt.
-- Native template editing requires explicit code scope and password reauthentication. Keep secrets in protected input streams.
-- Distinguish preview/import/sync/activation/publication/update/rollback. High-risk operations require an exact target and explicit authorization.
-- Report mode, redacted identity, changes, verification, final state and remaining limits.
+- Follow repository rules/tests; preserve auth, CSRF, scopes, contracts, readback and secret redaction.
+- Helpers: macOS/Linux/WSL, Python 3.10+, Bash; preflight curl; live channel PHP/artisan. Missing tools: read-only discovery, name unverified layers.
+- Use the client/instance capability intersection. Preview supports drafts/links; publish, rollback, configuration, large-file staging and full administration are unavailable. Report gaps; never invent routes or substitute uploads.
+- Keep enqueue request IDs. No receipt, including prepared-journal 404, authorizes replay: reconcile business state before an explicitly authorized new request. Lost draft create/change responses: inspect state before retry.
+- Updater: actual v2 capabilities, explicit updater scopes, saved plan, stable request ID; follow its workflow for protected credential input/recovery. Held work needs attention and retained receipts.
+- Native edits: explicit code scope and password reauthentication; protected secret input.
+- Separate preview/import/sync/activation/publication/update/rollback. High-risk actions: exact target and explicit authorization.
+- Report mode/redacted identity, changes/checks, state/limits.

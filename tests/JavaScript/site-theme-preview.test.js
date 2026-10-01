@@ -91,3 +91,14 @@ test('Enter honors the default submit button method, destination and value overr
     enter();
     assert.equal(sent.length, 1);
 });
+
+test('topic list, detail, pagination and filtering stay in the preview frame', () => {
+ const {handlers,frame}=setup(true);
+ for(const path of ['/topics','/topics/topic-one','/topics/page/2','/topics?search=GEO&tag=source']){
+  handlers.message({source:frame.contentWindow,data:{type:'geoflow-theme-preview:navigate',url:'https://site.example'+path}});
+  assert.equal(frame.src,base+path);
+ }
+ const before=frame.src;
+ handlers.message({source:frame.contentWindow,data:{type:'geoflow-theme-preview:navigate',url:base+'/topics/topic-one/edit'}});
+ assert.equal(frame.src,before);
+});

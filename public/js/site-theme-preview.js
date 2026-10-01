@@ -15,7 +15,7 @@
         let path = url.pathname;
         if (path === prefix) path = '/';
         else if (path.startsWith(`${prefix}/`)) path = path.slice(prefix.length);
-        if (!/^\/(?:about|archive(?:\/\d{4}\/\d{2})?|(?:category|article)\/[^/]+)?$/.test(path)) return null;
+        if (!/^\/(?:about|archive(?:\/\d{4}\/\d{2})?|topics(?:\/page\/[1-9][0-9]*|\/[^/]+)?|(?:category|article)\/[^/]+)?$/.test(path)) return null;
         if (/%(?:2f|5c|2e)|\\/i.test(path)) return null;
         return `${base.origin}${prefix}${path}${url.search}${url.hash}`;
     };

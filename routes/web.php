@@ -74,6 +74,7 @@ use App\Http\Controllers\Site\HostedAssetController;
 use App\Http\Controllers\Site\LeadFormController as SiteLeadFormController;
 use App\Http\Controllers\Site\SiteDiscoveryController;
 use App\Http\Controllers\Site\ThemeRevisionAssetController;
+use App\Http\Controllers\Site\TopicController;
 use App\Support\AdminUiRegistry;
 use App\Support\Site\ArticlePermalinkPattern;
 use Illuminate\Support\Facades\Auth;
@@ -99,9 +100,14 @@ Route::middleware(['site.locale', 'site.view_log'])->group(function (): void {
     Route::get('/llms.txt', [SiteDiscoveryController::class, 'llms'])->name('site.llms');
     Route::get('/sitemap.txt', [SiteDiscoveryController::class, 'sitemapText'])->name('site.sitemap.text');
     Route::get('/sitemap.xml', [SiteDiscoveryController::class, 'sitemap'])->name('site.sitemap');
+    Route::get('/sitemaps/topics-{page}.xml', [SiteDiscoveryController::class, 'topicSitemapShard'])->whereNumber('page')->name('site.topics.sitemap');
     Route::get('/sitemaps/pages-{page}.xml', [SiteDiscoveryController::class, 'sitemapShard'])
         ->whereNumber('page')
         ->name('site.sitemap.shard');
+    Route::get('/topics/page/{page}', [TopicController::class, 'index'])->whereNumber('page')->name('site.topics.page');
+    Route::get('/topics', [TopicController::class, 'index'])->name('site.topics.index');
+    Route::get('/topics/{slug}', [TopicController::class, 'show'])->where('slug', '[a-z0-9-]+')->name('site.topics.show');
+    Route::get('/topics/{legacyPath}', [TopicController::class, 'legacy'])->where('legacyPath', '.+')->name('site.topics.legacy');
     Route::get('/archive', [ArchiveController::class, 'index'])->name('site.archive');
     Route::get('/archive/{year}/{month}', [ArchiveController::class, 'month'])
         ->name('site.archive.month')
@@ -136,6 +142,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
 
     // 后台受保护路由
     Route::middleware(['admin.auth', 'admin.activity', 'admin.recent'])->group(function () {
+        require __DIR__.'/admin-topics.php';
         // 会话与首页
         Route::post('logout', [AdminAuthController::class, 'logout'])->name('logout');
         Route::post('welcome/dismiss', [AdminWelcomeController::class, 'dismiss'])->name('welcome.dismiss');
@@ -685,8 +692,11 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                     Route::get('imports/{token}/files/{fileIndex}', [SiteThemePackageController::class, 'file'])->where('token', '[A-Za-z0-9]{40}')->where('fileIndex', '[0-9]{1,9}')->name('imports.file');
                     Route::post('imports/{token}/install', [SiteThemePackageController::class, 'install'])->middleware('throttle:admin-sensitive')->where('token', '[A-Za-z0-9]{40}')->name('imports.install');
                     Route::get('installed/{themeId}/preview/frame/{sitePath?}', [SiteThemePreviewController::class, 'frame'])->middleware('site.locale')->where(['themeId' => '[A-Za-z0-9_-]{1,80}', 'sitePath' => '.*'])->name('preview.frame');
-                    Route::get('installed/{themeId}/preview/{page?}', [SiteThemePreviewController::class, 'show'])->where(['themeId' => '[A-Za-z0-9_-]{1,80}', 'page' => 'home|category|article|about|archive-index|archive-month'])->name('preview');
+                    Route::get('installed/{themeId}/preview/{page?}', [SiteThemePreviewController::class, 'show'])->where(['themeId' => '[A-Za-z0-9_-]{1,80}', 'page' => 'home|category|article|about|archive-index|archive-month|topic-list|topic-show|topic-empty'])->name('preview');
                 });
+                Route::post('themes/library', [SiteSettingsController::class, 'manageThemeLibrary'])->middleware('throttle:admin-sensitive')->name('themes.library');
+                Route::get('themes/{themeId}/preview/frame/{sitePath?}', [SiteThemePreviewController::class, 'libraryFrame'])->middleware('site.locale')->where(['themeId' => '[A-Za-z0-9_-]{1,80}', 'sitePath' => '.*'])->name('themes.preview.frame');
+                Route::get('themes/{themeId}/preview/{page?}', [SiteThemePreviewController::class, 'libraryShow'])->where(['themeId' => '[A-Za-z0-9_-]{1,80}', 'page' => 'home|category|article|about|archive-index|archive-month|topic-list|topic-show|topic-empty'])->name('themes.preview');
                 Route::get('theme-replications/create', [SiteThemeReplicationController::class, 'create'])->name('theme-replications.create');
                 Route::post('theme-replications', [SiteThemeReplicationController::class, 'store'])->name('theme-replications.store');
                 Route::get('theme-replications/{replicationId}', [SiteThemeReplicationController::class, 'show'])

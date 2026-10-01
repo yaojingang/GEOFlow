@@ -21,10 +21,12 @@ use App\Models\TaskSchedule;
 use App\Models\TitleLibrary;
 use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Services\HostedSites\HostedSiteAllocationRequestService;
+use App\Services\Topics\TopicTaskService;
 use App\Support\GeoFlow\AiQualityRetrievalMode;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 
 /**
  * 任务生命周期服务。
@@ -72,7 +74,7 @@ class TaskLifecycleService
         int $apiTokenId,
         Admin $viewer,
     ): array {
-        $defaultedReview = ! array_key_exists('need_review', $data);
+        $defaultedReview = ($data['content_type'] ?? 'article') === 'article' && ! array_key_exists('need_review', $data);
         $task = $this->createTask($data, $auditAdminId, $apiTokenId, $viewer);
         $task['compatibility'] = [
             'need_review_defaulted' => $defaultedReview,
@@ -192,6 +194,13 @@ class TaskLifecycleService
         ?Admin $responseViewer = null,
     ): array {
         $accessAdmin = $this->accessAdmin($auditAdminId);
+        if (($data['content_type'] ?? 'article') === 'topic') {
+            $actor = $accessAdmin ?? $responseViewer;
+            abort_unless($actor instanceof Admin, 403);
+            $task = app(TopicTaskService::class)->save($data, $actor);
+
+            return $this->getTask((int) $task->id, $responseViewer);
+        }
         $normalized = $this->normalizeTaskInput($data, false, $accessAdmin);
         if (! empty($normalized['ai_quality_enabled'])) {
             $readiness = $this->aiQualityRetrievalReadinessService->inspect($normalized['knowledge_base_ids'] ?? []);
@@ -441,6 +450,17 @@ class TaskLifecycleService
     ): array {
         $this->ensureTaskExists($taskId);
         $accessAdmin = $this->accessAdmin($auditAdminId);
+        $currentTask = Task::query()->findOrFail($taskId);
+        if (isset($data['content_type']) && $data['content_type'] !== ($currentTask->content_type ?: 'article')) {
+            throw ValidationException::withMessages(['content_type' => '任务类型保持不变，请创建新任务。']);
+        }
+        if ($currentTask->content_type === 'topic') {
+            $actor = $accessAdmin ?? $responseViewer;
+            abort_unless($actor instanceof Admin, 403);
+            $task = app(TopicTaskService::class)->save($data, $actor, $currentTask);
+
+            return $this->getTask((int) $task->id, $responseViewer);
+        }
         $qualityFields = [
             'knowledge_base_id', 'knowledge_base_ids', 'ai_quality_enabled', 'ai_quality_retrieval_mode',
             'ai_quality_timeout_sampling_enabled', 'ai_quality_prompt_id', 'ai_quality_model_id',
@@ -483,6 +503,9 @@ class TaskLifecycleService
                 ->firstOrFail([
                     'id',
                     'title_library_id',
+                    'content_type',
+                    'target_site_key',
+                    'topic_limit',
                     'article_limit',
                     'created_count',
                     'is_loop',
@@ -779,7 +802,7 @@ class TaskLifecycleService
                 ->lockForUpdate()
                 ->first([
                     'id',
-                    'name',
+                    'name', 'content_type', 'target_site_key',
                     'knowledge_base_id',
                     'ai_quality_enabled',
                     'ai_quality_retrieval_mode',
@@ -1025,6 +1048,13 @@ class TaskLifecycleService
                 ->lockForUpdate()
                 ->firstOrFail();
             $this->assertCanManageHostedTask($task, $canManageHostedTask);
+            if ($task->content_type === 'topic') {
+                $actor = $operator instanceof Admin ? $operator : Admin::query()->find((int) $operator);
+                abort_unless($actor instanceof Admin, 403);
+                app(TopicTaskService::class)->start($task, $actor, false);
+
+                return $enqueueNow ? $this->queueService->enqueueTaskJob($taskId, 'generate_topic', ['source' => 'api_manual_start']) : null;
+            }
             $this->taskTitleReadinessService->assertCanActivate(
                 $this->taskTitleReadinessService->inspectTask($task),
                 409,
@@ -1077,7 +1107,7 @@ class TaskLifecycleService
             $task = Task::query()
                 ->whereKey($taskId)
                 ->lockForUpdate()
-                ->firstOrFail(['id']);
+                ->firstOrFail(['id', 'content_type', 'target_site_key']);
             $this->assertCanManageHostedTask($task, $canManageHostedTask);
             $cancelledJobs = $this->pauseTask($taskId, '任务已暂停');
             $runningJobs = TaskRun::query()
@@ -1120,6 +1150,9 @@ class TaskLifecycleService
                 ->first([
                     'id',
                     'title_library_id',
+                    'content_type',
+                    'target_site_key',
+                    'topic_limit',
                     'article_limit',
                     'created_count',
                     'is_loop',
@@ -1162,7 +1195,7 @@ class TaskLifecycleService
 
     private function assertCanManageHostedTask(Task $task, bool $canManageHostedTask): bool
     {
-        $isHostedTask = $task->distributionChannels()
+        $isHostedTask = ($task->content_type === 'topic' && $task->target_site_key !== 'primary') || $task->distributionChannels()
             ->where('distribution_channels.channel_type', DistributionChannel::TYPE_HOSTED_SITE)
             ->exists();
         if ($isHostedTask && ! $canManageHostedTask) {
@@ -1810,6 +1843,7 @@ class TaskLifecycleService
         $cycleChanged = $task->status !== 'paused' || (bool) $task->schedule_enabled;
         Task::query()->whereKey($taskId)->update([
             'automation_version' => (int) $task->automation_version + ($cycleChanged ? 1 : 0),
+            'topic_config_version' => (int) $task->topic_config_version + ($task->content_type === 'topic' && $cycleChanged ? 1 : 0),
             'status' => 'paused',
             'schedule_enabled' => 0,
             'next_run_at' => null,

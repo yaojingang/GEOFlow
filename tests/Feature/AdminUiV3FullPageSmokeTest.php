@@ -29,9 +29,12 @@ use App\Models\SystemUpdateRun;
 use App\Models\Task;
 use App\Models\TitleGenerationRun;
 use App\Models\TitleLibrary;
+use App\Models\TopicBuildRun;
+use App\Models\TopicImportBatch;
 use App\Models\UrlChangeRequest;
 use App\Models\UrlImportJob;
 use App\Services\Admin\SiteThemePackageService;
+use App\Services\Topics\TopicService;
 use App\Support\AdminUiRegistry;
 use Database\Seeders\UiV3ReviewSeeder;
 use Illuminate\Database\Schema\Blueprint;
@@ -40,6 +43,7 @@ use Illuminate\Routing\Route as LaravelRoute;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\Support\ThemePackageFixture;
 use Tests\TestCase;
 
@@ -88,7 +92,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             ->sortBy(fn (LaravelRoute $route): string => (string) $route->getName())
             ->values();
 
-        $this->assertCount(109, $shellRoutes);
+        $this->assertCount(122, $shellRoutes);
 
         foreach ($shellRoutes as $route) {
             $routeName = (string) $route->getName();
@@ -155,10 +159,10 @@ class AdminUiV3FullPageSmokeTest extends TestCase
                 && str_starts_with($route->getName(), 'admin.'))
             ->groupBy(fn (LaravelRoute $route): string => (string) $registry->routeClassification((string) $route->getName()));
 
-        $this->assertCount(3, $routesByClassification->get('special', collect()));
+        $this->assertCount(4, $routesByClassification->get('special', collect()));
         $this->assertCount(3, $routesByClassification->get('redirect', collect()));
         $this->assertCount(9, $routesByClassification->get('download', collect()));
-        $this->assertCount(16, $routesByClassification->get('endpoint', collect()));
+        $this->assertCount(18, $routesByClassification->get('endpoint', collect()));
 
         $this->get(route('admin.login'))
             ->assertOk()
@@ -174,6 +178,12 @@ class AdminUiV3FullPageSmokeTest extends TestCase
 
         $authenticated
             ->get(route('admin.site-settings.theme-packages.preview.frame', $parameters['admin.site-settings.theme-packages.preview.frame']))
+            ->assertOk()
+            ->assertSee('Fixture home')
+            ->assertDontSee('data-gf-shell', false);
+
+        $authenticated
+            ->get(route('admin.site-settings.themes.preview.frame', $parameters['admin.site-settings.themes.preview.frame']))
             ->assertOk()
             ->assertSee('Fixture home')
             ->assertDontSee('data-gf-shell', false);
@@ -320,6 +330,8 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             'admin.site-settings.theme-packages.exports.download' => ['token' => $export['token']],
             'admin.site-settings.theme-packages.preview' => ['themeId' => 'fixture-theme'],
             'admin.site-settings.theme-packages.preview.frame' => ['themeId' => 'fixture-theme'],
+            'admin.site-settings.themes.preview' => ['themeId' => 'fixture-theme'],
+            'admin.site-settings.themes.preview.frame' => ['themeId' => 'fixture-theme'],
         ];
     }
 
@@ -424,6 +436,11 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             'policy_hash' => hash('sha256', 'ui-v3-optimization-policy'),
         ]);
 
+        $topic = app(TopicService::class)->create('primary', ['title' => 'UI V3 topic review', 'intro' => 'Topic review fixture'], $admin->id);
+        $revision = $topic->revisions()->create(['number' => 1, 'draft_version' => 1, 'payload' => $topic->draft_payload, 'created_by_admin_id' => $admin->id, 'created_at' => now()]);
+        $batch = TopicImportBatch::query()->create(['request_key' => (string) Str::uuid(), 'owner_admin_id' => $admin->id, 'site_key' => 'primary', 'settings' => ['mode' => 'draft', 'after' => 'draft_only'], 'rows' => [], 'status' => 'completed']);
+        $topicRun = TopicBuildRun::query()->create(['request_key' => (string) Str::uuid(), 'site_key' => 'primary', 'topic_id' => $topic->id, 'owner_admin_id' => $admin->id, 'identity' => [], 'input' => [], 'status' => 'completed', 'phase' => 'finished', 'result' => [], 'finished_at' => now()]);
+
         return [
             'admin.ai-workspace.conversations.show' => ['conversation' => $aiConversation->id],
             'admin.url-changes.show' => ['urlChange' => $urlChange->id],
@@ -482,6 +499,17 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             'admin.system-updates.backups.show' => ['backupUuid' => $backup->backup_uuid],
             'admin.system-updates.runs.show' => ['runUuid' => $run->run_uuid],
             'admin.tasks.edit' => ['taskId' => $task->id],
+            'admin.topics.articles' => ['topic' => $topic->id, 'form_key' => 'ui-v3-topic-review'],
+            'admin.topics.edit' => ['topic' => $topic->id],
+            'admin.topics.preview' => ['topic' => $topic->id],
+            'admin.topics.history' => ['topic' => $topic->id],
+            'admin.topics.revisions.preview' => ['topic' => $topic->id, 'revision' => $revision->id],
+            'admin.topics.paths.edit' => ['topic' => $topic->id],
+            'admin.topics.batches.show' => ['batch' => $batch->id],
+            'admin.topics.batches.status' => ['batch' => $batch->id],
+            'admin.topics.runs.show' => ['run' => $topicRun->id],
+            'admin.topics.runs.status' => ['run' => $topicRun->id],
+
             'admin.title-libraries.ai-generate' => ['libraryId' => $titleLibrary->id],
             'admin.title-libraries.ai-generate.status' => ['libraryId' => $titleLibrary->id, 'runId' => $titleGenerationRun->id],
             'admin.title-libraries.detail' => ['libraryId' => $titleLibrary->id],

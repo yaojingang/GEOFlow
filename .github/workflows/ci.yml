@@ -59,7 +59,9 @@ jobs:
         run: composer validate --strict --working-dir=packages/geoflow-cli
 
       - name: Test GEOFlow skill package and compatibility helpers
-        run: python3 -B .agents/skills/geoflow/evals/test_geoflow_scripts.py
+        run: |
+          python3 -B .agents/skills/geoflow/evals/test_geoflow_scripts.py
+          python3 -B .agents/skills/geoflow/evals/test_topic_support.py
 
       - name: Build production assets
         run: npm run build
@@ -88,6 +90,18 @@ jobs:
         with:
           name: article-workflow-browser-proof
           path: ${{ runner.temp }}/geoflow-workflow-browser-proof
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Test topic workflows through isolated browser forms
+        run: '"$RUNNER_TEMP/geoflow-browser-venv/bin/python" tests/Browser/topic_workflow_smoke.py --output-dir "$RUNNER_TEMP/geoflow-topic-browser-proof"'
+
+      - name: Upload topic browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: topic-browser-proof
+          path: ${{ runner.temp }}/geoflow-topic-browser-proof
           if-no-files-found: ignore
           retention-days: 7
 

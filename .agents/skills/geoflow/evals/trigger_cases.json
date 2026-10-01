@@ -88,6 +88,22 @@
     {
       "text": "GEOFlow 升级断网后重新登录，按原请求 ID 继续查结果，后台任务 held 时报告待对账。",
       "family": "remote_updater_recovery"
+    },
+    {
+      "text": "在 GEOFlow 管理专题、批量生成专题任务，并核对公开版和历史版本。",
+      "family": "operations_topics"
+    },
+    {
+      "text": "参考这个专题页，为 GEOFlow 设计和修改专题列表、详情模板及首页专题模块。",
+      "family": "public_frontend_topics"
+    },
+    {
+      "text": "检查 GEOFlow 模板复刻包是否包含专题布局，保留专题声明、资源和预览。",
+      "family": "theme_replication_topics"
+    },
+    {
+      "text": "在 GEOFlow 模板库筛选主题、查看历史版本和专题预览，归档后核对原绑定仍在。",
+      "family": "theme_library_topics"
     }
   ],
   "should_not_trigger": [

@@ -3,6 +3,7 @@ import argparse
 import json
 import re
 from pathlib import Path
+from discover_themes import detect_topic_contract
 
 
 DEFAULT_SITE_MODULE_TYPES = [
@@ -71,6 +72,7 @@ def default_site_surface(workspace: Path) -> dict:
         "available": bool(home_controller),
         "theme_count": len([item for item in themes_root.iterdir() if item.is_dir()]) if themes_root.is_dir() else 0,
         "default_site_supported_modules": module_types,
+        "topics": detect_topic_contract(workspace),
         "homepage_builder": {
             "builder_present": bool(builder),
             "partial_present": modules_partial.is_file(),
@@ -85,6 +87,7 @@ def default_site_surface(workspace: Path) -> dict:
             "featured_articles": "featuredArticles" in home_controller,
             "hot_articles": "hotArticles" in home_controller,
             "latest_articles": "'articles'" in home_controller or '"articles"' in home_controller,
+            "home_topics": "homeTopics" in home_controller,
         },
     }
 

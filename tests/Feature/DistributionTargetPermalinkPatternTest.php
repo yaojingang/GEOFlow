@@ -63,6 +63,8 @@ class DistributionTargetPermalinkPatternTest extends TestCase
                 matchArticlePermalinkPattern('/{category}/{id}', '/industry/42'),
             );
             $this->assertNull(matchArticlePermalinkPattern('/{category}/{id}', '/api/42'));
+            $this->assertContains('topics', articlePermalinkReservedFirstSegments());
+            $this->assertNull(matchArticlePermalinkPattern('/{category}/{id}', '/topics/42'));
 
             $article['category']['slug'] = 'api';
             $this->expectException(InvalidArgumentException::class);

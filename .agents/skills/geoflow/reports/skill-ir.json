@@ -2,9 +2,9 @@
   "schema_version": "2.0.0",
   "name": "geoflow",
   "title": "GEOFlow",
-  "job_to_be_done": "Develop or operate GEOFlow through its remote CLI, Laravel backend/admin/API, default site, themes, leads, and Agent sites. Use for source-free connections, remote theme drafts/previews, planned Updater operations and receipt recovery, code changes, channel sync, legacy migration, or retired yao-geoflow-cli/design/template IDs. Discover capabilities first. Excludes unrelated work, database shortcuts, invented routes, auth bypass, secret exposure, and unapproved live or destructive actions.",
+  "job_to_be_done": "Operate/develop GEOFlow CLI/Laravel/admin/API, topics/专题 and topic tasks, theme libraries/replication, sites/leads/Agent, channel sync and legacy yao-geoflow-cli/design/template migration. Use for source-free previews, planned Updater operations and receipt recovery. Discover capabilities; exclude unrelated work, SQL shortcuts, invented routes, auth bypass, secrets and unapproved live/destructive actions.",
   "trigger_surface": {
-    "description": "Develop or operate GEOFlow through its remote CLI, Laravel backend/admin/API, default site, themes, leads, and Agent sites. Use for source-free connections, remote theme drafts/previews, planned Updater operations and receipt recovery, code changes, channel sync, legacy migration, or retired yao-geoflow-cli/design/template IDs. Discover capabilities first. Excludes unrelated work, database shortcuts, invented routes, auth bypass, secret exposure, and unapproved live or destructive actions.",
+    "description": "Operate/develop GEOFlow CLI/Laravel/admin/API, topics/专题 and topic tasks, theme libraries/replication, sites/leads/Agent, channel sync and legacy yao-geoflow-cli/design/template migration. Use for source-free previews, planned Updater operations and receipt recovery. Discover capabilities; exclude unrelated work, SQL shortcuts, invented routes, auth bypass, secrets and unapproved live/destructive actions.",
     "should_trigger": [
       "给 GEOFlow 后台新增一个 AI 来源管理模块，包含迁移、模型、控制器、页面和测试。",
       "修改 GEOFlow API v1，让任务接口支持新的发布策略，并补齐权限和回归测试。",
@@ -25,7 +25,11 @@
       "没有本地 GEOFlow 源码，用独立 CLI 连接实例并修改远程主题草稿、生成真实内容预览。",
       "GEOFlow 任务入队响应丢失，重新登录后按客户端请求 ID 查询原收据。",
       "用 GEOFlow Skill 经远程 CLI 生成完整备份计划，核对维护窗口后执行，保存请求 ID 查询收据。",
-      "GEOFlow 升级断网后重新登录，按原请求 ID 继续查结果，后台任务 held 时报告待对账。"
+      "GEOFlow 升级断网后重新登录，按原请求 ID 继续查结果，后台任务 held 时报告待对账。",
+      "在 GEOFlow 管理专题、批量生成专题任务，并核对公开版和历史版本。",
+      "参考这个专题页，为 GEOFlow 设计和修改专题列表、详情模板及首页专题模块。",
+      "检查 GEOFlow 模板复刻包是否包含专题布局，保留专题声明、资源和预览。",
+      "在 GEOFlow 模板库筛选主题、查看历史版本和专题预览，归档后核对原绑定仍在。"
     ],
     "should_not_trigger": [
       "给一个普通 Laravel 博客写用户登录教程，与 GEOFlow 无关。",
@@ -58,7 +62,8 @@
       "Use an isolated theme preview or reviewed homepage payload before live activation or replacement.",
       "Compare default-site, packaged, cached, and live channel capabilities before sync.",
       "Verify existing authorization covers the exact destructive or live target; ask only for missing authorization after the concrete plan is reviewable.",
-      "Use actual host v2 capabilities and a saved plan for Updater; resume uncertain requests through receipt lookup only."
+      "Use actual host v2 capabilities and a saved plan for Updater; resume uncertain requests through receipt lookup only.",
+      "Topic tasks use the existing Task API; topic content uses authenticated admin; topic theme and library edits use source or supported theme workspaces. Verify Agent capability separately."
     ],
     "failure_modes": [
       "Use of a remembered route or command without current discovery evidence.",
@@ -95,7 +100,8 @@
       "references/theme-edit-workflow.md",
       "references/theme-package-contract.md",
       "references/remote-cli-workflow.md",
-      "references/remote-updater-workflow.md"
+      "references/remote-updater-workflow.md",
+      "references/topic-workflow.md"
     ],
     "scripts": [
       "scripts/build_sync_preview_report.py",
@@ -131,7 +137,8 @@
     ],
     "output": [
       "evals/rubric.md",
-      "reports/output_quality_scorecard.md"
+      "reports/output_quality_scorecard.md",
+      "evals/test_topic_support.py"
     ],
     "adversarial": [
       "evals/failure_cases.md",

@@ -82,6 +82,12 @@
 @endphp
 
 @section('content')
+    @if (!$isEdit)
+        <nav aria-label="任务类型" class="mb-5 flex gap-3 border-b border-gray-200 pb-4" data-task-type-chooser>
+            <a class="rounded-md bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700" href="{{ route('admin.tasks.create', ['content_type' => 'article']) }}">文章任务</a>
+            <a class="rounded-md px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50" href="{{ route('admin.tasks.create', ['content_type' => 'topic']) }}">专题任务</a>
+        </nav>
+    @endif
     <div class="px-4 sm:px-0">
         <div class="flex items-center justify-between mb-6">
             <div class="flex items-center space-x-4">
@@ -147,6 +153,7 @@
                 data-created-count="{{ $createdCount }}"
             >
                 @csrf
+                <input type="hidden" name="content_type" value="article">
                 @if ($isEdit)
                     @method('PUT')
                     <input type="hidden" name="task_revision" value="{{ (string) ($taskForm['task_revision'] ?? '') }}">
@@ -886,5 +893,10 @@
 
         <script type="application/json" data-task-form-i18n>@json($taskFormI18n)</script>
         <script type="application/json" data-task-title-readiness-initial>@json($initialTitleReadinessReport)</script>
+    @endif
+    @if(!$isEdit)
+    <script>
+    (()=>{const form=document.querySelector('[data-task-form]');if(!form)return;const key='geoflow:task:new:article';try{const entries=JSON.parse(sessionStorage.getItem(key)||'null');if(entries&&!@json($errors->any())){for(const [name,value]of entries){const nodes=Array.from(form.elements).filter(n=>n.name===name);for(const n of nodes){if(n.type==='checkbox'||n.type==='radio')n.checked=String(n.value)===String(value);else if(!n.multiple)n.value=value;}}}}catch{}const save=()=>{try{sessionStorage.setItem(key,JSON.stringify(Array.from(new FormData(form).entries()).filter(([n])=>!['_token','content_type'].includes(n))));}catch{}};document.querySelector('[data-task-type-chooser]')?.addEventListener('click',save);form.addEventListener('submit',()=>{try{sessionStorage.removeItem(key);}catch{}});})();
+    </script>
     @endif
 @endsection

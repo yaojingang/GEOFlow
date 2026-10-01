@@ -20,6 +20,7 @@ use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\Title;
 use App\Services\Site\UrlChangeInspector;
+use App\Services\Topics\TopicTaskRunner;
 use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ArticleWorkflow;
@@ -58,6 +59,7 @@ class WorkerExecutionService
         private readonly JobQueueService $jobQueueService,
         private readonly UrlChangeInspector $urlChangeInspector,
         private readonly ArticlePublicationEligibilityService $publicationEligibility,
+        private readonly TopicTaskRunner $topicTaskRunner,
     ) {}
 
     /**
@@ -74,6 +76,10 @@ class WorkerExecutionService
 
         if (($task->status ?? 'paused') !== 'active' || (int) ($task->schedule_enabled ?? 1) !== 1) {
             throw new RuntimeException('任务未激活');
+        }
+
+        if ($task->content_type === 'topic') {
+            return $this->topicTaskRunner->execute($task, $executionContext);
         }
 
         $publishResult = $this->publishDueDraftArticle($task, $executionContext, $executionStartedAt);

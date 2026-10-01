@@ -37,7 +37,7 @@ final class AdminUiRegistry
             [
                 'key' => 'articles', 'group' => 'content', 'label_key' => 'admin.nav.articles',
                 'icon' => 'file-text', 'route' => 'admin.articles.index', 'protected' => false,
-                'patterns' => ['admin.articles.*', 'admin.manual-publications.*'], 'recent_tone' => 'violet',
+                'patterns' => ['admin.articles.*', 'admin.topics.*', 'admin.manual-publications.*'], 'recent_tone' => 'violet',
             ],
             [
                 'key' => 'materials', 'group' => 'content', 'label_key' => 'admin.nav.materials',
@@ -80,7 +80,7 @@ final class AdminUiRegistry
     {
         return [
             ['key' => 'site', 'label_key' => 'admin.ui_v3.settings_site_brand', 'route' => 'admin.site-settings.index', 'patterns' => ['admin.site-settings.index', 'admin.site-settings.friend-links.*', 'admin.url-changes.*'], 'protected' => false],
-            ['key' => 'theme', 'label_key' => 'admin.ui_v3.settings_home_theme', 'route' => 'admin.site-settings.homepage-modules.edit', 'patterns' => ['admin.site-settings.homepage*', 'admin.site-settings.theme-replications.*', 'admin.site-settings.theme-packages.*', 'admin.site-theme-replications.*'], 'protected' => false],
+            ['key' => 'theme', 'label_key' => 'admin.ui_v3.settings_home_theme', 'route' => 'admin.site-settings.homepage-modules.edit', 'patterns' => ['admin.site-settings.homepage*', 'admin.site-settings.themes.*', 'admin.site-settings.theme-replications.*', 'admin.site-settings.theme-packages.*', 'admin.site-theme-replications.*'], 'protected' => false],
             ['key' => 'forms', 'label_key' => 'admin.ui_v3.settings_forms_leads', 'route' => 'admin.lead-forms.index', 'patterns' => ['admin.lead-forms.*', 'admin.leads.*'], 'protected' => false],
             ['key' => 'users', 'label_key' => 'admin.ui_v3.users_permissions', 'route' => 'admin.admin-users.index', 'patterns' => ['admin.admin-users.*', 'admin.api-tokens.*'], 'protected' => true],
             ['key' => 'security', 'label_key' => 'admin.ui_v3.security_audit', 'route' => 'admin.security-settings.index', 'patterns' => ['admin.security-settings.*', 'admin.site-settings.sensitive-words', 'admin.admin-activity-logs'], 'protected' => false],
@@ -138,6 +138,19 @@ final class AdminUiRegistry
             'admin.tasks.jobs' => ['key' => 'task_jobs', 'icon' => 'list-checks', 'body_heading' => 'hidden'],
             'admin.tasks.create' => ['key' => 'task_create', 'icon' => 'workflow', 'body_heading' => 'hidden'],
             'admin.tasks.edit' => ['key' => 'task_edit', 'icon' => 'square-pen', 'body_heading' => 'hidden'],
+
+            'admin.topics.index' => ['key' => 'topics', 'icon' => 'layers', 'body_heading' => 'hidden'],
+            'admin.topics.create' => ['key' => 'topic_create', 'icon' => 'layers', 'body_heading' => 'hidden'],
+            'admin.topics.articles' => ['key' => 'topic_articles', 'icon' => 'list-checks', 'body_heading' => 'hidden'],
+            'admin.topics.settings' => ['key' => 'topic_settings', 'icon' => 'settings-2', 'body_heading' => 'hidden'],
+            'admin.topics.batches.create' => ['key' => 'topic_batch_create', 'icon' => 'layers', 'body_heading' => 'hidden'],
+            'admin.topics.batches.show' => ['key' => 'topic_batch_detail', 'icon' => 'list-checks', 'body_heading' => 'content'],
+            'admin.topics.runs.show' => ['key' => 'topic_run_detail', 'icon' => 'workflow', 'body_heading' => 'content'],
+            'admin.topics.paths.edit' => ['key' => 'topic_path', 'icon' => 'link-2', 'body_heading' => 'hidden'],
+            'admin.topics.edit' => ['key' => 'topic_edit', 'icon' => 'file-pen-line', 'body_heading' => 'hidden'],
+            'admin.topics.preview' => ['key' => 'topic_preview', 'icon' => 'eye', 'body_heading' => 'content'],
+            'admin.topics.history' => ['key' => 'topic_history', 'icon' => 'history', 'body_heading' => 'content'],
+            'admin.topics.revisions.preview' => ['key' => 'topic_revision_preview', 'icon' => 'eye', 'body_heading' => 'content'],
 
             'admin.articles.index' => ['key' => 'articles', 'icon' => 'file-text', 'body_heading' => 'hidden'],
             'admin.articles.create' => ['key' => 'article_create', 'icon' => 'file-plus-2', 'body_heading' => 'hidden'],
@@ -233,6 +246,7 @@ final class AdminUiRegistry
             'admin.site-settings.theme-packages.imports.create' => ['key' => 'theme_package_upload', 'icon' => 'upload', 'body_heading' => 'content'],
             'admin.site-settings.theme-packages.imports.show' => ['key' => 'theme_package_inspection', 'icon' => 'scan-line', 'body_heading' => 'content'],
             'admin.site-settings.theme-packages.imports.file' => ['key' => 'theme_package_inspection', 'icon' => 'file-search', 'body_heading' => 'content'],
+            'admin.site-settings.themes.preview' => ['key' => 'theme_package_preview', 'icon' => 'eye', 'body_heading' => 'content'],
             'admin.site-settings.theme-packages.preview' => ['key' => 'theme_package_preview', 'icon' => 'eye', 'body_heading' => 'content'],
             'admin.site-settings.theme-replications.create' => ['key' => 'theme_replication_create', 'icon' => 'copy-plus', 'body_heading' => 'hidden'],
             'admin.site-settings.theme-replications.show' => ['key' => 'theme_replication_detail', 'icon' => 'copy-check', 'body_heading' => 'content'],
@@ -359,7 +373,7 @@ final class AdminUiRegistry
     {
         $classifications = [
             'redirect' => ['admin.entry', 'admin.locale.switch', 'admin.security-settings.index'],
-            'special' => ['admin.site-settings.theme-packages.preview.frame', 'admin.login', 'admin.site-settings.theme-replications.preview'],
+            'special' => ['admin.site-settings.themes.preview.frame', 'admin.site-settings.theme-packages.preview.frame', 'admin.login', 'admin.site-settings.theme-replications.preview'],
             'download' => [
                 'admin.url-changes.download',
                 'admin.leads.export', 'admin.manual-publications.export',
@@ -371,6 +385,7 @@ final class AdminUiRegistry
             ],
             'binary' => ['admin.ai-workspace.media.show'],
             'endpoint' => [
+                'admin.topics.runs.status', 'admin.topics.batches.status',
                 'admin.url-changes.status', 'admin.url-changes.articles',
                 'admin.recent.index',
                 'admin.articles.ai-quality.status', 'admin.articles.ai-quality.optimization.candidate',

@@ -17,19 +17,20 @@ class ArticlePermalinkPattern
         private readonly string $regex,
         private readonly array $tokens,
         private readonly string $adminBasePath,
+        private readonly bool $storedPolicy,
     ) {}
 
-    public static function compile(string $template, ?string $adminBasePath = null): self
+    public static function compile(string $template, ?string $adminBasePath = null, bool $storedPolicy = false): self
     {
         $template = self::normalize($template);
         $adminBasePath ??= function_exists('app') && app()->bound('config')
             ? (string) config('geoflow.admin_base_path', '/geo_admin')
             : '/geo_admin';
-        $cacheKey = trim($adminBasePath, '/')."\0".$template;
+        $cacheKey = ($storedPolicy ? 'stored:' : 'new:').trim($adminBasePath, '/')."\0".$template;
         if (isset(self::$compiled[$cacheKey])) {
             return self::$compiled[$cacheKey];
         }
-        self::assertValid($template, $adminBasePath);
+        self::assertValid($template, $adminBasePath, $storedPolicy);
 
         $parts = preg_split('/(\{[a-z]+\})/', $template, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY) ?: [];
         $tokens = [];
@@ -50,7 +51,13 @@ class ArticlePermalinkPattern
             array_shift(self::$compiled);
         }
 
-        return self::$compiled[$cacheKey] = new self($template, '~\A'.$regex.'\z~Du', $tokens, $adminBasePath);
+        return self::$compiled[$cacheKey] = new self($template, '~\A'.$regex.'\z~Du', $tokens, $adminBasePath, $storedPolicy);
+    }
+
+    /** Compatibility reader for policies saved before the topic namespace existed. */
+    public static function compileStored(string $template, ?string $adminBasePath = null): self
+    {
+        return self::compile($template, $adminBasePath, true);
     }
 
     public static function normalize(string $template): string
@@ -98,7 +105,7 @@ class ArticlePermalinkPattern
             'category', 'config.php', 'css', 'favicon.ico', 'forms', 'geoflow-agent', 'horizon',
             'images', 'index.php', 'js', 'livewire', 'llms.txt', 'robots.txt', 'sanctum',
             'sitemap.txt', 'sitemap.xml', 'sitemaps', 'storage',
-            'theme-assets', 'themes', 'up', 'vendor',
+            'theme-assets', 'themes', 'topics', 'up', 'vendor',
         ];
         $configuredAdminBasePath = function_exists('app') && app()->bound('config')
             ? (string) config('geoflow.admin_base_path', '/geo_admin')
@@ -135,7 +142,8 @@ class ArticlePermalinkPattern
 
             if ($token === 'category'
                 && $this->usesRootCategorySegment()
-                && self::isReservedFirstSegment((string) $values[$token], $this->adminBasePath)) {
+                && self::isReservedFirstSegment((string) $values[$token], $this->adminBasePath)
+                && ! ($this->storedPolicy && mb_strtolower((string) $values[$token]) === 'topics')) {
                 throw new InvalidArgumentException(self::message('category_reserved_path', [
                     'slug' => (string) $values[$token],
                     'path' => mb_strtolower((string) $values[$token], 'UTF-8'),
@@ -164,7 +172,8 @@ class ArticlePermalinkPattern
             }
             if ($token === 'category'
                 && $this->usesRootCategorySegment()
-                && self::isReservedFirstSegment($decoded, $this->adminBasePath)) {
+                && self::isReservedFirstSegment($decoded, $this->adminBasePath)
+                && ! ($this->storedPolicy && mb_strtolower($decoded) === 'topics')) {
                 return null;
             }
             $values[$token] = $decoded;
@@ -173,7 +182,7 @@ class ArticlePermalinkPattern
         return $values;
     }
 
-    private static function assertValid(string $template, ?string $adminBasePath): void
+    private static function assertValid(string $template, ?string $adminBasePath, bool $storedPolicy): void
     {
         if ($template === '' || $template[0] !== '/' || $template === '/' || strlen($template) > 160) {
             throw new InvalidArgumentException(self::message('invalid_length'));
@@ -233,6 +242,9 @@ class ArticlePermalinkPattern
                 }
             }
             foreach (self::reservedFirstSegments($adminBasePath) as $reservedPath) {
+                if ($storedPolicy && $reservedPath === 'topics') {
+                    continue;
+                }
                 if (preg_match('~\A'.$firstSegmentRegex.'\z~D', $reservedPath) === 1) {
                     throw new InvalidArgumentException(self::message('reserved_path', ['path' => $reservedPath]));
                 }

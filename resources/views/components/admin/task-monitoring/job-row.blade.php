@@ -45,10 +45,13 @@
 
     <div class="flex flex-wrap items-center gap-2 lg:justify-end">
         @if (empty($job['task_deleted']))
-            <a href="{{ route('admin.articles.index', ['task_id' => (int) ($job['task_id'] ?? 0)]) }}" class="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-gray-400 [@media(hover:hover)]:hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96]">
+            <a href="{{ (($job['content_type']??'article')==='topic'?route('admin.topics.index',['task_id'=>(int)($job['task_id']??0),'site'=>$job['target_site_key']??'primary']):route('admin.articles.index', ['task_id' => (int) ($job['task_id'] ?? 0)])) }}" class="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 transition-[background-color,border-color,transform] duration-150 [@media(hover:hover)]:hover:border-gray-400 [@media(hover:hover)]:hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96]">
                 <i data-lucide="list-tree" class="h-4 w-4" aria-hidden="true"></i>
                 {{ __('admin.tasks.monitoring.view_task_content') }}
             </a>
+        @endif
+        @if (!empty($job['topic_id']))
+            <a href="{{ route(!empty($job['topic_deleted'])?'admin.topics.history':'admin.topics.edit', ['topic' => (int) $job['topic_id']]) }}" class="inline-flex min-h-9 items-center rounded-md bg-blue-600 px-3 text-sm font-semibold text-white">{{ !empty($job['topic_deleted'])?'查看专题历史':'查看专题' }} #{{ (int)$job['topic_id'] }}</a>
         @endif
         @if (!empty($job['article_id']) && empty($job['article_deleted']))
             <a href="{{ route('admin.articles.edit', ['articleId' => (int) $job['article_id']]) }}" class="inline-flex min-h-9 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-sm font-semibold text-white transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[.96]">

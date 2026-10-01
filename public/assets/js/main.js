@@ -276,16 +276,29 @@
             }
         },
 
+        readLikedLinks: function() {
+            try {
+                const saved = JSON.parse(window.localStorage.getItem('likedLinks') || '[]');
+                return Array.isArray(saved) ? saved : [];
+            } catch {
+                return [];
+            }
+        },
+
         recordLike: function(linkId) {
-            const likedLinks = JSON.parse(localStorage.getItem('likedLinks') || '[]');
+            const likedLinks = this.readLikedLinks();
             if (!likedLinks.includes(linkId)) {
                 likedLinks.push(linkId);
-                localStorage.setItem('likedLinks', JSON.stringify(likedLinks));
+                try {
+                    window.localStorage.setItem('likedLinks', JSON.stringify(likedLinks));
+                } catch {
+                    // Storage is optional in sandboxed previews and restricted browsers.
+                }
             }
         },
 
         checkLikedStatus: function() {
-            const likedLinks = JSON.parse(localStorage.getItem('likedLinks') || '[]');
+            const likedLinks = this.readLikedLinks();
             const likeButtons = Utils.$$('.like-button');
             
             likeButtons.forEach(button => {

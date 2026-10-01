@@ -87,7 +87,7 @@ class HostedSitePermalinkService
             }
             foreach ($article->slugHistories as $history) {
                 foreach ($previewPolicy->patterns() as $knownPattern) {
-                    $compiled = ArticlePermalinkPattern::compile($knownPattern);
+                    $compiled = ArticlePermalinkPattern::compileStored($knownPattern);
                     if (! in_array('slug', $compiled->tokens(), true)) {
                         continue;
                     }

@@ -22,7 +22,7 @@
 @endif
 <title>{{ $seoTitle }}</title>
 <meta name="description" content="{{ $seoDescription }}">
-@if(isset($siteIndexingAllowed) && !$siteIndexingAllowed)
+@if((isset($siteIndexingAllowed) && !$siteIndexingAllowed) || ($pageNoindex??false))
     <meta name="robots" content="noindex, nofollow">
 @endif
 @if($seoKeywords !== '')
@@ -46,4 +46,9 @@
 
 @if(!empty($friendLinks))
     <link rel="stylesheet" href="{{ asset('assets/css/friend-links.css') }}">
+@endif
+
+@include('site.partials.topic-assets')
+@if(!empty($topicStructuredData))
+<script type="application/ld+json">{!! json_encode($topicStructuredData, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_THROW_ON_ERROR) !!}</script>
 @endif

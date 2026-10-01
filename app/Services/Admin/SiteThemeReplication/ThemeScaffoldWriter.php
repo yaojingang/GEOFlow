@@ -3,6 +3,7 @@
 namespace App\Services\Admin\SiteThemeReplication;
 
 use App\Models\SiteThemeReplication;
+use App\Services\Topics\TopicTemplateCatalog;
 
 class ThemeScaffoldWriter
 {
@@ -36,17 +37,24 @@ class ThemeScaffoldWriter
                     'category' => $replication->category_url,
                     'article' => $replication->article_url,
                 ],
+                'topic' => TopicTemplateCatalog::declaration(),
                 'created_by' => 'GEOFlow Theme Replication',
                 'notes' => $blueprint['notes'] ?? [],
+                'requires' => ['contracts' => ['site-theme-view-resolver' => 1, 'topic-view' => 1], 'views' => ['theme.'.$themeId.'.layout', 'site.layout', 'site.topics.templates.default', 'site.topics.templates.guide', 'site.topics.templates.roundup']],
             ]),
             'views/tokens.json' => $this->json($blueprint['tokens'] ?? []),
             'views/mapping.json' => $this->json([
+                'topics-index' => 'topics/index.blade.php', 'topics-show' => 'topics/show.blade.php',
                 'home' => 'home.blade.php',
                 'category' => 'category.blade.php',
                 'article' => 'article.blade.php',
                 'components' => $blueprint['components'] ?? [],
             ]),
             'views/layout.blade.php' => $this->layoutBlade($themeId),
+            'views/topics/index.blade.php' => "@include('site.topics.index')\n",
+            'views/topics/show.blade.php' => "@include('site.topics.show')\n",
+            'assets/topics.css' => file_get_contents(public_path('assets/css/topics.css')),
+            'assets/topics.js' => file_get_contents(public_path('assets/js/topics.js')),
             'views/home.blade.php' => $this->homeBlade($themeId),
             'views/category.blade.php' => $this->categoryBlade($themeId),
             'views/article.blade.php' => $this->articleBlade($themeId),
@@ -57,6 +65,9 @@ class ThemeScaffoldWriter
             'assets/theme.js' => (string) (($blueprint['assets'] ?? [])['theme_js'] ?? ''),
         ];
 
+        foreach (['default', 'guide', 'roundup'] as $layout) {
+            $files['views/topics/templates/'.$layout.'.blade.php'] = "@include('site.topics.templates.".$layout."')\n";
+        }
         $fileRecords = [];
         foreach ($files as $relative => $content) {
             $path = $root.'/'.$relative;
@@ -117,6 +128,7 @@ BLADE;
 @extends('theme.{$themeId}.layout')
 
 @section('content')
+@include('site.partials.homepage-modules')
     <section class="rep-shell rep-hero">
         <h1>{{ \$siteTitle }}</h1>
         <p>{{ \$siteSubtitle !== '' ? \$siteSubtitle : \$siteDescription }}</p>
@@ -197,6 +209,7 @@ BLADE;
                 @endforeach
             </div>
         @endif
+        @include('site.partials.related-topics')
     </article>
 @endsection
 BLADE;
@@ -211,6 +224,7 @@ BLADE;
         <nav class="rep-nav">
             <a href="{{ route('site.home') }}" data-nav-item="home">{{ __('front.nav.home') }}</a>
             <a href="{{ route('site.about') }}">关于</a>
+            @include('site.partials.topic-navigation')
         </nav>
     </div>
 </header>

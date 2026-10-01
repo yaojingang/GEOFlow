@@ -33,7 +33,7 @@ class ManagementOperationService
             $operation = DB::transaction(function () use ($identity, $hash, $task, $enqueue): ManagementOperation {
                 $operation = ManagementOperation::query()->create(array_merge($identity, [
                     'id' => (string) Str::uuid(), 'operation' => 'tasks.enqueue', 'request_hash' => $hash,
-                    'required_scopes' => (bool) Task::query()->findOrFail($task)->need_review ? ['tasks:write'] : ['tasks:write', 'articles:publish'], 'state' => 'queued', 'task_id' => $task,
+                    'required_scopes' => Task::query()->useWritePdo()->findOrFail($task)->requiresPublicationScope() ? ['tasks:write', 'articles:publish'] : ['tasks:write'], 'state' => 'queued', 'task_id' => $task,
                 ]));
                 $result = $enqueue();
                 $operation->update(['task_run_id' => $result['job_id'], 'result' => $result]);
@@ -85,7 +85,7 @@ class ManagementOperationService
         if ($operation->task_id !== null) {
             $admin = Admin::query()->active()->findOrFail($this->auth($request)->auditAdminId);
             app(TaskLifecycleService::class)->getTaskForApi($operation->task_id, $admin);
-            if (! (bool) Task::query()->findOrFail($operation->task_id)->need_review
+            if (Task::query()->useWritePdo()->findOrFail($operation->task_id)->requiresPublicationScope()
                 && ! $this->tokens->tokenHasScope($this->auth($request)->token, 'articles:publish')) {
                 throw new ApiException('forbidden_scope', '当前任务已允许自动发布，需要 articles:publish 权限', 403);
             }

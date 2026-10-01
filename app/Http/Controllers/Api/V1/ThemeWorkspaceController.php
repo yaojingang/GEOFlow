@@ -76,7 +76,7 @@ class ThemeWorkspaceController extends BaseApiController
         abort_unless(isset(SiteThemePackageGuard::ASSET_MIMES[$extension]), 404);
         $logical = 'public/themes/'.$model->theme_id.'/'.$assetPath;
         $path = $storage->path($model, $logical);
-        $bytes = $storage->read($path, 5 * 1024 * 1024);
+        $bytes = $storage->read($path, app(SiteThemePackageGuard::class)->fileLimit($logical));
         abort_unless(hash_equals($model->files[$logical]['sha256'], hash('sha256', $bytes)), 409);
 
         $headers = [

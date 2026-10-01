@@ -1,7 +1,7 @@
 {
     "schema_version": 1,
     "support_stage": "remote-management-preview",
-    "admin_route_count": 358,
+    "admin_route_count": 388,
     "legacy_cli_operations": [
         {
             "name": "article.ai-optimization-apply",
@@ -3430,6 +3430,33 @@
         },
         {
             "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/site-settings/themes/library",
+            "name": "admin.site-settings.themes.library",
+            "action": "App\\Http\\Controllers\\Admin\\SiteSettingsController@manageThemeLibrary",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/themes/{themeId}/preview/frame/{sitePath?}",
+            "name": "admin.site-settings.themes.preview.frame",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemePreviewController@libraryFrame",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/site-settings/themes/{themeId}/preview/{page?}",
+            "name": "admin.site-settings.themes.preview",
+            "action": "App\\Http\\Controllers\\Admin\\SiteThemePreviewController@libraryShow",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
                 "GET"
             ],
             "uri": "geo_admin/site-settings",
@@ -3849,6 +3876,249 @@
             "uri": "geo_admin/title-libraries",
             "name": "admin.title-libraries.index",
             "action": "App\\Http\\Controllers\\Admin\\TitleLibraryController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/topics/articles",
+            "name": "admin.topics.articles",
+            "action": "App\\Http\\Controllers\\Admin\\TopicController@articles",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/topics/batches/create",
+            "name": "admin.topics.batches.create",
+            "action": "App\\Http\\Controllers\\Admin\\TopicBatchController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/topics/batches/preview",
+            "name": "admin.topics.batches.preview",
+            "action": "App\\Http\\Controllers\\Admin\\TopicBatchController@preview",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/topics/batches/{batch}/status",
+            "name": "admin.topics.batches.status",
+            "action": "App\\Http\\Controllers\\Admin\\TopicBatchController@status",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/topics/batches/{batch}/{action}",
+            "name": "admin.topics.batches.action",
+            "action": "App\\Http\\Controllers\\Admin\\TopicBatchController@action",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/topics/batches/{batch}",
+            "name": "admin.topics.batches.show",
+            "action": "App\\Http\\Controllers\\Admin\\TopicBatchController@show",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/topics/batches",
+            "name": "admin.topics.batches.store",
+            "action": "App\\Http\\Controllers\\Admin\\TopicBatchController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/topics/bulk",
+            "name": "admin.topics.bulk",
+            "action": "App\\Http\\Controllers\\Admin\\TopicController@bulk",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/topics/create",
+            "name": "admin.topics.create",
+            "action": "App\\Http\\Controllers\\Admin\\TopicController@create",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/topics/runs/{run}/status",
+            "name": "admin.topics.runs.status",
+            "action": "App\\Http\\Controllers\\Admin\\TopicRunController@status",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/topics/runs/{run}/{action}",
+            "name": "admin.topics.runs.action",
+            "action": "App\\Http\\Controllers\\Admin\\TopicRunController@action",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/topics/runs/{run}",
+            "name": "admin.topics.runs.show",
+            "action": "App\\Http\\Controllers\\Admin\\TopicRunController@show",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/topics/settings/template-rollback",
+            "name": "admin.topics.settings.rollback",
+            "action": "App\\Http\\Controllers\\Admin\\TopicSettingsController@rollback",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/topics/settings",
+            "name": "admin.topics.settings",
+            "action": "App\\Http\\Controllers\\Admin\\TopicSettingsController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/topics/settings",
+            "name": "admin.topics.settings.save",
+            "action": "App\\Http\\Controllers\\Admin\\TopicSettingsController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/topics/{topic}/edit",
+            "name": "admin.topics.edit",
+            "action": "App\\Http\\Controllers\\Admin\\TopicController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/topics/{topic}/history/{revision}/restore",
+            "name": "admin.topics.revisions.restore",
+            "action": "App\\Http\\Controllers\\Admin\\TopicController@restoreRevision",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/topics/{topic}/history/{revision}",
+            "name": "admin.topics.revisions.preview",
+            "action": "App\\Http\\Controllers\\Admin\\TopicController@revision",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/topics/{topic}/history",
+            "name": "admin.topics.history",
+            "action": "App\\Http\\Controllers\\Admin\\TopicController@history",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/topics/{topic}/path/confirm",
+            "name": "admin.topics.paths.confirm",
+            "action": "App\\Http\\Controllers\\Admin\\TopicPathController@confirm",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/topics/{topic}/path/preview",
+            "name": "admin.topics.paths.preview",
+            "action": "App\\Http\\Controllers\\Admin\\TopicPathController@preview",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/topics/{topic}/path",
+            "name": "admin.topics.paths.edit",
+            "action": "App\\Http\\Controllers\\Admin\\TopicPathController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/topics/{topic}/preview",
+            "name": "admin.topics.preview",
+            "action": "App\\Http\\Controllers\\Admin\\TopicController@preview",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/topics/{topic}/{action}",
+            "name": "admin.topics.action",
+            "action": "App\\Http\\Controllers\\Admin\\TopicController@action",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/topics/{topic}",
+            "name": "admin.topics.update",
+            "action": "App\\Http\\Controllers\\Admin\\TopicController@update",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/topics",
+            "name": "admin.topics.index",
+            "action": "App\\Http\\Controllers\\Admin\\TopicController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/topics",
+            "name": "admin.topics.store",
+            "action": "App\\Http\\Controllers\\Admin\\TopicController@store",
             "remote_coverage": "pending_domain_mapping"
         },
         {

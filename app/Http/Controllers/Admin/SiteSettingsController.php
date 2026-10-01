@@ -46,6 +46,7 @@ class SiteSettingsController extends Controller
      * 网站设置页面。
      */
     public function index(
+        Request $request,
         FriendLinkSettings $friendLinkSettings,
         AiWorkspaceRuntimeStatus $aiWorkspaceRuntimeStatus,
     ): View {
@@ -54,6 +55,12 @@ class SiteSettingsController extends Controller
         $availableThemes = $this->siteThemeCatalog->all();
         $articlePermalinkPolicy = $this->articlePermalinks->policy();
         $activeTheme = collect($availableThemes)->firstWhere('id', (string) ($settings['active_theme'] ?? ''));
+        $libraryFilters = $request->validate([
+            'theme_tab' => ['nullable', Rule::in(['featured', 'personal', 'archived'])],
+            'theme_search' => ['nullable', 'string', 'max:200'],
+            'theme_source' => ['nullable', Rule::in(['builtin', 'installed', 'private'])],
+            'theme_page' => ['nullable', 'integer', 'min:1'],
+        ]);
 
         return view('admin.site-settings.index', [
             'pageTitle' => __('admin.site_settings.page_title'),
@@ -64,6 +71,7 @@ class SiteSettingsController extends Controller
             'canEditAnalytics' => $canManageProtectedWorkflows,
             'canManageProtectedWorkflows' => $canManageProtectedWorkflows,
             'availableThemes' => $availableThemes,
+            'themeLibrary' => $this->siteThemeCatalog->library($libraryFilters, $settings['active_theme']),
             'recentThemeReplications' => $canManageProtectedWorkflows
                 ? $this->themeReplicationService->recent(3)
                 : collect(),
@@ -246,10 +254,29 @@ class SiteSettingsController extends Controller
         SiteSettingsBag::forget();
 
         if ($selectedTheme === '') {
-            return redirect()->route('admin.site-settings.index')->with('message', __('admin.site_settings.theme.message.default_enabled'));
+            return redirect()->to(route('admin.site-settings.index').'#site-settings-theme')->with('message', __('admin.site_settings.theme.message.default_enabled'));
         }
 
-        return redirect()->route('admin.site-settings.index')->with('message', __('admin.site_settings.theme.message.activated', ['name' => $selectedTheme]));
+        return redirect()->to(route('admin.site-settings.index').'#site-settings-theme')->with('message', __('admin.site_settings.theme.message.activated', ['name' => $this->siteThemeCatalog->library([], $selectedTheme)['current']['display_name']]));
+    }
+
+    public function manageThemeLibrary(Request $request): RedirectResponse
+    {
+        abort_unless($request->user('admin')?->canManageProtectedWorkflows(), 403);
+        $payload = $request->validate([
+            'library_action' => ['required', Rule::in(['archive', 'restore'])],
+            'theme_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'theme_ids.*' => ['required', 'string', 'distinct', Rule::in($this->siteThemeCatalog->ids())],
+            'theme_tab' => ['nullable', Rule::in(['featured', 'personal', 'archived'])],
+            'theme_search' => ['nullable', 'string', 'max:200'],
+            'theme_source' => ['nullable', Rule::in(['builtin', 'installed', 'private'])],
+        ]);
+        $result = $this->siteThemeCatalog->manageLibrary($payload['theme_ids'], $payload['library_action']);
+        $query = array_intersect_key($payload, array_flip(['theme_tab', 'theme_search', 'theme_source']));
+
+        return redirect()->to(route('admin.site-settings.index', $query).'#site-settings-theme')
+            ->with('message', __('theme_library.'.$payload['library_action'].'_success', ['count' => $result['changed']]))
+            ->with('theme_library_retained', $result['retained']);
     }
 
     /**
@@ -517,7 +544,7 @@ class SiteSettingsController extends Controller
             'featured_limit' => (string) $stored['featured_limit'],
             'per_page' => (string) $stored['per_page'],
             'admin_base_path' => AdminWeb::basePath(),
-            'active_theme' => (string) ($stored['active_theme'] !== '' ? $stored['active_theme'] : config('geoflow.default_theme', '')),
+            'active_theme' => (string) $stored['active_theme'],
             'home_carousel_slides' => (string) $stored['home_carousel_slides'],
             'homepage_modules' => (string) $stored['homepage_modules'],
             'homepage_style' => (string) $stored['homepage_style'],

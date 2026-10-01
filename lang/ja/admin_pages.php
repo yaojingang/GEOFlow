@@ -1,6 +1,19 @@
 <?php
 
 return [
+    'topics' => '特集管理',
+    'topic_create' => '特集を作成',
+    'topic_articles' => '特集の記事を選択',
+    'topic_settings' => '特集設定',
+    'topic_batch_create' => '特集を一括作成',
+    'topic_batch_detail' => '特集バッチの詳細',
+    'topic_run_detail' => '特集生成の記録',
+    'topic_path' => '特集URL',
+    'topic_edit' => '特集を編集',
+    'topic_preview' => '特集プレビュー',
+    'topic_history' => '特集のバージョン履歴',
+    'topic_revision_preview' => '特集バージョンのプレビュー',
+
     'theme_package_upload' => 'テーマをインポート',
     'theme_package_inspection' => 'テーマパッケージを確認',
     'theme_package_preview' => 'テーマをプレビュー',
