@@ -15,7 +15,7 @@ GEOFlow объединяет проверенные знания, создани
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 
-> **Статус версии:** Текущая версия исходного кода: предварительная `3.2.0-beta.1`. Последняя стабильная версия: `3.1.0`. Точная версия исходного кода указана в [`version.json`](../../version.json), а официальные релизы и инструкции по обновлению доступны в [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases). Для рабочего окружения используйте стабильный релиз или зафиксируйте проверенный коммит.
+> **Статус версии:** Текущая версия исходного кода: предварительная `3.2.0-beta.2`. Последняя стабильная версия: `3.1.0`. Точная версия исходного кода указана в [`version.json`](../../version.json), а официальные релизы и инструкции по обновлению доступны в [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases). Для рабочего окружения используйте стабильный релиз или зафиксируйте проверенный коммит.
 
 ---
 
@@ -123,8 +123,8 @@ GEOFlow рассчитан на команды с реальными делов�
 
 | Компонент | Версия исходного кода или состояние | Описание |
 |-----------|--------------------------------------|----------|
-| GEOFlow Core | `3.2.0-beta.1` | Приложение Laravel, панель, frontend, API, очереди и система публикации |
-| GEOFlow CLI | `0.4.0-preview.1` | Входит как `bin/geoflow`; поддерживает macOS, Linux и WSL |
+| GEOFlow Core | `3.2.0-beta.2` | Приложение Laravel, панель, frontend, API, очереди и система публикации |
+| GEOFlow CLI | `0.4.0-preview.2` | Входит как `bin/geoflow`; поддерживает macOS, Linux и WSL |
 | Помощник Chrome | `0.1.0` | Исходный код и пакет находятся в `browser-extension/` и `dist/browser-extension/` |
 | GEOFlow Updater | Отдельный компонент | Используйте подписанную версию, совместимую с целевым выпуском; см. [geoflow-updater](https://github.com/yaojingang/geoflow-updater) |
 | Agent целевого сайта | Создаётся для канала | Формирует настроенный PHP-пакет с главной страницей, статьями, ресурсами, Schema, sitemap и `llms.txt` |

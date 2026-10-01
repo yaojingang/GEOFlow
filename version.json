@@ -1,18 +1,18 @@
 {
-  "version": "3.2.0-beta.1",
-  "tag": "v3.2.0-beta.1",
-  "release_date": "2026-09-16",
+  "version": "3.2.0-beta.2",
+  "tag": "v3.2.0-beta.2",
+  "release_date": "2026-10-01",
   "release_type": "minor",
-  "archive_url": "https://github.com/yaojingang/GEOFlow/releases/download/v3.2.0-beta.1/GEOFlow-v3.2.0-beta.1.zip",
+  "archive_url": "https://github.com/yaojingang/GEOFlow/releases/download/v3.2.0-beta.2/GEOFlow-v3.2.0-beta.2.zip",
   "payload": {
-    "title_zh": "GEOFlow v3.2.0-beta.1",
-    "title_en": "GEOFlow v3.2.0-beta.1",
-    "summary_zh": "GEOFlow 3.2.0-beta.1 增加独立远程管理 CLI、站点主题草稿增量编辑与真实内容预览，并与 Updater 协同提供可恢复的操作收据、恢复代次、凭据失效和任务隔离保护。",
-    "summary_en": "GEOFlow 3.2.0-beta.1 adds the standalone remote management CLI, incremental site-theme draft editing with real-content previews, and coordinated Updater safeguards for durable receipts, recovery epochs, credential invalidation, and task isolation.",
-    "upgrade_tip_zh": "本预览版仅用于开发与隔离测试，尚未完成正式签名分发、原生双架构恢复演练或生产部署验收。配套使用 CLI 0.4.0-preview.1、Skill 1.2.0-preview.1，以及声明兼容本 Core 契约的 Updater 构建。已受管实例继续保持恢复限制，先查询原操作收据并完成逐业务对账；响应不确定时不要自动重发。主题草稿编辑与预览已开放，主题发布和回滚仍待后续版本。生产环境继续使用最新稳定版 3.1.0。",
-    "upgrade_tip_en": "This preview is for development and isolated testing only. Official signed distribution, native dual-architecture recovery rehearsals, and production deployment acceptance are not complete. Use CLI 0.4.0-preview.1, Skill 1.2.0-preview.1, and an Updater build that declares compatibility with this Core contract. Keep managed instances held after recovery, query the original operation receipt, and complete per-domain reconciliation; do not automatically resend uncertain requests. Theme draft editing and preview are available, while theme publication and rollback remain pending. Production environments should continue using the latest stable 3.1.0 release.",
-    "release_url": "https://github.com/yaojingang/GEOFlow/releases/tag/v3.2.0-beta.1",
-    "changelog_url_zh": "https://github.com/yaojingang/GEOFlow/blob/v3.2.0-beta.1/docs/CHANGELOG.md",
-    "changelog_url_en": "https://github.com/yaojingang/GEOFlow/blob/v3.2.0-beta.1/docs/CHANGELOG_en.md"
+    "title_zh": "GEOFlow v3.2.0-beta.2",
+    "title_en": "GEOFlow v3.2.0-beta.2",
+    "summary_zh": "GEOFlow 3.2.0-beta.2 新增专题管理与 AI 专题任务、三种专题阅读布局和精简模板库，补充 GEO 发现文件、模板视频支持，并修复文章批量操作、AI 按分数放行与自动发布流程。",
+    "summary_en": "GEOFlow 3.2.0-beta.2 adds topic management and AI topic tasks, three topic reading layouts, and an organized theme library, alongside GEO discovery files, theme video support, and fixes for article bulk actions, score-based AI quality approval, and automatic publication.",
+    "upgrade_tip_zh": "本预览版用于开发与隔离测试，尚未完成正式签名分发、原生双架构恢复演练或生产部署验收。配套使用 CLI 0.4.0-preview.2、Skill 1.2.0-preview.2，以及声明兼容本 Core 契约的 Updater 构建。从 beta.1 升级新增 9 项维护模式迁移，升级前备份数据库、模板与配置，排空旧 worker 并构建前端资源；使用模板视频需安装 ffprobe。旧质检报告需重新检查，历史保留文章不会自动发布；API/CLI 创建普通文章任务须显式提供 need_review。已受管实例恢复后继续保持恢复限制，先查询原操作收据并完成逐业务对账；响应不确定时不要自动重发。主题草稿编辑与预览已开放，远程主题发布和回滚仍待后续版本。生产环境继续使用最新稳定版 3.1.0。",
+    "upgrade_tip_en": "This preview is for development and isolated testing. Official signed distribution, native dual-architecture recovery rehearsals, and production deployment acceptance remain pending. Use CLI 0.4.0-preview.2, Skill 1.2.0-preview.2, and an Updater build declaring compatibility with this Core contract. Upgrading from beta.1 adds nine maintenance-mode migrations: back up the database, themes, and configuration, drain old workers, and build frontend assets. Theme video support requires ffprobe. Recheck older AI quality reports; existing held articles stay held. API/CLI creation of article tasks requires an explicit need_review field. Keep managed instances held after recovery, query the original operation receipt, and reconcile each business domain; do not automatically resend uncertain requests. Theme draft editing and preview are available; remote theme publication and rollback remain pending. Production environments should continue using stable 3.1.0.",
+    "release_url": "https://github.com/yaojingang/GEOFlow/releases/tag/v3.2.0-beta.2",
+    "changelog_url_zh": "https://github.com/yaojingang/GEOFlow/blob/v3.2.0-beta.2/docs/CHANGELOG.md",
+    "changelog_url_en": "https://github.com/yaojingang/GEOFlow/blob/v3.2.0-beta.2/docs/CHANGELOG_en.md"
   }
 }

@@ -15,7 +15,7 @@ O GEOFlow conecta conhecimento confiável, produção de conteúdo com IA, contr
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 
-> **Status da versão:** A versão atual do código-fonte é a prévia `3.2.0-beta.1`. A versão estável mais recente é `3.1.0`. Consulte [`version.json`](../../version.json) para ver a versão exata do código-fonte e [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) para ver as versões oficiais e as instruções de atualização. Em produção, use uma versão estável ou fixe um commit revisado.
+> **Status da versão:** A versão atual do código-fonte é a prévia `3.2.0-beta.2`. A versão estável mais recente é `3.1.0`. Consulte [`version.json`](../../version.json) para ver a versão exata do código-fonte e [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) para ver as versões oficiais e as instruções de atualização. Em produção, use uma versão estável ou fixe um commit revisado.
 
 ---
 
@@ -123,8 +123,8 @@ O [guia de implantação](../deployment/DEPLOYMENT.md) e as notas da versão esc
 
 | Componente | Versão ou estado atual do código | Descrição |
 |------------|----------------------------------|-----------|
-| GEOFlow Core | `3.2.0-beta.1` | Aplicação Laravel, painel, frontend, API, filas e distribuição |
-| GEOFlow CLI | `0.4.0-preview.1` | Incluído como `bin/geoflow`; compatível com macOS, Linux e WSL |
+| GEOFlow Core | `3.2.0-beta.2` | Aplicação Laravel, painel, frontend, API, filas e distribuição |
+| GEOFlow CLI | `0.4.0-preview.2` | Incluído como `bin/geoflow`; compatível com macOS, Linux e WSL |
 | Assistente do Chrome | `0.1.0` | Código e pacote em `browser-extension/` e `dist/browser-extension/` |
 | GEOFlow Updater | Componente independente | Use uma versão assinada compatível com a versão alvo; consulte [geoflow-updater](https://github.com/yaojingang/geoflow-updater) |
 | Agent de destino | Gerado por canal | Cria um pacote PHP configurado com página inicial, artigos, recursos, Schema, sitemap e `llms.txt` |
