@@ -42,7 +42,7 @@ class AdminSiteThemeReplicationTest extends TestCase
         $this->actingAs($this->admin(), 'admin')
             ->get(route('admin.site-settings.index'))
             ->assertOk()
-            ->assertSee(__('admin.theme_replication.entry_title'))
+            ->assertSee(__('admin.theme_replication.button.start'))
             ->assertSee(route('admin.site-settings.theme-replications.create'), false);
     }
 

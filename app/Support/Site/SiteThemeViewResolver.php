@@ -19,10 +19,7 @@ final class SiteThemeViewResolver
         if ($preview !== null) {
             return $preview;
         }
-        $id = trim(SiteSettingsBag::get('active_theme', ''));
-        if ($id === '') {
-            $id = trim((string) config('geoflow.default_theme', ''));
-        }
+        $id = trim(SiteSettingsBag::get('active_theme', (string) config('geoflow.default_theme', '')));
 
         return preg_match('/^[a-zA-Z0-9_-]+$/', $id) === 1 ? $id : '';
     }

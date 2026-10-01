@@ -99,6 +99,7 @@ class Task extends Model
     }
 
     protected $fillable = [
+        'content_type', 'target_site_key', 'topic_limit', 'topic_settings', 'topic_config_version',
         'name',
         'title_library_id',
         'image_library_id',
@@ -163,6 +164,7 @@ class Task extends Model
     protected function casts(): array
     {
         return [
+            'topic_limit' => 'integer', 'topic_settings' => 'array', 'topic_config_version' => 'integer',
             'title_library_id' => 'integer',
             'image_library_id' => 'integer',
             'image_count' => 'integer',
@@ -233,6 +235,14 @@ class Task extends Model
     public function qualityPrompt(): BelongsTo
     {
         return $this->belongsTo(Prompt::class, 'ai_quality_prompt_id');
+    }
+
+    /** Effective publication policy for both article and topic tasks. */
+    public function requiresPublicationScope(): bool
+    {
+        return $this->content_type === 'topic'
+            ? ($this->topic_settings['after'] ?? 'auto_publish') === 'auto_publish'
+            : ! (bool) $this->need_review;
     }
 
     public function qualityModel(): BelongsTo

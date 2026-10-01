@@ -104,6 +104,10 @@ class AdminUiV3RouteRegistryTest extends TestCase
         $this->assertSame('shell', $registry->routeClassification('admin.ai-workspace'));
         $this->assertSame('shell', $registry->routeClassification('admin.title-libraries.ai-generate'));
         $this->assertSame('shell', $registry->routeClassification('admin.system-updates.backups.show'));
+        $this->assertSame('shell', $registry->routeClassification('admin.site-settings.themes.preview'));
+        $this->assertSame('special', $registry->routeClassification('admin.site-settings.themes.preview.frame'));
+        $this->assertSame('endpoint', $registry->routeClassification('admin.topics.runs.status'));
+        $this->assertSame('endpoint', $registry->routeClassification('admin.topics.batches.status'));
         $this->assertNull($registry->routeClassification('admin.unregistered-page'));
     }
 
@@ -117,7 +121,14 @@ class AdminUiV3RouteRegistryTest extends TestCase
                 && $registry->routeClassification($name) === 'shell')
             ->values();
 
-        $this->assertCount(109, $shellRouteNames);
+        $this->assertCount(122, $shellRouteNames);
+        $this->assertEqualsCanonicalizing([
+            'admin.topics.index', 'admin.topics.create', 'admin.topics.articles', 'admin.topics.settings',
+            'admin.topics.batches.create', 'admin.topics.batches.show', 'admin.topics.runs.show',
+            'admin.topics.paths.edit', 'admin.topics.edit', 'admin.topics.preview',
+            'admin.topics.history', 'admin.topics.revisions.preview',
+        ], $shellRouteNames->filter(fn (string $name): bool => str_starts_with($name, 'admin.topics.'))->all());
+
         $shellRouteNames->each(function (string $routeName) use ($registry): void {
             $identity = $registry->pageIdentity($routeName);
 
@@ -154,7 +165,7 @@ class AdminUiV3RouteRegistryTest extends TestCase
             ->unique()
             ->values();
 
-        $this->assertCount(112, $routeNames);
+        $this->assertCount(125, $routeNames);
 
         foreach (array_keys(AdminWeb::supportedLocales()) as $locale) {
             App::setLocale($locale);

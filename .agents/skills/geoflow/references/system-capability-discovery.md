@@ -55,3 +55,9 @@ The workspace discovery script tracks these groups when evidence exists:
 - legacy root PHP frontend
 
 The group list is a navigation aid. It does not create routes or guarantee deployment state.
+
+## Topics
+
+The workspace snapshot includes a `topics` evidence group. Theme discovery returns `topic_contract` (public route samples, page paths, core layouts, homepage and signed-preview signals) and each source theme’s declared metadata, nested layouts and public topic assets. These are source signals; verify enabled site settings, installed theme packages, active bindings, current API operations and preview availability on the instance. Use [topic-workflow.md](topic-workflow.md) for the supported admin, task and theme paths.
+
+Helper prerequisites: macOS/Linux/WSL, Python 3.10+, Bash; preflight needs curl; live reports need PHP/artisan. Missing dependencies permit read-only discovery; report unverified layers.

@@ -23,9 +23,9 @@ final class ArticleContentGenerationService
         private readonly AiUsageQuotaService $usageQuota,
     ) {}
 
-    public function generate(AiModel $aiModel, string $prompt, ?Closure $beforeProvider = null): AgentResponse
+    public function generate(AiModel $aiModel, string $prompt, ?Closure $beforeProvider = null, ?string $instructions = null, ?int $providerTimeout = null): AgentResponse
     {
-        [$agent, $providerName, $modelId, $providerUrl] = $this->resolveRuntime($aiModel, 'article_content');
+        [$agent, $providerName, $modelId, $providerUrl] = $this->resolveRuntime($aiModel, 'article_content', $instructions);
 
         $reservation = $this->reserveDailyUsage($aiModel);
         if ($reservation === null) {
@@ -34,7 +34,7 @@ final class ArticleContentGenerationService
 
         try {
             $beforeProvider?->__invoke($aiModel);
-            $response = $agent->prompt($prompt, [], $providerName, $modelId);
+            $response = $agent->prompt($prompt, [], $providerName, $modelId, $providerTimeout);
         } catch (Throwable $exception) {
             $this->releaseDailyUsage($reservation);
 
@@ -248,7 +248,7 @@ final class ArticleContentGenerationService
     /**
      * @return array{MarkdownContentWriterAgent, string, string, string}
      */
-    private function resolveRuntime(AiModel $aiModel, string $registrySlot): array
+    private function resolveRuntime(AiModel $aiModel, string $registrySlot, ?string $instructions = null): array
     {
         $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) ($aiModel->api_url ?? ''));
         if ($providerUrl === '') {
@@ -272,7 +272,7 @@ final class ArticleContentGenerationService
             && str_starts_with(strtolower($modelId), 'minimax-m');
 
         return [
-            new MarkdownContentWriterAgent(maxTokens: $this->maxTokens($aiModel), separateReasoning: $separateReasoning),
+            new MarkdownContentWriterAgent(instructions: $instructions ?? '你是专业文章写作助手，请输出高质量、可发布的 Markdown 文章。最终文章禁止出现 [K1]、[K2][K3] 等内部证据编号、引用占位符或编号引用标记；需要说明依据时使用自然语言。', maxTokens: $this->maxTokens($aiModel), separateReasoning: $separateReasoning),
             $providerName,
             $modelId,
             $providerUrl,

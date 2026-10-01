@@ -8,6 +8,8 @@ use App\Models\Category;
 use App\Models\LeadForm;
 use App\Services\Site\SiteScopedArticleQuery;
 use App\Services\Site\SiteUrlGenerator;
+use App\Services\Topics\TopicReadModel;
+use App\Services\Topics\TopicSiteSettings;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\CurrentSite;
 use App\Support\Site\FriendLinkSettings;
@@ -46,6 +48,7 @@ class HomeController extends Controller
         $siteDescription = (string) ($map['site_description'] ?? config('geoflow.site_description', ''));
         $siteKeywords = (string) ($map['site_keywords'] ?? config('geoflow.site_keywords', ''));
         $homepageCarouselSlides = $this->parseHomepageCarouselSlides((string) ($map['home_carousel_slides'] ?? '[]'));
+        $homeTopics = $search === '' && $categoryId === 0 && $page === 1 ? app(TopicReadModel::class)->home(app(TopicSiteSettings::class)->currentKey()) : collect();
         $homepageModules = HomepageModuleBuilder::fromRaw((string) ($map['homepage_modules'] ?? '[]'));
         $homepageStyle = HomepageModuleBuilder::styleFromRaw((string) ($map['homepage_style'] ?? '{}'));
         $leadForms = Schema::hasTable('lead_forms')
@@ -176,6 +179,7 @@ class HomeController extends Controller
             'siteDescription' => $siteDescription,
             'siteKeywords' => $siteKeywords,
             'homepageCarouselSlides' => $homepageCarouselSlides,
+            'homeTopics' => $homeTopics,
             'homepageModules' => $homepageModules,
             'homepageStyle' => $homepageStyle,
             'leadForms' => $leadForms,

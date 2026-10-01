@@ -13,6 +13,7 @@ use App\Services\Api\ManagementOperationService;
 use App\Services\GeoFlow\TaskLifecycleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * API v1 任务（tasks）生命周期：列表、创建、详情、更新、启停、入队、子 Job 列表。
@@ -88,7 +89,7 @@ class TaskController extends BaseApiController
     public function update(UpdateTaskRequest $request, int $task, TaskLifecycleService $tasks, ApiTokenService $tokens): JsonResponse
     {
         $viewer = $this->executionAdmin($request);
-        $data = $this->reviewBoundTaskData($request, $request->validated(), $tokens);
+        $data = $this->reviewBoundTaskData($request, $request->validated(), $tokens, $task);
         $auth = $this->auth($request);
 
         $response = IdempotencyService::executeJson(
@@ -131,21 +132,24 @@ class TaskController extends BaseApiController
     public function start(Request $request, int $task, TaskLifecycleService $tasks, ApiTokenService $tokens): JsonResponse
     {
         $viewer = $this->executionAdmin($request);
-        $this->assertTaskExecutionScope($request, $task, $tokens);
-        $enqueueNow = ! empty($request->input('enqueue_now'));
 
-        $response = IdempotencyService::executeJson(
-            $request,
-            'POST /tasks/{id}/start',
-            fn (): JsonResponse => $this->success($request, $tasks->startTaskForApi(
-                taskId: $task,
-                enqueueNow: $enqueueNow,
-                canManageHostedTask: $this->canManageHostedTask($viewer),
-                viewer: $viewer,
-            )),
-        );
+        return DB::transaction(function () use ($request, $task, $tasks, $tokens, $viewer): JsonResponse {
+            $this->assertTaskExecutionScope($request, $task, $tokens);
+            $enqueueNow = ! empty($request->input('enqueue_now'));
 
-        return $this->refreshTaskModelProjection($response, $tasks, $viewer);
+            $response = IdempotencyService::executeJson(
+                $request,
+                'POST /tasks/{id}/start',
+                fn (): JsonResponse => $this->success($request, $tasks->startTaskForApi(
+                    taskId: $task,
+                    enqueueNow: $enqueueNow,
+                    canManageHostedTask: $this->canManageHostedTask($viewer),
+                    viewer: $viewer,
+                )),
+            );
+
+            return $this->refreshTaskModelProjection($response, $tasks, $viewer);
+        }, 3);
     }
 
     /**
@@ -179,33 +183,37 @@ class TaskController extends BaseApiController
         if ($request->hasHeader('X-Client-Request-Id') && $request->hasHeader('X-Idempotency-Key')) {
             throw new ApiException('conflicting_idempotency_headers', 'X-Client-Request-Id 与 X-Idempotency-Key 不能同时使用，请选择一种请求去重方式', 422);
         }
+
         $viewer = $this->executionAdmin($request);
-        $this->assertTaskExecutionScope($request, $task, $tokens);
-        $body = $request->all();
-        $jobType = trim((string) ($body['job_type'] ?? 'generate_article'));
 
-        if ($request->hasHeader('X-Client-Request-Id')) {
-            $request->validate(['job_type' => ['sometimes', 'string', 'in:generate_article']]);
-            $receipt = app(ManagementOperationService::class)->enqueue($request, $task, $jobType,
-                fn (): array => $tasks->enqueueTaskForApi(
-                    taskId: $task, jobType: $jobType, payload: ['source' => 'api_enqueue'],
-                    canManageHostedTask: $this->canManageHostedTask($viewer), viewer: $viewer,
-                ));
+        return DB::transaction(function () use ($request, $task, $tasks, $tokens, $viewer): JsonResponse {
+            $this->assertTaskExecutionScope($request, $task, $tokens);
+            $body = $request->all();
+            $jobType = trim((string) ($body['job_type'] ?? (Task::query()->findOrFail($task)->content_type === 'topic' ? 'generate_topic' : 'generate_article')));
 
-            return $this->success($request, $receipt, $receipt['replayed'] ? 200 : 201);
-        }
+            if ($request->hasHeader('X-Client-Request-Id')) {
+                $request->validate(['job_type' => ['sometimes', 'string', 'in:generate_article,generate_topic']]);
+                $receipt = app(ManagementOperationService::class)->enqueue($request, $task, $jobType,
+                    fn (): array => $tasks->enqueueTaskForApi(
+                        taskId: $task, jobType: $jobType, payload: ['source' => 'api_enqueue'],
+                        canManageHostedTask: $this->canManageHostedTask($viewer), viewer: $viewer,
+                    ));
 
-        return IdempotencyService::executeJson(
-            $request,
-            'POST /tasks/{id}/enqueue',
-            fn (): JsonResponse => $this->success($request, $tasks->enqueueTaskForApi(
-                taskId: $task,
-                jobType: $jobType,
-                payload: ['source' => 'api_enqueue'],
-                canManageHostedTask: $this->canManageHostedTask($viewer),
-                viewer: $viewer,
-            ), 201),
-        );
+                return $this->success($request, $receipt, $receipt['replayed'] ? 200 : 201);
+            }
+
+            return IdempotencyService::executeJson(
+                $request,
+                'POST /tasks/{id}/enqueue',
+                fn (): JsonResponse => $this->success($request, $tasks->enqueueTaskForApi(
+                    taskId: $task,
+                    jobType: $jobType,
+                    payload: ['source' => 'api_enqueue'],
+                    canManageHostedTask: $this->canManageHostedTask($viewer),
+                    viewer: $viewer,
+                ), 201),
+            );
+        }, 3);
     }
 
     private function canManageHostedTask(Admin $admin): bool
@@ -214,9 +222,17 @@ class TaskController extends BaseApiController
     }
 
     /** @param array<string,mixed> $data @return array<string,mixed> */
-    private function reviewBoundTaskData(Request $request, array $data, ApiTokenService $tokens): array
+    private function reviewBoundTaskData(Request $request, array $data, ApiTokenService $tokens, ?int $taskId = null): array
     {
         if (! $tokens->tokenHasScope($this->auth($request)->token, 'articles:publish')) {
+            $existing = $taskId ? Task::query()->useWritePdo()->findOrFail($taskId) : null;
+            if (($data['content_type'] ?? $existing?->content_type) === 'topic') {
+                $after = $data['topic_settings']['after'] ?? $existing?->topic_settings['after'] ?? 'review_then_publish';
+                if ($after === 'auto_publish') {
+                    throw new ApiException('forbidden', '专题自动发布需要 articles:publish 权限；可以选择生成草稿或审核后发布。', 403, ['required_scope' => 'articles:publish']);
+                }
+                $data['topic_settings'] = array_replace($data['topic_settings'] ?? [], ['after' => $after]);
+            }
             $data['need_review'] = true;
         }
 
@@ -228,8 +244,8 @@ class TaskController extends BaseApiController
         if ($tokens->tokenHasScope($this->auth($request)->token, 'articles:publish')) {
             return;
         }
-        $task = Task::query()->findOrFail($taskId);
-        if (! (bool) $task->need_review) {
+        $task = Task::query()->useWritePdo()->lockForUpdate()->findOrFail($taskId);
+        if ($task->requiresPublicationScope()) {
             throw new ApiException('forbidden', '该任务可以自动发布，需要 articles:publish scope', 403, [
                 'required_scope' => 'articles:publish',
             ]);

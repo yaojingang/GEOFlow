@@ -1,0 +1,3 @@
+@if(($showHomepageModules??false) && !empty($homeTopics) && count($homeTopics))
+<section class="geo-topics topic-home-module" aria-labelledby="home-topic-heading"><div class="topic-section-heading"><div><p class="topic-kicker">TOPIC COLLECTION</p><h2 id="home-topic-heading">专题阅读</h2></div><a href="{{ $siteUrls->topics() }}">全部专题 ↗</a></div><div class="topic-collection">@foreach($homeTopics as $item)<article class="topic-collection-item"><p class="topic-kicker">{{ $item['article_count'] }} 篇文章</p><h3><a href="{{ $siteUrls->topic($item) }}">{{ $item['title'] }}</a></h3>@if($item['summary']['one_sentence'] || $item['intro'])<p>{{ \Illuminate\Support\Str::limit($item['summary']['one_sentence'] ?: $item['intro'],100) }}</p>@endif</article>@endforeach</div></section>
+@endif

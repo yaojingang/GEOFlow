@@ -14,6 +14,7 @@ final class HomepageModuleBuilder
         'chart_band',
         'feature_grid',
         'article_collection',
+        'topic_collection',
         'cta_band',
         'lead_form',
         'custom_html',

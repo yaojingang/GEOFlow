@@ -24,9 +24,16 @@ final class ThemeRevisionContext
     {
         if (! $this->loaded) {
             $this->loaded = true;
-            if (app(CurrentSite::class)->isPrimary() && Schema::hasTable('site_theme_bindings')) {
-                $binding = SiteThemeBinding::query()->useWritePdo()->find('primary');
-                $this->snapshot = $binding?->revision_id !== null ? ['revision_id' => $binding->revision_id, 'theme_id' => $binding->theme_id, 'settings' => $binding->settings] : null;
+            $site = app(CurrentSite::class);
+            if ($site->isResolved() && Schema::hasTable('site_theme_bindings')) {
+                $siteKey = $site->isHosted() ? 'hosted:'.$site->profileId() : 'primary';
+                $binding = SiteThemeBinding::query()->useWritePdo()->find($siteKey);
+                $selectedTheme = $site->isHosted()
+                    ? (string) ($site->profile()?->channel?->site_settings['theme_id'] ?? $site->profile()?->channel?->template_key ?? '')
+                    : (string) ($binding?->theme_id ?? '');
+                $this->snapshot = $binding?->revision_id !== null && $binding->theme_id === $selectedTheme
+                    ? ['revision_id' => $binding->revision_id, 'theme_id' => $binding->theme_id, 'settings' => $site->isPrimary() ? $binding->settings : []]
+                    : null;
             }
         }
 
@@ -50,7 +57,8 @@ final class ThemeRevisionContext
         }
     }
 
-    public function preview(ThemeRevision $revision, callable $render): mixed
+    /** A null revision previews source templates in an isolated scope. */
+    public function preview(?ThemeRevision $revision, callable $render): mixed
     {
         $loaded = $this->loaded;
         $snapshot = $this->snapshot;
@@ -60,7 +68,7 @@ final class ThemeRevisionContext
             View::setFinder($finder->baseFinder());
         }
         $this->loaded = true;
-        $this->snapshot = ['revision_id' => $revision->id, 'theme_id' => $revision->theme_id, 'settings' => $revision->settings];
+        $this->snapshot = $revision === null ? null : ['revision_id' => $revision->id, 'theme_id' => $revision->theme_id, 'settings' => $revision->settings];
         try {
             return $render();
         } finally {

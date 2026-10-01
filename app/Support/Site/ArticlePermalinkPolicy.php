@@ -45,13 +45,13 @@ class ArticlePermalinkPolicy
                 throw new \UnexpectedValueException('Unsupported article permalink policy schema.');
             }
 
-            $current = ArticlePermalinkPattern::compile((string) ($raw['current_pattern'] ?? self::DEFAULT_PATTERN))->pattern();
+            $current = ArticlePermalinkPattern::compileStored((string) ($raw['current_pattern'] ?? self::DEFAULT_PATTERN))->pattern();
             $history = [];
             foreach ((array) ($raw['history'] ?? []) as $item) {
                 if (! is_array($item)) {
                     continue;
                 }
-                $pattern = ArticlePermalinkPattern::compile((string) ($item['pattern'] ?? ''))->pattern();
+                $pattern = ArticlePermalinkPattern::compileStored((string) ($item['pattern'] ?? ''))->pattern();
                 if ($pattern === $current || collect($history)->contains('pattern', $pattern)) {
                     continue;
                 }

@@ -56,5 +56,29 @@
         "首页中的客户、案例、全球覆盖与业务指标均为界面演示信息，并在页面中提供可见标识。",
         "真实文章、分类、SEO、项目介绍、开源仓库地址和首页模块明确指定的线索表单继续使用 GEOFlow 现有数据契约。",
         "主题加入后台后会自动出现在模板列表中，保持未启用状态，需管理员确认后激活。"
-    ]
+    ],
+    "topic": {
+        "contract": 1,
+        "layouts": [
+            {
+                "id": "default",
+                "name": "标准聚合",
+                "view": "site.topics.templates.default"
+            },
+            {
+                "id": "guide",
+                "name": "阅读指南",
+                "view": "site.topics.templates.guide"
+            },
+            {
+                "id": "roundup",
+                "name": "资讯盘点",
+                "view": "site.topics.templates.roundup"
+            }
+        ],
+        "homepage_module": {
+            "view": "site.partials.topic-home",
+            "enabled": true
+        }
+    }
 }

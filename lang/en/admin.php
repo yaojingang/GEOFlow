@@ -4913,7 +4913,7 @@ return [
         'group_security' => 'Security and Compliance',
         'group_security_desc' => 'Maintain pre-publish content risk controls',
         'module_basic_desc' => 'Configure the site name, logo, SEO templates, analytics code, and homepage basics',
-        'module_theme_desc' => 'Choose the frontend theme and preview or edit home, category, and article templates',
+        'module_theme_desc' => 'Choose your website style, preview articles and topics, and manage themes and versions',
         'module_ads_desc' => 'Configure article detail sticky CTA cards and top/bottom body text ads',
         'ai_workspace_runtime' => [
             'title' => 'AI Workspace',

@@ -1,6 +1,19 @@
 <?php
 
 return [
+    'topics' => 'Gestão de temas',
+    'topic_create' => 'Criar tema',
+    'topic_articles' => 'Selecionar artigos do tema',
+    'topic_settings' => 'Configurações de temas',
+    'topic_batch_create' => 'Criar lote de temas',
+    'topic_batch_detail' => 'Detalhes do lote de temas',
+    'topic_run_detail' => 'Geração do tema',
+    'topic_path' => 'URL do tema',
+    'topic_edit' => 'Editar tema',
+    'topic_preview' => 'Visualizar tema',
+    'topic_history' => 'Histórico de versões do tema',
+    'topic_revision_preview' => 'Visualizar versão do tema',
+
     'theme_package_upload' => 'Importar tema',
     'theme_package_inspection' => 'Verificar pacote de tema',
     'theme_package_preview' => 'Visualizar tema',

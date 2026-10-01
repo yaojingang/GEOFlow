@@ -57,7 +57,7 @@ final class SiteThemePreviewContext
             }
             URL::formatPathUsing(function (string $path, $route) use ($previousFormatter): string {
                 $path = $previousFormatter($path, $route);
-                if (in_array($route?->getName(), ['site.home', 'site.category', 'site.article', 'site.about', 'site.archive', 'site.archive.month'], true)) {
+                if (in_array($route?->getName(), ['site.topics.index', 'site.topics.page', 'site.topics.show', 'site.home', 'site.category', 'site.article', 'site.about', 'site.archive', 'site.archive.month'], true)) {
                     return (string) parse_url($this->frameBase, PHP_URL_PATH).'/'.ltrim($path, '/');
                 }
 

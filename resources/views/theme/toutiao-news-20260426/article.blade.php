@@ -145,4 +145,5 @@
             @endif
         </div>
     @endif
+@include('site.partials.related-topics')
 @endsection

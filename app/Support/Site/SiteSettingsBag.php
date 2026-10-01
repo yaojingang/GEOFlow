@@ -103,6 +103,7 @@ final class SiteSettingsBag
                 'featured_limit', 'per_page', 'lead_form_slugs', 'homepage_style', 'homepage_modules',
                 'home_carousel_slides', 'article_detail_text_ads', 'article_detail_ads',
                 'article_permalink_policy',
+                'topics',
             ] as $key) {
                 if (array_key_exists($key, $stored)) {
                     $settings[$key] = self::stringValue($stored[$key]);

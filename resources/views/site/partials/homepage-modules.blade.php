@@ -1,3 +1,6 @@
+@if(!collect($homepageModules??[])->contains(fn($m)=>($m['type']??'')==='topic_collection' && ($m['enabled']??true)))
+@include('site.partials.topic-home')
+@endif
 @php
     $modules = collect($homepageModules ?? [])->filter(fn ($module) => is_array($module) && !empty($module['enabled']))->values();
     $style = array_merge([
@@ -221,6 +224,8 @@
                             </div>
                         @endforeach
                     </div>
+                @elseif($type === 'topic_collection')
+                    @include('site.partials.topic-home')
                 @elseif($type === 'article_collection')
                     <div class="geo-home-module__header">
                         @if($title !== '')

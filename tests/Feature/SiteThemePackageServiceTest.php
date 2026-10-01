@@ -298,8 +298,8 @@ class SiteThemePackageServiceTest extends TestCase
         $service = app(SiteThemePackageService::class);
         $export = $service->export($id, 9);
         $package = $export['package'];
-        $this->assertSame(['site-theme-view-resolver' => 1], $package['exported_with']['contracts']);
-        $this->assertSame(['provided' => ['home', 'about'], 'fallback' => ['category', 'article', 'archive-index', 'archive-month']], $package['pages']);
+        $this->assertSame(SiteThemePackageGuard::CONTRACTS, $package['exported_with']['contracts']);
+        $this->assertSame(['provided' => ['home', 'about'], 'fallback' => ['category', 'article', 'archive-index', 'archive-month', 'topics-index', 'topics-show']], $package['pages']);
         $this->assertSame('>=8.3 <9.0', $package['requires']['php']);
         $this->assertSame('^12.0', $package['requires']['laravel']);
         $this->assertSame('>='.config('geoflow.app_version'), $package['requires']['geoflow']);

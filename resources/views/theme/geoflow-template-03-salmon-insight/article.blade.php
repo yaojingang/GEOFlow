@@ -146,4 +146,5 @@
             </section>
         </aside>
     </div>
+@include('site.partials.related-topics')
 @endsection

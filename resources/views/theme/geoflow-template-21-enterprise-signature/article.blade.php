@@ -118,4 +118,5 @@
             </div>
         </section>
     @endif
+@include('site.partials.related-topics')
 @endsection

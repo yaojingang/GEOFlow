@@ -46,7 +46,7 @@ JSON 固定字段：`schema_version=1`、`decision_id`（小写 UUID）、`sourc
 php artisan geoflow:recovery-reconcile --phase=prove-empty --transaction=原恢复事务ID --recovery-point=恢复点ID --recovery-point-sha256=清单SHA256 --json
 ```
 
-仅当准备清单、隔离记录与全部 22 张来源表均为空时，Core 才在事务中生成不可变、幂等的空集合证明。任何非空记录，包括已完成记录，都会保持暂停。证明绑定 host、instance、epoch、原恢复事务、恢复点及其摘要、固定来源目录和空清单摘要。命令不会修改宿主机状态，结果仍为 `core_only` 和 `held`。
+仅当准备清单、隔离记录与当前来源目录中的全部表均为空时，Core 才在事务中生成不可变、幂等的空集合证明。来源目录包含 22 张核心表，以及当前数据库已具备的专题生成记录表和专题导入批次表。任何非空记录，包括已完成记录，都会保持暂停。证明绑定 host、instance、epoch、原恢复事务、恢复点及其摘要、固定来源目录和空清单摘要。命令不会修改宿主机状态，结果仍为 `core_only` 和 `held`。
 
 宿主机未来完成独立检查并开放 `ready` 后，HTTP、worker、同步队列与命令入口统一调用门禁：
 
@@ -60,7 +60,9 @@ php artisan geoflow:recovery-reconcile --phase=prove-empty --transaction=原恢�
 
 ## 全部来源均保留
 
-清单使用 `RecoveryPreparation::INTENTS` 的同一固定目录，保存所有状态的记录。完成记录也可能关联尚未执行的后继工作。
+清单使用 `RecoveryPreparation::intentTables()` 的同一来源目录，保存所有状态的记录。该目录保留 `INTENTS` 中的 22 张核心表，并从 `SCHEMA_OPTIONAL_INTENTS` 加入当前数据库已具备的 `topic_build_runs` 与 `topic_import_batches`。完成记录也可能关联尚未执行的后继工作。
+
+旧数据库尚未创建专题表时，核心目录继续兼容。迁移后新增专题表会改变来源目录摘要，原空集合证明不能直接用于新目录；后台继续暂停，需在当前目录重新准备与核验。专题生成记录及批次的待执行、运行、完成、失败等全部状态均进入隔离清单，恢复流程不会自动重放。
 
 | 表 | 主要续接/重执行入口及身份 |
 | --- | --- |
@@ -73,6 +75,7 @@ php artisan geoflow:recovery-reconcile --phase=prove-empty --transaction=原恢�
 | url_import_jobs | `UrlImportRecoveryService` 的 queued/running 恢复；原 job 及已导入业务对象 |
 | article_ai_quality_checks | 检查 worker 与 `ArticleAiQualityReconciliationService`；queued/running 和完成后的发布门禁后继 |
 | article_ai_optimization_runs | 优化恢复器；awaiting_quality/queued/planning/rewriting/validating/evaluating/candidate_ready/applying 及自动应用后继 |
+| topic_build_runs、topic_import_batches | 专题生成 worker、调度补投、生成重试、批量导入与发布后继；原 run/batch、task/topic 身份及状态；全部状态保持隔离 |
 | title_generation_runs | `TitleGenerationCoordinator`；queued/running、部分失败的显式重新执行 |
 | knowledge_fact_generation_runs | `KnowledgeFactGenerationRecoveryService`；queued/running、具备可恢复批次的终态 |
 | ai_visibility_runs | 可见度查询任务；queued/running 及原平台/问题身份 |

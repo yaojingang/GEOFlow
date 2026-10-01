@@ -8,13 +8,16 @@ use App\Http\Controllers\Site\ArchiveController;
 use App\Http\Controllers\Site\ArticleController;
 use App\Http\Controllers\Site\CategoryController;
 use App\Http\Controllers\Site\HomeController;
+use App\Http\Controllers\Site\TopicController;
 use App\Models\ThemeRevision;
 use App\Services\Site\ArticlePermalinkService;
 use App\Services\Site\SiteScopedArticleQuery;
 use App\Services\SystemUpdater\RecoveryState;
+use App\Services\Topics\TopicReadModel;
 use App\Support\Site\SiteThemePreviewContext;
 use App\Support\Site\ThemeRevisionContext;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Session\ArraySessionHandler;
 use Illuminate\Session\Store;
 use Illuminate\Support\Facades\Route;
@@ -42,12 +45,14 @@ final class ThemeWorkspacePreview
             'home' => '', 'search' => '', 'category' => $article?->category ? 'category/'.$article->category->slug : null,
             'article' => $article ? ltrim(app(ArticlePermalinkService::class)->path($article), '/') : null, 'about' => 'about', 'archive-index' => 'archive',
             'archive-month' => $article ? 'archive/'.($article->published_at ?? $article->created_at)->format('Y/m') : null,
-            'empty-state' => '',
+            'topics-index' => 'topics', 'topics-show' => app(TopicReadModel::class)->all('primary', [], 1)->first()['path'] ?? null,
+            'topics-empty' => 'topics', 'empty-state' => '',
         ];
         $pages = [];
         foreach ($paths as $page => $path) {
+            $path = $path === null ? null : ltrim($path, '/');
             $query = match ($page) {
-                'search' => ['search' => 'GEOFlow'], 'empty-state' => ['search' => 'geoflow-empty-'.bin2hex(random_bytes(12))], default => []
+                'search' => ['search' => 'GEOFlow'], 'empty-state','topics-empty' => ['search' => 'geoflow-empty-'.bin2hex(random_bytes(12))], default => []
             };
             $pages[$page] = $path === null ? ['available' => false, 'reason' => 'published_content_required'] : [
                 'available' => true, 'path' => $path, 'query' => $query,
@@ -88,7 +93,7 @@ final class ThemeWorkspacePreview
         if ($pageType === 'article') {
             $sitePath = ltrim(app(ArticlePermalinkService::class)->resolve('/'.$sitePath)->canonicalPath, '/');
         }
-        $request = Request::create(rtrim(config('app.url'), '/').'/'.$sitePath, 'GET', array_intersect_key($query, array_flip(['search', 'page'])));
+        $request = Request::create(rtrim(config('app.url'), '/').'/'.$sitePath, 'GET', array_intersect_key($query, array_flip(['search', 'tag', 'page'])));
         $route = Route::getRoutes()->match($request);
         $request->setRouteResolver(fn () => $route);
         $frameBase = URL::route('api.v1.theme-preview', ['workspace' => $workspace->id, 'revision' => $revision->id]);
@@ -101,6 +106,8 @@ final class ThemeWorkspacePreview
         try {
             return app(ThemeRevisionContext::class)->preview($revision, fn (): string => app(SiteThemePreviewContext::class)->run($workspace->theme_id, $frameBase, function () use ($request, $sitePath, $pageType, $revision, $auth, $workspace, $frameBase): string {
                 $page = match ($pageType) {
+                    'topics-index' => app(TopicController::class)->index($request, str_contains($sitePath, '/page/') ? (int) basename($sitePath) : null),
+                    'topics-show' => app(TopicController::class)->show(substr($sitePath, 7)),
                     'home' => app(HomeController::class)->index($request),
                     'about' => app(AboutController::class)->index(),
                     'archive' => app(ArchiveController::class)->index(),
@@ -108,8 +115,8 @@ final class ThemeWorkspacePreview
                     'article' => app(ArticleController::class)->show($request),
                     default => app(ArchiveController::class)->month(...array_slice(explode('/', $sitePath), 1)),
                 };
-                abort_unless($page instanceof View, 422);
-                $html = $page->render();
+                abort_unless($page instanceof View || $page instanceof Response, 422);
+                $html = $page instanceof View ? $page->render() : $page->getContent();
                 $html = preg_replace_callback('~\b(src|href|poster)=("|\')(.*?)\2~is', function (array $match) use ($auth, $workspace, $revision): string {
                     $url = html_entity_decode($match[3], ENT_QUOTES | ENT_HTML5, 'UTF-8');
                     $signed = $this->assetReference($url, '', $auth, $workspace->id, $revision);
@@ -190,6 +197,12 @@ final class ThemeWorkspacePreview
 
     private function pageType(string $path): ?string
     {
+        if ($path === 'topics' || preg_match('~\Atopics/page/[0-9]+\z~D', $path)) {
+            return 'topics-index';
+        }
+        if (preg_match('~\Atopics/[a-z0-9-]+\z~D', $path)) {
+            return 'topics-show';
+        }
         if ($path === '') {
             return 'home';
         }
@@ -236,7 +249,7 @@ final class ThemeWorkspacePreview
                 return $match[0];
             }
             parse_str($parts['query'] ?? '', $query);
-            $query = array_intersect_key($query, array_flip(['search', 'page']));
+            $query = array_intersect_key($query, array_flip(['search', 'tag', 'page']));
             $signed = URL::temporarySignedRoute('api.v1.theme-preview', now()->addMinutes(15), [
                 'workspace' => $workspace, 'revision' => $revision, 'sitePath' => $path, 'token_id' => $auth->token['id'], 'recovery_epoch' => $this->recovery->assertHttpReady()['epoch'] ?? null, ...$query,
             ]);

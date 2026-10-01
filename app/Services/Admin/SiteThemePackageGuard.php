@@ -3,6 +3,7 @@
 namespace App\Services\Admin;
 
 use App\Services\Admin\SiteThemeReplication\ThemeReplicationPackagePathGuard;
+use App\Services\Topics\TopicTemplateCatalog;
 use App\Support\Site\SiteThemePackageStorage;
 use Composer\Semver\Semver;
 use Illuminate\Support\Facades\Route;
@@ -16,9 +17,15 @@ final class SiteThemePackageGuard
 {
     public const FORMAT = 'geoflow-theme-package';
 
-    public const CONTRACTS = ['site-theme-view-resolver' => 1];
+    public const LEGACY_CONTRACTS = ['site-theme-view-resolver' => 1];
 
-    public const PAGES = ['home', 'category', 'article', 'about', 'archive-index', 'archive-month'];
+    public const CONTRACTS = ['site-theme-view-resolver' => 1, 'topic-view' => 1];
+
+    public const LEGACY_PAGES = ['home', 'category', 'article', 'about', 'archive-index', 'archive-month'];
+
+    public const PAGES = [...self::LEGACY_PAGES, 'topics-index', 'topics-show'];
+
+    public const PAGE_PATHS = ['topics-index' => 'topics/index.blade.php', 'topics-show' => 'topics/show.blade.php'];
 
     public const ASSET_MIMES = [
         'css' => 'text/css', 'js' => 'text/javascript', 'png' => 'image/png',
@@ -237,7 +244,7 @@ final class SiteThemePackageGuard
                 $this->storage->fail('invalid_package');
             }
         }
-        if (($package['exported_with']['contracts'] ?? null) !== self::CONTRACTS) {
+        if (! in_array($package['exported_with']['contracts'] ?? null, [self::CONTRACTS, self::LEGACY_CONTRACTS], true)) {
             $this->storage->fail('incompatible', ['component' => 'exported_with.contracts']);
         }
         if (! is_string($package['created_at'] ?? null) || strtotime($package['created_at']) === false || ! is_array($package['exported_with'] ?? null) || ! is_array($package['requires'] ?? null) || ! is_array($package['distribution'] ?? null) || ! is_array($package['pages'] ?? null) || ! is_array($package['files'] ?? null) || ! array_is_list($package['files']) || ! $this->hashValue($package['content_sha256'] ?? null)) {
@@ -293,7 +300,8 @@ final class SiteThemePackageGuard
         if (! isset($files['resources/views/theme/'.$id.'/home.blade.php'])) {
             $this->storage->fail('missing_home');
         }
-        $expectedPages = $this->pages(array_values($files), $id);
+        $includeTopics = isset($package['exported_with']['contracts']['topic-view']);
+        $expectedPages = $this->pages(array_values($files), $id, $includeTopics);
         if (count($package['pages']) !== 2) {
             $this->storage->fail('invalid_package');
         }
@@ -344,6 +352,13 @@ final class SiteThemePackageGuard
                 $this->storage->fail('invalid_package');
             }
         }
+        if (array_key_exists('topic', $manifest)) {
+            try {
+                TopicTemplateCatalog::validateDeclaration($manifest['topic']);
+            } catch (\InvalidArgumentException) {
+                $this->storage->fail('invalid_package');
+            }
+        }
         if (array_key_exists('distribution', $manifest)) {
             $this->distributionMetadata($manifest['distribution']);
         }
@@ -367,12 +382,12 @@ final class SiteThemePackageGuard
     }
 
     /** @return array{provided:list<string>,fallback:list<string>} */
-    public function pages(array $files, string $id): array
+    public function pages(array $files, string $id, bool $includeTopics = true): array
     {
         $paths = array_column($files, 'path');
         $pages = ['provided' => [], 'fallback' => []];
-        foreach (self::PAGES as $page) {
-            $kind = in_array('resources/views/theme/'.$id.'/'.$page.'.blade.php', $paths, true) ? 'provided' : 'fallback';
+        foreach ($includeTopics ? self::PAGES : self::LEGACY_PAGES as $page) {
+            $kind = in_array('resources/views/theme/'.$id.'/'.(self::PAGE_PATHS[$page] ?? $page.'.blade.php'), $paths, true) ? 'provided' : 'fallback';
             $pages[$kind][] = $page;
         }
 
@@ -446,7 +461,7 @@ final class SiteThemePackageGuard
             $this->storage->fail('incompatible', ['component' => 'site-theme-view-resolver']);
         }
         foreach (array_keys($requires['contracts']) as $contract) {
-            if ($contract !== 'site-theme-view-resolver') {
+            if (! isset(self::CONTRACTS[$contract]) || ($requires['contracts'][$contract] ?? null) !== self::CONTRACTS[$contract]) {
                 $this->storage->fail('incompatible', ['component' => (string) $contract]);
             }
         }
@@ -473,11 +488,21 @@ final class SiteThemePackageGuard
             }
         }
         foreach ($package['pages']['fallback'] as $page) {
-            $dependencies['views'][] = 'site.'.$page;
+            $dependencies['views'][] = 'site.'.(isset(self::PAGE_PATHS[$page]) ? str_replace('/', '.', substr(self::PAGE_PATHS[$page], 0, -10)) : $page);
         }
         $risks = [];
         $paths = array_column($package['files'], 'path');
         $id = $package['theme']['id'];
+        if (isset($manifest['topic'])) {
+            foreach ($manifest['topic']['layouts'] as $layout) {
+                $reference = str_starts_with($layout['view'], 'site.') ? $layout['view'] : 'theme.'.$id.'.'.str_replace('/', '.', substr($layout['view'], 0, -10));
+                if (! $this->dependencyExists('views', $reference, $id, $paths)) {
+                    $this->storage->fail('missing_dependency', ['dependency' => 'views: '.$reference]);
+                }
+                $dependencies['views'][] = $reference;
+            }
+            $dependencies['views'][] = $manifest['topic']['homepage_module']['view'];
+        }
         foreach ($package['files'] as $file) {
             if (! str_ends_with($file['path'], '.blade.php')) {
                 continue;

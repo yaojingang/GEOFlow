@@ -2,6 +2,24 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+
+## Unreleased
+
+### Topics and theme management
+
+- Content management adds a topic library with article grouping, ordering, bulk creation, review, publication, and recoverable trash.
+- Topic tasks use title libraries and AI generation, with per-row scopes and layouts, source validation, scheduled maintenance, pause and resume, and failed-run retries.
+- Public topic lists and detail pages provide structured summaries, genuine update dates, tags, source citations, FAQs, and three reading layouts.
+- Built-in themes support topic navigation, homepage modules, and article backlinks, while canonical paths, pagination, and sitemaps follow publication eligibility.
+- Theme settings separate the current theme, curated themes, personal themes, and archives, with search, version groups, bulk archive and restore, and built-in theme previews.
+- The GEOFlow Skill adds topic management, task creation, and topic theme design, replication, and editing workflows while preserving existing remote recovery and permission boundaries.
+
+### Security dependencies
+
+- Update the Markdown parser, file storage, debug pages, and frontend request components to security fixes within their existing major versions and dependency ranges.
+
+See [Topics and theme management](implementations/topic-channel-implementation.md) for implementation and upgrade details. These changes have not been released.
+
 ## 2026-09-16
 
 ### v3.2.0-beta.1

@@ -1,6 +1,19 @@
 <?php
 
 return [
+    'topics' => 'Управление подборками',
+    'topic_create' => 'Создать подборку',
+    'topic_articles' => 'Выбрать статьи подборки',
+    'topic_settings' => 'Настройки подборок',
+    'topic_batch_create' => 'Создать пакет подборок',
+    'topic_batch_detail' => 'Детали пакета подборок',
+    'topic_run_detail' => 'Генерация подборки',
+    'topic_path' => 'Адрес подборки',
+    'topic_edit' => 'Редактировать подборку',
+    'topic_preview' => 'Предпросмотр подборки',
+    'topic_history' => 'История версий подборки',
+    'topic_revision_preview' => 'Предпросмотр версии подборки',
+
     'theme_package_upload' => 'Импорт темы',
     'theme_package_inspection' => 'Проверка пакета темы',
     'theme_package_preview' => 'Предпросмотр темы',

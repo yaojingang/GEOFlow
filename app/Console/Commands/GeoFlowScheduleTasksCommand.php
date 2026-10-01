@@ -6,6 +6,7 @@ use App\Models\Article;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Services\GeoFlow\JobQueueService;
+use App\Services\Topics\TopicTaskService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -43,7 +44,7 @@ class GeoFlowScheduleTasksCommand extends Command
         $skippedCount = 0;
 
         Task::query()
-            ->select(['id', 'name', 'publish_interval', 'draft_limit', 'article_limit', 'created_count', 'next_run_at', 'next_publish_at', 'schedule_enabled'])
+            ->select(['id', 'name', 'publish_interval', 'draft_limit', 'article_limit', 'content_type', 'target_site_key', 'topic_config_version', 'topic_limit', 'topic_settings', 'title_library_id', 'created_count', 'next_run_at', 'next_publish_at', 'schedule_enabled'])
             ->where('status', 'active')
             ->orderBy('id')
             ->chunkById(200, function (Collection $tasks) use ($now, &$queuedCount, &$skippedCount): void {
@@ -105,6 +106,20 @@ class GeoFlowScheduleTasksCommand extends Command
                 continue;
             }
 
+            if ($task->content_type === 'topic') {
+                if (! isset($busyTaskLookup[$taskId]) && ($task->next_run_at === null || $task->next_run_at->lte($now)) && app(TopicTaskService::class)->hasWork($task)) {
+                    $id = $this->jobQueueService->enqueueTaskJob($taskId, 'generate_topic');
+                    if ($id !== null) {
+                        Task::query()->whereKey($taskId)->update(['next_run_at' => $now->copy()->addMinute()]);
+                        $queuedCount++;
+
+                        continue;
+                    }
+                }
+                $skippedCount++;
+
+                continue;
+            }
             $articleLimit = max(1, (int) ($task->article_limit ?? $task->draft_limit ?? 10));
             $draftLimit = max(1, (int) ($task->draft_limit ?? 10));
             $createdCount = (int) ($task->created_count ?? 0);

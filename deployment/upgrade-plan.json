@@ -842,6 +842,41 @@
       "name": "2026_09_23_223537_add_workflow_fence_to_hosted_site_allocation_requests",
       "sha256": "7969a61d4e7fee7c3311abcd59f1c562ed33de7a891c46bbdc0a4585f059176e",
       "online": false
+    },
+    {
+      "name": "2026_10_01_064730_create_topics_tables",
+      "sha256": "57e5caff312e7dd5ae10d496b22adb5a75af10874c4f5c73aa18b6bd2e314679",
+      "online": false
+    },
+    {
+      "name": "2026_10_01_084859_add_topic_freshness_snapshots_and_runtime_state",
+      "sha256": "5a5c29549250849d8e7cec7f2be495ece0002fd63952cf7f5fa495c2aa016234",
+      "online": false
+    },
+    {
+      "name": "2026_10_01_094730_add_topic_display_order",
+      "sha256": "f7537a95cb660cb4356317dd50c0345a7dced88e57db26eba531ef97f271a380",
+      "online": false
+    },
+    {
+      "name": "2026_10_01_094740_create_topic_paths",
+      "sha256": "0eff95563b2048a8db2d0d786618f40a7b135e07209e8b5081952683bdf03653",
+      "online": false
+    },
+    {
+      "name": "2026_10_02_000100_add_topic_execution_support",
+      "sha256": "fdf3ef72f9b4721587b262bf386b468ae4c8003b70899c6f1af21e13f584aa03",
+      "online": false
+    },
+    {
+      "name": "2026_10_02_000110_add_topic_dispatch_key",
+      "sha256": "40d5a411f1607f48742dced6b01733b4306c6bef541005cba6f3268f40a066dd",
+      "online": false
+    },
+    {
+      "name": "2026_10_02_000120_add_topic_review_records",
+      "sha256": "8052384dddceda28c692652d3c059c18bccdaf6774986c6d3dbb5c0d478dce7c",
+      "online": false
     }
   ],
   "compatibility": {

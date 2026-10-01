@@ -40,6 +40,9 @@ final class TaskRunData
         'generate_draft',
         'noop',
         'publish_draft',
+        'generate_topic',
+        'publish_topic',
+        'maintain_topic',
     ];
 
     private const PUBLIC_AI_QUALITY_STATUSES = [
@@ -98,6 +101,8 @@ final class TaskRunData
             'error_message' => $errorMessage,
             'payload' => $payload,
             'task_run_summary' => [
+                'content_type' => $run->content_type ?: 'article',
+                'topic_id' => $run->topic_id ? (int) $run->topic_id : null,
                 'article_id' => $run->article_id !== null ? (int) $run->article_id : null,
                 'duration_ms' => max(0, (int) ($run->duration_ms ?? 0)),
                 'status' => (string) $run->status,
@@ -124,7 +129,7 @@ final class TaskRunData
 
     private function publicJobType(mixed $jobType): string
     {
-        return $jobType === 'generate_article' ? $jobType : 'generate_article';
+        return in_array($jobType, ['generate_article', 'generate_topic'], true) ? $jobType : 'generate_article';
     }
 
     private function publicWorkerId(mixed $workerId): ?string

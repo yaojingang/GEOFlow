@@ -25,5 +25,29 @@
     "/category/{slug}",
     "/article/{slug}",
     "/about"
-  ]
+  ],
+    "topic": {
+        "contract": 1,
+        "layouts": [
+            {
+                "id": "default",
+                "name": "标准聚合",
+                "view": "site.topics.templates.default"
+            },
+            {
+                "id": "guide",
+                "name": "阅读指南",
+                "view": "site.topics.templates.guide"
+            },
+            {
+                "id": "roundup",
+                "name": "资讯盘点",
+                "view": "site.topics.templates.roundup"
+            }
+        ],
+        "homepage_module": {
+            "view": "site.partials.topic-home",
+            "enabled": true
+        }
+    }
 }

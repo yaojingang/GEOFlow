@@ -19,6 +19,7 @@ class TaskRun extends Model
         'task_id',
         'status',
         'article_id',
+        'topic_id', 'content_type',
         'error_message',
         'duration_ms',
         'meta',
@@ -30,7 +31,7 @@ class TaskRun extends Model
     {
         return [
             'task_id' => 'integer',
-            'article_id' => 'integer',
+            'article_id' => 'integer', 'topic_id' => 'integer',
             'duration_ms' => 'integer',
             'meta' => 'array',
             'started_at' => 'datetime',
@@ -42,6 +43,11 @@ class TaskRun extends Model
             'model_resolved_at' => 'datetime',
             'resolver_policy_version' => 'integer',
         ];
+    }
+
+    public function topic(): BelongsTo
+    {
+        return $this->belongsTo(Topic::class);
     }
 
     public function task(): BelongsTo

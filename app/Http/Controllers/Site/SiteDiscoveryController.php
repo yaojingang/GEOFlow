@@ -4,11 +4,17 @@ namespace App\Http\Controllers\Site;
 
 use App\Http\Controllers\Controller;
 use App\Models\HostedSiteProfile;
+use App\Models\Topic;
 use App\Services\Site\ArticlePermalinkService;
 use App\Services\Site\SitemapManifest;
 use App\Services\Site\SiteScopedArticleQuery;
 use App\Services\Site\SiteUrlGenerator;
 use App\Services\Site\UrlChangeService;
+use App\Services\Topics\TopicReadModel;
+use App\Services\Topics\TopicService;
+use App\Services\Topics\TopicSitemapManifest;
+use App\Services\Topics\TopicSiteSettings;
+use App\Services\Topics\TopicViewBuilder;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\CurrentSite;
 use App\Support\Site\RobotsPolicy;
@@ -99,6 +105,18 @@ final class SiteDiscoveryController extends Controller
             }
         }
 
+        if ($this->indexingAllowed()) {
+            $topics = app(TopicReadModel::class)->all($this->topicSiteKey(), [], 200);
+            if ($topics->isNotEmpty()) {
+                $lines[] = '';
+                $lines[] = '## Topics';
+                $lines[] = '';
+                foreach ($topics as $topic) {
+                    $lines[] = '- ['.$this->textMapLinkLabel($topic['title']).']('.$topic['url'].'): '.$this->textMapLine(app(TopicReadModel::class)->description($topic)).' Updated: '.($topic['modified_at'] ?? '');
+                }
+            }
+        }
+
         return $this->textResponse(array_values(array_unique($lines)));
     }
 
@@ -112,6 +130,14 @@ final class SiteDiscoveryController extends Controller
                 ->get(['id', 'slug', 'category_id', 'created_at', 'updated_at']);
             foreach ($articles as $article) {
                 $lines[] = $this->urls->article($article);
+            }
+        }
+
+        if ($this->indexingAllowed()) {
+            foreach (app(TopicReadModel::class)->all($this->topicSiteKey()) as $topic) {
+                $lines[] = $topic['url'];
+            }if (count($lines) > 1 && app(TopicReadModel::class)->all($this->topicSiteKey(), [], 1)->isNotEmpty()) {
+                $lines[] = $this->urls->topics();
             }
         }
 
@@ -129,7 +155,7 @@ final class SiteDiscoveryController extends Controller
         $urls = [];
         if ($this->indexingAllowed()) {
             $articleCount = $this->siteArticles->query()->count();
-            if ($articleCount + 1 > $this->primarySitemapInlineLimit()) {
+            if ($articleCount + 1 + $this->topicUrlCount() > $this->primarySitemapInlineLimit()) {
                 return $this->sitemapIndex($articleCount);
             }
 
@@ -148,6 +174,14 @@ final class SiteDiscoveryController extends Controller
             }
         }
 
+        if ($this->indexingAllowed()) {
+            foreach (app(TopicReadModel::class)->all($this->topicSiteKey()) as $topic) {
+                $urls[] = ['loc' => $topic['url'], 'lastmod' => $topic['modified_at']];
+            }if ($this->topicUrlCount() > 0) {
+                $urls[] = ['loc' => $this->urls->topics(), 'lastmod' => null];
+            }
+        }
+
         return $this->urlSetResponse($urls);
     }
 
@@ -158,7 +192,7 @@ final class SiteDiscoveryController extends Controller
         $articleCount = $this->indexingAllowed() ? $this->siteArticles->query()->count() : 0;
         if ($this->currentSite->isPrimary()
             && $page === 1
-            && $articleCount + 1 <= $this->primarySitemapInlineLimit()) {
+            && $articleCount + 1 + $this->topicUrlCount() <= $this->primarySitemapInlineLimit()) {
             return $this->sitemap();
         }
 
@@ -213,6 +247,58 @@ final class SiteDiscoveryController extends Controller
         return $this->urlSetResponse($urls);
     }
 
+    public function topicSitemapShard(int $page): Response
+    {
+        abort_unless($this->indexingAllowed() && $page > 0, 404);
+        $site = $this->topicSiteKey();
+        $manifest = app(TopicSitemapManifest::class)->current($site);
+        if ($manifest === null) {
+            return response('', 503, ['Retry-After' => '60', 'Cache-Control' => 'no-store']);
+        }
+        abort_unless(isset($manifest['boundaries'][$page - 1]) && app(TopicSiteSettings::class)->get($site)['enabled'], 404);
+        $query = Topic::query()->where('site_key', $site)->whereNotNull('public_revision_id')->where('id', '>', $manifest['boundaries'][$page - 1])->with('publicRevision.articles')->orderBy('id');
+        $query->where('id', '<=', $manifest['boundaries'][$page] ?? $manifest['after']);
+        abort_if(app(TopicReadModel::class)->all($site, [], 1)->isEmpty(), 404);
+        $urls = [];
+        if ($page === 1) {
+            $urls[] = ['loc' => $this->urls->topics(), 'lastmod' => $manifest['lastmod']];
+        }
+        foreach ($query->lazy(100)->chunk(100) as $rows) {
+            app(TopicViewBuilder::class)->withReadBatch($site, $rows, function () use ($rows, &$urls): void {
+                foreach ($rows as $topic) {
+                    $view = app(TopicService::class)->publicView($topic);
+                    if ($view) {
+                        $urls[] = ['loc' => $view['url'], 'lastmod' => $view['modified_at']];
+                    }
+                }
+            });
+        }
+
+        return $this->urlSetResponse($urls);
+    }
+
+    private function topicSiteKey(): string
+    {
+        return app(TopicSiteSettings::class)->currentKey();
+    }
+
+    private function topicUrlCount(): int
+    {
+        if (! Schema::hasTable('topics') || ! app(TopicSiteSettings::class)->get($this->topicSiteKey())['enabled']) {
+            return 0;
+        }
+        if (app(TopicReadModel::class)->all($this->topicSiteKey(), [], 1)->isEmpty()) {
+            return 0;
+        }
+        $manifest = app(TopicSitemapManifest::class)->current($this->topicSiteKey());
+        if ($manifest) {
+            return $manifest['count'] > 0 ? $manifest['count'] + 1 : 0;
+        }
+        $count = Topic::query()->where('site_key', $this->topicSiteKey())->whereNotNull('public_revision_id')->count();
+
+        return $count > 0 ? $count + 1 : 0;
+    }
+
     private function sitemapIndex(int $articleCount): Response
     {
         $pageCount = $this->sitemapPageCount($articleCount);
@@ -231,6 +317,14 @@ final class SiteDiscoveryController extends Controller
                     ENT_XML1 | ENT_QUOTES,
                     'UTF-8'
                 ).'</loc></sitemap>'."\n";
+            }
+        }
+        if ($this->indexingAllowed()) {
+            $manifest = app(TopicSitemapManifest::class)->current($this->topicSiteKey());
+            if ($this->topicUrlCount() > 0) {
+                for ($page = 1; $page <= ($manifest['pages'] ?? max(1, (int) ceil($this->topicUrlCount() / $this->sitemapUrlLimit()))); $page++) {
+                    $body .= '  <sitemap><loc>'.htmlspecialchars($this->urls->url('/sitemaps/topics-'.$page.'.xml'), ENT_XML1 | ENT_QUOTES, 'UTF-8').'</loc></sitemap>'."\n";
+                }
             }
         }
         $body .= '</sitemapindex>'."\n";

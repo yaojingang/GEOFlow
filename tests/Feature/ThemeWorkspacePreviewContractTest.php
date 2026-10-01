@@ -2,12 +2,16 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\ApiException;
 use App\Models\Admin;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\SiteSetting;
+use App\Models\ThemeRelease;
+use App\Models\ThemeRevision;
 use App\Models\ThemeWorkspace;
+use App\Services\Api\ThemeRevisionStorage;
 use App\Services\Api\ThemeWorkspacePreview;
 use App\Support\Site\ArticlePermalinkPolicy;
 use App\Support\Site\SiteSettingsBag;
@@ -16,6 +20,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 class ThemeWorkspacePreviewContractTest extends TestCase
@@ -91,8 +97,12 @@ class ThemeWorkspacePreviewContractTest extends TestCase
         ]);
         $pages = $this->withToken($this->token)->postJson($base.'/previews')->assertOk()->json('data.pages');
         $this->assertSame('canonical-story.html', $pages['article']['path']);
-        $this->assertCount(8, $pages);
-        foreach ($pages as $page) {
+        $this->assertCount(11, $pages);
+        $this->assertFalse($pages['topics-show']['available']);
+        foreach ($pages as $name => $page) {
+            if ($name === 'topics-show') {
+                continue;
+            }
             $this->assertTrue($page['available']);
             $this->get($page['url'])->assertOk();
         }
@@ -172,5 +182,58 @@ class ThemeWorkspacePreviewContractTest extends TestCase
         $this->assertStringContainsString('Advanced draft', $directHtml);
         $this->assertStringContainsString('/'.$advanced['revision_id'].'/', $this->attribute($directHtml, 'about'));
         $this->assertStringContainsString('/'.$advanced['revision_id'].'/', $this->attribute($directHtml, 'style'));
+    }
+
+    public function test_large_valid_video_is_available_in_signed_preview_and_published_revision(): void
+    {
+        $base = $this->workspace([
+            'resources/views/theme/default/home.blade.php' => '<video id="clip" src="{{ asset(\'themes/default/clip.mp4\') }}"></video>',
+        ]);
+        $path = Storage::disk('local')->path('large-video.mp4');
+        $encoder = new Process(['ffmpeg', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=black:s=16x16:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an', '-y', $path]);
+        try {
+            $encoder->run();
+        } catch (\Throwable) {
+            $this->markTestSkipped('ffmpeg is required for large video revision integration.');
+        }
+        if (! $encoder->isSuccessful()) {
+            $this->markTestSkipped('ffmpeg is required for large video revision integration.');
+        }
+        $video = file_get_contents($path).str_repeat("\0", 6 * 1024 * 1024);
+        $workspace = ThemeWorkspace::query()->findOrFail(basename($base));
+        $storage = app(ThemeRevisionStorage::class);
+        $previous = ThemeRevision::query()->findOrFail($workspace->revision_id);
+        $contents = $storage->contents($previous);
+        $contents['public/themes/default/clip.mp4'] = $video;
+        $revision = $storage->create($workspace->id, 'default', $contents, $previous->settings, $previous->id);
+        $workspace->update(['revision_id' => $revision->id]);
+        $pages = $this->withToken($this->token)->postJson($base.'/previews')->assertOk()->json('data.pages');
+        $html = $this->get($pages['home']['url'])->assertOk()->getContent();
+        $assetUrl = $this->attribute($html, 'clip', 'src');
+        $asset = $this->get($assetUrl)->assertOk()->assertHeader('Content-Type', 'video/mp4');
+        $this->assertSame(hash('sha256', $video), hash_file('sha256', $asset->baseResponse->getFile()->getPathname()));
+        ThemeRelease::query()->create([
+            'id' => (string) Str::uuid(), 'site_key' => 'primary', 'workspace_id' => $workspace->id,
+            'revision_id' => $revision->id, 'admin_id' => $workspace->admin_id, 'binding_version' => 1,
+            'changes' => [], 'plan_sha256' => str_repeat('a', 64),
+        ]);
+        $published = $this->get('/theme-assets/'.$revision->id.'/clip.mp4')->assertOk()->assertHeader('Content-Type', 'video/mp4');
+        $this->assertSame(hash('sha256', $video), hash_file('sha256', $published->baseResponse->getFile()->getPathname()));
+        $this->get(str_replace('clip.mp4', 'missing.mp4', $assetUrl))->assertForbidden();
+    }
+
+    public function test_video_revision_rejects_a_file_above_the_video_limit(): void
+    {
+        $base = $this->workspace([
+            'resources/views/theme/default/home.blade.php' => '<h1>Video limit fixture</h1>',
+        ]);
+        $workspace = ThemeWorkspace::query()->findOrFail(basename($base));
+        $storage = app(ThemeRevisionStorage::class);
+        $previous = ThemeRevision::query()->findOrFail($workspace->revision_id);
+        $contents = $storage->contents($previous);
+        $contents['public/themes/default/clip.mp4'] = str_repeat("\0", 26 * 1024 * 1024);
+        $this->expectException(ApiException::class);
+        $this->expectExceptionMessage('主题文件重复或超过大小限制');
+        $storage->create($workspace->id, 'default', $contents, $previous->settings, $previous->id);
     }
 }

@@ -19,6 +19,7 @@ use App\Models\WorkerHeartbeat;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\JobQueueService;
 use App\Services\GeoFlow\TaskLifecycleService;
+use App\Services\Topics\TopicService;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Database\Eloquent\Collection;
@@ -36,6 +37,36 @@ use Tests\TestCase;
 class AdminTasksPageTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_topic_task_limit_and_execution_copy_follow_its_content_type(): void
+    {
+        $admin = $this->createTaskFormAdmin('topic_task_copy_admin');
+        $task = Task::query()->create([
+            'name' => 'Topic completion task', 'status' => 'active', 'schedule_enabled' => 1,
+            'content_type' => 'topic', 'target_site_key' => 'primary', 'topic_limit' => 1, 'created_count' => 1,
+        ]);
+        $topic = app(TopicService::class)->create('primary', ['title' => 'Topic output'], $admin->id, $task->id);
+        $topic->update(['result_completed_at' => now()]);
+        $completed = TaskRun::query()->create([
+            'task_id' => $task->id, 'content_type' => 'topic', 'topic_id' => $topic->id,
+            'status' => 'completed', 'finished_at' => now(),
+        ]);
+        $running = TaskRun::query()->create(['task_id' => $task->id, 'content_type' => 'topic', 'status' => 'running']);
+        $failed = TaskRun::query()->create(['task_id' => $task->id, 'content_type' => 'topic', 'status' => 'failed']);
+        $failedTopic = TaskRun::query()->create(['task_id' => $task->id, 'content_type' => 'topic', 'topic_id' => $topic->id, 'status' => 'failed']);
+        $response = $this->actingAs($admin, 'admin')->get(route('admin.tasks.index'))->assertOk();
+        $this->assertSame(__('ai-task.topic_runtime.limit_reached'), $response->viewData('taskI18n')['topicLimitReached']);
+        $jobs = collect($response->viewData('recentJobs'))->keyBy('id');
+        $this->assertSame(__('ai-task.topic_runtime.completed_with_topic', ['task' => $task->name, 'topic' => $topic->title]), $jobs[$completed->id]['summary']);
+        $this->assertSame(__('ai-task.topic_runtime.running_explanation'), $jobs[$running->id]['explanation']);
+        $this->assertSame(__('ai-task.topic_runtime.failed_before_topic', ['reason' => __('admin.tasks.failure.generic_plain')]), $jobs[$failed->id]['explanation']);
+        $this->assertSame(__('ai-task.topic_runtime.failed_with_topic', ['topic' => $topic->title, 'reason' => __('admin.tasks.failure.generic_plain')]), $jobs[$failedTopic->id]['explanation']);
+        $this->actingAs($admin, 'admin')->get(route('admin.tasks.jobs', ['run_id' => $completed->id]))
+            ->assertOk()->assertSee($jobs[$completed->id]['summary'])->assertDontSee('已生成文章');
+        $snapshot = $this->getJson(route('admin.tasks.health'))->assertOk();
+        $this->assertSame('topic', collect($snapshot->json('tasks'))->firstWhere('id', $task->id)['content_type']);
+        $this->assertSame($jobs[$completed->id]['summary'], collect($snapshot->json('recent_runs'))->firstWhere('id', $completed->id)['summary']);
+    }
 
     public function test_guest_is_redirected_to_admin_login_when_visiting_tasks_page(): void
     {

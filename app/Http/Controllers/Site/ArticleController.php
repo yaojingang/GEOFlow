@@ -7,6 +7,8 @@ use App\Models\Article;
 use App\Services\Site\ArticlePermalinkService;
 use App\Services\Site\SiteScopedArticleQuery;
 use App\Services\Site\SiteUrlGenerator;
+use App\Services\Topics\TopicReadModel;
+use App\Services\Topics\TopicSiteSettings;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\ArticleStickyAdPicker;
 use App\Support\Site\ArticleTextAdPicker;
@@ -97,12 +99,15 @@ class ArticleController extends Controller
 
         $stickyAd = ArticleStickyAdPicker::firstEnabled();
 
+        $relatedTopics = app(TopicReadModel::class)->related(app(TopicSiteSettings::class)->currentKey(), (int) $article->id);
+
         return SiteThemeViewResolver::first('article', [
             'activeNav' => 'article',
             'article' => $article,
             'contentHtml' => $contentHtml,
             'excerptPlain' => $excerptPlain,
             'tags' => $tags,
+            'relatedTopics' => $relatedTopics,
             'relatedArticles' => $related,
             'siteTitle' => $siteTitle,
             'siteDescription' => $siteDescription,

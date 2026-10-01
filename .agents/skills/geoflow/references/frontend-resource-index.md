@@ -5,7 +5,7 @@ Load only the section that matches the selected frontend phase.
 ## Public Frontend
 
 - Surface and data contract: [geoflow-frontend-map.md](geoflow-frontend-map.md)
-- Theme edit lifecycle: [theme-edit-workflow.md](theme-edit-workflow.md)
+- Theme edit lifecycle and template library (featured, personal, archive, versions, previews): [theme-edit-workflow.md](theme-edit-workflow.md)
 - Laravel Blade contract: [laravel-theme-contract.md](laravel-theme-contract.md)
 - Theme package structure: [theme-package-contract.md](theme-package-contract.md)
 - Homepage module composition: [homepage-composition-guide.md](homepage-composition-guide.md)
@@ -20,3 +20,7 @@ Load only the section that matches the selected frontend phase.
 - Deterministic tools: [discover_frontend_surfaces.py](../scripts/discover_frontend_surfaces.py), [compare_default_vs_channel_frontend.py](../scripts/compare_default_vs_channel_frontend.py), and [build_sync_preview_report.py](../scripts/build_sync_preview_report.py)
 
 Keep preview, authenticated import, channel sync, activation, and publication as separate phases. Switch to `development` for product or target-package code changes and to `operations` for approved running-system mutations.
+
+## Topic pages and theme work
+
+Use [topic-workflow.md](topic-workflow.md) for topic management and tasks, topic list/detail layouts, template replication/design/modification, homepage `topic_collection`, theme assets and real preview links. Run discovery before selecting the source or remote workspace route.

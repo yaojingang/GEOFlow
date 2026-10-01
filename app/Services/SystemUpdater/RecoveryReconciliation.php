@@ -113,7 +113,7 @@ final class RecoveryReconciliation
             }
             $requiredTables = array_merge(
                 ['recovery_preparations', 'recovery_quarantines', 'recovery_reconciliations', 'recovery_reconciliation_decisions'],
-                RecoveryPreparation::INTENTS,
+                RecoveryPreparation::intentTables(),
             );
             $prefix = DB::connection()->getTablePrefix();
             $tables = Schema::getTableListing(schema: Schema::getCurrentSchemaListing(), schemaQualified: false);
@@ -176,7 +176,7 @@ final class RecoveryReconciliation
             }
         }
         if (preg_match('/\A[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\z/', $decision['decision_id']) !== 1
-            || ! in_array($decision['source_table'], RecoveryPreparation::INTENTS, true)
+            || ! in_array($decision['source_table'], RecoveryPreparation::intentTables(), true)
             || preg_match('/\A[A-Za-z0-9][A-Za-z0-9._-]{0,127}\z/', $decision['source_id']) !== 1
             || ! in_array($decision['disposition'], ['hold', 'verified_no_replay', 'reexecute_requested'], true)) {
             throw new RuntimeException('recovery_reconciliation_decision_invalid');
@@ -244,7 +244,7 @@ final class RecoveryReconciliation
         return $this->identity($state) + [
             'status' => 'pass', 'proof_scope' => 'core_only', 'background_status' => 'held',
             'source_recovery_point_id' => $point, 'source_recovery_point_sha256' => $pointHash,
-            'catalog_sha256' => hash('sha256', RecoveryEvidence::json(RecoveryPreparation::INTENTS)),
+            'catalog_sha256' => hash('sha256', RecoveryEvidence::json(RecoveryPreparation::intentTables())),
             'quarantine_count' => 0, 'quarantine_sha256' => hash('sha256', ''),
             'host_checks_required' => ['source_recovery_point', 'redis_quarantine', 'fresh_runtime'],
         ];
@@ -323,7 +323,8 @@ final class RecoveryReconciliation
     private function verifySources(array $state): array
     {
         $report = $this->prepared($state);
-        foreach (RecoveryPreparation::INTENTS as $table) {
+        $tables = RecoveryPreparation::intentTables();
+        foreach ($tables as $table) {
             if (DB::table($table)->count() !== DB::table('recovery_quarantines')->where('epoch', $state['epoch'])->where('source_table', $table)->count()) {
                 throw new RuntimeException('recovery_quarantine_changed');
             }
@@ -331,7 +332,7 @@ final class RecoveryReconciliation
         $hash = hash_init('sha256');
         $count = 0;
         foreach (DB::table('recovery_quarantines')->where('epoch', $state['epoch'])->orderBy('source_table')->orderBy('source_id')->cursor() as $entry) {
-            if (! in_array($entry->source_table, RecoveryPreparation::INTENTS, true) || $entry->status !== 'held') {
+            if (! in_array($entry->source_table, $tables, true) || $entry->status !== 'held') {
                 throw new RuntimeException('recovery_quarantine_changed');
             }
             $source = DB::table($entry->source_table)->where('id', $entry->source_id)->first();
