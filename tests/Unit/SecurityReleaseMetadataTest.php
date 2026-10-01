@@ -7,40 +7,40 @@ use Tests\TestCase;
 
 class SecurityReleaseMetadataTest extends TestCase
 {
-    public function test_v320_beta_manifest_uses_semver_compatible_version_and_preview_upgrade_guidance(): void
+    public function test_v320_beta_2_manifest_uses_semver_compatible_version_and_preview_upgrade_guidance(): void
     {
         $manifest = json_decode((string) file_get_contents(base_path('version.json')), true, flags: JSON_THROW_ON_ERROR);
         $payload = $manifest['payload'];
 
-        $this->assertSame('3.2.0-beta.1', $manifest['version']);
-        $this->assertSame('v3.2.0-beta.1', $manifest['tag']);
-        $this->assertSame('2026-09-16', $manifest['release_date']);
+        $this->assertSame('3.2.0-beta.2', $manifest['version']);
+        $this->assertSame('v3.2.0-beta.2', $manifest['tag']);
+        $this->assertSame('2026-10-01', $manifest['release_date']);
         $this->assertSame('minor', $manifest['release_type']);
         $this->assertTrue(Semver::satisfies($manifest['version'], $manifest['version']));
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/releases/download/v3.2.0-beta.1/GEOFlow-v3.2.0-beta.1.zip',
+            'https://github.com/yaojingang/GEOFlow/releases/download/v3.2.0-beta.2/GEOFlow-v3.2.0-beta.2.zip',
             $manifest['archive_url'],
         );
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/releases/tag/v3.2.0-beta.1',
+            'https://github.com/yaojingang/GEOFlow/releases/tag/v3.2.0-beta.2',
             $payload['release_url'],
         );
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/blob/v3.2.0-beta.1/docs/CHANGELOG.md',
+            'https://github.com/yaojingang/GEOFlow/blob/v3.2.0-beta.2/docs/CHANGELOG.md',
             $payload['changelog_url_zh'],
         );
         $this->assertSame(
-            'https://github.com/yaojingang/GEOFlow/blob/v3.2.0-beta.1/docs/CHANGELOG_en.md',
+            'https://github.com/yaojingang/GEOFlow/blob/v3.2.0-beta.2/docs/CHANGELOG_en.md',
             $payload['changelog_url_en'],
         );
 
         $encoded = json_encode($manifest, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
         $this->assertStringNotContainsString('/main.zip', $encoded);
         $this->assertStringNotContainsString('/blob/main/', $encoded);
-        foreach (['preview', 'cli 0.4.0-preview.1', 'skill 1.2.0-preview.1', 'updater', 'held after recovery', 'operation receipt', 'do not automatically resend', 'theme publication and rollback', 'stable 3.1.0'] as $requiredText) {
+        foreach (['preview', 'cli 0.4.0-preview.2', 'skill 1.2.0-preview.2', 'updater', 'held after recovery', 'operation receipt', 'do not automatically resend', 'theme publication and rollback', 'stable 3.1.0'] as $requiredText) {
             $this->assertStringContainsString($requiredText, strtolower($payload['upgrade_tip_en']));
         }
-        foreach (['预览版', 'CLI 0.4.0-preview.1', 'Skill 1.2.0-preview.1', 'Updater', '恢复限制', '操作收据', '不要自动重发', '主题发布和回滚', '稳定版 3.1.0'] as $requiredText) {
+        foreach (['预览版', 'CLI 0.4.0-preview.2', 'Skill 1.2.0-preview.2', 'Updater', '恢复限制', '操作收据', '不要自动重发', '主题发布和回滚', '稳定版 3.1.0'] as $requiredText) {
             $this->assertStringContainsString($requiredText, $payload['upgrade_tip_zh']);
         }
     }

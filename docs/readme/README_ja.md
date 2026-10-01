@@ -15,7 +15,7 @@ GEOFlowは、信頼できるナレッジ、AIコンテンツ制作、品質ゲ�
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 
-> **バージョンについて：** 現在のソース版はプレビュー版 `3.2.0-beta.1`、最新の安定版は `3.1.0` です。正確なソースバージョンは [`version.json`](../../version.json)、正式リリースとアップグレード手順は [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) を参照してください。本番環境では安定版リリースを使用するか、レビュー済みコミットに固定してください。
+> **バージョンについて：** 現在のソース版はプレビュー版 `3.2.0-beta.2`、最新の安定版は `3.1.0` です。正確なソースバージョンは [`version.json`](../../version.json)、正式リリースとアップグレード手順は [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) を参照してください。本番環境では安定版リリースを使用するか、レビュー済みコミットに固定してください。
 
 ---
 
@@ -123,8 +123,8 @@ GEOFlowは、実際の事業資料、明確なレビュー責任者、継続的�
 
 | コンポーネント | 現在のソースバージョンまたは状態 | 説明 |
 |----------------|----------------------------------|------|
-| GEOFlow Core | `3.2.0-beta.1` | Laravelアプリ、管理画面、フロントエンド、API、キュー、配信システム |
-| GEOFlow CLI | `0.4.0-preview.1` | `bin/geoflow` を同梱し、macOS、Linux、WSLをサポート |
+| GEOFlow Core | `3.2.0-beta.2` | Laravelアプリ、管理画面、フロントエンド、API、キュー、配信システム |
+| GEOFlow CLI | `0.4.0-preview.2` | `bin/geoflow` を同梱し、macOS、Linux、WSLをサポート |
 | Chrome運用アシスタント | `0.1.0` | ソースと配布用ファイルは `browser-extension/` と `dist/browser-extension/` に配置 |
 | GEOFlow Updater | 独立コンポーネント | 対象リリースと明示的に互換性がある署名版を使用。詳細は [geoflow-updater](https://github.com/yaojingang/geoflow-updater) を参照 |
 | 配信先Agent | チャンネルごとに生成 | ホーム、記事、静的アセット、Schema、sitemap、`llms.txt` を含む設定済みPHPパッケージを生成 |

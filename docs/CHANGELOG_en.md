@@ -5,20 +5,43 @@ This document tracks user-facing updates in the public repository. For future Gi
 
 ## Unreleased
 
-### Topics and theme management
+### v3.2.0-beta.2 (release preparation)
+
+This version covers public repository changes since `v3.2.0-beta.1`; source versions have been updated, while the GitHub Release and distribution archives remain unpublished. The latest stable release remains `3.1.0`.
+
+#### Topics and theme management
 
 - Content management adds a topic library with article grouping, ordering, bulk creation, review, publication, and recoverable trash.
 - Topic tasks use title libraries and AI generation, with per-row scopes and layouts, source validation, scheduled maintenance, pause and resume, and failed-run retries.
 - Public topic lists and detail pages provide structured summaries, genuine update dates, tags, source citations, FAQs, and three reading layouts.
 - Built-in themes support topic navigation, homepage modules, and article backlinks, while canonical paths, pagination, and sitemaps follow publication eligibility.
-- Theme settings separate the current theme, curated themes, personal themes, and archives, with search, version groups, bulk archive and restore, and built-in theme previews.
-- The GEOFlow Skill adds topic management, task creation, and topic theme design, replication, and editing workflows while preserving existing remote recovery and permission boundaries.
+- Theme settings separate the current theme, six curated themes, personal themes, and archives, with search, version groups, bulk archive and restore, and previews.
+- The GEOFlow Skill adds topic management, task creation, and topic theme design, replication, and editing workflows.
 
-### Security dependencies
+#### Article workflows and admin fixes
 
-- Update the Markdown parser, file storage, debug pages, and frontend request components to security fixes within their existing major versions and dependency ranges.
+- Article bulk actions use the current selection and report success, no change, blocked, conflict, or failure for each article.
+- Task auto-publication consistently follows review settings, the current AI passing score, and publication intervals, while respecting manual holds, rejection, pauses, and explicit non-publication markers in article text.
+- Late quality and optimization results cannot override newer manual actions, while publication and distribution are recorded separately with recoverable delivery handoffs.
+- Fix fixed and random category assignment, SEO keyword and summary settings, and add a preview-and-review tool for restoring historical article workflows.
+- Fix blank pages after saving AI Workspace settings, settings sections staying collapsed after canceling URL changes, and the DeepSeek API key placeholder.
+- Keep long site names within narrow screens in the news theme and preserve usable mobile navigation on home, article, and topic pages.
 
-See [Topics and theme management](implementations/topic-channel-implementation.md) for implementation and upgrade details. These changes have not been released.
+#### GEO discovery, theme video, and security
+
+- The primary site automatically serves `llms.txt` and `sitemap.txt`, while target-site packages add discovery files and sitemap shards that respect crawl policies and public-content eligibility.
+- Theme packages support validated short videos with click-to-play behavior, with video validation dependencies, upload limits, and request rate limits included in official containers.
+- Apply security fixes to the framework, Markdown parser, file storage, frontend request library, and HTML sanitizer.
+
+#### Versions and upgrade notes
+
+- Companion source versions are Core `3.2.0-beta.2`, CLI `0.4.0-preview.2`, and Skill `1.2.0-preview.2`, with an Updater build that explicitly declares compatibility with this Core contract.
+- Upgrading from `beta.1` adds nine maintenance-mode migrations, two for article workflows and seven for topics; back up the database, themes, and configuration, drain old workers, build frontend assets, and upgrade during maintenance.
+- API/CLI creation of article tasks requires an explicit `need_review` field; recheck older AI quality reports, keep historical held articles unchanged, and preview and review each restoration.
+- Theme videos require `ffprobe`, so custom runtime environments need the documented dependency and verified upload limits.
+- This remains a development and isolated-testing preview, with official signed distribution, native dual-architecture recovery, and production acceptance pending, while remote theme publication and rollback remain unavailable.
+
+See [Topics and theme management](implementations/topic-channel-implementation.md), [Article workflow recovery](operations/article-workflow-recovery.md), [Theme packages and video](site-themes/theme-packages.md), and [Remote management preview scope](api/remote-management-preview.md).
 
 ## 2026-09-16
 
