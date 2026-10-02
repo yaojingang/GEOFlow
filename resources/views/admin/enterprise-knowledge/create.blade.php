@@ -83,7 +83,7 @@
                             <i data-lucide="upload-cloud" class="h-8 w-8 text-gray-400"></i>
                             <span class="mt-3 text-sm font-semibold text-gray-900">{{ __('admin.enterprise_knowledge.dropzone_title') }}</span>
                             <span class="mt-1 text-xs text-gray-500">{{ __('admin.enterprise_knowledge.dropzone_desc') }}</span>
-                            <input id="enterprise_files" name="enterprise_files[]" type="file" multiple accept=".txt,.md,.markdown,.docx" class="sr-only">
+                            <input id="enterprise_files" name="enterprise_files[]" type="file" multiple accept=".txt,.md,.markdown,.docx,.pdf,.ppt,.pptx" class="sr-only">
                         </label>
                         <div id="enterprise-file-list" class="hidden rounded-md border border-gray-200 bg-white p-4 text-sm text-gray-600"></div>
                         @error('enterprise_files')
