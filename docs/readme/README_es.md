@@ -6,6 +6,8 @@
 
 Descubre cómo GEOFlow conecta conocimiento fiable, creación de contenido con IA, controles de calidad, revisión humana y publicación en varios sitios en un solo flujo de trabajo.
 
+https://github.com/user-attachments/assets/8dbbf34e-e9c1-4139-977a-8e78394e34d9
+
 *Vídeo de 60 segundos en chino*
 
 ---

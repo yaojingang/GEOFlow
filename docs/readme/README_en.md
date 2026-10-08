@@ -6,6 +6,8 @@
 
 See how GEOFlow connects trusted knowledge, AI content production, quality gates, human review, and multi-site publishing in one workflow.
 
+https://github.com/user-attachments/assets/8dbbf34e-e9c1-4139-977a-8e78394e34d9
+
 *60-second video in Chinese*
 
 ---

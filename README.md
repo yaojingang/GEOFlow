@@ -6,6 +6,8 @@
 
 从可信知识到 AI 内容生产、质量门禁、人工审核与多站点分发，60 秒看懂企业官网的 GEO 运营流程。
 
+https://github.com/user-attachments/assets/8dbbf34e-e9c1-4139-977a-8e78394e34d9
+
 *中文介绍 · 60 秒*
 
 ---

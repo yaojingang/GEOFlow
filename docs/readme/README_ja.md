@@ -6,6 +6,8 @@
 
 信頼できるナレッジからAIコンテンツ制作、品質チェック、人によるレビュー、複数サイトへの配信まで、GEOFlowの運用フローを紹介します。
 
+https://github.com/user-attachments/assets/8dbbf34e-e9c1-4139-977a-8e78394e34d9
+
 *中国語の紹介動画 · 60秒*
 
 ---
