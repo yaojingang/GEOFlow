@@ -2,6 +2,14 @@
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | [Português (BR)](README_pt_BR.md)
 
+## GEOFlow em 60 segundos
+
+Veja como o GEOFlow conecta conhecimento confiável, criação de conteúdo com IA, controle de qualidade, revisão humana e publicação em vários sites em um único fluxo de trabalho.
+
+*Vídeo de 60 segundos em chinês*
+
+---
+
 > Plataforma GEO de código aberto para operar sites empresariais
 
 O GEOFlow conecta conhecimento confiável, produção de conteúdo com IA, controle de qualidade, revisão humana, distribuição para vários sites e análise em um único fluxo operacional. Equipes de marca, crescimento e conteúdo podem usá-lo para operar um site corporativo, um canal GEO, um site de referência setorial ou uma plataforma interna de conteúdo, mantendo fontes, decisões, resultados de publicação e dados operacionais no mesmo sistema.
