@@ -2,6 +2,16 @@
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | [Português (BR)](README_pt_BR.md)
 
+## GEOFlow in 60 seconds
+
+See how GEOFlow connects trusted knowledge, AI content production, quality gates, human review, and multi-site publishing in one workflow.
+
+https://github.com/user-attachments/assets/8dbbf34e-e9c1-4139-977a-8e78394e34d9
+
+*60-second video in Chinese*
+
+---
+
 > An open-source GEO operations platform for enterprise websites
 
 GEOFlow connects trusted knowledge, AI content production, quality gates, human review, multi-site delivery, and analytics in one operating workflow. Brand, growth, and content teams can use it to run an enterprise website, a GEO content channel, an industry source site, or an internal content operations platform while keeping source material, decisions, publishing results, and operational data in one system.

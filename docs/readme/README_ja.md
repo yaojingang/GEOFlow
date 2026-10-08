@@ -2,6 +2,16 @@
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | [Português (BR)](README_pt_BR.md)
 
+## 60秒でわかるGEOFlow
+
+信頼できるナレッジからAIコンテンツ制作、品質チェック、人によるレビュー、複数サイトへの配信まで、GEOFlowの運用フローを紹介します。
+
+https://github.com/user-attachments/assets/8dbbf34e-e9c1-4139-977a-8e78394e34d9
+
+*中国語の紹介動画 · 60秒*
+
+---
+
 > 企業サイト向けのオープンソースGEO運用プラットフォーム
 
 GEOFlowは、信頼できるナレッジ、AIコンテンツ制作、品質ゲート、人によるレビュー、複数サイトへの配信、分析を一つの運用フローにつなぎます。ブランド、グロース、コンテンツの各チームは、企業サイト、GEOコンテンツチャンネル、業界情報サイト、社内コンテンツ運用基盤を構築し、資料、判断、公開結果、運用データを同じシステムで管理できます。
