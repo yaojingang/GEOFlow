@@ -566,9 +566,9 @@ class KnowledgeBaseController extends Controller
             'risk_level' => ['nullable', 'in:low,medium,high'],
             'review_status' => ['nullable', 'in:unreviewed,reviewed'],
             'import_action' => ['nullable', 'in:save,save_and_chunk'],
-            'knowledge_file' => ['nullable', File::types(['txt', 'md', 'docx'])->max(8 * 1024)],
+            'knowledge_file' => ['nullable', File::types(['txt', 'md', 'docx', 'pdf', 'ppt', 'pptx'])->max(8 * 1024)],
             'knowledge_files' => ['nullable', 'array', 'max:10'],
-            'knowledge_files.*' => ['file', File::types(['txt', 'md', 'docx'])->max(8 * 1024)],
+            'knowledge_files.*' => ['file', File::types(['txt', 'md', 'docx', 'pdf', 'ppt', 'pptx'])->max(8 * 1024)],
         ], [
             'knowledge_file.mimes' => __('admin.knowledge_bases.error.file_type_invalid'),
             'knowledge_file.max' => __('admin.knowledge_bases.error.file_too_large'),
@@ -1104,6 +1104,34 @@ class KnowledgeBaseController extends Controller
                 'content' => $content,
                 'file_type' => 'word',
             ];
+        }
+
+        if ($extension === 'pdf') {
+            $content = app(\App\Services\GeoFlow\KnowledgeSourceParser::class)->extractPdfContent($absolutePath);
+            if ($content === '') {
+                throw new \RuntimeException(__('admin.knowledge_bases.error.file_type_invalid'));
+            }
+
+            return [
+                'content' => $content,
+                'file_type' => 'pdf',
+            ];
+        }
+
+        if ($extension === 'pptx') {
+            $content = app(\App\Services\GeoFlow\KnowledgeSourceParser::class)->extractPptxContent($absolutePath);
+            if ($content === '') {
+                throw new \RuntimeException(__('admin.knowledge_bases.error.file_type_invalid'));
+            }
+
+            return [
+                'content' => $content,
+                'file_type' => 'presentation',
+            ];
+        }
+
+        if ($extension === 'ppt') {
+            throw new \RuntimeException(__('admin.knowledge_bases.error.ppt_legacy_not_supported'));
         }
 
         throw new \RuntimeException(__('admin.knowledge_bases.error.file_type_invalid'));
