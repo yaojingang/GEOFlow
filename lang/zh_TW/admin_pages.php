@@ -22,6 +22,7 @@ return [
     'ai_visibility' => 'AI 可見性',
     'lead_analytics' => '線索分析',
     'distribution_analytics' => '分發分析',
+    'link_pool' => '內鏈投放',
     'tasks' => '任務管理',
     'task_workers' => 'Worker 監控',
     'task_jobs' => '任務記錄',

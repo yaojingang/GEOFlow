@@ -103,6 +103,7 @@ return array_replace_recursive($base, [
         'api_tokens' => 'Tokens de API',
         'analytics' => 'Análise de Dados',
         'distribution' => 'Distribuição',
+        'link_pool' => 'Campanhas de Links Internos',
     ],
     'ui_v3' => [
         'skip_to_content' => 'Ir para o conteúdo principal',

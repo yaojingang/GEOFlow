@@ -107,6 +107,7 @@ return [
         'admin_management' => '用户管理',
         'activity_logs' => '操作日志',
         'api_tokens' => 'API Tokens',
+        'link_pool' => '内链投放',
     ],
     'ui_v3' => [
         'skip_to_content' => '跳到主要内容',

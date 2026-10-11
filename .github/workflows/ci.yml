@@ -105,6 +105,18 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Test link pool through real browser forms and public pages
+        run: '"$RUNNER_TEMP/geoflow-browser-venv/bin/python" tests/Browser/link_pool_smoke.py --output-dir "$RUNNER_TEMP/geoflow-link-pool-browser-proof"'
+
+      - name: Upload link pool browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: link-pool-browser-proof
+          path: ${{ runner.temp }}/geoflow-link-pool-browser-proof
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Audit PHP dependencies
         run: composer audit --locked --no-interaction
 

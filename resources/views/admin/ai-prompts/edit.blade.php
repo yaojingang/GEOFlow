@@ -30,17 +30,27 @@
 
             @include('admin.ai-prompts._form-fields', ['mode' => 'edit'])
 
-            <div class="flex flex-wrap items-center justify-start gap-3 border-t border-gray-200 bg-gray-50 px-5 py-4 sm:justify-end sm:px-6">
-                <a href="{{ route('admin.ai-prompts') }}" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-[background-color,transform] duration-150 hover:bg-gray-100 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2">
-                    {{ __('admin.button.cancel') }}
-                </a>
-                @if (blank($prompt->system_key ?? null))
-                    <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-green-700 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2">
-                        <i data-lucide="save" class="mr-2 h-4 w-4"></i>
-                        {{ __('admin.button.save') }}
+            <div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-gray-50 px-5 py-4 sm:px-6">
+                @if ($prompt->type === 'content')
+                    <button type="button" data-prompt-test-open class="inline-flex min-h-10 items-center justify-center rounded-lg border border-green-600 bg-white px-4 py-2 text-sm font-semibold text-green-700 hover:bg-green-50 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2">
+                        <i data-lucide="play" class="mr-2 h-4 w-4"></i>{{ __('prompt_test.button') }}
                     </button>
                 @endif
+                <div class="ml-auto flex flex-wrap items-center gap-3">
+                    <a href="{{ route('admin.ai-prompts') }}" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-[background-color,transform] duration-150 hover:bg-gray-100 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2">
+                        {{ __('admin.button.cancel') }}
+                    </a>
+                    @if (blank($prompt->system_key ?? null))
+                        <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-green-700 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2">
+                            <i data-lucide="save" class="mr-2 h-4 w-4"></i>
+                            {{ __('admin.button.save') }}
+                        </button>
+                    @endif
+                </div>
             </div>
         </form>
+        @if ($prompt->type === 'content')
+            @include('admin.ai-prompts._test', ['prompt' => $prompt])
+        @endif
     </div>
 @endsection

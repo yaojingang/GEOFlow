@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\Site\LinkPoolThemeReadbackSignature;
 use App\Support\Site\ThemeRevisionContext;
 use Closure;
 use Illuminate\Http\Request;
@@ -17,6 +18,9 @@ class ScopeThemeRevision
      */
     public function handle(Request $request, Closure $next): Response
     {
+        if (LinkPoolThemeReadbackSignature::valid($request)) {
+            $request->attributes->set('link_pool.theme_readback', true);
+        }
         $context = app(ThemeRevisionContext::class);
         $context->reset();
         $finder = View::getFinder();
@@ -27,6 +31,7 @@ class ScopeThemeRevision
             if (($snapshot['revision_id'] ?? null) !== null
                 && str_starts_with((string) $request->route()?->getName(), 'site.')
                 && str_contains((string) $response->headers->get('Content-Type'), 'text/html')) {
+                $response->headers->set('X-GEOFlow-Theme-Revision', $snapshot['revision_id']);
                 $source = '/themes/'.$snapshot['theme_id'].'/';
                 $target = '/theme-assets/'.$snapshot['revision_id'].'/';
                 $response->setContent(str_replace($source, $target, (string) $response->getContent()));

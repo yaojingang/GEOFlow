@@ -3,6 +3,7 @@
     'label',
     'name',
     'embedded' => false,
+    'wrap' => false,
 ])
 
 @php
@@ -37,7 +38,7 @@
 @endphp
 
 <nav
-    class="{{ $embedded ? 'min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'gf-context-nav' }}"
+    class="{{ $embedded ? ($wrap ? 'min-w-0' : 'min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden') : 'gf-context-nav' }}"
     data-section-navigation="{{ $name }}"
     @if($name === 'settings') data-settings-navigation @endif
     @if($name === 'ai-configurator') data-ai-configurator-navigation @endif
@@ -47,7 +48,7 @@
     @if($name === 'distribution') data-distribution-navigation @endif
     aria-label="{{ $label }}"
 >
-    <div class="{{ $embedded ? 'flex min-w-max items-end gap-6' : 'gf-context-nav__inner' }}">
+    <div class="{{ $embedded ? ($wrap ? 'flex flex-wrap items-end gap-x-6 gap-y-2' : 'flex min-w-max items-end gap-6') : 'gf-context-nav__inner' }}">
         @foreach ($items as $item)
             @php
                 $href = \App\Support\AdminWeb::routePath($item['route'], $item['parameters'] ?? []);

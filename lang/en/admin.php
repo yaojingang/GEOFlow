@@ -107,6 +107,7 @@ return [
         'admin_management' => 'User Management',
         'activity_logs' => 'Activity Logs',
         'api_tokens' => 'API Tokens',
+        'link_pool' => 'Internal Link Campaigns',
     ],
     'ui_v3' => [
         'skip_to_content' => 'Skip to main content',

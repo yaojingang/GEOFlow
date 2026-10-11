@@ -55,6 +55,11 @@ final class AdminUiRegistry
                 'patterns' => ['admin.distribution.*'], 'recent_tone' => 'violet',
             ],
             [
+                'key' => 'link_pool', 'group' => 'distribution', 'label_key' => 'admin.nav.link_pool',
+                'icon' => 'link-2', 'route' => 'admin.link-pool.overview', 'protected' => false,
+                'patterns' => ['admin.link-pool.*'], 'recent_tone' => 'blue',
+            ],
+            [
                 'key' => 'ai_config', 'group' => 'system', 'label_key' => 'admin.nav.ai_config',
                 'icon' => 'network', 'route' => 'admin.ai.configurator', 'protected' => false,
                 'patterns' => [
@@ -132,6 +137,15 @@ final class AdminUiRegistry
             'admin.analytics.ai-visibility' => ['key' => 'ai_visibility', 'icon' => 'eye', 'body_heading' => 'hidden'],
             'admin.analytics.leads' => ['key' => 'lead_analytics', 'icon' => 'users-round', 'body_heading' => 'hidden'],
             'admin.analytics.distribution' => ['key' => 'distribution_analytics', 'icon' => 'radio-tower', 'body_heading' => 'hidden'],
+            'admin.link-pool.overview' => ['key' => 'link_pool', 'icon' => 'link-2', 'body_heading' => 'hidden'],
+            'admin.link-pool.targets' => ['key' => 'link_pool', 'icon' => 'link-2', 'body_heading' => 'hidden'],
+            'admin.link-pool.import.form' => ['key' => 'link_pool', 'icon' => 'link-2', 'body_heading' => 'hidden'],
+            'admin.link-pool.campaigns.index' => ['key' => 'link_pool', 'icon' => 'link-2', 'body_heading' => 'hidden'],
+            'admin.link-pool.campaigns.create' => ['key' => 'link_pool', 'icon' => 'link-2', 'body_heading' => 'hidden'],
+            'admin.link-pool.campaigns.edit' => ['key' => 'link_pool', 'icon' => 'link-2', 'body_heading' => 'hidden'],
+            'admin.link-pool.preview' => ['key' => 'link_pool', 'icon' => 'link-2', 'body_heading' => 'hidden'],
+            'admin.link-pool.dashboard' => ['key' => 'link_pool', 'icon' => 'link-2', 'body_heading' => 'hidden'],
+            'admin.link-pool.settings' => ['key' => 'link_pool', 'icon' => 'link-2', 'body_heading' => 'hidden'],
 
             'admin.tasks.index' => ['key' => 'tasks', 'icon' => 'workflow', 'body_heading' => 'hidden'],
             'admin.tasks.workers' => ['key' => 'task_workers', 'icon' => 'cpu', 'body_heading' => 'hidden'],
@@ -279,7 +293,8 @@ final class AdminUiRegistry
     public function navigation(Admin $admin): array
     {
         $modules = collect($this->modules())
-            ->filter(fn (array $module): bool => ! $module['protected'] || $admin->canManageProtectedWorkflows());
+            ->filter(fn (array $module): bool => ! $module['protected'] || $admin->canManageProtectedWorkflows())
+            ->filter(fn (array $module): bool => $module['key'] !== 'link_pool' || ! $admin->canManageProtectedWorkflows());
 
         return collect($this->groups())
             ->map(function (?string $labelKey, string $group) use ($modules): array {
@@ -304,6 +319,9 @@ final class AdminUiRegistry
     public function currentPage(Admin $admin, ?string $routeName, string $legacyActive = ''): array
     {
         $activeKey = $this->activeKey($routeName, $legacyActive);
+        if ($activeKey === 'link_pool' && $admin->canManageProtectedWorkflows()) {
+            $activeKey = 'distribution';
+        }
 
         foreach ($this->navigation($admin) as $group) {
             foreach ($group['items'] as $item) {
@@ -375,6 +393,7 @@ final class AdminUiRegistry
             'redirect' => ['admin.entry', 'admin.locale.switch', 'admin.security-settings.index'],
             'special' => ['admin.site-settings.themes.preview.frame', 'admin.site-settings.theme-packages.preview.frame', 'admin.login', 'admin.site-settings.theme-replications.preview'],
             'download' => [
+                'admin.link-pool.dashboard.csv',
                 'admin.url-changes.download',
                 'admin.leads.export', 'admin.manual-publications.export',
                 'admin.articles.batch.export-markdown.download',
@@ -386,10 +405,13 @@ final class AdminUiRegistry
             'binary' => ['admin.ai-workspace.media.show'],
             'endpoint' => [
                 'admin.topics.runs.status', 'admin.topics.batches.status',
+                'admin.link-pool.theme-adaptations.*',
+                'admin.link-pool.targets.check',
                 'admin.url-changes.status', 'admin.url-changes.articles',
                 'admin.recent.index',
                 'admin.articles.ai-quality.status', 'admin.articles.ai-quality.optimization.candidate',
                 'admin.articles.editor.titles',
+                'admin.ai-prompts.test-options', 'admin.ai-prompts.test', 'admin.ai-prompts.tests.*',
                 'admin.distribution.sync-settings*.preview',
                 'admin.enterprise-knowledge.status', 'admin.site-settings.theme-replications.status',
                 'admin.system-updates.runs.status', 'admin.tasks.health', 'admin.url-import.status',

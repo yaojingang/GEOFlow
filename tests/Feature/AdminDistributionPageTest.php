@@ -112,7 +112,8 @@ class AdminDistributionPageTest extends TestCase
                 ->assertSee('data-distribution-navigation', false)
                 ->assertSee(AdminWeb::routePath('admin.distribution.hosted-sites.index'), false)
                 ->assertSee(AdminWeb::routePath('admin.distribution.jobs'), false)
-                ->assertSee(AdminWeb::routePath('admin.distribution.sync-settings-all.preview'), false);
+                ->assertSee(AdminWeb::routePath('admin.distribution.sync-settings-all.preview'), false)
+                ->assertSee(AdminWeb::routePath('admin.link-pool.overview'), false);
 
             $document = new \DOMDocument;
             $document->loadHTML((string) $response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
@@ -122,16 +123,16 @@ class AdminDistributionPageTest extends TestCase
             $activeItems = $xpath->query('.//*[@aria-current="page"]', $navigation);
 
             self::assertNotNull($navigation, $url);
-            self::assertSame(3, $items?->length, $url);
+            self::assertSame(4, $items?->length, $url);
             self::assertSame(
-                ['hosted-sites', 'distribution-jobs', 'sync-all'],
+                ['hosted-sites', 'distribution-jobs', 'sync-all', 'link-pool'],
                 array_map(
                     static fn (\DOMNode $item): string => (string) $item->attributes?->getNamedItem('data-distribution-navigation-item')?->nodeValue,
                     iterator_to_array($items),
                 ),
                 $url,
             );
-            self::assertSame(3, $xpath->query('.//*[@data-distribution-navigation-icon]', $navigation)?->length, $url);
+            self::assertSame(4, $xpath->query('.//*[@data-distribution-navigation-icon]', $navigation)?->length, $url);
             self::assertSame($activeKey === null ? 0 : 1, $activeItems?->length, $url);
 
             if ($activeKey !== null) {

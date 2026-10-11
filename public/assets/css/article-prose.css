@@ -1,0 +1,39 @@
+/* Shared default-site article typography and prompt-test preview. */
+.article-prose { color: #273142; font-size: 1.05rem; line-height: 1.95; overflow-wrap: anywhere; }
+.article-prose > * { max-width: 100%; }
+.article-prose h1, .article-prose h2, .article-prose h3, .article-prose h4, .article-prose h5, .article-prose h6 { color: #111827; font-weight: 600; line-height: 1.35; margin: 1.75rem 0 1rem; scroll-margin-top: 6rem; }
+.article-prose h1 { font-size: 2rem; }
+.article-prose h2 { font-size: 1.6rem; line-height: 1.25; letter-spacing: -.03em; margin-top: 3rem; }
+.article-prose h3 { font-size: 1.28rem; letter-spacing: -.02em; margin: 2.1rem 0 .85rem; }
+.article-prose h4 { font-size: 1.15rem; }
+.article-prose h5 { font-size: 1.05rem; }
+.article-prose h6 { font-size: 1rem; }
+.article-prose > :first-child { margin-top: 0; }
+.article-prose p, .article-prose ul, .article-prose ol { margin-bottom: 1.2rem; }
+.article-prose p + p { margin-top: -.1rem; }
+.article-prose ul, .article-prose ol { padding-left: 1.5rem; }
+.article-prose ul { list-style-type: disc; }
+.article-prose ol { list-style-type: decimal; }
+.article-prose li > ul, .article-prose li > ol { margin-bottom: .4rem; }
+.article-prose strong { font-weight: 700; }
+.article-prose em { font-style: italic; }
+.article-prose blockquote { font-size: 15px; line-height: 1.6; border-left: 4px solid #6b7280; background: #f9fafb; padding: 1rem; margin: 1.5rem 0; font-style: italic; border-radius: .5rem; color: #4b5563; }
+.article-prose blockquote > :last-child { margin-bottom: 0; }
+.article-prose pre { background: #111827; color: #f9fafb; padding: 1rem; border-radius: .75rem; overflow-x: auto; margin-bottom: 1rem; white-space: pre; }
+.article-prose code { background: #f3f4f6; padding: .15rem .4rem; border-radius: .35rem; font-size: .875em; }
+.article-prose pre code { background: transparent; padding: 0; color: inherit; }
+.article-prose img { display: block; width: auto; max-width: 100%; height: auto; margin: 2rem auto; border-radius: 1rem; }
+.article-prose a { color: #1d4ed8; text-decoration: none; border-bottom: 1px solid rgba(37,99,235,.22); }
+.article-prose a:hover { text-decoration: underline; color: #1e40af; border-bottom-color: rgba(30,64,175,.42); }
+.article-prose hr { border: 0; border-top: 1px solid #e5e7eb; margin: 2rem 0; }
+.article-prose .article-table-wrap { width: 100%; overflow-x: auto; margin: 1.75rem 0; border: 1px solid #e5e7eb; border-radius: 1rem; background: #fff; box-shadow: 0 8px 24px rgba(15,23,42,.04); }
+.article-prose .article-table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: .98rem; line-height: 1.75; }
+.article-prose .article-table thead { background: #f8fafc; }
+.article-prose .article-table th, .article-prose .article-table td { padding: .9rem 1rem; text-align: left; vertical-align: top; border-bottom: 1px solid #e5e7eb; color: #334155; white-space: normal; }
+.article-prose .article-table th { font-weight: 700; color: #0f172a; }
+.article-prose .article-table tbody tr:nth-child(even) { background: #fcfdff; }
+.article-prose .article-table tbody tr:last-child td { border-bottom: none; }
+.article-prose .article-table code { white-space: nowrap; }
+.article-prose .task-list-item, .article-prose li:has(> input[type="checkbox"]) { list-style: none; margin-left: -1.4rem; }
+.article-prose li > input[type="checkbox"] { width: 1rem; height: 1rem; margin-right: .55rem; vertical-align: -.12em; accent-color: #111827; }
+.article-prose del { color: #64748b; text-decoration-thickness: .08em; }

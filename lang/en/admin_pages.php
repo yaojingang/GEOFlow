@@ -26,6 +26,7 @@ return [
     'ai_visibility' => 'AI Visibility',
     'lead_analytics' => 'Lead Analytics',
     'distribution_analytics' => 'Distribution Analytics',
+    'link_pool' => 'Internal Link Campaigns',
     'tasks' => 'Task Management',
     'task_workers' => 'Worker Monitor',
     'task_jobs' => 'Task Runs',

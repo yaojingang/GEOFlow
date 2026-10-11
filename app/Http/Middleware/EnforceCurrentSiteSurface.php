@@ -70,7 +70,8 @@ class EnforceCurrentSiteSurface
         $method = strtoupper($request->method());
 
         if ($method === 'POST') {
-            return preg_match('#^/forms/[a-zA-Z0-9_-]+/submissions$#', $path) === 1;
+            return $path === '/link-pool/events'
+                || preg_match('#^/forms/[a-zA-Z0-9_-]+/submissions$#', $path) === 1;
         }
 
         if (! in_array($method, ['GET', 'HEAD'], true)) {

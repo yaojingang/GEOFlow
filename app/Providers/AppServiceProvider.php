@@ -47,6 +47,7 @@ use App\Services\Topics\TopicSiteSettings;
 use App\Services\Topics\TopicViewBuilder;
 use App\Support\AdminUiRegistry;
 use App\Support\Site\CurrentSite;
+use App\Support\Site\LinkPoolThemeValidationContext;
 use App\Support\Site\SiteThemePreviewContext;
 use App\Support\Site\ThemeRevisionContext;
 use App\View\Composers\SiteLayoutComposer;
@@ -78,6 +79,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->scoped(TopicViewBuilder::class);
         $this->app->scoped(TopicReadModel::class);
         $this->app->scoped(ThemeRevisionContext::class);
+        $this->app->scoped(LinkPoolThemeValidationContext::class);
         $fixedContextCapability = new \stdClass;
         $trustedTerminal = Closure::fromCallable(Utils::chooseHandler());
 
@@ -176,6 +178,11 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(WorkerStopping::class, function (): void {
             app(ArticleAiQualityWorkerLiveness::class)->removeCurrentProcess();
         });
+        foreach (['read' => 60, 'generate' => 10, 'diagnose' => 10, 'cancel' => 30] as $operation => $limit) {
+            RateLimiter::for('prompt-test-'.$operation, fn (Request $request): Limit => Limit::perMinute($limit)
+                ->by('prompt-test-'.$operation.':admin:'.($request->user('admin')?->id ?? $request->ip())));
+        }
+
         RateLimiter::for('admin-login', function (Request $request): Limit {
             return Limit::perMinute(30)->by('admin-login-ip:'.$request->ip());
         });

@@ -13,6 +13,7 @@ use App\Models\HostedSiteAllocationRequest;
 use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
 use App\Models\Task;
+use App\Services\LinkPool\LinkPoolTargetService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -113,6 +114,7 @@ class DistributionChannelDeletionService
         $hostedLeadCount = $hostedProfile && Schema::hasColumn('lead_submissions', 'hosted_site_profile_id')
             ? DB::table('lead_submissions')->where('hosted_site_profile_id', (int) $hostedProfile->id)->count()
             : 0;
+        $linkPoolImpact = $hostedProfile ? $this->linkPoolImpact('hosted:'.$hostedProfile->id) : [];
         $remoteCleanupManifest = $distributions
             ->filter(fn (ArticleDistribution $distribution): bool => $this->hasRemoteContent($distribution))
             ->map(fn (ArticleDistribution $distribution): array => [
@@ -157,6 +159,7 @@ class DistributionChannelDeletionService
                 'view_log_count' => $hostedViewLogCount,
                 'lead_count' => $hostedLeadCount,
             ],
+            'link_pool' => $linkPoolImpact,
         ];
 
         return [
@@ -172,6 +175,7 @@ class DistributionChannelDeletionService
             'hosted_allocation_request_count' => $hostedAllocationRequestCount,
             'hosted_view_log_count' => $hostedViewLogCount,
             'hosted_lead_count' => $hostedLeadCount,
+            'link_pool' => $linkPoolImpact,
             'queued_count' => $distributions->where('status', 'queued')->count(),
             'sending_count' => $sending->count(),
             'fresh_sending_count' => $freshSending->count(),
@@ -426,6 +430,9 @@ class DistributionChannelDeletionService
             }
             $lockedChannel->secrets()->delete();
             $lockedChannel->operations()->delete();
+            if ($hostedProfile) {
+                $this->deleteLinkPoolData('hosted:'.$hostedProfile->id);
+            }
 
             $auditImpact = $impact;
             unset($auditImpact['impact_fingerprint'], $auditImpact['remote_cleanup_manifest']);
@@ -470,6 +477,60 @@ class DistributionChannelDeletionService
         }
 
         return (string) $distribution->action !== 'delete' || (string) $distribution->status !== 'synced';
+    }
+
+    /** @return array<string,mixed> */
+    private function linkPoolImpact(string $siteKey): array
+    {
+        if (! Schema::hasTable('link_pool_targets')) {
+            return [];
+        }
+        $targets = DB::table('link_pool_targets')->where('target_site_key', $siteKey)->orderBy('id')->pluck('id')->all();
+        $campaigns = DB::table('link_campaigns')->where('source_site_key', $siteKey)->orderBy('id')->pluck('id')->all();
+        $referringRelations = DB::table('link_campaign_targets')->whereIn('target_id', $targets)
+            ->orderBy('id')->pluck('id')->all();
+        $placementIds = DB::table('link_placements')->where('source_site_key', $siteKey)
+            ->orWhere('target_site_key', $siteKey)->orderBy('id')->pluck('id')->all();
+
+        return [
+            'target_ids' => $targets,
+            'campaign_ids' => $campaigns,
+            'referring_relation_hash' => hash('sha256', implode(',', $referringRelations)),
+            'placement_hash' => hash('sha256', implode(',', $placementIds)),
+            'source_batch_count' => DB::table('link_selection_batches')->where('source_site_key', $siteKey)->count(),
+            'source_head_count' => DB::table('link_selection_heads')->where('source_site_key', $siteKey)->count(),
+            'placement_count' => DB::table('link_placements')->where('source_site_key', $siteKey)->orWhere('target_site_key', $siteKey)->count(),
+            'event_count' => DB::table('link_pool_events')->where('source_site_key', $siteKey)->orWhere('target_site_key', $siteKey)->count(),
+            'metric_totals' => DB::table('link_metrics_daily')->where('source_site_key', $siteKey)->orWhere('target_site_key', $siteKey)
+                ->selectRaw('COUNT(*) as rows, SUM(html_served) as html_served, SUM(viewable) as viewable, SUM(human_clicks) as clicks')->first(),
+        ];
+    }
+
+    private function deleteLinkPoolData(string $siteKey): void
+    {
+        if (! Schema::hasTable('link_pool_targets')) {
+            return;
+        }
+        $targetIds = DB::table('link_pool_targets')->where('target_site_key', $siteKey)->pluck('id')->all();
+        $campaignIds = DB::table('link_campaigns')->where('source_site_key', $siteKey)->pluck('id')->all();
+        $affectedCampaignIds = DB::table('link_campaign_targets')->whereIn('target_id', $targetIds)
+            ->whereNotIn('campaign_id', $campaignIds)->pluck('campaign_id')->unique()->all();
+        DB::table('link_pool_events')->where('source_site_key', $siteKey)->orWhere('target_site_key', $siteKey)->delete();
+        DB::table('link_metrics_daily')->where('source_site_key', $siteKey)->orWhere('target_site_key', $siteKey)->delete();
+        DB::table('link_placements')->where('source_site_key', $siteKey)->orWhere('target_site_key', $siteKey)->delete();
+        DB::table('link_selection_heads')->where('source_site_key', $siteKey)->delete();
+        DB::table('link_selection_batches')->where('source_site_key', $siteKey)->delete();
+        DB::table('link_campaign_targets')->whereIn('campaign_id', $campaignIds)->orWhereIn('target_id', $targetIds)->delete();
+        DB::table('link_campaign_sources')->whereIn('campaign_id', $campaignIds)->delete();
+        DB::table('link_campaign_drafts')->whereIn('campaign_id', $campaignIds)->delete();
+        DB::table('link_campaigns')->whereIn('id', $campaignIds)->delete();
+        DB::table('link_pool_targets')->whereIn('id', $targetIds)->delete();
+        if ($targetIds !== []) {
+            app(LinkPoolTargetService::class)->advanceLibraryRevision();
+        }
+        if ($affectedCampaignIds !== []) {
+            DB::table('link_campaigns')->whereIn('id', $affectedCampaignIds)->increment('revision');
+        }
     }
 
     private function auditRemoteUrl(?string $remoteUrl): ?string

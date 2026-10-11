@@ -28,6 +28,7 @@ use App\Http\Middleware\ResolveCurrentSite;
 use App\Http\Middleware\ScopeThemeRevision;
 use App\Http\Middleware\SiteWebLocale;
 use App\Http\Middleware\TrackAdminRecentPage;
+use App\Services\Api\ThemeReleaseService;
 use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
@@ -61,6 +62,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prepend(LimitArticleMarkdownExportRequestSize::class);
         $middleware->trustHosts(static function (): array {
             $patterns = [];
+            $readbackBase = ThemeReleaseService::trustedReadbackBase();
+            if ($readbackBase) {
+                $patterns[] = '^'.preg_quote((string) parse_url($readbackBase, PHP_URL_HOST), '/').'$';
+            }
             foreach (config('geoflow.hosted_sites.primary_hosts', []) as $hostname) {
                 $patterns[] = '^'.preg_quote($hostname, '/').'$';
             }
@@ -168,6 +173,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(function (ApiException $e, Request $request) {
             if (! $request->is('api/*')) {
+                if ($request->expectsJson() && str_starts_with((string) $request->route()?->getName(), 'admin.link-pool.theme-adaptations.')) {
+                    return response()->json(['message' => $e->getMessage(), 'error_code' => $e->getErrorCode()], $e->getHttpStatus())
+                        ->header('Cache-Control', 'no-store, private');
+                }
+
                 return response($e->getMessage(), $e->getHttpStatus())
                     ->header('Content-Type', 'text/plain; charset=utf-8')
                     ->header('Cache-Control', 'no-store, private');

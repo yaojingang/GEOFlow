@@ -1,7 +1,7 @@
 {
     "schema_version": 1,
     "support_stage": "remote-management-preview",
-    "admin_route_count": 388,
+    "admin_route_count": 418,
     "legacy_cli_operations": [
         {
             "name": "article.ai-optimization-apply",
@@ -1032,6 +1032,51 @@
             "uri": "geo_admin/ai-prompts/{promptId}/edit",
             "name": "admin.ai-prompts.edit",
             "action": "App\\Http\\Controllers\\Admin\\AiPromptController@edit",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-prompts/{promptId}/test-options",
+            "name": "admin.ai-prompts.test-options",
+            "action": "App\\Http\\Controllers\\Admin\\AiPromptTestController@options",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-prompts/{promptId}/test",
+            "name": "admin.ai-prompts.test",
+            "action": "App\\Http\\Controllers\\Admin\\AiPromptTestController@generate",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-prompts/{promptId}/tests/{runId}/cancel",
+            "name": "admin.ai-prompts.tests.cancel",
+            "action": "App\\Http\\Controllers\\Admin\\AiPromptTestController@cancel",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/ai-prompts/{promptId}/tests/{runId}/diagnose",
+            "name": "admin.ai-prompts.tests.diagnose",
+            "action": "App\\Http\\Controllers\\Admin\\AiPromptTestController@diagnose",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/ai-prompts/{promptId}/tests/{runId}",
+            "name": "admin.ai-prompts.tests.show",
+            "action": "App\\Http\\Controllers\\Admin\\AiPromptTestController@show",
             "remote_coverage": "pending_domain_mapping"
         },
         {
@@ -2859,6 +2904,231 @@
             "uri": "geo_admin/leads",
             "name": "admin.leads.index",
             "action": "App\\Http\\Controllers\\Admin\\LeadController@index",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/link-pool/campaigns/create",
+            "name": "admin.link-pool.campaigns.create",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@createCampaign",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/link-pool/campaigns/draft",
+            "name": "admin.link-pool.campaigns.draft",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@saveCampaignDraft",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/link-pool/campaigns/{campaignId}/copy",
+            "name": "admin.link-pool.campaigns.copy",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@copyCampaign",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/link-pool/campaigns/{campaignId}/pause",
+            "name": "admin.link-pool.campaigns.pause",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@pauseCampaign",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/link-pool/campaigns/{campaignId}/publish",
+            "name": "admin.link-pool.campaigns.publish",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@publishCampaign",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/link-pool/campaigns/{campaignId}",
+            "name": "admin.link-pool.campaigns.edit",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@editCampaign",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/link-pool/campaigns",
+            "name": "admin.link-pool.campaigns.index",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@campaigns",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/link-pool/dashboard.csv",
+            "name": "admin.link-pool.dashboard.csv",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@dashboardCsv",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/link-pool/dashboard",
+            "name": "admin.link-pool.dashboard",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@dashboard",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/link-pool/emergency",
+            "name": "admin.link-pool.emergency",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@emergency",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/link-pool/import/errors",
+            "name": "admin.link-pool.import.errors",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@importErrors",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/link-pool/import/preflight",
+            "name": "admin.link-pool.import.preflight",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@preflight",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/link-pool/import/{batchId}/undo",
+            "name": "admin.link-pool.import.undo",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@undoImport",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/link-pool/import",
+            "name": "admin.link-pool.import.form",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@importForm",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/link-pool/import",
+            "name": "admin.link-pool.import.store",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@import",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/link-pool/preview",
+            "name": "admin.link-pool.preview",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@preview",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/link-pool/settings",
+            "name": "admin.link-pool.settings",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@settings",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/link-pool/settings",
+            "name": "admin.link-pool.settings.update",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@updateSettings",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/link-pool/targets/{targetId}/check",
+            "name": "admin.link-pool.targets.check",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@checkTarget",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PATCH"
+            ],
+            "uri": "geo_admin/link-pool/targets/{targetId}",
+            "name": "admin.link-pool.targets.update",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@updateTarget",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/link-pool/targets",
+            "name": "admin.link-pool.targets",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@targets",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/link-pool/theme-adaptations/{adaptationId}/rollback",
+            "name": "admin.link-pool.theme-adaptations.rollback",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolThemeAdaptationController@rollback",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/link-pool/theme-adaptations/{adaptationId}",
+            "name": "admin.link-pool.theme-adaptations.show",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolThemeAdaptationController@show",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/link-pool/theme-adaptations",
+            "name": "admin.link-pool.theme-adaptations.store",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolThemeAdaptationController@store",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "GET"
+            ],
+            "uri": "geo_admin/link-pool",
+            "name": "admin.link-pool.overview",
+            "action": "App\\Http\\Controllers\\Admin\\LinkPoolController@overview",
             "remote_coverage": "pending_domain_mapping"
         },
         {

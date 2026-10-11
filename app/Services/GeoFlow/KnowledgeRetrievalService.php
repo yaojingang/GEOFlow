@@ -7,6 +7,7 @@ use App\Data\Ai\KnowledgeQueryEmbeddingResult;
 use App\Models\Admin;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -85,6 +86,7 @@ class KnowledgeRetrievalService
         int $maxChars = 3200,
         Admin|AiExecutionContext|null $identity = null,
         ?string $retrievalRequestId = null,
+        ?Closure $assertActive = null,
     ): array {
         $retrievalRequestId ??= (string) Str::uuid();
         $evidence = $this->boundedEvidenceForContext(
@@ -94,6 +96,7 @@ class KnowledgeRetrievalService
                 max($limit * 4, 16),
                 identity: $identity,
                 retrievalRequestId: $retrievalRequestId,
+                assertActive: $assertActive,
             ),
             $limit,
             $maxChars,
@@ -217,6 +220,7 @@ class KnowledgeRetrievalService
         array $servingGenerations = [],
         Admin|AiExecutionContext|null $identity = null,
         ?string $retrievalRequestId = null,
+        ?Closure $assertActive = null,
     ): array {
         $retrievalRequestId ??= (string) Str::uuid();
         $knowledgeBaseIds = collect($knowledgeBaseIds)
@@ -241,6 +245,7 @@ class KnowledgeRetrievalService
                 $identity,
                 $retrievalRequestId,
                 1,
+                $assertActive,
             );
         }
 
@@ -257,6 +262,7 @@ class KnowledgeRetrievalService
                 $identity,
                 $retrievalRequestId,
                 $order + 1,
+                $assertActive,
             ) as $candidate) {
                 $candidate['knowledge_base_rank'] = $order;
                 $merged[] = $candidate;
@@ -294,7 +300,9 @@ class KnowledgeRetrievalService
         Admin|AiExecutionContext|null $identity = null,
         ?string $retrievalRequestId = null,
         int $queryOrdinal = 1,
+        ?Closure $assertActive = null,
     ): array {
+        $assertActive?->__invoke();
         $retrievalRequestId ??= (string) Str::uuid();
         /** @var KnowledgeBase|null $knowledgeBase */
         $knowledgeBase = KnowledgeBase::query()
@@ -322,6 +330,7 @@ class KnowledgeRetrievalService
                 $identity,
                 $retrievalRequestId,
                 $queryOrdinal,
+                $assertActive,
             )
             : KnowledgeQueryEmbeddingResult::incompatible(
                 $allowRemoteEmbedding && trim($query) !== '' && ! $servingProfileCompatible
