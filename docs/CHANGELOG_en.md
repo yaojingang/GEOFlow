@@ -5,6 +5,17 @@ This document tracks user-facing updates in the public repository. For future Gi
 
 ## Unreleased
 
+### Link pool and live prompt testing
+
+- Distribution management adds internal link placement for the primary site and first-party hosted sites, including a link library, import preflight, campaigns, recommendation previews, site controls, and an emergency stop.
+- Article recommendations support site articles and health-checked external links, selected by source site, category, keywords, and campaign rules. Metrics distinguish server output, reader visibility, and clicks.
+- Site themes can report recommendation support. Super administrators can adapt and roll back themes when shared storage and HTTP readback are available.
+- Prompt editing adds live testing of unsaved drafts, knowledge retrieval, manual or library titles, streamed generation, cancellation, and AI diagnostics linked to source text.
+- Theme adaptation and prompt testing follow administrator model access, quota, and usage auditing. Regression checks cover queue cache refresh, displayed-link metrics, desktop layouts, and mobile layouts.
+- Three link-pool migrations require maintenance mode. Back up the database and themes, build frontend assets, and drain old workers before upgrading. Source versions remain at the current development versions.
+
+See [Link pool and live prompt testing](operations/link-pool-and-prompt-test.md) for configuration, operation, and metric definitions.
+
 ### v3.2.0-beta.2 (release preparation)
 
 This version covers public repository changes since `v3.2.0-beta.1`; source versions have been updated, while the GitHub Release and distribution archives remain unpublished. The latest stable release remains `3.1.0`.

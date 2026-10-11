@@ -26,6 +26,7 @@ return [
     'ai_visibility' => 'AI 可視性',
     'lead_analytics' => 'リード分析',
     'distribution_analytics' => '配信分析',
+    'link_pool' => '内部リンク配信',
     'tasks' => 'タスク管理',
     'task_workers' => 'Worker 監視',
     'task_jobs' => 'タスク履歴',

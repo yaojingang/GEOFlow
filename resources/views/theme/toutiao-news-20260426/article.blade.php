@@ -145,5 +145,6 @@
             @endif
         </div>
     @endif
+    @include('site.partials.link-pool')
 @include('site.partials.related-topics')
 @endsection

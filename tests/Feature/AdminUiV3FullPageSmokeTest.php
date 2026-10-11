@@ -21,6 +21,7 @@ use App\Models\KnowledgeFactGenerationRun;
 use App\Models\KnowledgeFactLibrary;
 use App\Models\LeadForm;
 use App\Models\LeadSubmission;
+use App\Models\LinkPoolThemeAdaptation;
 use App\Models\ManualPublication;
 use App\Models\Prompt;
 use App\Models\SiteThemeReplication;
@@ -40,6 +41,7 @@ use Database\Seeders\UiV3ReviewSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Route as LaravelRoute;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -92,7 +94,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             ->sortBy(fn (LaravelRoute $route): string => (string) $route->getName())
             ->values();
 
-        $this->assertCount(122, $shellRoutes);
+        $this->assertCount(131, $shellRoutes);
 
         foreach ($shellRoutes as $route) {
             $routeName = (string) $route->getName();
@@ -161,8 +163,8 @@ class AdminUiV3FullPageSmokeTest extends TestCase
 
         $this->assertCount(4, $routesByClassification->get('special', collect()));
         $this->assertCount(3, $routesByClassification->get('redirect', collect()));
-        $this->assertCount(9, $routesByClassification->get('download', collect()));
-        $this->assertCount(18, $routesByClassification->get('endpoint', collect()));
+        $this->assertCount(10, $routesByClassification->get('download', collect()));
+        $this->assertCount(21, $routesByClassification->get('endpoint', collect()));
 
         $this->get(route('admin.login'))
             ->assertOk()
@@ -203,6 +205,12 @@ class AdminUiV3FullPageSmokeTest extends TestCase
                 ->withSession([Admin::AUTH_VERSION_SESSION_KEY => (int) $admin->auth_version])
                 ->actingAs($admin, 'admin')
                 ->get(route($routeName, $parameters[$routeName] ?? []));
+
+            if ($routeName === 'admin.ai-prompts.tests.show') {
+                $response->assertNotFound();
+
+                continue;
+            }
 
             $this->assertSame(200, $response->status(), $routeName);
             $identity = $registry->pageIdentity($routeName);
@@ -338,6 +346,11 @@ class AdminUiV3FullPageSmokeTest extends TestCase
     /** @return array<string, array<string, int|string>> */
     private function routeParameters(): array
     {
+        $adaptation = LinkPoolThemeAdaptation::query()->create([
+            'id' => (string) Str::uuid(),
+            'site_key' => 'primary', 'theme_id' => 'default', 'admin_id' => Admin::query()->firstOrFail()->id,
+            'status' => 'failed', 'phase' => 'failed', 'error_message' => 'Review fixture',
+        ]);
         $admin = Admin::query()->where('username', 'ui_v3_reviewer')->firstOrFail();
         $aiConversation = AiConversation::query()->firstOrCreate([
             'id' => '01987f84-7f01-7000-8000-000000000001',
@@ -347,6 +360,11 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             'title' => 'UI V3 AI Workspace Review',
         ]);
         $article = Article::query()->where('slug', 'ui-v3-review-article')->firstOrFail();
+        $linkCampaignId = DB::table('link_campaigns')->insertGetId([
+            'source_site_key' => 'primary', 'name' => 'UI V3 review campaign', 'mode' => 'manual',
+            'status' => 'draft', 'source_rules_json' => '{}', 'exclusions_json' => '[]',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         $author = Author::query()->where('email', 'ui-v3-review-author@example.test')->firstOrFail();
         $category = Category::query()->where('slug', 'ui-v3-review')->firstOrFail();
         $channel = DistributionChannel::query()->where('name', UiV3ReviewSeeder::CHANNEL_NAME)->firstOrFail();
@@ -442,6 +460,8 @@ class AdminUiV3FullPageSmokeTest extends TestCase
         $topicRun = TopicBuildRun::query()->create(['request_key' => (string) Str::uuid(), 'site_key' => 'primary', 'topic_id' => $topic->id, 'owner_admin_id' => $admin->id, 'identity' => [], 'input' => [], 'status' => 'completed', 'phase' => 'finished', 'result' => [], 'finished_at' => now()]);
 
         return [
+            'admin.link-pool.theme-adaptations.show' => ['adaptationId' => $adaptation->id],
+            'admin.link-pool.campaigns.edit' => ['campaignId' => $linkCampaignId],
             'admin.ai-workspace.conversations.show' => ['conversation' => $aiConversation->id],
             'admin.url-changes.show' => ['urlChange' => $urlChange->id],
             'admin.url-changes.status' => ['urlChange' => $urlChange->id],
@@ -457,6 +477,8 @@ class AdminUiV3FullPageSmokeTest extends TestCase
             'admin.ai-models.edit' => ['modelId' => $model->id],
             'admin.ai-source-providers.edit' => ['providerId' => $sourceProvider->id],
             'admin.ai-prompts.edit' => ['promptId' => $prompt->id],
+            'admin.ai-prompts.test-options' => ['promptId' => $prompt->id, 'kind' => 'knowledge'],
+            'admin.ai-prompts.tests.show' => ['promptId' => $prompt->id, 'runId' => '01987f84-7f01-7000-8000-000000000104'],
             'admin.admin-users.edit' => ['adminId' => $admin->id],
             'admin.articles.batch.export-markdown.download' => [
                 'exportToken' => str_repeat('A', 40),

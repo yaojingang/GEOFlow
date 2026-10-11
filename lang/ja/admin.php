@@ -103,6 +103,7 @@ return array_replace_recursive($base, [
         'system_settings' => 'システム設定',
         'admin_management' => 'ユーザー管理',
         'activity_logs' => '操作ログ',
+        'link_pool' => '内部リンク配信',
     ],
     'ai_models' => [
         'section_my_models' => '自分の AI 設定',

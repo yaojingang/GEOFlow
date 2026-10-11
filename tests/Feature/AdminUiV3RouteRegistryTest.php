@@ -24,6 +24,29 @@ class AdminUiV3RouteRegistryTest extends TestCase
         $this->assertSame('admin.analytics', $registry->currentPage($admin, 'admin.dashboard')['route']);
     }
 
+    public function test_link_pool_uses_distribution_navigation_and_preserves_read_only_access(): void
+    {
+        $registry = app(AdminUiRegistry::class);
+        $superAdmin = new Admin(['role' => 'super_admin']);
+        $admin = new Admin(['role' => 'admin']);
+
+        $superAdminGroups = collect($registry->navigation($superAdmin))->keyBy('id');
+        $this->assertSame(
+            ['distribution'],
+            array_column($superAdminGroups['distribution']['items'], 'key'),
+        );
+        $this->assertNotContains('link_pool', array_column($superAdminGroups['content']['items'], 'key'));
+
+        $adminGroups = collect($registry->navigation($admin))->keyBy('id');
+        $this->assertSame(['link_pool'], array_column($adminGroups['distribution']['items'], 'key'));
+
+        foreach (['admin.link-pool.overview', 'admin.link-pool.settings', 'admin.link-pool.campaigns.edit'] as $routeName) {
+            $this->assertSame('distribution', $registry->currentPage($superAdmin, $routeName)['key']);
+            $this->assertSame('link_pool', $registry->currentPage($admin, $routeName)['key']);
+            $this->assertSame('link_pool', $registry->pageIdentity($routeName)['key']);
+        }
+    }
+
     public function test_ai_configurator_uses_the_network_module_icon(): void
     {
         $registry = app(AdminUiRegistry::class);
@@ -121,7 +144,7 @@ class AdminUiV3RouteRegistryTest extends TestCase
                 && $registry->routeClassification($name) === 'shell')
             ->values();
 
-        $this->assertCount(122, $shellRouteNames);
+        $this->assertCount(131, $shellRouteNames);
         $this->assertEqualsCanonicalizing([
             'admin.topics.index', 'admin.topics.create', 'admin.topics.articles', 'admin.topics.settings',
             'admin.topics.batches.create', 'admin.topics.batches.show', 'admin.topics.runs.show',
@@ -165,7 +188,7 @@ class AdminUiV3RouteRegistryTest extends TestCase
             ->unique()
             ->values();
 
-        $this->assertCount(125, $routeNames);
+        $this->assertCount(134, $routeNames);
 
         foreach (array_keys(AdminWeb::supportedLocales()) as $locale) {
             App::setLocale($locale);

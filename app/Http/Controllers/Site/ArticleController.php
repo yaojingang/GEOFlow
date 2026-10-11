@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Site;
 use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Services\Site\ArticlePermalinkService;
+use App\Services\Site\LinkPoolRecommendationService;
 use App\Services\Site\SiteScopedArticleQuery;
 use App\Services\Site\SiteUrlGenerator;
 use App\Services\Topics\TopicReadModel;
@@ -28,6 +29,7 @@ class ArticleController extends Controller
         private readonly SiteScopedArticleQuery $siteArticles,
         private readonly SiteUrlGenerator $urls,
         private readonly ArticlePermalinkService $articlePermalinks,
+        private readonly LinkPoolRecommendationService $recommendations,
     ) {}
 
     public function resolve(Request $request): View|RedirectResponse
@@ -89,9 +91,20 @@ class ArticleController extends Controller
             ->with('category')
             ->where('category_id', $article->category_id)
             ->whereKeyNot($article->id)
-            ->inRandomOrder()
+            ->where(fn ($query) => $query->whereNull('articles.published_at')->orWhere('articles.published_at', '<=', now()))
+            ->orderByDesc('published_at')
+            ->orderByDesc('id')
             ->limit(6)
-            ->get(['id', 'title', 'slug', 'category_id', 'created_at']);
+            ->get(['id', 'title', 'slug', 'category_id', 'created_at', 'published_at']);
+        try {
+            $recommendationBlock = $this->recommendations->forArticle(
+                $article,
+                $related->pluck('id')->map(static fn ($id): int => (int) $id)->all(),
+            );
+        } catch (\Throwable $exception) {
+            report($exception);
+            $recommendationBlock = null;
+        }
 
         $pageTitle = (string) $article->title;
         $pageDescription = $excerptPlain !== '' ? $excerptPlain : ArticleHtmlPresenter::cardSummary($article, 160);
@@ -109,6 +122,7 @@ class ArticleController extends Controller
             'tags' => $tags,
             'relatedTopics' => $relatedTopics,
             'relatedArticles' => $related,
+            'recommendationBlocks' => $recommendationBlock === null ? [] : [$recommendationBlock],
             'siteTitle' => $siteTitle,
             'siteDescription' => $siteDescription,
             'siteKeywords' => $siteKeywords,

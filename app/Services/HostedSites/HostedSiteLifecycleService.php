@@ -605,6 +605,7 @@ final class HostedSiteLifecycleService
             'theme_id',
             'featured_limit',
             'per_page',
+            'article_recommendations',
             'homepage_style',
             ArticlePermalinkPolicy::SETTING_KEY,
         ];
@@ -616,6 +617,12 @@ final class HostedSiteLifecycleService
             $settings[ArticlePermalinkPolicy::SETTING_KEY] = ArticlePermalinkPolicy::fromRaw(
                 $settings[ArticlePermalinkPolicy::SETTING_KEY] ?? null
             )->toArray();
+            $settings['article_recommendations'] = [
+                'enabled' => false,
+                'heading' => '推荐内容',
+                'default_limit' => 4,
+                'rotation_hours' => 24,
+            ];
         }
 
         return array_filter(array_replace($settings, [

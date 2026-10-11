@@ -7,6 +7,7 @@ use App\Models\SiteThemeBinding;
 use App\Models\ThemeRelease;
 use App\Models\ThemeRevision;
 use App\Models\ThemeWorkspace;
+use App\Services\Api\ThemeReleaseService;
 use App\Services\Api\ThemeWorkspaceRetention;
 use App\Support\Site\SiteThemePackageStorage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -151,5 +152,9 @@ class ThemeWorkspaceLifecycleTest extends TestCase
         $this->assertFalse($operations['theme-workspaces.create']['idempotent']);
         $this->assertFalse($operations->has('theme-plans.apply'));
         $this->postJson('/api/v1/management/theme-plans/unknown/apply')->assertNotFound();
+        $this->assertFalse(ThemeReleaseService::linkPoolAdaptationAvailability()['available']);
+        $this->assertContains('atomic_binding_settings_and_receipt', ThemeReleaseService::linkPoolAdaptationAvailability()['ready']);
+        $this->assertContains('shared_theme_storage_and_upgrade_lock', ThemeReleaseService::linkPoolAdaptationAvailability()['missing']);
+        $this->assertContains('http_kernel_readback', ThemeReleaseService::linkPoolAdaptationAvailability()['ready']);
     }
 }

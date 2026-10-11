@@ -118,5 +118,6 @@
             </div>
         </section>
     @endif
+    @include('site.partials.link-pool')
 @include('site.partials.related-topics')
 @endsection
