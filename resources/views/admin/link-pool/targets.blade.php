@@ -8,8 +8,8 @@
     </div>
     <form method="GET" class="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-white p-4 text-sm">
         @if($siteKey)<input type="hidden" name="site" value="{{ $siteKey }}">@endif
-        <label>目标站点
-            <select name="target_site" class="mt-1 block min-h-10 min-w-40 rounded-lg border-gray-300">
+        <label class="min-w-0 max-w-full">目标站点
+            <select name="target_site" class="mt-1 block min-h-10 w-full min-w-40 max-w-full rounded-lg border-gray-300">
                 <option value="">全部目标站点</option>
                 <option value="primary" @selected($targetSiteKey === 'primary')>主站</option>
                 <option value="external" @selected($targetSiteKey === 'external')>外部链接</option>
@@ -18,8 +18,8 @@
                 @endforeach
             </select>
         </label>
-        <label>状态
-            <select name="status" class="mt-1 block min-h-10 rounded-lg border-gray-300">
+        <label class="min-w-0 max-w-full">状态
+            <select name="status" class="mt-1 block min-h-10 w-full max-w-full rounded-lg border-gray-300">
                 <option value="">全部状态</option>
                 <option value="active" @selected($status === 'active')>启用</option>
                 <option value="paused" @selected($status === 'paused')>暂停</option>

@@ -425,11 +425,26 @@ def run_browser(base_url, database, fixture, output, navigation_only=False):
             goto("/article/source")
             expect(page.locator("[data-link-pool]")).to_have_count(0)
             check("Pausing the target removes it from the next public article response")
+            long_campaign_name = "BrowserManualRecommendationsForQuarterlyPartnerCampaign" * 2
+            long_site_name = "BrowserHostedSiteForQuarterlyPartnerCampaign" * 2
+            with sqlite3.connect(database) as connection:
+                updated = connection.execute("UPDATE link_campaigns SET name = ? WHERE name = ?",
+                                             (long_campaign_name, "Browser manual recommendations"))
+                assert updated.rowcount == 1
+                original_site_name = connection.execute("SELECT name FROM distribution_channels WHERE id = ?",
+                                                        (fixture["hosted_channel_id"],)).fetchone()[0]
+                connection.execute("UPDATE distribution_channels SET name = ? WHERE id = ?",
+                                   (long_site_name, fixture["hosted_channel_id"]))
             for width in (375, 320):
                 page.set_viewport_size({"width": width, "height": 812})
                 page.wait_for_function("!document.querySelector('.gf-shell__body') || Math.abs(document.querySelector('.gf-shell__body').getBoundingClientRect().left) < 1")
                 goto(f"/{ADMIN}/link-pool/dashboard?site=primary")
-                assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), f"Dashboard overflows at {width}px"
+                expect(page.locator('select[name="campaign_id"] option').filter(has_text=long_campaign_name)).to_have_count(1)
+                expect(page.locator('select[name="target_site"] option').filter(has_text=long_site_name)).to_have_count(1)
+                assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), page.evaluate("""() => ({
+                    width: innerWidth, scroll: document.documentElement.scrollWidth,
+                    campaignSelect: document.querySelector('select[name="campaign_id"]').getBoundingClientRect().toJSON()
+                })""")
                 assert page.evaluate("""() => {
                     const nav = document.querySelector('[data-link-pool-tabs]');
                     const tab = nav?.querySelector('[aria-current="page"]');
@@ -438,7 +453,15 @@ def run_browser(base_url, database, fixture, output, navigation_only=False):
                     return a.left >= n.left - 1 && a.right <= n.right + 1;
                 }"""), f"Active dashboard tab is clipped at {width}px"
                 screenshot(f"05-dashboard-{width}.png")
-                check(f"Admin dashboard fits a {width}px isolated viewport")
+                check(f"Admin dashboard with long campaign and site names fits a {width}px isolated viewport")
+                goto(f"/{ADMIN}/link-pool/targets?site=primary")
+                expect(page.locator('select[name="target_site"] option').filter(has_text=long_site_name)).to_have_count(1)
+                assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), f"Target filters overflow at {width}px"
+                screenshot(f"05-targets-{width}.png")
+                check(f"Target filters with a long site name fit a {width}px isolated viewport")
+            with sqlite3.connect(database) as connection:
+                connection.execute("UPDATE distribution_channels SET name = ? WHERE id = ?",
+                                   (original_site_name, fixture["hosted_channel_id"]))
             page.set_viewport_size({"width": 1280, "height": 720})
             goto(f"/{ADMIN}/link-pool/settings?site=primary")
             page.locator('input[name="heading"]').fill("撤回时放弃的未保存标题")

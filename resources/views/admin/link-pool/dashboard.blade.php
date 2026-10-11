@@ -13,8 +13,8 @@
 
     <form method="GET" class="flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-white p-4 text-sm">
         @if($siteKey)<input type="hidden" name="site" value="{{ $siteKey }}">@endif
-        <label>目标站点
-            <select name="target_site" class="mt-1 block min-h-10 min-w-40 rounded-lg border-gray-300">
+        <label class="min-w-0 max-w-full">目标站点
+            <select name="target_site" class="mt-1 block min-h-10 w-full min-w-40 max-w-full rounded-lg border-gray-300">
                 <option value="">全部目标站点</option>
                 <option value="primary" @selected($targetSiteKey==='primary')>主站</option>
                 <option value="external" @selected($targetSiteKey==='external')>外部链接</option>
@@ -23,8 +23,8 @@
                 @endforeach
             </select>
         </label>
-        <label>投放活动<select name="campaign_id" class="mt-1 block min-h-10 max-w-full rounded-lg border-gray-300"><option value="">全部活动</option>@foreach($campaignChoices as $choice)<option value="{{ $choice->id }}" @selected($campaignId === (int)$choice->id)>{{ $choice->name }}{{ !$siteKey ? ' · '.($siteLabels[$choice->source_site_key] ?? $choice->source_site_key) : '' }}</option>@endforeach</select></label>
-        <label>时间范围<select name="days" class="mt-1 block min-h-10 rounded-lg border-gray-300">
+        <label class="min-w-0 max-w-full">投放活动<select name="campaign_id" class="mt-1 block min-h-10 w-full max-w-full rounded-lg border-gray-300"><option value="">全部活动</option>@foreach($campaignChoices as $choice)<option value="{{ $choice->id }}" @selected($campaignId === (int)$choice->id)>{{ $choice->name }}{{ !$siteKey ? ' · '.($siteLabels[$choice->source_site_key] ?? $choice->source_site_key) : '' }}</option>@endforeach</select></label>
+        <label class="min-w-0 max-w-full">时间范围<select name="days" class="mt-1 block min-h-10 w-full max-w-full rounded-lg border-gray-300">
             @foreach([7,30,90] as $option)
                 <option value="{{ $option }}" @selected($days===$option)>近 {{ $option }} 天</option>
             @endforeach
