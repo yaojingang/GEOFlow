@@ -179,13 +179,29 @@ class AiVisibilityAnalyticsController extends Controller
         $keywords = Keyword::query()->where('keyword', '!=', '')->orderBy('id')->limit(1000)
             ->get(['id', 'library_id', 'keyword'])->groupBy('library_id');
 
+        $recentlySampled = Schema::hasTable('ai_visibility_runs')
+            ? AiVisibilityRun::query()
+                ->whereIn('provider_type', AiVisibilityRun::SAMPLE_PROVIDERS)
+                ->whereNotNull('keyword')
+                ->where('keyword', '!=', '')
+                ->where('created_at', '>=', now()->subDays(7))
+                ->distinct()
+                ->pluck('keyword')
+                ->mapWithKeys(static fn (string $keyword): array => [$keyword => true])
+                ->all()
+            : [];
+
         return KeywordLibrary::query()->whereIn('id', $keywords->keys())->orderBy('id')
             ->get(['id', 'name'])
             ->map(static fn (KeywordLibrary $library): array => [
                 'id' => $library->id,
                 'name' => $library->name,
                 'keywords' => $keywords->get($library->id, collect())
-                    ->map(static fn (Keyword $keyword): array => ['id' => $keyword->id, 'keyword' => (string) $keyword->keyword])
+                    ->map(static fn (Keyword $keyword): array => [
+                        'id' => $keyword->id,
+                        'keyword' => (string) $keyword->keyword,
+                        'recently_sampled' => isset($recentlySampled[(string) $keyword->keyword]),
+                    ])
                     ->values()->all(),
             ])->values();
     }
