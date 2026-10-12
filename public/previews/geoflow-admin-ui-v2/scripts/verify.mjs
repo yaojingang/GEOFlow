@@ -167,7 +167,7 @@ for (const group of designLock.navigation) {
 }
 check(pages.every((page) => !page.nav || expectedNavigationKeys.has(page.nav)), '存在无法映射到公共侧栏的页面导航状态');
 check(shellSource.includes('data-shell-dialog="account"'), '公共侧栏缺少 Admin 账户入口');
-check(shellSource.includes('data-shell-dialog="qr"'), '公共侧栏缺少二维码入口');
+check(!shellSource.includes('data-shell-dialog="qr"'), '公共侧栏仍有二维码入口');
 check(shellSource.includes('data-shell-dialog="settings"'), '公共侧栏缺少快捷设置入口');
 check(shellSource.includes('data-account-password-form'), 'Admin 账户弹窗缺少修改密码表单');
 check(shellSource.includes("pageHref('admin-users-index')"), 'Admin 账户弹窗缺少用户与权限管理入口');

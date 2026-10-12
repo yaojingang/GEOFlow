@@ -638,10 +638,6 @@ svg { display: block; height: 20px; width: 20px; stroke-width: 1.8; }
 .gf-facts div { display: flex; justify-content: space-between; }
 .gf-facts dt { color: var(--gf-gray-400); }
 .gf-facts dd { color: var(--gf-gray-700); font-weight: 600; margin: 0; }
-.gf-qr-placeholder { align-items: center; display: flex; gap: 18px; }
-.gf-qr-placeholder > span { align-items: center; background: var(--gf-gray-50); border: 1px dashed var(--gf-gray-300); border-radius: 8px; display: flex; height: 132px; justify-content: center; width: 132px; }
-.gf-qr-placeholder > span svg { color: var(--gf-gray-700); height: 72px; width: 72px; }
-.gf-qr-placeholder p { color: var(--gf-gray-400); font-size: 12px; margin: 4px 0 0; }
 .gf-shortcut-list { display: grid; gap: 4px; }
 .gf-shortcut-list > * { align-items: center; background: transparent; border: 0; border-radius: 8px; color: var(--gf-gray-700); display: grid; gap: 12px; grid-template-columns: 28px minmax(0, 1fr) 16px; min-height: 58px; padding: 8px 10px; text-align: left; width: 100%; }
 .gf-shortcut-list > *:hover { background: var(--gf-gray-50); }

@@ -82,7 +82,7 @@ class AdminUiV3ShellTest extends TestCase
         }
     }
 
-    public function test_product_footer_is_shared_by_v3_and_legacy_shells(): void
+    public function test_product_footer_is_not_rendered_in_v3_or_legacy_shells(): void
     {
         config()->set('geoflow.app_version', '3.0.0');
         $admin = $this->admin('footer_owner', 'super_admin');
@@ -96,39 +96,10 @@ class AdminUiV3ShellTest extends TestCase
                 ->assertOk()
                 ->getContent();
 
-            $document = new \DOMDocument;
-            $document->loadHTML($html, LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
-            $xpath = new \DOMXPath($document);
-            $footers = $xpath->query('//*[@data-admin-product-footer]');
-
-            $this->assertSame(1, $footers?->length);
-            $footer = $footers?->item(0);
-            $this->assertInstanceOf(\DOMElement::class, $footer);
-            $this->assertStringContainsString('GEOFlow v3.0.0', $footer->textContent);
-            $this->assertStringContainsString('© 2026 Yao Jingang', $footer->textContent);
-            $this->assertStringContainsString('AGPL-3.0', $footer->textContent);
-            $this->assertSame(1, $xpath->query('.//button[@data-open-admin-welcome]', $footer)?->length);
-            $this->assertSame(
-                $v3Enabled ? 1 : 0,
-                $xpath->query('//main[@id="main-content"]//*[@data-admin-product-footer]')?->length,
-            );
-
-            $expectedLinks = [
-                'https://github.com/yaojingang/GEOFlow/releases',
-                'https://github.com/yaojingang/GEOFlow/blob/main/LICENSE',
-                'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md',
-                'https://github.com/yaojingang/GEOFlow',
-                'https://x.com/yaojingang',
-                'https://github.com/yaojingang/GEOFlow/wiki',
-            ];
-            $links = $xpath->query('.//a', $footer);
-
-            $this->assertSame(count($expectedLinks), $links?->length);
-            foreach ($links ?: [] as $link) {
-                $this->assertSame('_blank', $link->attributes?->getNamedItem('target')?->nodeValue);
-                $this->assertSame('noopener noreferrer', $link->attributes?->getNamedItem('rel')?->nodeValue);
-                $this->assertContains($link->attributes?->getNamedItem('href')?->nodeValue, $expectedLinks);
-            }
+            $this->assertStringNotContainsString('data-admin-product-footer', $html);
+            $this->assertStringNotContainsString('GEOFlow v3.0.0', $html);
+            $this->assertStringNotContainsString('© 2026 Yao Jingang', $html);
+            $this->assertStringNotContainsString('AGPL-3.0', $html);
 
             $this->assertSame($v3Enabled ? 0 : 1, substr_count($html, 'window.ADMIN_BASE_PATH ='));
         }
@@ -359,7 +330,7 @@ class AdminUiV3ShellTest extends TestCase
         }
     }
 
-    public function test_community_dialog_shows_the_author_wechat_and_project_links(): void
+    public function test_community_qr_entry_and_dialog_are_not_rendered(): void
     {
         config()->set('geoflow.admin_ui_v3_enabled', true);
         $admin = $this->admin('community_owner', 'super_admin');
@@ -368,18 +339,11 @@ class AdminUiV3ShellTest extends TestCase
             ->actingAs($admin, 'admin')
             ->get(route('admin.dashboard'))
             ->assertOk()
-            ->assertSee('data-dialog-open="qr"', false)
-            ->assertSee('data-gf-modal="qr"', false)
-            ->assertSee(asset('assets/images/yao-jingang-wechat.jpg'), false)
-            ->assertSee(__('admin.ui_v3.qr_title'))
-            ->assertSee(__('admin.ui_v3.qr_invitation'))
-            ->assertSee('href="https://github.com/yaojingang/GEOFlow"', false)
-            ->assertSee('href="https://x.com/yaojingang"', false)
-            ->assertSee('target="_blank" rel="noopener noreferrer"', false)
-            ->assertDontSee('data-qr-canvas', false)
-            ->assertDontSee('data-qr-value', false);
+            ->assertDontSee('data-dialog-open="qr"', false)
+            ->assertDontSee('data-gf-modal="qr"', false)
+            ->assertDontSee('assets/images/yao-jingang-wechat.jpg', false);
 
-        $this->assertFileExists(public_path('assets/images/yao-jingang-wechat.jpg'));
+        $this->assertFileDoesNotExist(public_path('assets/images/yao-jingang-wechat.jpg'));
     }
 
     private function assertUpdateCenterLink(string $html, bool $hasUpdate): void

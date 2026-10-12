@@ -79,7 +79,7 @@ return [
                 ],
                 [
                     'type' => 'paragraph',
-                    'content' => '这份 3.0 说明会为每位管理员自动展示一次。之后可从后台底部的“项目说明”随时打开。',
+                    'content' => '这份 3.0 说明会为每位管理员自动展示一次。',
                 ],
             ],
         ],
@@ -160,7 +160,7 @@ return [
                 ],
                 [
                     'type' => 'paragraph',
-                    'content' => 'This 3.0 introduction automatically opens once for each administrator. You can reopen it anytime from Project intro in the admin footer.',
+                    'content' => 'This 3.0 introduction automatically opens once for each administrator.',
                 ],
             ],
         ],

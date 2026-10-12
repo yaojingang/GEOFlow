@@ -68,7 +68,6 @@
                 <span class="gf-sidebar__account-name">Admin</span>
                 ${C().icon('chevron-right')}
             </button>
-            <button class="gf-icon-button gf-sidebar__utility-button" type="button" aria-label="打开 GEOFlow 二维码" data-shell-dialog="qr">${C().icon('qr-code')}</button>
             <button class="gf-icon-button gf-sidebar__utility-button" type="button" aria-label="打开快捷设置" data-shell-dialog="settings">${C().icon('settings')}</button>
         </div>`;
     }
@@ -167,26 +166,6 @@
             </div>
             <div data-dialog-footer><a class="gf-button" href="${pageHref('admin-users-index')}">${C().icon('users')}<span>用户与权限管理</span></a>${C().button('关闭', 'x', 'secondary', 'data-modal-close')}</div>
         </template>
-        <template data-shell-dialog-template="qr" data-dialog-title="GEOFlow 移动访问" data-dialog-message="扫码打开当前 GEOFlow 工作台演示入口">
-            <div data-dialog-body>
-                <div class="gf-qr-card">
-                    <div class="gf-qr-code" role="img" aria-label="GEOFlow 演示二维码">
-                        <span class="gf-qr-finder gf-qr-finder--tl"></span><span class="gf-qr-finder gf-qr-finder--tr"></span><span class="gf-qr-finder gf-qr-finder--bl"></span>
-                        ${Array.from({ length: 361 }, (_, index) => {
-                            const x = index % 19;
-                            const y = Math.floor(index / 19);
-                            const inFinder = (x < 6 && y < 6) || (x > 12 && y < 6) || (x < 6 && y > 12);
-                            const dark = ((x * x + y * y + 3 * x * y + x + 5 * y) % 11 < 5) || ((x + 2 * y) % 7 === 0);
-                            return !inFinder && dark ? `<i style="--qr-x:${x};--qr-y:${y}"></i>` : '';
-                        }).join('')}
-                        <b>G</b>
-                    </div>
-                    <div class="gf-qr-card__copy"><strong>GEOFlow 管理后台</strong><span>使用手机扫码查看移动端适配效果</span><code>127.0.0.1:4173</code></div>
-                </div>
-                <div class="gf-callout gf-mt-20">${C().icon('info')}<div>当前二维码用于静态原型展示，接入正式域名后可替换为真实访问地址。</div></div>
-            </div>
-            <div data-dialog-footer>${C().button('复制访问地址', 'copy', 'secondary', 'data-copy-prototype-url')}${C().button('关闭', 'x', 'primary', 'data-modal-close')}</div>
-        </template>
         <template data-shell-dialog-template="settings" data-dialog-title="快捷设置" data-dialog-message="集中进入常用的网站、AI 与安全配置">
             <div data-dialog-body>
                 <div class="gf-settings-shortcuts">
@@ -210,7 +189,6 @@
             <div class="gf-shell__body">
                 ${topbar(page)}
                 <main id="main-content" class="gf-main${focus ? ' gf-main--focus' : ''}"><div class="gf-content${focus ? ' gf-content--focus' : ''}">${content}</div></main>
-                <footer class="gf-footer">© 2026 GEOFlow · Admin UI V2 静态原型 · 演示数据</footer>
             </div>
         </div>
         ${modal()}

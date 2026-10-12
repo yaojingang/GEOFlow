@@ -224,15 +224,6 @@ return array_replace_recursive($base, [
         'content' => '内容',
         'not_found_title' => '情報が見つかりません',
     ],
-    'footer' => [
-        'version' => 'バージョン :version',
-        'author' => '作者：Yao Jingang',
-        'author_x_profile' => '作者のXプロフィール',
-        'project_github_link' => 'プロジェクト GitHub',
-        'changelog_link' => '更新履歴',
-        'help_docs_link' => 'ヘルプ文書',
-        'project_intro_link' => 'プロジェクト紹介',
-    ],
     'login' => [
         'title' => '管理者ログイン',
         'subtitle' => ':site_name 管理コンソール',

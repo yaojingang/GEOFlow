@@ -158,7 +158,6 @@
             const closeButtons = modal.querySelectorAll('[data-welcome-close]');
             const dialog = modal.querySelector('[data-welcome-dialog]');
             const backdrop = modal.querySelector('[data-welcome-backdrop]');
-            let opener = null;
 
             function blockNode(block) {
                 if (!block || !block.type) {
@@ -219,8 +218,7 @@
                 });
             }
 
-            function openModal(nextOpener = document.activeElement) {
-                opener = nextOpener;
+            function openModal() {
                 render('zh-CN');
                 modal.classList.remove('hidden');
                 document.body.classList.add('overflow-hidden');
@@ -256,8 +254,6 @@
             async function closeModal() {
                 modal.classList.add('hidden');
                 document.body.classList.remove('overflow-hidden');
-                opener?.focus?.({ preventScroll: true });
-                opener = null;
                 await persistDismissIfNeeded();
             }
 
@@ -288,13 +284,6 @@
                     event.preventDefault();
                     first.focus();
                 }
-            });
-
-            document.querySelectorAll('[data-open-admin-welcome]').forEach((trigger) => {
-                trigger.addEventListener('click', function (event) {
-                    event.preventDefault();
-                    openModal(trigger);
-                });
             });
 
             if (state.shouldAutoOpen) {

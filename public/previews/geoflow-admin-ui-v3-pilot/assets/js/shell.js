@@ -71,7 +71,6 @@
                 <button class="gf-sidebar__account" type="button" data-dialog="account" aria-label="打开 Admin 账户信息">
                     <span class="gf-account-avatar">A</span><span class="gf-account-name">Admin</span>${icon('chevron-right')}
                 </button>
-                <button class="gf-icon-button gf-sidebar__utility" type="button" data-dialog="qr" aria-label="打开二维码">${icon('qr-code')}</button>
                 <button class="gf-icon-button gf-sidebar__utility" type="button" data-dialog="quick-settings" aria-label="打开快捷设置">${icon('settings')}</button>
             </div>
         </aside>`;

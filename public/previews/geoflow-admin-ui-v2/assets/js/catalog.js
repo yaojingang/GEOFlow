@@ -11,7 +11,7 @@
     }
 
     function rootFooter() {
-        return `</div></main><footer class="gf-footer">© 2026 GEOFlow · Admin UI V2 独立原型包</footer>`;
+        return `</div></main>`;
     }
 
     function catalog() {

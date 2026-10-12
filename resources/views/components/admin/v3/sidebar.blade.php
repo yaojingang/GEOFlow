@@ -73,7 +73,6 @@
         <button class="gf-sidebar__account" type="button" data-dialog-open="account" aria-label="{{ __('admin.ui_v3.open_account', ['name' => $accountName]) }}">
             <span class="gf-account-avatar">{{ $accountInitial }}</span><span class="gf-account-name">{{ $accountName }}</span><i data-lucide="chevron-right"></i>
         </button>
-        <button class="gf-icon-button gf-sidebar__utility" type="button" data-dialog-open="qr" aria-label="{{ __('admin.ui_v3.open_qr') }}" title="{{ __('admin.ui_v3.open_qr') }}"><i data-lucide="qr-code"></i></button>
         <button class="gf-icon-button gf-sidebar__utility" type="button" data-dialog-open="quick-settings" aria-label="{{ __('admin.ui_v3.open_settings') }}"><i data-lucide="settings"></i></button>
     </div>
 </aside>

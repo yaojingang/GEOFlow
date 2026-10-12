@@ -4,12 +4,12 @@
   "referencePriority": [
     {
       "file": "../geoflow-ai-workspace-prototype.html",
-      "sha256": "8fb6f5ee1e3d3547872e9413dfc922aa6119752a29037f580c73ca888ac25d9c",
+      "sha256": "d022d4fb79afdba1ba4f28a17f93f5273fb9b85abf60e0ec7eeffed26306f177",
       "owns": ["app-shell", "sidebar", "topbar", "focus-layout", "latest-separator-removal"]
     },
     {
       "file": "../geoflow-sidebar-layout-prototype.html",
-      "sha256": "75019ea35557ea3feb350e7e3c1c0a139361d03cb4c366ab16e1b351112e038d",
+      "sha256": "ce98244e3de56be95db154e3fe7883bc4b8f030910a41418c11a18653e6e7aed",
       "owns": ["standard-layout", "content-density", "standard-card", "standard-page-header"]
     }
   ],
@@ -44,11 +44,11 @@
     "The first sidebar navigation item starts on the same horizontal line as the main canvas below the topbar.",
     "The sidebar navigation follows the AI workspace, data, content, distribution, and system taxonomy.",
     "User management and related system pages resolve to the website settings navigation context.",
-    "The sidebar footer exposes Admin account details, a QR entry, and common system settings on every shell page.",
+    "The sidebar footer exposes Admin account details and common system settings on every shell page.",
     "The sidebar account footer connects to the navigation without a horizontal divider.",
     "Desktop sidebar navigation uses 36px menu rows with compact group spacing, while mobile keeps 40px touch targets.",
     "The desktop sidebar remains pinned to the viewport while the main workspace scrolls.",
-    "Account, QR, and settings dialogs reuse the shared modal surface and remain keyboard accessible.",
+    "Account and settings dialogs reuse the shared modal surface and remain keyboard accessible.",
     "Standard pages use a gray-50 canvas and white cards.",
     "The AI workspace uses a white canvas and a 1040px focus column.",
     "All primary actions use blue-600 and blue-700 on hover.",

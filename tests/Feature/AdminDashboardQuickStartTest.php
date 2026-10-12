@@ -297,7 +297,7 @@ class AdminDashboardQuickStartTest extends TestCase
         $this->assertStringNotContainsString('https://configured.example'.$dismissPath, $html);
     }
 
-    public function test_project_intro_auto_opens_once_and_footer_link_remains_available(): void
+    public function test_project_intro_auto_opens_only_once_without_a_persistent_footer_trigger(): void
     {
         $admin = Admin::query()->create([
             'username' => 'dashboard_project_intro_admin',
@@ -313,59 +313,33 @@ class AdminDashboardQuickStartTest extends TestCase
             ->assertOk();
 
         $firstHtml = $firstResponse->getContent();
-        $this->assertStringContainsString('data-open-admin-welcome', $firstHtml);
+        $this->assertStringNotContainsString('data-open-admin-welcome', $firstHtml);
         $this->assertStringContainsString('"shouldAutoOpen":true', $firstHtml);
-        $this->assertSame(
-            'intro:'.config('geoflow.welcome_intro_version'),
-            (string) $admin->fresh()?->welcome_seen_version
-        );
+        $this->assertSame('', (string) $admin->fresh()?->welcome_seen_version);
 
         $secondHtml = $this->actingAs($admin->fresh(), 'admin')
             ->get(route('admin.dashboard'))
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('data-open-admin-welcome', $secondHtml);
-        $this->assertStringContainsString('"shouldAutoOpen":false', $secondHtml);
-        $this->assertStringContainsString(__('admin.footer.project_intro_link'), $secondHtml);
-    }
+        $this->assertStringNotContainsString('data-open-admin-welcome', $secondHtml);
+        $this->assertStringContainsString('"shouldAutoOpen":true', $secondHtml);
 
-    public function test_admin_footer_links_to_locale_specific_help_docs(): void
-    {
-        $admin = Admin::query()->create([
-            'username' => 'dashboard_help_docs_admin',
-            'password' => 'secret-123',
-            'email' => 'dashboard-help-docs@example.com',
-            'display_name' => 'Help Docs Admin',
-            'role' => 'super_admin',
-            'status' => 'active',
-        ]);
+        $this->actingAs($admin->fresh(), 'admin')
+            ->post(route('admin.welcome.dismiss'))
+            ->assertOk();
 
-        $zhHtml = $this->actingAs($admin, 'admin')
+        $this->assertSame(
+            'intro:'.config('geoflow.welcome_intro_version'),
+            (string) $admin->fresh()?->welcome_seen_version
+        );
+
+        $thirdHtml = $this->actingAs($admin->fresh(), 'admin')
             ->get(route('admin.dashboard'))
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString(__('admin.footer.help_docs_link'), $zhHtml);
-        $this->assertStringContainsString('https://github.com/yaojingang/GEOFlow/wiki', $zhHtml);
-        $this->assertStringNotContainsString('https://github.com/yaojingang/GEOFlow/wiki/Home-English', $zhHtml);
-        $this->assertStringContainsString(
-            'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md',
-            $zhHtml,
-        );
-
-        session(['locale' => 'en']);
-
-        $enHtml = $this->actingAs($admin->fresh(), 'admin')
-            ->get(route('admin.dashboard'))
-            ->assertOk()
-            ->getContent();
-
-        $this->assertStringContainsString('Help docs', $enHtml);
-        $this->assertStringContainsString('https://github.com/yaojingang/GEOFlow/wiki/Home-English', $enHtml);
-        $this->assertStringContainsString(
-            'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG_en.md',
-            $enHtml,
-        );
+        $this->assertStringNotContainsString('data-open-admin-welcome', $thirdHtml);
+        $this->assertStringContainsString('"shouldAutoOpen":false', $thirdHtml);
     }
 }

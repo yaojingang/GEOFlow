@@ -105,7 +105,7 @@ class AdminUiV3FullPageSmokeTest extends TestCase
 
             $this->assertSame(200, $response->status(), $routeName);
             $response->assertSee('data-gf-shell', false, $routeName);
-            $response->assertSee('data-admin-product-footer', false, $routeName);
+            $response->assertDontSee('data-admin-product-footer', false, $routeName);
 
             $document = new \DOMDocument;
             @$document->loadHTML((string) $response->getContent());

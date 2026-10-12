@@ -22,8 +22,7 @@ class AdminWelcomeModalService
     public function buildModalPayload(Admin $admin): array
     {
         $welcomeState = $this->resolveWelcomeState();
-        $shouldAutoOpen = $this->prepareAutoOpen($admin, $welcomeState);
-        $admin->refresh();
+        $shouldAutoOpen = $this->shouldAutoOpen($admin, $welcomeState);
 
         $copy = ($welcomeState['mode'] ?? 'intro') === 'update'
             ? $this->buildUpdateCopy($welcomeState)
@@ -49,7 +48,7 @@ class AdminWelcomeModalService
     }
 
     /**
-     * 关闭弹窗时写入的版本键，须与 {@see prepareAutoOpen} 使用的键一致。
+     * 关闭弹窗时写入的版本键，须与 {@see shouldAutoOpen} 使用的键一致。
      */
     public function currentWelcomeVersionKey(): string
     {
@@ -88,23 +87,17 @@ class AdminWelcomeModalService
     }
 
     /**
-     * 当当前欢迎/更新版本键与库中已读不一致时：本请求应自动弹出，并写入 `welcome_seen_version` 以免重复打扰。
+     * 当当前欢迎/更新版本键与库中已读不一致时，本请求应自动弹出。
+     * 已读状态只在管理员主动关闭弹窗后写入，避免页面脚本失败时永久丢失入口。
      *
      * @param  array<string, mixed>  $welcomeState
      */
-    private function prepareAutoOpen(Admin $admin, array $welcomeState): bool
+    private function shouldAutoOpen(Admin $admin, array $welcomeState): bool
     {
         $versionKey = $this->welcomeVersionKey($welcomeState);
         $seen = (string) ($admin->welcome_seen_version ?? '');
-        $shouldAutoOpen = $seen !== $versionKey;
-        if ($shouldAutoOpen) {
-            Admin::query()->whereKey($admin->id)->update([
-                'welcome_seen_version' => $versionKey,
-                'updated_at' => now(),
-            ]);
-        }
 
-        return $shouldAutoOpen;
+        return $seen !== $versionKey;
     }
 
     /**

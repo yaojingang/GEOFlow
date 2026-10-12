@@ -34,7 +34,6 @@ class AdminPtBrLocaleCoverageTest extends TestCase
             'header.notifications.title',
             'header.notifications.update_available',
             'common.not_found_desc',
-            'footer.copyright',
             'dashboard.navigation.heading',
             'dashboard.navigation.analytics_title',
             'dashboard.skill_resources.title',
@@ -49,10 +48,6 @@ class AdminPtBrLocaleCoverageTest extends TestCase
             'distribution.message.remote_article_deleted',
         ];
 
-        $sameValueAllowed = [
-            'footer.copyright',
-        ];
-
         foreach ($requiredKeys as $key) {
             $this->assertTrue(Arr::has($overlay, $key), "pt_BR must explicitly override [{$key}].");
 
@@ -60,13 +55,11 @@ class AdminPtBrLocaleCoverageTest extends TestCase
             $this->assertIsString($value, "pt_BR override [{$key}] must be a string.");
             $this->assertNotSame('', trim($value), "pt_BR override [{$key}] must not be empty.");
 
-            if (! in_array($key, $sameValueAllowed, true)) {
-                $this->assertNotSame(
-                    data_get($english, $key),
-                    $value,
-                    "pt_BR override [{$key}] must not fall back to the English copy."
-                );
-            }
+            $this->assertNotSame(
+                data_get($english, $key),
+                $value,
+                "pt_BR override [{$key}] must not fall back to the English copy."
+            );
         }
     }
 
