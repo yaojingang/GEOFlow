@@ -234,6 +234,31 @@ SH;
         return $cases;
     }
 
+    /**
+     * 生产 Redis 的 AOF 必须写到可按实例区分的宿主机目录，而不是容器可写层。
+     */
+    public function test_production_redis_persists_append_only_data_on_a_host_directory(): void
+    {
+        $root = dirname(__DIR__, 2);
+
+        foreach (['docker-compose.prod.yml', 'docker-compose.prebuilt.yml'] as $composeFile) {
+            $compose = file_get_contents($root.'/'.$composeFile);
+            $this->assertIsString($compose);
+            $redis = $this->serviceBlocks($compose)['redis'] ?? '';
+
+            $this->assertStringContainsString(
+                '${REDIS_DATA_DIR:-./docker-data/prod/redis}:/data',
+                $redis,
+                $composeFile.' must mount Redis AOF data on the host.'
+            );
+            $this->assertStringContainsString('--appendonly yes', $redis, $composeFile);
+            $this->assertStringContainsString('--dir /data', $redis, $composeFile);
+            $this->assertStringContainsString('user: "0:0"', $redis, $composeFile);
+            $this->assertStringContainsString('exec /usr/local/bin/docker-entrypoint.sh "$$@"', $redis, $composeFile);
+            $this->assertStringNotContainsString('su-exec', $redis, $composeFile);
+        }
+    }
+
     public function test_production_compose_renders_distinct_project_resources(): void
     {
         $docker = new Process(['docker', 'compose', 'version']);
@@ -252,6 +277,7 @@ SH;
             'DOCKER_NETWORK_GATEWAY' => '10.89.0.1',
             'WEB_PORT' => '18081',
             'POSTGRES_DATA_DIR' => './docker-data/prod-a/postgres',
+            'REDIS_DATA_DIR' => './docker-data/prod-a/redis',
         ], 'geoflow-a');
         $second = $this->renderCompose($root, 'docker-compose.prod.yml', [
             'GEOFLOW_APP_IMAGE' => false,
@@ -261,6 +287,7 @@ SH;
             'DOCKER_NETWORK_GATEWAY' => '10.90.0.1',
             'WEB_PORT' => '18082',
             'POSTGRES_DATA_DIR' => './docker-data/prod-b/postgres',
+            'REDIS_DATA_DIR' => './docker-data/prod-b/redis',
         ], 'geoflow-b');
 
         $this->assertSame('geoflow-a', $first['name'] ?? null);
@@ -281,6 +308,16 @@ SH;
             '/docker-data/prod-b/postgres',
             $second['services']['postgres']['volumes'][0]['source'] ?? ''
         );
+        $this->assertStringEndsWith(
+            '/docker-data/prod-a/redis',
+            $first['services']['redis']['volumes'][0]['source'] ?? ''
+        );
+        $this->assertSame('/data', $first['services']['redis']['volumes'][0]['target'] ?? null);
+        $this->assertStringEndsWith(
+            '/docker-data/prod-b/redis',
+            $second['services']['redis']['volumes'][0]['source'] ?? ''
+        );
+        $this->assertSame('/data', $second['services']['redis']['volumes'][0]['target'] ?? null);
 
         foreach ([['project' => 'geoflow-a', 'rendered' => $first], ['project' => 'geoflow-b', 'rendered' => $second]] as $scenario) {
             $rendered = $scenario['rendered'];

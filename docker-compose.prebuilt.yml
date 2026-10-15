@@ -24,14 +24,20 @@ services:
     container_name: geoflow-redis-prod
     environment:
       REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+    # 以 root 启动，镜像入口脚本才会修改 /data 属主并降权。降权工具由镜像自带的 docker-entrypoint.sh 决定。
+    user: "0:0"
     command:
       - /bin/sh
-      - -lc
+      - -c
       - |
+        set -eu
+        set -- redis-server --appendonly yes --dir /data
         if [ -n "$${REDIS_PASSWORD:-}" ]; then
-          exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}"
+          set -- "$$@" --requirepass "$${REDIS_PASSWORD}"
         fi
-        exec redis-server --appendonly yes
+        exec /usr/local/bin/docker-entrypoint.sh "$$@"
+    volumes:
+      - ${REDIS_DATA_DIR:-./docker-data/prod/redis}:/data
     healthcheck:
       test:
         [
