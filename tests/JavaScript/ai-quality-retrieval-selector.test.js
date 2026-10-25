@@ -48,6 +48,7 @@ test('keeps one concise reason when no knowledge base is selected', () => {
     assert.deepEqual(combined.atomic_first, {
         available: false,
         blockers: ['请先选择知识库'],
+        auto_pass_blockers: [],
     });
     assert.equal(combined.chunk.available, false);
     assert.equal(combined.knowledge_broad.available, false);
@@ -79,4 +80,20 @@ test('new untouched configurations choose the highest available mode', () => {
     assert.equal(chooseRetrievalMode('', combined, false), 'chunk');
     assert.equal(chooseRetrievalMode('knowledge_broad', combined, true), 'knowledge_broad');
     assert.equal(chooseRetrievalMode('atomic_first', combined, true), '');
+});
+
+test('available broad inspection retains governance blockers and review links', () => {
+    const combined = combineRetrievalReadiness(['3'], {
+        3: { name: '待审核资料', modes: { knowledge_broad: {
+            available: true,
+            blockers: [],
+            auto_pass_blockers: [{ message: '资料需要审核', manage_url: '/admin/knowledge-bases/3/edit' }],
+        } } },
+    });
+
+    assert.equal(combined.knowledge_broad.available, true);
+    assert.deepEqual(combined.knowledge_broad.auto_pass_blockers, [{
+        message: '待审核资料：资料需要审核',
+        manage_url: '/admin/knowledge-bases/3/edit',
+    }]);
 });

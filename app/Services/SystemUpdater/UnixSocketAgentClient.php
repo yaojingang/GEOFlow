@@ -2,12 +2,14 @@
 
 namespace App\Services\SystemUpdater;
 
-use App\Contracts\SystemUpdater\AgentClient;
+use App\Contracts\SystemUpdater\CoordinatedAgentClient;
 use JsonException;
 use RuntimeException;
 
-class UnixSocketAgentClient implements AgentClient
+class UnixSocketAgentClient implements CoordinatedAgentClient
 {
+    use CoordinatedAgentProtocol;
+
     private const MAX_RESPONSE_BYTES = 1024 * 1024;
 
     /** @return array<string, mixed> */
@@ -30,6 +32,66 @@ class UnixSocketAgentClient implements AgentClient
     public function startUpdate(#[\SensitiveParameter] string $authorizationCode): array
     {
         return $this->startOperation('updates', 'update', $authorizationCode);
+    }
+
+    /** @return array<string, mixed> */
+    public function preview(): array
+    {
+        [$status, $plan] = $this->instanceRequest('GET', 'plan');
+        $this->requireStatus($status, [200], $plan, 'preview');
+        if (($plan['schema_version'] ?? null) !== 1
+            || ! is_int($plan['source_sequence'] ?? null) || $plan['source_sequence'] < 1
+            || ! is_int($plan['target_sequence'] ?? null) || $plan['target_sequence'] < $plan['source_sequence']
+            || ($plan['target_sequence'] === $plan['source_sequence'] && (($plan['layout_change'] ?? null) !== true || ($plan['strategy'] ?? null) !== 'maintenance'))
+            || ! $this->boundedString($plan['target_version'] ?? null, 100)
+            || ! in_array($plan['strategy'] ?? null, ['online', 'maintenance'], true)
+            || ! is_string($plan['plan_sha256'] ?? null) || preg_match('/\A[a-f0-9]{64}\z/', $plan['plan_sha256']) !== 1
+            || ! is_string($plan['upgrade_plan_sha256'] ?? null) || preg_match('/\A[a-f0-9]{64}\z/', $plan['upgrade_plan_sha256']) !== 1
+            || ! is_bool($plan['layout_change'] ?? null)
+            || ! is_array($plan['pending_migrations'] ?? null) || ! array_is_list($plan['pending_migrations']) || count($plan['pending_migrations']) > 10000
+            || ! is_array($plan['steps'] ?? null) || ! array_is_list($plan['steps']) || count($plan['steps']) < 1 || count($plan['steps']) > 32) {
+            throw new RuntimeException('Updater returned an unsupported upgrade plan.');
+        }
+        foreach ($plan['pending_migrations'] as $migration) {
+            if (! is_array($migration) || ! $this->boundedString($migration['name'] ?? null, 255)
+                || ! is_string($migration['sha256'] ?? null) || preg_match('/\A[a-f0-9]{64}\z/', $migration['sha256']) !== 1
+                || ! is_bool($migration['online'] ?? null)) {
+                throw new RuntimeException('Updater returned an invalid migration plan.');
+            }
+        }
+        foreach ($plan['steps'] as $step) {
+            if (! is_array($step) || ! $this->boundedString($step['id'] ?? null, 64)
+                || ! in_array($step['kind'] ?? null, ['migrate', 'retrieval_backfill', 'managed_images', 'security_audit', 'system_knowledge', 'cache_warmup'], true)
+                || ($step['phase'] ?? null) !== 'apply'
+                || ! is_int($step['timeout_seconds'] ?? null) || $step['timeout_seconds'] < 1 || $step['timeout_seconds'] > 7200
+                || ! is_bool($step['online'] ?? null)) {
+                throw new RuntimeException('Updater returned an invalid upgrade step.');
+            }
+        }
+
+        return $plan;
+    }
+
+    /** @return array<string, mixed> */
+    public function startPlannedUpdate(#[\SensitiveParameter] string $authorizationCode, bool $allowMaintenance, string $expectedPlanSha256): array
+    {
+        $this->validateAuthorizationCode($authorizationCode);
+        if (preg_match('/\A[a-f0-9]{64}\z/', $expectedPlanSha256) !== 1) {
+            throw new RuntimeException('Updater preview hash is invalid.');
+        }
+        [$status, $decoded] = $this->instanceRequest('POST', 'updates', [
+            'allow_maintenance' => $allowMaintenance,
+            'expected_plan_sha256' => $expectedPlanSha256,
+        ], $authorizationCode);
+        $this->requireStatus($status, [202], $decoded, 'update');
+
+        return $this->validateOperation($decoded, 'update');
+    }
+
+    /** @return array<string, mixed> */
+    public function startSwitchBack(#[\SensitiveParameter] string $authorizationCode): array
+    {
+        return $this->startOperation('switch-backs', 'switch-back', $authorizationCode);
     }
 
     /** @return array<string, mixed> */
@@ -123,11 +185,11 @@ class UnixSocketAgentClient implements AgentClient
         $kind = $operation['kind'] ?? null;
         $status = $operation['status'] ?? null;
         $stages = $operation['stages'] ?? null;
-        $allowedStages = ['resolve', 'preflight', 'pull', 'quiesce', 'backup', 'migrate', 'activate', 'resume', 'verify', 'rollback', 'rolled_back', 'succeeded', 'reconciled'];
+        $allowedStages = ['resolve', 'preflight', 'pull', 'quiesce', 'backup', 'migrate', 'activate', 'resume', 'verify', 'rollback', 'rolled_back', 'succeeded', 'reconciled', 'online-backup', 'upgrade', 'layout', 'candidate', 'switch', 'workers', 'observe', 'drain', 'switch-back', 'retain-assets'];
         if ((int) ($operation['schema_version'] ?? 0) !== 1
             || preg_match('/\A[0-9]{8}T[0-9]{6}\.[0-9]{9}Z-[a-f0-9]{16}\z/', (string) ($operation['id'] ?? '')) !== 1
             || ($operation['instance_id'] ?? null) !== $this->instanceId()
-            || ! in_array($kind, ['update', 'backup', 'rollback', 'verify'], true)
+            || ! in_array($kind, ['update', 'backup', 'rollback', 'switch-back', 'verify'], true)
             || ($expectedKind !== null && $kind !== $expectedKind)
             || ! in_array($status, ['queued', 'running', 'succeeded', 'failed', 'rolled_back', 'recovery_required'], true)
             || ! is_array($stages)
@@ -204,9 +266,9 @@ class UnixSocketAgentClient implements AgentClient
 
     /**
      * @param  array<string, mixed>|null  $payload
-     * @return array{0: int, 1: array<string, mixed>}
+     * @return array{0: int, 1: array<string, mixed>, 2: ?int}
      */
-    private function instanceRequest(string $method, string $endpoint, ?array $payload = null, #[\SensitiveParameter] ?string $authorizationCode = null): array
+    private function instanceRequest(string $method, string $endpoint, ?array $payload = null, #[\SensitiveParameter] ?string $authorizationCode = null, string $protocol = 'v1'): array
     {
         $socketPath = (string) config('geoflow.updater_socket');
         $tokenPath = (string) config('geoflow.updater_control_token_file');
@@ -222,10 +284,10 @@ class UnixSocketAgentClient implements AgentClient
                 throw new RuntimeException('Updater request could not be encoded.', 0, $exception);
             }
         }
-        [$status, $response] = $this->request(
+        [$status, $response, $retryAfter] = $this->request(
             $socketPath,
             $method,
-            '/v1/instances/'.$this->instanceId().'/'.$endpoint,
+            '/'.$protocol.'/instances/'.$this->instanceId().'/'.$endpoint,
             $token,
             $body,
             $authorizationCode,
@@ -239,7 +301,7 @@ class UnixSocketAgentClient implements AgentClient
             throw new RuntimeException('Updater returned an invalid response.');
         }
 
-        return [$status, $decoded];
+        return [$status, $decoded, $retryAfter];
     }
 
     private function instanceId(): string
@@ -268,7 +330,7 @@ class UnixSocketAgentClient implements AgentClient
         return $token;
     }
 
-    /** @return array{0: int, 1: string} */
+    /** @return array{0: int, 1: string, 2: ?int} */
     private function request(string $socketPath, string $method, string $path, #[\SensitiveParameter] string $token, string $body, #[\SensitiveParameter] ?string $authorizationCode): array
     {
         $socketInfo = @lstat($socketPath);
@@ -276,7 +338,9 @@ class UnixSocketAgentClient implements AgentClient
             throw new RuntimeException('Updater agent is not reachable.');
         }
         $connectTimeout = max(0.1, (float) config('geoflow.updater_connect_timeout_seconds', 0.5));
-        $readTimeout = max(1, (int) config('geoflow.updater_read_timeout_seconds', 10));
+        $readTimeout = str_ends_with($path, '/plan') || ($method === 'POST' && str_ends_with($path, '/plans'))
+            ? max(60, (int) config('geoflow.updater_plan_timeout_seconds', 1800))
+            : max(1, (int) config('geoflow.updater_read_timeout_seconds', 10));
         $errorCode = 0;
         $errorMessage = '';
         $socket = @stream_socket_client(
@@ -341,7 +405,12 @@ class UnixSocketAgentClient implements AgentClient
             throw new RuntimeException('Updater agent returned an empty response.');
         }
 
-        return [(int) $matches[1], $responseBody];
+        $retryAfter = null;
+        if (preg_match('/(?:\A|\r\n)Retry-After:[ \t]*([0-9]{1,5})[ \t]*(?:\r\n|\z)/i', $headers, $retry) === 1) {
+            $retryAfter = min(86400, (int) $retry[1]);
+        }
+
+        return [(int) $matches[1], $responseBody, $retryAfter];
     }
 
     private function validateAuthorizationCode(#[\SensitiveParameter] string $authorizationCode): void

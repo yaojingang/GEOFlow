@@ -33,7 +33,8 @@
                 <a href="{{ route('site.category', $categoryItem->slug) }}" class="{{ request()->is('category/'.$categoryItem->slug) ? 'is-active' : '' }}">{{ $categoryItem->name }}</a>
             @endforeach
             <a href="{{ route('site.about') }}" class="{{ request()->routeIs('site.about') ? 'is-active' : '' }}">关于</a>
-        </nav>
+        @include('site.partials.topic-navigation')
+            </nav>
 
         <div class="ent-header__actions">
             <button
@@ -88,5 +89,6 @@
             <a href="{{ route('site.about') }}" class="{{ request()->routeIs('site.about') ? 'is-active' : '' }}">关于 GEOFlow</a>
             <a href="{{ $repositoryUrl }}" target="_blank" rel="noopener noreferrer">GitHub 开源仓库</a>
         </div>
-    </nav>
+    @include('site.partials.topic-navigation')
+            </nav>
 </header>

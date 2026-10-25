@@ -77,7 +77,7 @@ final class DoubaoSearchCustomClient
                     'Sites' => is_array($options['sites'] ?? null) ? $options['sites'] : null,
                     'BlockHosts' => is_array($options['block_hosts'] ?? null) ? $options['block_hosts'] : null,
                     'TimeRange' => $options['time_range'] ?? null, 'ContentFormats' => $options['content_formats'] ?? 'Markdown',
-                ], static fn (mixed $value): bool => $value !== null && $value !== ''),
+                ], static fn (mixed $value): bool => $value !== null && $value !== '' && $value !== []),
             ], static fn (mixed $value): bool => $value !== null && $value !== '' && $value !== []);
         }
         $filter = array_filter([
@@ -91,7 +91,7 @@ final class DoubaoSearchCustomClient
             'ContentFormats' => $contentFormats,
             'SummaryLength' => isset($options['summary_length']) ? (int) $options['summary_length'] : null,
             'ImageCount' => isset($options['image_count']) ? (int) $options['image_count'] : null,
-        ], static fn (mixed $value): bool => $value !== null && $value !== '');
+        ], static fn (mixed $value): bool => $value !== null && $value !== '' && $value !== []);
 
         return array_filter([
             'Query' => $query,

@@ -6,7 +6,7 @@ final class CommandSpec
 {
     /** @var list<string> */
     private const GLOBAL_OPTIONS = [
-        'config', 'base-url', 'token', 'token-stdin', 'timeout', 'allow-insecure-http',
+        'config', 'profile', 'base-url', 'token', 'token-stdin', 'timeout', 'allow-insecure-http',
         'help', 'version', 'no-interaction', 'quiet', 'verbose', 'ansi', 'no-ansi',
     ];
 
@@ -26,7 +26,30 @@ final class CommandSpec
         return [
             'config.init' => self::spec('config.init', ['config', 'init'], 2, ['file', 'force'], null, false, 'config init --base-url URL [--token-stdin] [--file PATH] [--force]'),
             'config.show' => self::spec('config.show', ['config', 'show'], 2, [], null, false, 'config show [--config PATH]'),
-            'login' => self::spec('login', ['login'], 1, ['username', 'password', 'password-stdin', 'file', 'force'], 'auth.login', false, 'login --base-url URL [--username USER] [--password-stdin] [--file PATH] [--force]'),
+            'login' => self::spec('login', ['login'], 1, ['username', 'password', 'password-stdin', 'file', 'force', 'scopes'], 'auth.login', false, 'login --base-url URL [--profile NAME] [--scopes LIST] [--username USER] [--password-stdin] [--file PATH] [--force]'),
+            'capabilities' => self::spec('capabilities', ['capabilities'], 1, [], null, false, 'capabilities'),
+            'whoami' => self::spec('whoami', ['whoami'], 1, [], null, false, 'whoami'),
+            'doctor' => self::spec('doctor', ['doctor'], 1, [], null, false, 'doctor'),
+            'logout' => self::spec('logout', ['logout'], 1, [], null, false, 'logout [--profile NAME]'),
+            'profile.list' => self::spec('profile.list', ['profile', 'list'], 2, [], null, false, 'profile list'),
+            'profile.show' => self::spec('profile.show', ['profile', 'show'], 3, [], null, false, 'profile show NAME'),
+            'profile.bind' => self::spec('profile.bind', ['profile', 'bind'], 2, ['instance-id', 'admin-id'], null, false, 'profile bind (--profile NAME | --config PATH) --instance-id ID --admin-id ID'),
+            'api' => self::spec('api', ['api'], 2, ['input', 'idempotency-key', 'client-request-id'], null, false, 'api OPERATION_ID [--input FILE|-] [--idempotency-key KEY] [--client-request-id ID]'),
+            'site.list' => self::spec('site.list', ['site', 'list'], 2, [], null, false, 'site list'),
+            'site.show' => self::spec('site.show', ['site', 'show'], 3, [], null, false, 'site show SITE'),
+            'operation.get' => self::spec('operation.get', ['operation', 'get'], 3, [], null, false, 'operation get ID'),
+            'operation.lookup' => self::spec('operation.lookup', ['operation', 'lookup'], 3, [], null, false, 'operation lookup CLIENT_REQUEST_ID'),
+            'operation.wait' => self::spec('operation.wait', ['operation', 'wait'], 3, ['wait-seconds'], null, false, 'operation wait ID [--wait-seconds N]'),
+            'updater.status' => self::spec('updater.status', ['updater', 'status'], 2, [], null, false, 'updater status'),
+            'updater.plan' => self::spec('updater.plan', ['updater', 'plan'], 2, ['action', 'recovery-point'], null, false, 'updater plan --action update|backup|restore|switch-back [--recovery-point ID]'),
+            'updater.recovery-points' => self::spec('updater.recovery-points', ['updater', 'recovery-points'], 2, [], null, false, 'updater recovery-points'),
+            'updater.operation.get' => self::spec('updater.operation.get', ['updater', 'operation', 'get'], 4, [], null, false, 'updater operation get ID'),
+            'updater.operation.lookup' => self::spec('updater.operation.lookup', ['updater', 'operation', 'lookup'], 4, [], null, false, 'updater operation lookup CLIENT_REQUEST_ID'),
+            'updater.operation.wait' => self::spec('updater.operation.wait', ['updater', 'operation', 'wait'], 4, ['wait-seconds'], null, false, 'updater operation wait CLIENT_REQUEST_ID [--wait-seconds 600]'),
+            'updater.update' => self::spec('updater.update', ['updater', 'update'], 2, ['plan', 'client-request-id', 'credentials-file', 'allow-maintenance', 'confirm-host-access'], null, false, 'updater update --plan FILE --client-request-id ID [--credentials-file FILE] [--allow-maintenance] [--confirm-host-access]'),
+            'updater.backup' => self::spec('updater.backup', ['updater', 'backup'], 2, ['plan', 'client-request-id', 'credentials-file', 'allow-maintenance', 'confirm-host-access'], null, false, 'updater backup --plan FILE --client-request-id ID [--credentials-file FILE] [--allow-maintenance] [--confirm-host-access]'),
+            'updater.restore' => self::spec('updater.restore', ['updater', 'restore'], 2, ['plan', 'client-request-id', 'credentials-file', 'allow-maintenance', 'confirm-host-access'], null, false, 'updater restore --plan FILE --client-request-id ID [--credentials-file FILE] [--allow-maintenance] [--confirm-host-access]'),
+            'updater.switch-back' => self::spec('updater.switch-back', ['updater', 'switch-back'], 2, ['plan', 'client-request-id', 'credentials-file', 'allow-maintenance', 'confirm-host-access'], null, false, 'updater switch-back --plan FILE --client-request-id ID [--credentials-file FILE] [--allow-maintenance] [--confirm-host-access]'),
             'catalog' => self::spec('catalog', ['catalog'], 1, [], 'catalog', false, 'catalog'),
             'task.list' => self::spec('task.list', ['task', 'list'], 2, ['page', 'per-page', 'status', 'search'], 'task.list', false, 'task list [--page N] [--per-page N] [--status STATUS] [--search TEXT]'),
             'task.create' => self::spec('task.create', ['task', 'create'], 2, ['json', 'idempotency-key'], 'task.create', false, 'task create --json FILE [--idempotency-key KEY]'),
@@ -52,8 +75,10 @@ final class CommandSpec
             'article.create' => self::spec('article.create', ['article', 'create'], 2, self::articleCreateOptions(), 'article.create', false, 'article create (--json FILE | direct fields) [--idempotency-key KEY]'),
             'article.get' => self::spec('article.get', ['article', 'get'], 3, [], 'article.get', false, 'article get ARTICLE_ID'),
             'article.update' => self::spec('article.update', ['article', 'update'], 3, self::articleUpdateOptions(), 'article.update', false, 'article update ARTICLE_ID (--json FILE | direct fields) [--idempotency-key KEY]'),
-            'article.review' => self::spec('article.review', ['article', 'review'], 3, ['status', 'note', 'risk-override-reason', 'idempotency-key'], 'article.review', false, 'article review ARTICLE_ID --status STATUS [--note TEXT] [--risk-override-reason TEXT] [--idempotency-key KEY]'),
-            'article.publish' => self::spec('article.publish', ['article', 'publish'], 3, ['idempotency-key'], 'article.publish', false, 'article publish ARTICLE_ID [--idempotency-key KEY]'),
+            'article.review' => self::spec('article.review', ['article', 'review'], 3, ['status', 'note', 'risk-override-reason', 'workflow-version', 'idempotency-key'], 'article.review', false, 'article review ARTICLE_ID --status STATUS [--note TEXT] [--risk-override-reason TEXT] [--workflow-version N] [--idempotency-key KEY]'),
+            'article.publish' => self::spec('article.publish', ['article', 'publish'], 3, ['workflow-version', 'risk-override-reason', 'idempotency-key'], 'article.publish', false, 'article publish ARTICLE_ID [--workflow-version N] [--risk-override-reason TEXT] [--idempotency-key KEY]'),
+            'article.schedule' => self::spec('article.schedule', ['article', 'schedule'], 3, ['workflow-version', 'idempotency-key'], 'article.schedule', false, 'article schedule ARTICLE_ID [--workflow-version N] [--idempotency-key KEY]'),
+            'article.hold' => self::spec('article.hold', ['article', 'hold'], 3, ['status', 'workflow-version', 'idempotency-key'], 'article.hold', false, 'article hold ARTICLE_ID --status draft|private [--workflow-version N] [--idempotency-key KEY]'),
             'article.ai-quality-status' => self::spec('article.ai-quality-status', ['article', 'ai-quality-status'], 3, [], 'article.ai-quality-status', false, 'article ai-quality-status ARTICLE_ID'),
             'article.ai-quality-recheck' => self::spec('article.ai-quality-recheck', ['article', 'ai-quality-recheck'], 3, ['idempotency-key'], 'article.ai-quality-recheck', false, 'article ai-quality-recheck ARTICLE_ID [--idempotency-key KEY]'),
             'article.ai-quality-override' => self::spec('article.ai-quality-override', ['article', 'ai-quality-override'], 3, ['reason', 'idempotency-key'], 'article.ai-quality-override', false, 'article ai-quality-override ARTICLE_ID --reason TEXT [--idempotency-key KEY]'),
@@ -110,7 +135,7 @@ final class CommandSpec
     {
         return [
             'ai-generated', 'allow-insecure-http', 'ansi', 'enqueue-now', 'force', 'help',
-            'no-ansi', 'no-interaction', 'password-stdin', 'quiet', 'token-stdin', 'verbose', 'version', 'yes',
+            'allow-maintenance', 'confirm-host-access', 'no-ansi', 'no-interaction', 'password-stdin', 'quiet', 'token-stdin', 'verbose', 'version', 'yes',
         ];
     }
 
@@ -157,6 +182,8 @@ final class CommandSpec
             'article.update' => [['article', 'update', '10', '--json', '{json}'], ['article' => 10]],
             'article.review' => [['article', 'review', '10', '--status', 'approved'], ['article' => 10]],
             'article.publish' => [['article', 'publish', '10'], ['article' => 10]],
+            'article.schedule' => [['article', 'schedule', '10'], ['article' => 10]],
+            'article.hold' => [['article', 'hold', '10', '--status', 'draft'], ['article' => 10]],
             'article.ai-quality-status' => [['article', 'ai-quality-status', '10'], ['article' => 10]],
             'article.ai-quality-recheck' => [['article', 'ai-quality-recheck', '10'], ['article' => 10]],
             'article.ai-quality-override' => [['article', 'ai-quality-override', '10', '--reason', 'verified evidence'], ['article' => 10]],
@@ -190,7 +217,7 @@ final class CommandSpec
 
         return 'GEOFlow CLI '.CliVersion::VALUE.PHP_EOL.PHP_EOL
             .'Usage:'.PHP_EOL.implode(PHP_EOL, $lines).PHP_EOL.PHP_EOL
-            .'Global options: --config PATH --base-url URL --token-stdin --timeout SECONDS '
+            .'Global options: --profile NAME --config PATH --base-url URL --token-stdin --timeout SECONDS '
             .'--allow-insecure-http --no-interaction --quiet (-q) --verbose (-v|-vv|-vvv) '
             .'--ansi --no-ansi'.PHP_EOL.PHP_EOL
             .'Secrets can be supplied through environment variables, hidden prompts, or stdin flags.'.PHP_EOL

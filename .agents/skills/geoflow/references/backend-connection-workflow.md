@@ -1,5 +1,7 @@
 # Backend Connection Workflow
 
+> Remote CLI preview: for running instances, start with [the remote CLI workflow](remote-cli-workflow.md). Local source is optional. Publication and full management coverage remain pending; the guidance below describes existing source/legacy workflows.
+
 Use this workflow in `channel_frontend` when the user asks to connect to the GEOFlow backend, manage channel templates, or compare default and channel frontend capabilities.
 
 ## Discovery Steps

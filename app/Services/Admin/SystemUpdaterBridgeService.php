@@ -3,6 +3,7 @@
 namespace App\Services\Admin;
 
 use App\Contracts\SystemUpdater\AgentClient;
+use App\Contracts\SystemUpdater\PlannedAgentClient;
 use Throwable;
 
 class SystemUpdaterBridgeService
@@ -46,6 +47,8 @@ class SystemUpdaterBridgeService
                 'instance' => is_array($status['instance'] ?? null) ? $status['instance'] : [],
                 'checks' => $checks,
                 'operations_available' => $operationsAvailable,
+                'planned_operations_available' => $this->agentClient instanceof PlannedAgentClient,
+                'recovery_available' => $operationsAvailable && $this->mutationPolicy->allows($status, 'rollback', $currentOperation),
                 'mutation_authorization_ready' => $mutationAuthorizationReady,
                 'phase_b_handover_ready' => $phaseBHandoverReady,
                 'legacy_worker_absent' => $this->operationGuard->retiredWorkerAbsent($status),

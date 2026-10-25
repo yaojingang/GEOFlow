@@ -19,6 +19,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class AdminAiVisibilityAnalyticsTest extends TestCase
@@ -188,6 +189,8 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
                 'query' => 'GEOFlow AI 可见性',
                 'topic_id' => (int) $topic->id,
             ])
+            ->assertStatus(302)
+            ->assertSessionHasNoErrors()
             ->assertRedirect(route('admin.analytics.ai-visibility', ['ai_run' => AiVisibilityRun::query()->firstOrFail()->id]));
 
         $this->assertDatabaseHas('ai_visibility_runs', [
@@ -648,6 +651,39 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_paid_cleanup_post_uses_candidate_cache_without_repeating_model_work(): void
+    {
+        $this->configureAiVisibilityApis();
+        config()->set('geoflow.ai_visibility.term_cleanup_enabled', true);
+        $this->completedRun('GEOFlow', AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM, 'education education education', 'positive', now()->toDateTimeString(), []);
+        $this->mock(AiVisibilityTermCleaner::class, fn ($mock) => $mock->shouldReceive('clean')->once()->andReturn([['name' => '教育', 'terms' => ['education']]]));
+        $this->actingAs($this->admin(), 'admin');
+        $this->from(route('admin.analytics.ai-visibility'))->post(route('admin.analytics.ai-visibility.refresh-terms'))->assertRedirect()->assertSessionHas('message');
+        $this->post(route('admin.analytics.ai-visibility.refresh-terms'))->assertRedirect();
+        $this->get(route('admin.analytics.ai-visibility'))->assertOk()->assertSee('刷新词云清洗')->assertSee('教育');
+    }
+
+    public function test_ordinary_admin_cannot_start_paid_cleanup_or_search_or_assign_topics(): void
+    {
+        $admin = $this->admin();
+        $admin->update(['role' => 'admin']);
+        $this->actingAs($admin->fresh(), 'admin');
+        foreach (['refresh-terms', 'search', 'assign-topic'] as $action) {
+            $this->post(route('admin.analytics.ai-visibility.'.$action))->assertForbidden();
+        }
+    }
+
+    public function test_get_overview_never_dispatches_or_calls_paid_cleanup(): void
+    {
+        $this->configureAiVisibilityApis();
+        config()->set('geoflow.ai_visibility.term_cleanup_enabled', true);
+        Queue::fake();
+        $this->completedRun('GEOFlow', AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM, 'ielts winielts education', 'positive', now()->toDateTimeString(), []);
+        $this->mock(AiVisibilityTermCleaner::class, fn ($mock) => $mock->shouldNotReceive('clean'));
+        $this->actingAs($this->admin(), 'admin')->get(route('admin.analytics.ai-visibility'))->assertOk();
+        Queue::assertNothingPushed();
+    }
+
     public function test_ai_visibility_term_cloud_cleans_candidates_with_system_ai(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
@@ -672,13 +708,13 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             ]);
         });
 
-        $overview = app(AiVisibilityAnalyticsService::class)->overview();
+        $overview = app(AiVisibilityAnalyticsService::class)->overview(refreshTermCleanup: true);
 
         $this->assertSame('雅思考试', $overview['terms'][0]['term'] ?? null);
         $this->assertSame(5.0, $overview['terms'][0]['weight'] ?? null);
 
         // 候选词未变化时走缓存，不再触发第二次 AI 清洗。
-        $cached = app(AiVisibilityAnalyticsService::class)->overview();
+        $cached = app(AiVisibilityAnalyticsService::class)->overview(refreshTermCleanup: true);
         $this->assertSame('雅思考试', $cached['terms'][0]['term'] ?? null);
 
         Carbon::setTestNow();
@@ -706,7 +742,7 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             $mock->shouldReceive('clean')->andReturn(null);
         });
 
-        $overview = app(AiVisibilityAnalyticsService::class)->overview();
+        $overview = app(AiVisibilityAnalyticsService::class)->overview(refreshTermCleanup: true);
         $terms = collect($overview['terms'])->pluck('term')->all();
 
         $this->assertContains('ielts', $terms);

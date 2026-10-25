@@ -57,6 +57,30 @@ class AdminCategoriesPageTest extends TestCase
             ->assertSee(AdminWeb::routePath('admin.categories.index'), false);
     }
 
+    public function test_reserved_permalink_namespace_is_skipped_when_generating_a_category_slug(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'categories_reserved_slug_admin',
+            'password' => 'secret-123',
+            'email' => 'categories-reserved-slug@example.com',
+            'display_name' => 'Categories Reserved Slug Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.categories.store'), [
+                'name' => 'API',
+            ])
+            ->assertRedirect(route('admin.categories.index'))
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('categories', [
+            'name' => 'API',
+            'slug' => 'api-2',
+        ]);
+    }
+
     public function test_category_with_only_trashed_articles_is_still_not_deletable(): void
     {
         $admin = Admin::query()->create([

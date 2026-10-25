@@ -73,7 +73,7 @@ class DistributionPublisherManagerTest extends TestCase
         $this->assertSame('toutiao', $resolved['platform']);
         $this->assertSame('draft', $resolved['execution_mode']);
         $this->assertTrue($resolved['append_source_link']);
-        $this->assertSame('https://mp.sohu.com/custom', $resolved['editor_url']);
+        $this->assertSame('https://mp.toutiao.com/profile_v4/graph/articles/publish', $resolved['editor_url']);
     }
 
     public function test_it_normalizes_unknown_channel_type_to_geoflow_agent(): void

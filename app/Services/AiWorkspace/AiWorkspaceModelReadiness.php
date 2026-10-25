@@ -222,7 +222,7 @@ final readonly class AiWorkspaceModelReadiness
         return hash('sha256', json_encode([
             'version' => trim((string) $model->version),
             'model_id' => trim((string) $model->model_id),
-            'model_type' => trim((string) $model->model_type),
+            'model_type' => trim((string) $model->model_type) ?: 'chat',
             'api_url' => OpenAiRuntimeProvider::resolveChatBaseUrl((string) $model->api_url),
             'api_key' => (string) $model->getRawOriginal('api_key'),
             'status' => trim((string) $model->status),

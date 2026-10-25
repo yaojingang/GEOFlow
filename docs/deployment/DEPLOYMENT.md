@@ -1,5 +1,7 @@
 # GEOFlow Laravel 生产 Docker 部署
 
+签名受管安装、自动迁移与蓝绿切换见 [联合部署操作指引](../blue-green-deployment-usage.md)。本文保留单套 Compose 的手动部署流程；历史安全迁移仍须停机排空。已完成安全基线和布局转换的实例，可在签名在线计划与兼容性检查通过后使用 updater 在线升级。
+
 已有实例升级到 `v3.0.0`，请先阅读 [3.0 升级教程](GEOFLOW_V3_UPGRADE.md)，按当前部署方式选择路径。本文的首次安装步骤仅用于空库；升级时保留原数据库主版本、数据挂载与 `APP_KEY`。
 
 本文对应仓库中的生产编排文件：
@@ -22,7 +24,7 @@
 - `scheduler`: `php artisan schedule:work`
 - `reverb`: `php artisan reverb:start`
 - `postgres`: PostgreSQL 16 + pgvector
-- `redis`: Redis 7
+- `redis`: Redis 8，启用 AOF 并挂载实例独立的数据目录
 
 这套方案与当前开发用 `docker-compose.yml` 分离：
 
@@ -55,7 +57,7 @@ GEOFLOW_SELF_DELETE=1 bash geoflow-docker-deploy.sh
 
 完整变量说明见 `deploy-scripts/README.md`。
 
-已有数据的实例禁止使用一键脚本升级，也禁止滚动升级。请完整执行 3.1 节的停机排空协议。
+本节一键脚本仅用于空库首次安装。已有数据实例使用本手动流程时，完整执行 3.1 节的停机排空协议；受管实例按联合部署指引选择签名策略。
 
 ## 2. 准备环境文件
 
@@ -90,6 +92,7 @@ REVERB_ALLOWED_ORIGINS=your-domain.com
 - `SESSION_SECURE_COOKIE` 必须与访问协议一致：HTTPS 使用 `true`，直接通过 `http://IP:端口` 访问使用 `false`，否则浏览器不会回传登录 Cookie。
 - `TRUSTED_PROXIES` 在直连部署中留空；反向代理、CDN、负载均衡或一级目录部署填写实际代理 IP/CIDR。避免使用 `*`，否则直连客户端可伪造转发地址并绕过按 IP 的登录限流。
 - 如果部署在任意一级目录下，例如外部访问路径是 `/wiki`、`/docs`、`/site`，不要把目录写进 `ADMIN_BASE_PATH`；应由反向代理透传 `X-Forwarded-Prefix`，后台路径仍保持 `ADMIN_BASE_PATH=geo_admin`。
+- 使用仓库根目录 `docker-compose.yml` 作为内层网关时，还需在 `.env` 中设置固定前缀，例如 `GEOFLOW_FORWARDED_PREFIX=/wiki`。内层 Nginx 会用该值覆盖请求头，避免客户端伪造公开路径。此前仅依赖外层代理传入 `X-Forwarded-Prefix` 的实例，升级后应先补充此变量，再重建 `web` 容器。
 - `AUTO_MIGRATE=true` 由生产 `init` 服务执行迁移；常驻服务不接收 `.env.prod` 作为容器环境变量，重启时不会重复初始化。
 - `AUTO_INSTALL_ONCE=true` 由生产 `init` 服务在迁移后运行 `php artisan geoflow:install`；该命令只在空库首次安装时执行安装填充，旧库只补初始化标记。
 - 生产镜像不会在启动时执行 `composer install`
@@ -103,6 +106,8 @@ REVERB_ALLOWED_ORIGINS=your-domain.com
 ```bash
 export COMPOSE_PROD='docker compose --env-file .env.prod -f docker-compose.prod.yml'
 ```
+
+已有实例首次采用 `REDIS_DATA_DIR` 挂载时，先完成 [3.2 节的数据迁移](#32-首次启用-redis-持久化目录)，再执行启动或升级命令。空宿主机目录会遮住旧容器的 `/data`。
 
 首次部署建议按以下顺序：
 
@@ -119,7 +124,7 @@ $COMPOSE_PROD up -d --remove-orphans app web queue ai-quality-queue ai-quality-b
 
 升级到包含 `images.managed_path_hash` 的版本时，先保持 `GEOFLOW_MANAGED_IMAGE_DELETION_ENABLED=false`。已有数据或既有迁移历史的数据库必须使用 down → stop/drain → one-time confirmation → migrate → start-new → readiness → up → enable 的顺序。迁移会在任何 schema 变更前检查 `GEOFLOW_SECURITY_UPGRADE_DRAIN_CONFIRMED=true`；未确认时会安全终止。全新空库使用 init 服务限定作用域的 `GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true`。
 
-滚动升级、migration-first、一键升级均无法覆盖已经通过旧版空 replay 检查的在途请求，因此明确禁止用于已有数据的实例。一次性确认仅表示运维人员已经完成排空，不会自动停止进程。
+包含本节历史安全迁移的升级必须停机排空；滚动升级、migration-first 和首次安装脚本均无法覆盖已通过旧版空 replay 检查的在途请求。一次性确认仅表示运维人员已经完成排空，不会自动停止进程。
 
 ```bash
 # 1. 先进入维护模式，再停止入口和所有旧版常驻进程。
@@ -135,7 +140,7 @@ $COMPOSE_PROD stop app
 # GEOFLOW_SECURITY_UPGRADE_DRAIN_CONFIRMED=true
 # GEOFLOW_MANAGED_IMAGE_DELETION_ENABLED=false
 
-# 4. 构建新镜像，并由一次性 init 服务执行新版本迁移。
+# 4. 首次新增 Redis 挂载时，先完成 3.2 节的数据迁移；再构建镜像并执行应用迁移。
 $COMPOSE_PROD build
 $COMPOSE_PROD up -d postgres redis
 $COMPOSE_PROD up init
@@ -191,6 +196,55 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --remove-or
 ```
 
 但第一次部署仍建议先观察 `init` 是否完成迁移。
+
+### 3.2 首次启用 Redis 持久化目录
+
+`docker-compose.prod.yml` 和 `docker-compose.prebuilt.yml` 将 `${REDIS_DATA_DIR:-./docker-data/prod/redis}` 挂载到 Redis 的 `/data`。每套实例使用独立目录。全新安装可以直接使用空目录；已有实例首次增加该挂载时，需要将旧 `/data` 中的 RDB、AOF 文件及其子目录一起迁入。仅复制单个 AOF 文件可能遗漏 Redis 多段 AOF 的 manifest 或基础文件。
+
+本次只迁移存储位置，保持原 Redis 镜像版本、密码、Compose 项目名和应用配置。预构建部署将 `COMPOSE_PROD` 中的文件名换成 `docker-compose.prebuilt.yml`，保留实际使用的 `-p` 项目名及其他覆盖文件。以下命令在仓库根目录的独立 Bash 会话中执行；任何一步失败都应停止，保持应用停机并检查原因。
+
+1. 按 3.1 节步骤 1、2 进入维护模式，停止所有入口、Worker、调度器和应用进程，确认没有在途写入。此时保留旧 Redis 容器，暂不执行 `up`、`down`、`rm` 或卷清理。
+2. 记录旧容器，保存快照并停止 Redis，然后复制完整数据。命令通过容器内的 `REDIS_PASSWORD` 完成认证，密码不会出现在命令参数中。
+
+```bash
+set -eu
+REDIS_OLD_CONTAINER=$($COMPOSE_PROD ps -q redis)
+test -n "$REDIS_OLD_CONTAINER"
+REDIS_DATA_PATH=$($COMPOSE_PROD config --format json | python3 -c 'import json,sys; c=json.load(sys.stdin); print(next(v["source"] for v in c["services"]["redis"]["volumes"] if v["target"] == "/data" and v["type"] == "bind"))')
+test -n "$REDIS_DATA_PATH"
+test "$REDIS_DATA_PATH" != /
+mkdir -p ./docker-data/redis-backups
+REDIS_MIGRATION_BACKUP=$(mktemp -d ./docker-data/redis-backups/before-bind.XXXXXX)
+
+docker exec "$REDIS_OLD_CONTAINER" sh -c 'if [ -n "${REDIS_PASSWORD:-}" ]; then export REDISCLI_AUTH="$REDIS_PASSWORD"; fi; exec redis-cli -e SAVE'
+docker exec "$REDIS_OLD_CONTAINER" sh -c 'if [ -n "${REDIS_PASSWORD:-}" ]; then export REDISCLI_AUTH="$REDIS_PASSWORD"; fi; exec redis-cli -e INFO keyspace' > "$REDIS_MIGRATION_BACKUP/keyspace.before"
+docker stop --time 60 "$REDIS_OLD_CONTAINER"
+mkdir "$REDIS_MIGRATION_BACKUP/data"
+docker cp "$REDIS_OLD_CONTAINER:/data/." "$REDIS_MIGRATION_BACKUP/data/"
+
+mkdir -p "$REDIS_DATA_PATH"
+REDIS_DATA_PATH=$(cd "$REDIS_DATA_PATH" && pwd -P)
+test "$REDIS_DATA_PATH" != /
+REDIS_EXISTING_ENTRY=$(find "$REDIS_DATA_PATH" -mindepth 1 -maxdepth 1 -print -quit)
+test -z "$REDIS_EXISTING_ENTRY"
+cp -a "$REDIS_MIGRATION_BACKUP/data/." "$REDIS_DATA_PATH/"
+```
+
+目标目录必须为空。已有文件时，先核实其来源，选择新的实例专用目录并修改 `REDIS_DATA_DIR`，再重新解析 `REDIS_DATA_PATH`；保留两份已有数据。备份位于 Git 忽略的 `docker-data` 下，应按生产数据的权限和备份策略保管。确认复制成功后再重建 Redis；应用和所有写入进程继续保持停止。
+
+3. 启动使用新挂载的 Redis，检查健康状态、数据和持久化状态。
+
+```bash
+$COMPOSE_PROD up -d --wait --wait-timeout 60 --no-deps redis
+$COMPOSE_PROD ps redis
+$COMPOSE_PROD exec -T redis sh -c 'if [ -n "${REDIS_PASSWORD:-}" ]; then export REDISCLI_AUTH="$REDIS_PASSWORD"; fi; exec redis-cli -e PING'
+$COMPOSE_PROD exec -T redis sh -c 'if [ -n "${REDIS_PASSWORD:-}" ]; then export REDISCLI_AUTH="$REDIS_PASSWORD"; fi; exec redis-cli -e INFO keyspace' > "$REDIS_MIGRATION_BACKUP/keyspace.after"
+$COMPOSE_PROD exec -T redis sh -c 'if [ -n "${REDIS_PASSWORD:-}" ]; then export REDISCLI_AUTH="$REDIS_PASSWORD"; fi; exec redis-cli -e INFO persistence'
+```
+
+确认返回 `PONG`、`aof_enabled:1`、`aof_last_write_status:ok`，并对照 `keyspace.before`、`keyspace.after` 及迁移前的队列监控核对各库键数和待处理任务。自然过期的键可能减少，需要区分预期过期与数据缺失。确认目标目录已有 AOF 文件后，继续原升级流程；应用就绪检查通过后再恢复入口和 Worker。
+
+4. 若 Redis 无法启动或核验不符，保持写入进程停止，保存新目录和日志。停止新 Redis，在 `.env.prod` 中将 `REDIS_DATA_DIR` 指向另一个空恢复目录，将保留的完整 `data/` 复制进去，使用原 Redis 镜像重新启动并重复核验。核验通过前持续维护模式。新实例一旦恢复写入，旧快照就不再包含最新数据，此时应先另做最新备份和恢复评估。
 
 ## 4. 访问方式
 
@@ -283,7 +337,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
 
 ## 7. 回滚与更新
 
-已有部署的更新统一执行 3.1 节。`git pull` 与镜像构建应放在停机排空流程内，禁止用 `git pull` → `build` → `up -d` 直接替代该流程。
+已有单套 Compose 部署使用本手动流程更新时，执行 3.1 节；签名受管实例按联合部署指引执行预检后选择策略。`git pull` 与镜像构建应放在停机排空流程内，禁止用 `git pull` → `build` → `up -d` 直接替代该流程。
 
 回滚：
 

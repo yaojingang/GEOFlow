@@ -32,6 +32,29 @@ class WorkerExecutionServiceImageSelectionTest extends TestCase
         $this->assertSame([$used->id], array_map(static fn (Image $image): int => (int) $image->id, $result['images']));
     }
 
+    public function test_zero_image_count_excludes_image_context_and_generated_library_images(): void
+    {
+        $library = $this->imageLibrary();
+        $image = $this->image($library->id, 'storage/uploads/images/storefront.jpg', '门店实拍');
+        $task = $this->task($library->id, 0);
+        $url = ImageUrlNormalizer::toPublicUrl($image->file_path);
+        $result = $this->insertImagesIntoContent($task, "正文。\n\n![门店]($url)");
+        $this->assertSame('', $this->buildImageContext($task));
+        $this->assertSame([], $result['images']);
+        $this->assertStringNotContainsString('![', $result['content']);
+    }
+
+    public function test_generated_library_images_respect_task_count(): void
+    {
+        $library = $this->imageLibrary();
+        $a = $this->image($library->id, 'storage/uploads/images/a.jpg', 'A');
+        $b = $this->image($library->id, 'storage/uploads/images/b.jpg', 'B');
+        $content = '正文。'."\n\n![a](".ImageUrlNormalizer::toPublicUrl($a->file_path).")\n\n![b](".ImageUrlNormalizer::toPublicUrl($b->file_path).')';
+        $result = $this->insertImagesIntoContent($this->task($library->id, 1), $content);
+        $this->assertCount(1, $result['images']);
+        $this->assertSame(1, substr_count($result['content'], '!['));
+    }
+
     public function test_falls_back_to_interval_insertion_when_model_inserted_none(): void
     {
         $library = $this->imageLibrary();

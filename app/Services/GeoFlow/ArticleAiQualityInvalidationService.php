@@ -41,13 +41,18 @@ class ArticleAiQualityInvalidationService
         return $updated;
     }
 
-    public function invalidateArticle(Article|int $article, string $reason, bool $reconcile = true): int
-    {
+    public function invalidateArticle(
+        Article|int $article,
+        string $reason,
+        bool $reconcile = true,
+        bool $preserveWorkflow = false,
+    ): int {
         $articleId = $article instanceof Article ? (int) $article->id : $article;
         [$updated] = $this->invalidateChecks(
             ArticleAiQualityCheck::query()->where('article_id', $articleId),
             'input_changed',
             $reason,
+            $preserveWorkflow ? [$articleId] : [],
         );
         $this->invalidateOptimizationArticles([$articleId], $reason);
 
@@ -116,16 +121,22 @@ class ArticleAiQualityInvalidationService
         return $updated + $optimizationUpdated;
     }
 
-    public function invalidateTask(int $taskId, string $reason): int
-    {
+    /** @param iterable<int> $preserveWorkflowArticleIds */
+    public function invalidateTask(
+        int $taskId,
+        string $reason,
+        iterable $preserveWorkflowArticleIds = [],
+        array $recalculatedArticleIds = [],
+    ): int {
         $articles = Article::withTrashed()->where('task_id', $taskId);
         [$updated, $affectedArticleIds] = $this->invalidateChecks(
-            ArticleAiQualityCheck::query()->where(function (Builder $query) use ($taskId, $articles): void {
+            ArticleAiQualityCheck::query()->whereNotIn('article_id', $recalculatedArticleIds)->where(function (Builder $query) use ($taskId, $articles): void {
                 $query->where('task_id', $taskId);
                 $query->orWhereIn('article_id', (clone $articles)->select('id'));
             }),
             'policy_changed',
             $reason,
+            $preserveWorkflowArticleIds,
         );
         $this->dispatchReconcile($this->articleIds($articles)->merge($affectedArticleIds));
         $this->invalidateTaskOptimization($taskId, $reason);
@@ -388,11 +399,23 @@ class ArticleAiQualityInvalidationService
         return $updated;
     }
 
-    /** @return array{int, Collection<int, int>} */
-    private function invalidateChecks(Builder $query, string $errorCode, string $reason): array
-    {
+    /**
+     * @param  iterable<int>  $preserveWorkflowArticleIds
+     * @return array{int, Collection<int, int>}
+     */
+    private function invalidateChecks(
+        Builder $query,
+        string $errorCode,
+        string $reason,
+        iterable $preserveWorkflowArticleIds = [],
+    ): array {
         $updated = 0;
         $affectedArticleIds = [];
+        $preservedArticleIds = collect($preserveWorkflowArticleIds)
+            ->map(static fn (mixed $articleId): int => (int) $articleId)
+            ->filter(static fn (int $articleId): bool => $articleId > 0)
+            ->unique()
+            ->values();
         (clone $query)
             ->whereIn('status', ['queued', 'running', 'completed', 'failed'])
             ->select(['id', 'article_id'])
@@ -431,16 +454,7 @@ class ArticleAiQualityInvalidationService
                         'updated_at' => $timestamp,
                     ]);
                 if ($articleIds->isNotEmpty()) {
-                    Article::query()
-                        ->whereIn('id', $articleIds->all())
-                        ->where('status', '!=', 'published')
-                        ->where('review_status', '!=', 'rejected')
-                        ->update([
-                            'status' => 'draft',
-                            'review_status' => 'pending',
-                            'published_at' => null,
-                            'updated_at' => $timestamp,
-                        ]);
+                    // Invalidate AI facts without overwriting human review or publication intent.
                     $articleIds->each(static function (int $articleId) use (&$affectedArticleIds): void {
                         $affectedArticleIds[$articleId] = true;
                     });

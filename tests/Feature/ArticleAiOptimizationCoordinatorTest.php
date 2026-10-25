@@ -6,6 +6,7 @@ use App\Ai\Agents\ArticleOptimizationJsonRefinerAgent;
 use App\Ai\Agents\ArticleOptimizationRefinerAgent;
 use App\Contracts\ArticleAiOptimizationRefiner;
 use App\Exceptions\ApiException;
+use App\Exceptions\ArticleAiQualityGateException;
 use App\Jobs\ProcessArticleAiOptimizationJob;
 use App\Jobs\ProcessArticleAiQualityJob;
 use App\Jobs\ReconcileArticleAiOptimizationJob;
@@ -22,10 +23,13 @@ use App\Models\Category;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
+use App\Models\Title;
+use App\Models\TitleLibrary;
 use App\Services\GeoFlow\ArticleAiOptimizationCoordinator;
 use App\Services\GeoFlow\ArticleAiOptimizationException;
 use App\Services\GeoFlow\ArticleAiOptimizationExecutionBoundaryHook;
 use App\Services\GeoFlow\ArticleAiOptimizationReconciliationService;
+use App\Services\GeoFlow\ArticleAiQualityGate;
 use App\Services\GeoFlow\ArticleAiQualityInspectionService;
 use App\Services\GeoFlow\ArticleAiQualityPolicyResolver;
 use App\Services\GeoFlow\ArticleAiQualityPrincipleCompiler;
@@ -33,13 +37,16 @@ use App\Services\GeoFlow\ArticleAiQualityRolloutPolicy;
 use App\Services\GeoFlow\ArticleAiQualityVersionPolicy;
 use App\Services\GeoFlow\ArticleGeoFlowService;
 use App\Services\GeoFlow\ArticleRiskScanner;
+use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\TaskLifecycleService;
+use App\Services\GeoFlow\WorkerExecutionService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -2731,6 +2738,8 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
     {
         config()->set('geoflow.ai_quality_optimization_enabled', true);
         config()->set('geoflow.ai_quality_optimization_percent', 100);
+        config()->set('geoflow.ai_quality_optimization_auto_apply_enabled', true);
+        config()->set('geoflow.ai_quality_optimization_auto_apply_percent', 100);
         Queue::fake();
         [$article, , $check] = $this->qualityArticle();
         $article->task()->update([
@@ -2798,6 +2807,502 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
     }
 
     /** @return array{Article,AiModel,ArticleAiQualityCheck} */
+    #[DataProvider('immediatePublicationOptimizationCases')]
+    public function test_immediate_publication_optimizes_and_publishes_under_the_current_manual_request(string $status, bool $paused): void
+    {
+        Queue::fake();
+        [$article, $source, $run] = $this->requestBelowTargetPublication($status, $paused);
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+
+        $coordinator->process((int) $run->id);
+
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_EVALUATING, $run->fresh()->status);
+        $candidate = ArticleAiQualityCheck::query()->findOrFail((int) ArticleAiOptimizationStep::query()
+            ->where('run_id', $run->id)->value('output_check_id'));
+        $candidate->forceFill([
+            'status' => 'completed', 'active_dedupe_key' => null, 'decision' => 'passed',
+            'score' => 95, 'issues' => [], 'gate_reasons' => [], 'finished_at' => now(),
+        ])->save();
+        $coordinator->candidateCompleted((int) $candidate->id);
+
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_COMPLETED, $run->fresh()->status);
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertSame('none', $article->fresh()->publication_intent);
+        $this->assertStringContainsString('有助于改善体验', $article->fresh()->content);
+        $this->assertSame('manual', data_get($run->fresh()->execution_meta, 'workflow_fence.origin'));
+        $this->assertSame('manual', data_get($candidate->fresh()->execution_meta, 'workflow_fence.origin'));
+        $this->assertSame('superseded', data_get($source->fresh()->execution_meta, 'workflow_apply.status'));
+        Queue::assertPushed(ProcessArticleAiOptimizationJob::class);
+        Queue::assertPushed(ProcessArticleAiQualityJob::class);
+    }
+
+    public static function immediatePublicationOptimizationCases(): array
+    {
+        return [
+            'draft active' => ['draft', false],
+            'draft paused' => ['draft', true],
+            'private active' => ['private', false],
+            'private paused' => ['private', true],
+        ];
+    }
+
+    #[DataProvider('immediatePublicationOptimizationCases')]
+    public function test_reconciliation_recovers_current_immediate_optimization_and_completes_publication(string $status, bool $paused): void
+    {
+        Queue::fake();
+        [$article, , $run] = $this->requestBelowTargetPublication($status, $paused);
+        DB::table('article_ai_optimization_runs')->where('id', $run->id)->update([
+            'updated_at' => now()->subMinutes(6), 'deadline_at' => now()->addMinutes(20),
+        ]);
+        Queue::fake();
+
+        $counts = app(ArticleAiOptimizationReconciliationService::class)->reconcile();
+
+        $this->assertSame(1, $counts['examined']);
+        $this->assertSame(1, $counts['requeued']);
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_QUEUED, $run->fresh()->status);
+        Queue::assertPushed(ProcessArticleAiOptimizationJob::class, fn ($job): bool => $job->runId === $run->id);
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        $coordinator->process((int) $run->id);
+        $candidate = ArticleAiQualityCheck::query()->findOrFail((int) ArticleAiOptimizationStep::query()
+            ->where('run_id', $run->id)->value('output_check_id'));
+        $candidate->update(['status' => 'completed', 'active_dedupe_key' => null, 'decision' => 'passed',
+            'score' => 95, 'issues' => [], 'gate_reasons' => [], 'finished_at' => now()]);
+        $coordinator->candidateCompleted((int) $candidate->id);
+
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_COMPLETED, $run->fresh()->status);
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertSame('none', $article->fresh()->publication_intent);
+        $this->assertSame(1, $article->aiOptimizationRuns()->count());
+    }
+
+    #[DataProvider('reconciliationStoppedIntents')]
+    public function test_reconciliation_does_not_requeue_an_optimization_after_a_later_manual_stop(string $action): void
+    {
+        Queue::fake();
+        [$article, , $run] = $this->requestBelowTargetPublication('private', false);
+        app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), $action);
+        DB::table('article_ai_optimization_runs')->where('id', $run->id)->update([
+            'updated_at' => now()->subMinutes(6), 'deadline_at' => now()->addMinutes(20),
+        ]);
+        Queue::fake();
+
+        $counts = app(ArticleAiOptimizationReconciliationService::class)->reconcile();
+
+        $this->assertSame(0, $counts['requeued']);
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_STALE, $run->fresh()->status);
+        $this->assertSame('workflow_intent_changed', $run->fresh()->stop_reason);
+        $this->assertSame('hold', $article->fresh()->publication_intent);
+        $this->assertNull($run->fresh()->final_check_id);
+        Queue::assertNotPushed(ProcessArticleAiOptimizationJob::class);
+    }
+
+    public static function reconciliationStoppedIntents(): array
+    {
+        return ['hold' => ['hold'], 'reject' => ['reject'], 'private hold' => ['private']];
+    }
+
+    #[DataProvider('nonRestartableOptimizationOutcomes')]
+    public function test_duplicate_completed_callback_preserves_optimization_terminal_and_budget(string $status, string $reason): void
+    {
+        Queue::fake();
+        [$article, $source, $run] = $this->requestBelowTargetPublication('draft', false);
+        $run->update(['status' => $status, 'stop_reason' => $reason, 'completed_rounds' => 3,
+            'active_dedupe_key' => null, 'finished_at' => now()]);
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        $coordinator->recoverWaitingWorkflow((int) $source->id);
+        $this->assertSame('held_for_review', data_get($source->fresh()->execution_meta, 'workflow_apply.status'));
+        Queue::fake();
+
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            app(ArticleAiQualityInspectionService::class)->applyCompletedWorkflow((int) $source->id);
+        }
+
+        $this->assertSame(1, $article->aiOptimizationRuns()->count());
+        $this->assertSame($status, $run->fresh()->status);
+        $this->assertSame($reason, $run->fresh()->stop_reason);
+        $this->assertSame(3, $run->fresh()->completed_rounds);
+        $this->assertSame('held_for_review', data_get($source->fresh()->execution_meta, 'workflow_apply.status'));
+        Queue::assertNotPushed(ProcessArticleAiOptimizationJob::class);
+        Queue::assertNotPushed(ProcessArticleAiQualityJob::class);
+    }
+
+    public function test_governance_only_result_ends_optimization_and_duplicate_recovery_keeps_it_stopped(): void
+    {
+        Queue::fake();
+        [$article, $source, $run] = $this->requestBelowTargetPublication('draft', false);
+        $source->update(['decision' => 'needs_review', 'score' => 100, 'issues' => [],
+            'gate_reasons' => ['knowledge_governance_review_required']]);
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        Queue::fake();
+
+        $coordinator->process((int) $run->id);
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_NEEDS_REVIEW, $run->fresh()->status);
+        $this->assertSame('no_auto_fixable_issue', $run->fresh()->stop_reason);
+        $coordinator->recoverWaitingWorkflow((int) $source->id);
+        app(ArticleAiQualityInspectionService::class)->applyCompletedWorkflow((int) $source->id);
+        app(ArticleAiQualityInspectionService::class)->applyCompletedWorkflow((int) $source->id);
+
+        $this->assertSame(1, $article->aiOptimizationRuns()->count());
+        $this->assertSame(0, $run->fresh()->completed_rounds);
+        $this->assertSame('held_for_review', data_get($source->fresh()->execution_meta, 'workflow_apply.status'));
+        $this->assertSame(['knowledge_governance_review_required'], $source->fresh()->gate_reasons);
+        $this->assertSame('draft', $article->fresh()->status);
+        Queue::assertNotPushed(ProcessArticleAiOptimizationJob::class);
+        Queue::assertNotPushed(ProcessArticleAiQualityJob::class);
+    }
+
+    public function test_a_met_target_is_idempotent_and_a_later_higher_target_starts_new_optimization(): void
+    {
+        Queue::fake();
+        foreach (['ai_quality_optimization', 'ai_quality_optimization_auto_apply'] as $capability) {
+            config()->set('geoflow.'.$capability.'_enabled', true);
+            config()->set('geoflow.'.$capability.'_percent', 100);
+        }
+        [$article, , $source] = $this->qualityArticle();
+        $article->task()->update(['need_review' => 1, 'ai_quality_auto_optimize_enabled' => true,
+            'ai_quality_optimization_level' => 'excellent_80']);
+        $source->update(['decision' => 'passed', 'score' => 88]);
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+
+        $this->assertFalse($coordinator->interceptCompletedWorkflow((int) $source->id));
+        $oldRun = $article->aiOptimizationRuns()->sole();
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_COMPLETED, $oldRun->status);
+        $this->assertSame('target_already_met', $oldRun->stop_reason);
+        $this->assertFalse($coordinator->interceptCompletedWorkflow((int) $source->id));
+        $this->assertSame(1, $article->aiOptimizationRuns()->count());
+
+        app(TaskLifecycleService::class)->updateTask((int) $article->task_id, ['ai_quality_optimization_level' => 'excellent_90']);
+        try {
+            app(ArticleAiQualityGate::class)->check($article->fresh(), 'worker_publish');
+            $this->fail('The raised target must be met before publication.');
+        } catch (ArticleAiQualityGateException $exception) {
+            $this->assertSame('optimization_target_not_met', $exception->getErrorCode());
+        }
+        $newRun = $article->aiOptimizationRuns()->latest('id')->firstOrFail();
+        $this->assertNotSame($oldRun->id, $newRun->id);
+        $this->assertSame(90, $newRun->target_score);
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_QUEUED, $newRun->status);
+        $this->assertSame($source->id, $newRun->source_check_id);
+        Queue::assertNotPushed(ProcessArticleAiQualityJob::class);
+    }
+
+    #[DataProvider('renewedScheduledOptimizationRequests')]
+    public function test_current_scheduled_request_restarts_superseded_optimization(string $action): void
+    {
+        Queue::fake();
+        foreach (['ai_quality_optimization', 'ai_quality_optimization_auto_apply'] as $capability) {
+            config()->set('geoflow.'.$capability.'_enabled', true);
+            config()->set('geoflow.'.$capability.'_percent', 100);
+        }
+        [$article, , $source] = $this->qualityArticle();
+        $article->task()->update(['need_review' => 1, 'ai_quality_auto_optimize_enabled' => true, 'ai_quality_optimization_level' => 'excellent_90']);
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        $this->assertTrue($coordinator->interceptCompletedWorkflow((int) $source->id));
+        $oldRun = $article->aiOptimizationRuns()->sole();
+        $workflow = app(ArticleWorkflowTransitionService::class);
+        if ($action === 'approve') {
+            $workflow->humanAction($article->fresh(), 'approve');
+        } elseif ($action === 'reschedule') {
+            $workflow->humanAction($article->fresh(), 'hold');
+            $workflow->humanAction($article->fresh(), 'schedule');
+        } else {
+            app(TaskLifecycleService::class)->stopTask((int) $article->task_id);
+            app(TaskLifecycleService::class)->startTask((int) $article->task_id);
+        }
+        $coordinator->process((int) $oldRun->id);
+        $this->assertNull(app(ArticleAiQualityGate::class)->modelIdThatWouldBeDispatched($article->fresh()));
+        try {
+            app(ArticleAiQualityGate::class)->check($article->fresh(), 'worker_publish');
+            $this->fail('The replacement optimization must finish before publication.');
+        } catch (ArticleAiQualityGateException $exception) {
+            $this->assertSame('article_ai_optimization_pending', $exception->getErrorCode());
+        }
+        $replacement = $article->aiOptimizationRuns()->latest('id')->firstOrFail();
+        $this->assertNotSame($oldRun->id, $replacement->id);
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_QUEUED, $replacement->status);
+        $this->assertSame((int) $article->fresh()->workflow_version, data_get($replacement->execution_meta, 'workflow_fence.workflow_version'));
+        $this->assertSame((int) $article->task()->first()->automation_version, data_get($replacement->execution_meta, 'workflow_fence.automation_version'));
+        $this->assertSame($source->id, $replacement->source_check_id);
+        $this->assertNull($oldRun->fresh()->final_check_id);
+        $this->assertSame('scheduled', $article->fresh()->publication_intent);
+        Queue::assertNotPushed(ProcessArticleAiQualityJob::class);
+    }
+
+    public static function renewedScheduledOptimizationRequests(): array
+    {
+        return ['approval' => ['approve'], 'task resume' => ['resume'], 'new schedule after hold' => ['reschedule']];
+    }
+
+    public function test_enabling_optimization_starts_existing_completed_low_score_without_reinspection(): void
+    {
+        Queue::fake();
+        foreach (['ai_quality_optimization', 'ai_quality_optimization_auto_apply'] as $capability) {
+            config()->set('geoflow.'.$capability.'_enabled', true);
+            config()->set('geoflow.'.$capability.'_percent', 100);
+        }
+        [$article, , $source] = $this->qualityArticle();
+        app(ArticleAiQualityInspectionService::class)->applyCompletedWorkflow($source);
+        $this->assertSame('succeeded', data_get($source->fresh()->execution_meta, 'workflow_apply.status'));
+        app(TaskLifecycleService::class)->updateTask((int) $article->task_id, ['ai_quality_auto_optimize_enabled' => true]);
+        try {
+            app(ArticleAiQualityGate::class)->check($article->fresh(), 'worker_publish');
+            $this->fail('The existing low score needs optimization.');
+        } catch (ArticleAiQualityGateException $exception) {
+            $this->assertSame('article_ai_optimization_pending', $exception->getErrorCode());
+        }
+        $this->assertSame($source->id, $article->aiOptimizationRuns()->sole()->source_check_id);
+        Queue::assertNotPushed(ProcessArticleAiQualityJob::class);
+    }
+
+    public function test_approval_during_optimization_restarts_with_a_new_candidate_and_publishes_after_current_content_approval(): void
+    {
+        Queue::fake();
+        [$article, , $oldRun] = $this->requestBelowTargetPublication('draft', false);
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        $coordinator->process((int) $oldRun->id);
+        $oldCandidate = ArticleAiQualityCheck::query()->findOrFail((int) ArticleAiOptimizationStep::query()
+            ->where('run_id', $oldRun->id)->value('output_check_id'));
+        $article->task()->update(['need_review' => 1]);
+        $workflow = app(ArticleWorkflowTransitionService::class);
+        $workflow->humanAction($article->fresh(), 'schedule');
+        $workflow->humanAction($article->fresh(), 'approve');
+        try {
+            app(ArticleAiQualityGate::class)->check($article->fresh(), 'worker_publish');
+            $this->fail('The renewed intent must finish its own optimization.');
+        } catch (ArticleAiQualityGateException $exception) {
+            $this->assertSame('article_ai_optimization_pending', $exception->getErrorCode());
+        }
+        $newRun = $article->aiOptimizationRuns()->latest('id')->firstOrFail();
+        $this->assertNotSame($oldRun->id, $newRun->id);
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_STALE, $oldRun->fresh()->status);
+        $before = $article->fresh()->content;
+        $oldCandidate->update(['status' => 'completed', 'decision' => 'passed', 'score' => 95, 'issues' => [], 'gate_reasons' => [], 'finished_at' => now()]);
+        $coordinator->candidateCompleted((int) $oldCandidate->id);
+        $this->assertSame($before, $article->fresh()->content);
+        $this->assertNull($oldRun->fresh()->final_check_id);
+
+        $coordinator->process((int) $newRun->id);
+        $candidate = ArticleAiQualityCheck::query()->findOrFail((int) ArticleAiOptimizationStep::query()
+            ->where('run_id', $newRun->id)->value('output_check_id'));
+        $candidate->update(['status' => 'completed', 'active_dedupe_key' => null, 'decision' => 'passed', 'score' => 95,
+            'issues' => [], 'gate_reasons' => [], 'finished_at' => now()]);
+        $coordinator->candidateCompleted((int) $candidate->id);
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_COMPLETED, $newRun->fresh()->status);
+        $this->assertStringContainsString('有助于改善体验', $article->fresh()->content);
+        $this->assertSame('draft', $article->fresh()->status);
+        $this->assertSame('pending', $article->fresh()->review_status);
+        $workflow->humanAction($article->fresh(), 'approve');
+        $worker = app(WorkerExecutionService::class);
+        $result = (new \ReflectionMethod($worker, 'publishDueDraftArticle'))->invoke($worker, $article->fresh()->task);
+        $this->assertSame($article->id, $result['article_id']);
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertSame('none', $article->fresh()->publication_intent);
+        $this->assertSame(2, $article->reviews()->count());
+        $this->assertSame(2, $article->aiOptimizationRuns()->count());
+    }
+
+    #[DataProvider('nonRestartableOptimizationOutcomes')]
+    public function test_publication_does_not_restart_a_business_terminal_optimization(string $status, string $reason): void
+    {
+        Queue::fake();
+        [$article, $source, $run] = $this->requestBelowTargetPublication('draft', false);
+        $run->update(['status' => $status, 'stop_reason' => $reason, 'active_dedupe_key' => null,
+            'completed_rounds' => 3, 'finished_at' => now()]);
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $this->assertNull($coordinator->resumeForCurrentPublication($source));
+            try {
+                app(ArticleAiQualityGate::class)->check($article->fresh(), 'worker_publish');
+            } catch (ArticleAiQualityGateException) {
+            }
+        }
+        $this->assertSame(1, $article->aiOptimizationRuns()->count());
+        $this->assertSame($status, $run->fresh()->status);
+        $this->assertSame(3, $run->fresh()->completed_rounds);
+    }
+
+    public static function nonRestartableOptimizationOutcomes(): array
+    {
+        return [
+            'budget exhausted' => ['needs_review', 'max_rounds_reached'],
+            'no improvement' => ['needs_review', 'no_improvement'],
+            'provider failure' => ['failed', 'provider_error'],
+            'content changed' => ['stale', 'article_changed'],
+        ];
+    }
+
+    #[DataProvider('stoppedOptimizationIntentChanges')]
+    public function test_recovery_preserves_hold_rejection_and_changed_content(string $action): void
+    {
+        Queue::fake();
+        [$article, $source, $run] = $this->requestBelowTargetPublication('draft', false);
+        if ($action === 'content') {
+            $article->update(['content' => 'An independently edited article.']);
+            app(ArticleWorkflowTransitionService::class)->contentChanged($article);
+        } else {
+            app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), $action);
+        }
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        $coordinator->process((int) $run->id);
+        $this->assertNull($coordinator->resumeForCurrentPublication($source));
+        $this->assertSame(1, $article->aiOptimizationRuns()->count());
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_STALE, $run->fresh()->status);
+        $this->assertNull($run->fresh()->final_check_id);
+        $this->assertSame('draft', $article->fresh()->status);
+        Queue::assertNotPushed(ProcessArticleAiQualityJob::class);
+    }
+
+    public static function stoppedOptimizationIntentChanges(): array
+    {
+        return ['hold' => ['hold'], 'rejection' => ['reject'], 'content change' => ['content']];
+    }
+
+    #[DataProvider('invalidPrivateOptimizationRequests')]
+    public function test_private_optimization_requires_a_current_publication_request(string $intent, string $fenceState): void
+    {
+        config()->set('geoflow.ai_quality_optimization_enabled', true);
+        config()->set('geoflow.ai_quality_optimization_percent', 100);
+        Queue::fake();
+        [$article, $model, $source] = $this->qualityArticle();
+        $article->task()->update(['ai_quality_auto_optimize_enabled' => true, 'ai_quality_optimization_level' => 'excellent_90']);
+        $article->update(['status' => 'private', 'publication_intent' => $intent]);
+        $meta = (array) $source->execution_meta;
+        if ($fenceState === 'missing') {
+            unset($meta['workflow_fence']);
+        } elseif ($fenceState === 'stale') {
+            $article->increment('workflow_version');
+        } elseif ($fenceState === 'paused_automatic') {
+            $article->task()->update(['status' => 'paused']);
+        }
+        $source->update(['execution_meta' => $meta]);
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+
+        $this->assertFalse($coordinator->interceptCompletedWorkflow((int) $source->id));
+        try {
+            $coordinator->start($article->fresh(), 'excellent_90', $model, ArticleAiOptimizationRun::TRIGGER_TASK_AUTO);
+            $this->fail('A private article without a current publication request must remain unchanged.');
+        } catch (ArticleAiOptimizationException $exception) {
+            $this->assertSame('article_ai_optimization_draft_required', $exception->errorCode());
+        }
+
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertSame($intent, $article->fresh()->publication_intent);
+        $this->assertSame(0, ArticleAiOptimizationRun::query()->count());
+        Queue::assertNotPushed(ProcessArticleAiOptimizationJob::class);
+    }
+
+    public static function invalidPrivateOptimizationRequests(): array
+    {
+        return [
+            'private hold' => ['hold', 'current'],
+            'missing fence' => ['immediate', 'missing'],
+            'stale fence' => ['immediate', 'stale'],
+            'automatic request on paused task' => ['immediate', 'paused_automatic'],
+        ];
+    }
+
+    #[DataProvider('supersededPrivateOptimizationStages')]
+    public function test_a_changed_publication_request_stops_private_optimization_before_claim_or_apply(string $stage, string $action): void
+    {
+        Queue::fake();
+        [$article, , $run] = $this->requestBelowTargetPublication('private', false);
+        $before = $article->content;
+        $coordinator = app(ArticleAiOptimizationCoordinator::class);
+        if ($stage === 'apply') {
+            $coordinator->process((int) $run->id);
+        }
+
+        if ($action === 'pause') {
+            app(TaskLifecycleService::class)->stopTask((int) $article->task_id);
+        } else {
+            app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), $action);
+        }
+        if ($stage === 'claim') {
+            $coordinator->process((int) $run->id);
+            Queue::assertNotPushed(ProcessArticleAiQualityJob::class);
+        } else {
+            $candidate = ArticleAiQualityCheck::query()->findOrFail((int) ArticleAiOptimizationStep::query()
+                ->where('run_id', $run->id)->value('output_check_id'));
+            $candidate->forceFill([
+                'status' => 'completed', 'active_dedupe_key' => null, 'decision' => 'passed',
+                'score' => 95, 'issues' => [], 'gate_reasons' => [], 'finished_at' => now(),
+            ])->save();
+            try {
+                $coordinator->candidateCompleted((int) $candidate->id);
+            } catch (ArticleAiOptimizationException $exception) {
+                $this->assertSame('article_ai_optimization_stale', $exception->errorCode());
+            }
+            Queue::assertPushed(ProcessArticleAiQualityJob::class);
+        }
+
+        $this->assertSame($action === 'pause' ? ArticleAiOptimizationRun::STATUS_CANCELLED : ArticleAiOptimizationRun::STATUS_STALE, $run->fresh()->status);
+        $this->assertSame($action === 'reject' ? 'draft' : 'private', $article->fresh()->status);
+        $this->assertSame('hold', $article->fresh()->publication_intent);
+        $this->assertSame($before, $article->fresh()->content);
+        $this->assertNull($run->fresh()->final_check_id);
+    }
+
+    public static function supersededPrivateOptimizationStages(): array
+    {
+        return [
+            'hold before claim' => ['claim', 'private'],
+            'hold before apply' => ['apply', 'private'],
+            'reject before claim' => ['claim', 'reject'],
+            'reject before apply' => ['apply', 'reject'],
+            'pause before claim' => ['claim', 'pause'],
+            'pause before apply' => ['apply', 'pause'],
+        ];
+    }
+
+    /** @return array{Article, ArticleAiQualityCheck, ArticleAiOptimizationRun} */
+    private function requestBelowTargetPublication(string $status, bool $paused): array
+    {
+        foreach (['ai_quality_optimization', 'ai_quality_optimization_auto_apply'] as $capability) {
+            config()->set('geoflow.'.$capability.'_enabled', true);
+            config()->set('geoflow.'.$capability.'_percent', 100);
+        }
+        [$article, , $source] = $this->qualityArticle();
+        $article->task()->update([
+            'need_review' => 0, 'publish_scope' => 'local_only', 'status' => $paused ? 'paused' : 'active',
+            'ai_quality_auto_optimize_enabled' => true, 'ai_quality_optimization_level' => 'excellent_90',
+        ]);
+        $article->update(['status' => $status, 'publication_intent' => 'hold']);
+        $source->update(['decision' => 'passed', 'score' => 88]);
+        $this->app->instance(ArticleAiOptimizationRefiner::class, new class implements ArticleAiOptimizationRefiner
+        {
+            public function refine(AiModel $model, string $instructions, int $timeoutSeconds, int $quotaReserve = 0): array
+            {
+                preg_match('/"base_article_hash":"([a-f0-9]{64})"/', $instructions, $matches);
+
+                return [
+                    'result' => [
+                        'base_article_hash' => (string) ($matches[1] ?? ''), 'strategy' => 'excellent_90',
+                        'operations' => [[
+                            'field' => 'content', 'anchor_start' => 5, 'anchor_end' => 13, 'replace_start' => 5, 'replace_end' => 13,
+                            'old_text_hash' => hash('sha256', '保证100%有效'), 'replacement' => '有助于改善体验',
+                            'issue_codes' => ['ad_absolute_claim'], 'root_cause_keys' => ['ad_absolute_claim:content:5'],
+                            'evidence_keys' => [], 'reason' => '收敛绝对化承诺',
+                        ]],
+                    ],
+                    'usage' => [], 'model' => ['id' => (int) $model->id], 'mode' => 'structured',
+                ];
+            }
+        });
+
+        try {
+            app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), 'publish');
+            $this->fail('Publication must wait for the configured optimization target.');
+        } catch (ArticleAiQualityGateException $exception) {
+            $this->assertSame('optimization_target_not_met', $exception->getErrorCode());
+        }
+        $run = ArticleAiOptimizationRun::query()->where('article_id', $article->id)->sole();
+        $this->assertSame(ArticleAiOptimizationRun::STATUS_QUEUED, $run->status);
+        $this->assertSame('manual', data_get($run->execution_meta, 'workflow_fence.origin'));
+
+        return [$article->fresh(), $source->fresh(), $run];
+    }
+
     private function qualityArticle(): array
     {
         $executionAdmin = Admin::query()->create([
@@ -2831,9 +3336,13 @@ class ArticleAiOptimizationCoordinatorTest extends TestCase
             'content' => '本产品可以帮助改善使用体验。',
             'review_status' => 'approved',
         ]);
+        $library = TitleLibrary::query()->create(['name' => 'Optimization titles']);
+        Title::query()->create(['library_id' => $library->id, 'title' => 'Optimization title']);
         $task = Task::query()->create([
             'name' => '优化任务',
-            'status' => 'paused',
+            'title_library_id' => $library->id, 'article_limit' => 1,
+            'status' => 'active',
+            'schedule_enabled' => 1,
             'prompt_id' => $contentPrompt->id,
             'ai_model_id' => $model->id,
             'knowledge_base_id' => $knowledgeBase->id,

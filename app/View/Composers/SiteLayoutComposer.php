@@ -5,8 +5,10 @@ namespace App\View\Composers;
 use App\Models\Category;
 use App\Models\HostedSiteProfile;
 use App\Services\Site\SiteScopedArticleQuery;
+use App\Services\Site\SiteUrlGenerator;
 use App\Support\Site\CurrentSite;
 use App\Support\Site\SiteSettingsBag;
+use App\Support\Site\SiteThemePreviewContext;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
@@ -18,6 +20,7 @@ final class SiteLayoutComposer
     public function __construct(
         private readonly SiteScopedArticleQuery $siteArticles,
         private readonly CurrentSite $currentSite,
+        private readonly SiteUrlGenerator $siteUrls,
     ) {}
 
     public function compose(View $view): void
@@ -29,7 +32,7 @@ final class SiteLayoutComposer
         $copyright = (string) ($map['copyright_info'] ?? '');
         $filingInfo = trim((string) ($map['filing_info'] ?? ''));
         $filingUrl = trim((string) ($map['filing_url'] ?? ''));
-        $analyticsCode = (string) ($map['analytics_code'] ?? '');
+        $analyticsCode = app(SiteThemePreviewContext::class)->isActive() ? '' : (string) ($map['analytics_code'] ?? '');
 
         $categories = collect();
         if (Schema::hasTable('categories')) {
@@ -58,6 +61,7 @@ final class SiteLayoutComposer
             'navCategories' => $categories,
             'siteIndexingAllowed' => ! $this->currentSite->isHosted()
                 || $this->currentSite->profile()?->indexing_status === HostedSiteProfile::INDEXING_INDEX,
+            'siteUrls' => $this->siteUrls,
         ]);
     }
 }

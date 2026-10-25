@@ -21,7 +21,6 @@ final class UrlImportRecoveryService
             ->where('status', 'running')
             ->where(function ($query): void {
                 $query->whereNull('execution_lease_token')
-                    ->orWhere('execution_lease_token', '')
                     ->orWhere(function ($expired): void {
                         $expired->whereNotNull('lease_expires_at')
                             ->where('lease_expires_at', '<=', now());

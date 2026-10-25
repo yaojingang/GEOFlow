@@ -18,6 +18,8 @@ use App\Models\TitleLibrary;
 use App\Models\WorkerHeartbeat;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\JobQueueService;
+use App\Services\GeoFlow\TaskLifecycleService;
+use App\Services\Topics\TopicService;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Database\Eloquent\Collection;
@@ -25,6 +27,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -34,6 +37,36 @@ use Tests\TestCase;
 class AdminTasksPageTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_topic_task_limit_and_execution_copy_follow_its_content_type(): void
+    {
+        $admin = $this->createTaskFormAdmin('topic_task_copy_admin');
+        $task = Task::query()->create([
+            'name' => 'Topic completion task', 'status' => 'active', 'schedule_enabled' => 1,
+            'content_type' => 'topic', 'target_site_key' => 'primary', 'topic_limit' => 1, 'created_count' => 1,
+        ]);
+        $topic = app(TopicService::class)->create('primary', ['title' => 'Topic output'], $admin->id, $task->id);
+        $topic->update(['result_completed_at' => now()]);
+        $completed = TaskRun::query()->create([
+            'task_id' => $task->id, 'content_type' => 'topic', 'topic_id' => $topic->id,
+            'status' => 'completed', 'finished_at' => now(),
+        ]);
+        $running = TaskRun::query()->create(['task_id' => $task->id, 'content_type' => 'topic', 'status' => 'running']);
+        $failed = TaskRun::query()->create(['task_id' => $task->id, 'content_type' => 'topic', 'status' => 'failed']);
+        $failedTopic = TaskRun::query()->create(['task_id' => $task->id, 'content_type' => 'topic', 'topic_id' => $topic->id, 'status' => 'failed']);
+        $response = $this->actingAs($admin, 'admin')->get(route('admin.tasks.index'))->assertOk();
+        $this->assertSame(__('ai-task.topic_runtime.limit_reached'), $response->viewData('taskI18n')['topicLimitReached']);
+        $jobs = collect($response->viewData('recentJobs'))->keyBy('id');
+        $this->assertSame(__('ai-task.topic_runtime.completed_with_topic', ['task' => $task->name, 'topic' => $topic->title]), $jobs[$completed->id]['summary']);
+        $this->assertSame(__('ai-task.topic_runtime.running_explanation'), $jobs[$running->id]['explanation']);
+        $this->assertSame(__('ai-task.topic_runtime.failed_before_topic', ['reason' => __('admin.tasks.failure.generic_plain')]), $jobs[$failed->id]['explanation']);
+        $this->assertSame(__('ai-task.topic_runtime.failed_with_topic', ['topic' => $topic->title, 'reason' => __('admin.tasks.failure.generic_plain')]), $jobs[$failedTopic->id]['explanation']);
+        $this->actingAs($admin, 'admin')->get(route('admin.tasks.jobs', ['run_id' => $completed->id]))
+            ->assertOk()->assertSee($jobs[$completed->id]['summary'])->assertDontSee('已生成文章');
+        $snapshot = $this->getJson(route('admin.tasks.health'))->assertOk();
+        $this->assertSame('topic', collect($snapshot->json('tasks'))->firstWhere('id', $task->id)['content_type']);
+        $this->assertSame($jobs[$completed->id]['summary'], collect($snapshot->json('recent_runs'))->firstWhere('id', $completed->id)['summary']);
+    }
 
     public function test_guest_is_redirected_to_admin_login_when_visiting_tasks_page(): void
     {
@@ -856,6 +889,36 @@ class AdminTasksPageTest extends TestCase
         $task->refresh();
         $this->assertNull($task->knowledge_base_id);
         $this->assertSame(0, $task->knowledgeBases()->count());
+    }
+
+    public function test_changing_task_to_distribution_only_makes_published_articles_private(): void
+    {
+        Queue::fake();
+        [$task, $article] = $this->createPublishedTaskArticle('scope-narrowing');
+
+        app(TaskLifecycleService::class)->updateTask((int) $task->id, [
+            'publish_scope' => 'distribution_only',
+        ]);
+
+        $this->assertSame('distribution_only', $task->fresh()->publish_scope);
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertNull($article->fresh()->published_at);
+    }
+
+    public function test_changing_distribution_only_task_to_local_scope_does_not_publish_private_articles(): void
+    {
+        Queue::fake();
+        [$task, $article] = $this->createPublishedTaskArticle('scope-widening');
+        $task->update(['publish_scope' => 'distribution_only']);
+        $article->update(['status' => 'private', 'published_at' => null]);
+
+        app(TaskLifecycleService::class)->updateTask((int) $task->id, [
+            'publish_scope' => 'local_and_distribution',
+        ]);
+
+        $this->assertSame('local_and_distribution', $task->fresh()->publish_scope);
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertNull($article->fresh()->published_at);
     }
 
     public function test_stale_task_edit_cannot_restore_distribution_state_after_channel_deletion(): void
@@ -1777,6 +1840,30 @@ class AdminTasksPageTest extends TestCase
             ->assertSee('flex items-center justify-end gap-1.5 sm:gap-2', false);
     }
 
+    public function test_review_probe_second_browser_save_uses_current_config_version(): void
+    {
+        Queue::fake();
+        $admin = $this->createTaskFormAdmin('config-review-admin');
+        $deps = $this->createTaskFormDependencies($admin);
+        $kb = KnowledgeBase::query()->create(['name' => 'Review KB', 'content' => 'Service period one year.']);
+        $qualityPrompt = Prompt::query()->where('system_key', 'article_quality.cn_ads_knowledge.v1')->value('id');
+        $task = Task::query()->create(['name' => 'Config review task', 'title_library_id' => $deps['title_library']->id, 'prompt_id' => $deps['prompt']->id, 'ai_model_id' => $deps['ai_model']->id, 'fixed_category_id' => $deps['category']->id, 'category_mode' => 'fixed', 'model_selection_mode' => 'fixed', 'need_review' => false, 'status' => 'paused', 'publish_scope' => 'local_only', 'publish_interval' => 900, 'ai_quality_enabled' => true, 'ai_quality_prompt_id' => $qualityPrompt, 'knowledge_base_id' => $kb->id, 'ai_quality_retrieval_mode' => 'knowledge_broad', 'ai_quality_pass_score' => 85, 'ai_quality_manual_override_min_score' => 70]);
+        $task->knowledgeBases()->sync([$kb->id => ['sort_order' => 0]]);
+        $payload = $this->validTaskPayload($deps, ['task_name' => $task->name, 'need_review' => '1', 'ai_quality_enabled' => '1', 'ai_quality_prompt_id' => $qualityPrompt, 'ai_quality_retrieval_mode' => 'knowledge_broad', 'knowledge_base_ids' => [$kb->id], 'ai_quality_pass_score' => 85, 'ai_quality_manual_override_min_score' => 70, 'config_version' => 1, 'task_revision' => app(DistributionOrchestrator::class)->taskRevision($task)]);
+        $this->actingAs($admin, 'admin')->put(route('admin.tasks.update', $task->id), $payload)->assertSessionHasNoErrors();
+        $task->refresh();
+        $this->assertSame(2, (int) $task->ai_quality_config_version);
+        $this->assertSame(1, (int) $task->ai_quality_policy_version);
+        $html = $this->get(route('admin.tasks.edit', $task->id))->assertOk()->getContent();
+        preg_match('/name="config_version" value="(\d+)"/', $html, $matches);
+        $this->assertSame('2', $matches[1]);
+        $payload['task_name'] = 'Second save';
+        $payload['config_version'] = (int) $matches[1];
+        $payload['task_revision'] = app(DistributionOrchestrator::class)->taskRevision($task);
+        $this->put(route('admin.tasks.update', $task->id), $payload)->assertSessionHasNoErrors();
+        $this->assertSame('Second save', $task->fresh()->name);
+    }
+
     private function ensureWorkerHeartbeatTable(): void
     {
         if (Schema::hasTable('worker_heartbeats')) {
@@ -1857,6 +1944,106 @@ class AdminTasksPageTest extends TestCase
         }
 
         return $knowledgeBases;
+    }
+
+    /** @return array{Task, Article} */
+    private function createPublishedTaskArticle(string $suffix): array
+    {
+        $task = Task::query()->create([
+            'name' => 'Publish scope task '.$suffix,
+            'status' => 'paused',
+            'schedule_enabled' => 0,
+            'publish_scope' => 'local_and_distribution',
+            'ai_quality_enabled' => false,
+        ]);
+        $category = Category::query()->create([
+            'name' => 'Publish scope category '.$suffix,
+            'slug' => 'publish-scope-'.$suffix,
+        ]);
+        $author = Author::query()->create([
+            'name' => 'Publish scope author '.$suffix,
+            'email' => $suffix.'@example.test',
+        ]);
+        $article = Article::query()->create([
+            'title' => 'Publish scope article '.$suffix,
+            'slug' => 'publish-scope-article-'.$suffix,
+            'content' => 'Publish scope article content.',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'task_id' => $task->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+
+        return [$task, $article];
+    }
+
+    public function test_editing_a_manual_review_task_preserves_omitted_interval_and_quality_preferences(): void
+    {
+        $admin = $this->createTaskFormAdmin('task_configuration_preservation_admin');
+        $dependencies = $this->createTaskFormDependencies($admin);
+        $task = Task::query()->create([
+            'name' => '保留配置任务',
+            'title_library_id' => $dependencies['title_library']->id,
+            'prompt_id' => $dependencies['prompt']->id,
+            'ai_model_id' => $dependencies['ai_model']->id,
+            'need_review' => true,
+            'status' => 'paused',
+            'publish_scope' => 'local_only',
+            'publish_interval' => 900,
+            'ai_quality_enabled' => false,
+            'ai_quality_prompt_id' => Prompt::query()->where('system_key', 'article_quality.cn_ads_knowledge.v1')->value('id'),
+            'ai_quality_pass_score' => 91,
+            'ai_quality_manual_override_min_score' => 0,
+            'ai_quality_optimization_level' => 'excellent_90',
+        ]);
+        $payload = $this->validTaskPayload($dependencies, [
+            'task_name' => $task->name,
+            'need_review' => '1',
+            'category_mode' => 'random',
+            'task_revision' => app(DistributionOrchestrator::class)->taskRevision($task),
+            'config_version' => $task->ai_quality_config_version,
+        ]);
+        unset($payload['publish_interval']);
+
+        $this->actingAs($admin, 'admin')->put(route('admin.tasks.update', $task->id), $payload)
+            ->assertRedirect(route('admin.tasks.index'))->assertSessionHasNoErrors();
+
+        $task->refresh();
+        $this->assertSame(900, (int) $task->publish_interval);
+        $this->assertSame(91, $task->ai_quality_pass_score);
+        $this->assertSame(0, $task->ai_quality_manual_override_min_score);
+        $this->assertNotNull($task->ai_quality_prompt_id);
+        $this->assertSame('excellent_90', $task->ai_quality_optimization_level);
+        $this->assertSame('random', $task->category_mode);
+        $this->actingAs($admin, 'admin')->get(route('admin.tasks.edit', $task->id))
+            ->assertOk()->assertSee('每 15 分钟发布一篇')->assertSee('基础风险检查（始终启用）');
+    }
+
+    public function test_api_task_creation_exposes_compatible_review_default_and_explicit_policy(): void
+    {
+        $admin = $this->createTaskFormAdmin('task_compatible_policy_admin');
+        $dependencies = $this->createTaskFormDependencies($admin);
+        foreach ([null, true, false] as $review) {
+            $input = [
+                'name' => 'API policy '.var_export($review, true),
+                'title_library_id' => $dependencies['title_library']->id,
+                'prompt_id' => $dependencies['prompt']->id,
+                'ai_model_id' => $dependencies['ai_model']->id,
+                'status' => 'paused',
+                'category_mode' => 'random',
+            ];
+            if ($review !== null) {
+                $input['need_review'] = $review;
+            }
+            $created = app(TaskLifecycleService::class)->createTaskForApi($input, $admin->id, 0, $admin);
+            $this->assertSame($review === null, $created['compatibility']['need_review_defaulted']);
+            $this->assertSame($review ?? true, $created['effective_configuration']['manual_review_required']);
+            $this->assertSame($review === null, $created['compatibility']['message'] !== null);
+            $this->assertSame('random', $created['category_mode']);
+            $this->assertSame(3600, $created['publish_interval']);
+        }
     }
 
     /**

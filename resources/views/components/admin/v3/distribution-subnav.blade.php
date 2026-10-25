@@ -25,6 +25,13 @@
             'icon' => 'scan-search',
             'active' => $active === 'sync-all',
         ],
+        [
+            'key' => 'link-pool',
+            'label' => __('admin.nav.link_pool'),
+            'route' => 'admin.link-pool.overview',
+            'icon' => 'link-2',
+            'active' => $active === 'link-pool',
+        ],
     ];
 @endphp
 
@@ -33,4 +40,5 @@
     :label="__('admin.distribution.page_heading')"
     name="distribution"
     embedded
+    wrap
 />

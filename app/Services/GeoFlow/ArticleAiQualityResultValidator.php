@@ -233,6 +233,7 @@ class ArticleAiQualityResultValidator
             )) {
             throw new UnexpectedValueException('ai_quality_reviewed_claim_hashes_invalid');
         }
+        $modelReviewedClaimLookup = array_fill_keys($modelReviewedClaimHashes, true);
         $reviewedClaimHashes = [];
         foreach ($modelReviewedClaimHashes as $claimHash) {
             $fact = $factsByHash[$claimHash];
@@ -358,12 +359,17 @@ class ArticleAiQualityResultValidator
                 continue;
             }
 
+            $modelReviewed = isset($modelReviewedClaimLookup[$claimHash]);
             $generatedUncertainties[] = [
                 'claim' => Str::limit(trim((string) ($fact['normalized_claim'] ?? $fact['quote'] ?? '')), 500, ''),
                 'materiality' => 'high',
-                'reason' => '模型结果未确认该关键事实已经完成核查。',
-                'needed_evidence' => '重新质检或由人工核验该关键事实与现有证据。',
-                'gate_reason' => 'claim_coverage_incomplete',
+                'reason' => $modelReviewed
+                    ? '该关键事实已完成模型核查，现有检索证据尚不足以确认。'
+                    : '模型结果未确认该关键事实已经完成核查。',
+                'needed_evidence' => $modelReviewed
+                    ? '补充与该关键事实对应的可核验证据。'
+                    : '重新质检或由人工核验该关键事实与现有证据。',
+                'gate_reason' => $modelReviewed ? 'unverified_material_claim' : 'claim_coverage_incomplete',
             ];
         }
 
@@ -371,11 +377,22 @@ class ArticleAiQualityResultValidator
             $this->uncertainties($result['uncertainties']),
             $generatedUncertainties,
         ));
+        $materialClaimHashes = array_keys(array_filter(
+            $factsByHash,
+            static fn (array $fact): bool => in_array($fact['materiality'] ?? null, ['high', 'medium'], true),
+        ));
+        $verifiedClaimLookup = array_diff_key($reviewedClaimLookup, $unverifiedClaimLookup);
+        $coveredClaimCount = count(array_intersect($materialClaimHashes, array_keys($verifiedClaimLookup)));
+        $knowledgeCoverage = match (true) {
+            $coveredClaimCount === count($materialClaimHashes) => 'sufficient',
+            $coveredClaimCount === 0 => 'insufficient',
+            default => 'partial',
+        };
 
         return [
             'summary' => $this->summary((string) ($result['summary'] ?? ''), $issues, $uncertainties),
             'promotion_context' => $promotion,
-            'knowledge_coverage' => $evidence === [] ? 'insufficient' : 'partial',
+            'knowledge_coverage' => $knowledgeCoverage,
             'issues' => $issues,
             'uncertainties' => $uncertainties,
             'reviewed_claim_hashes' => $reviewedClaimHashes,
@@ -391,21 +408,70 @@ class ArticleAiQualityResultValidator
     private function confirmedNumericConflict(?array $fact, array $evidenceKeys, array $evidenceByKey): bool
     {
         $claim = (string) ($fact['normalized_claim'] ?? $fact['quote'] ?? '');
-        preg_match_all('/\d+(?:[,.]\d+)?/u', $claim, $claimMatches);
-        $claimNumbers = array_map(static fn (string $value): string => str_replace(',', '', $value), $claimMatches[0] ?? []);
-        if ($claimNumbers === []) {
-            return false;
-        }
-
+        $type = (string) ($fact['type'] ?? '');
+        $claimValues = $this->comparableNumericValues($claim, $type);
+        $evidenceValues = [];
         foreach ($evidenceKeys as $key) {
-            preg_match_all('/\d+(?:[,.]\d+)?/u', (string) ($evidenceByKey[$key]['content'] ?? ''), $evidenceMatches);
-            $evidenceNumbers = array_map(static fn (string $value): string => str_replace(',', '', $value), $evidenceMatches[0] ?? []);
-            if ($evidenceNumbers !== [] && array_intersect($claimNumbers, $evidenceNumbers) === []) {
+            foreach ($this->comparableNumericValues((string) ($evidenceByKey[$key]['content'] ?? ''), $type) as $quantity => $values) {
+                $evidenceValues[$quantity] = array_merge($evidenceValues[$quantity] ?? [], $values);
+            }
+        }
+        foreach ($claimValues as $quantity => $values) {
+            if (count($values) === 1 && ($evidenceValues[$quantity] ?? []) !== []
+                && ! in_array($values[0], $evidenceValues[$quantity], true)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Compare the same labelled quantity and unit; nearby dates and unrelated numbers cannot confirm or hide a conflict.
+     *
+     * @return array<string, list<string>>
+     */
+    private function comparableNumericValues(string $text, string $factType): array
+    {
+        preg_match_all('/(?<prefix>人民币|美元|港元|欧元|USD|CNY|RMB|HKD|EUR|¥|￥|\$|€)?\s*(?<![\d.,])(?<value>[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(?![\d.,])\s*(?<unit>亿元|万元|千元|美元|港元|欧元|元|%|％|年|月|日|家|人|户|次|项|个|台|套|份|篇|件|所|名|USD|CNY|RMB|HKD|EUR)?/iu', $text, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
+        $quantities = [];
+        $previousEnd = 0;
+        foreach ($matches as $match) {
+            $context = substr($text, $previousEnd, $match[0][1] - $previousEnd);
+            $previousEnd = $match[0][1] + strlen($match[0][0]);
+            $rawUnit = mb_strtolower((string) (($match['unit'][0] ?? '') ?: ($match['prefix'][0] ?? '')), 'UTF-8');
+            $unit = match ($rawUnit) {
+                '人民币', 'cny', 'rmb', '¥', '￥', '千元', '万元', '亿元' => '元',
+                'usd', '$' => '美元', 'hkd' => '港元', 'eur', '€' => '欧元', '％' => '%',
+                default => $rawUnit,
+            };
+            if ($unit === ''
+                || ($factType !== 'date' && in_array($unit, ['年', '月', '日'], true))
+                || ($factType === 'amount' && ! in_array($unit, ['元', '千元', '万元', '亿元', '美元', '港元', '欧元'], true))
+                || ($factType === 'percentage' && $unit !== '%')) {
+                continue;
+            }
+            $parts = preg_split('/[。！？!?；;，,\n]/u', $context) ?: [];
+            $label = mb_strtolower((string) preg_replace('/\s+/u', '', (string) end($parts)), 'UTF-8');
+            $label = preg_replace('/(?:为|是|达到|等于|约|合计|[:：])+$/u', '', $label) ?? $label;
+            $value = str_replace(',', '', $match['value'][0]);
+            $negative = str_starts_with($value, '-');
+            [$integer, $fraction] = array_pad(explode('.', ltrim($value, '+-'), 2), 2, '');
+            $decimalShift = match ($rawUnit) {
+                '千元' => 3, '万元' => 4, '亿元' => 8,
+                default => 0,
+            };
+            // Shift decimal digits as strings to retain exact amounts beyond integer and float precision.
+            $fraction = str_pad($fraction, $decimalShift, '0');
+            $integer .= substr($fraction, 0, $decimalShift);
+            $fraction = substr($fraction, $decimalShift);
+            $integer = ltrim($integer, '0') ?: '0';
+            $fraction = rtrim($fraction, '0');
+            $value = ($negative && ($integer !== '0' || $fraction !== '') ? '-' : '').$integer.($fraction === '' ? '' : '.'.$fraction);
+            $quantities[$label.'|'.$unit][] = $value;
+        }
+
+        return array_map(static fn (array $values): array => array_values(array_unique($values)), $quantities);
     }
 
     /** @return array{status:string,start_offset:?int,end_offset:?int} */

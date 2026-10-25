@@ -2,17 +2,14 @@
 
 namespace App\Services\GeoFlow\AiVisibility;
 
-use App\Ai\Agents\MarkdownContentWriterAgent;
 use App\Data\Ai\SystemAiIdentity;
-use App\Support\GeoFlow\ApiKeyCrypto;
-use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Throwable;
 
 final class AiVisibilityTermCleanupClient implements AiVisibilityTermCleaner
 {
     public function __construct(
         private readonly AiVisibilityConfigurationResolver $configuration,
-        private readonly ApiKeyCrypto $apiKeyCrypto,
+        private readonly AiVisibilityService $visibility,
     ) {}
 
     /**
@@ -29,31 +26,14 @@ final class AiVisibilityTermCleanupClient implements AiVisibilityTermCleaner
         }
 
         try {
-            $model = $this->configuration->deepSeekModel(SystemAiIdentity::forVisibilityAnalytics());
-            $providerUrl = $model === null
-                ? ''
-                : OpenAiRuntimeProvider::resolveChatBaseUrl((string) ($model->api_url ?? ''));
-            $apiKey = $model === null
-                ? ''
-                : $this->apiKeyCrypto->decrypt((string) ($model->getRawOriginal('api_key') ?? ''));
-            $modelId = $model === null ? '' : trim((string) ($model->model_id ?? ''));
-            if ($providerUrl === '' || $apiKey === '' || $modelId === '') {
+            $model = $this->configuration->deepSeekModel(SystemAiIdentity::forVisibilityCollection());
+            if ($model === null) {
                 return null;
             }
+            $prompt = $this->instructions()."\n\n".json_encode(['candidates' => $candidates], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+            $run = $this->visibility->runTermCleanup(SystemAiIdentity::forVisibilityCollection(), $model, $prompt);
 
-            $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, $modelId);
-            $providerName = OpenAiRuntimeProvider::registerProvider('ai_visibility_term_cleanup', $driver, $providerUrl, $apiKey);
-            $agent = new MarkdownContentWriterAgent(
-                instructions: self::instructions(),
-                maxTokens: max(512, (int) config('geoflow.ai_visibility.term_cleanup_max_tokens', 2048)),
-            );
-
-            $payload = (string) json_encode(['candidates' => $candidates], JSON_UNESCAPED_UNICODE);
-            $timeout = max(5, min(60, (int) config('geoflow.ai_visibility.term_cleanup_timeout', 20)));
-            $response = $agent->prompt($payload, [], $providerName, $modelId, $timeout);
-            $text = OpenAiRuntimeProvider::normalizeGeneratedText((string) ($response->text ?? ''));
-
-            return $this->parseTopics($text);
+            return self::parseTopics((string) $run->answer_text);
         } catch (Throwable) {
             return null;
         }
@@ -74,7 +54,7 @@ TEXT;
     /**
      * @return list<array{name: string, terms: list<string>}>|null
      */
-    private function parseTopics(string $text): ?array
+    public static function parseTopics(string $text): ?array
     {
         $json = trim($text);
         if ($json === '') {

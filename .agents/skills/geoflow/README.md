@@ -1,5 +1,7 @@
 # geoflow
 
+> Remote CLI preview: for running instances, start with [the remote CLI workflow](references/remote-cli-workflow.md). Local source is optional. Publication and full management coverage remain pending; the guidance below describes existing source/legacy workflows.
+
 `geoflow` is the single GEOFlow skill for product development, running-system operations, the default public frontend, Laravel Blade themes, visitor and lead flows, GeoFlow Agent channel sites, and legacy template migration.
 
 ## Modes

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
+use App\Services\SystemUpdater\RecoveryState;
 use App\Support\AdminActivityLogger;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\AdminLoginLockService;
@@ -36,6 +37,7 @@ class AdminAuthController extends Controller
 
     public function login(Request $request): RedirectResponse
     {
+        $recovery = app(RecoveryState::class)->assertHttpReady();
         $credentials = $request->validate([
             'username' => ['required', 'string', 'max:50'],
             'password' => ['required', 'string'],
@@ -74,6 +76,10 @@ class AdminAuthController extends Controller
         $admin = Auth::guard('admin')->user();
         $request->session()->regenerate();
         $request->session()->put(Admin::AUTH_VERSION_SESSION_KEY, (int) $admin->auth_version);
+        if ($recovery !== null) {
+            $request->session()->put(RecoveryState::SESSION_KEY, $recovery['epoch']);
+            $admin->forceFill(['remember_recovery_epoch' => $recovery['epoch']])->save();
+        }
         $this->adminLoginLockService->clearFailedAttempts((string) $admin->username, $ipAddress);
 
         $admin->forceFill(['last_login' => now()])->save();

@@ -69,6 +69,10 @@ if (array_diff($normalizedPrimaryHostCandidates, $primaryHosts) !== []) {
 
 return [
 
+    // 仅在 Web、队列与升级进程共用主题存储和升级锁目录时开启。多节点部署须先验证跨进程可见性。
+    'link_pool_theme_shared_storage' => filter_var(env('GEOFLOW_LINK_POOL_THEME_SHARED_STORAGE', false), FILTER_VALIDATE_BOOLEAN),
+    'link_pool_theme_readback_base_url' => rtrim((string) env('GEOFLOW_LINK_POOL_THEME_READBACK_BASE_URL', ''), '/'),
+
     // Admin UI V3 公共壳层。默认关闭，仅在独立 UI V3 环境显式开启。
     'admin_ui_v3_enabled' => filter_var(env('GEOFLOW_ADMIN_UI_V3_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
 
@@ -131,10 +135,9 @@ return [
         'sitemap_url_limit' => 50000,
     ],
 
-    // platform_web 渠道（Chrome 扩展代发布）：总开关与工单超时（小时）。
+    // 平台网页人工辅助发布开关。
     'platform_web' => [
         'enabled' => filter_var(env('GEOFLOW_PLATFORM_WEB_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
-        'work_order_timeout_hours' => max(1, (int) env('GEOFLOW_PLATFORM_WEB_TIMEOUT_HOURS', 24)),
     ],
 
     // 后台入口路径前缀，如 /geo_admin（勿与前台路由冲突）
@@ -173,6 +176,8 @@ return [
     'updater_socket' => (string) env('GEOFLOW_UPDATER_SOCKET', '/run/geoflow-updater/geoflow-updater.sock'),
     'updater_control_token_file' => (string) env('GEOFLOW_UPDATER_CONTROL_TOKEN_FILE', '/run/secrets/geoflow-updater-control-token'),
     'updater_instance_id' => (string) env('GEOFLOW_UPDATER_INSTANCE_ID', 'primary'),
+    'recovery_contract_required' => filter_var(env('GEOFLOW_RECOVERY_CONTRACT', false), FILTER_VALIDATE_BOOLEAN),
+    'recovery_control_directory' => '/run/geoflow-recovery-control',
     'updater_host_root' => rtrim((string) env('GEOFLOW_UPDATER_HOST_ROOT', ''), '/'),
     'updater_connect_timeout_seconds' => max(0.1, (float) env('GEOFLOW_UPDATER_CONNECT_TIMEOUT_SECONDS', 0.5)),
     'updater_read_timeout_seconds' => max(1, (int) env('GEOFLOW_UPDATER_READ_TIMEOUT_SECONDS', 10)),
@@ -185,6 +190,16 @@ return [
     'theme_replication_package_max_file_bytes' => max(1, (int) env('GEOFLOW_THEME_REPLICATION_PACKAGE_MAX_FILE_BYTES', 5 * 1024 * 1024)),
     'theme_replication_package_max_total_bytes' => max(1, (int) env('GEOFLOW_THEME_REPLICATION_PACKAGE_MAX_TOTAL_BYTES', 25 * 1024 * 1024)),
     'theme_replication_package_lock_timeout_milliseconds' => max(1, (int) env('GEOFLOW_THEME_REPLICATION_PACKAGE_LOCK_TIMEOUT_MS', 5000)),
+
+    'theme_packages' => [
+        'max_archive_bytes' => 32 * 1024 * 1024,
+        'max_files' => 500,
+        'max_file_bytes' => 5 * 1024 * 1024,
+        'max_video_file_bytes' => 25 * 1024 * 1024,
+        'max_total_bytes' => 40 * 1024 * 1024,
+        'ttl_minutes' => 60,
+        'lock_timeout_milliseconds' => 5000,
+    ],
 
     // 前台列表每页条数
     'items_per_page' => (int) env('GEOFLOW_ITEMS_PER_PAGE', 12),

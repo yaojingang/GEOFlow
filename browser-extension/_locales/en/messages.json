@@ -55,5 +55,7 @@
   "account_mismatch": { "message": "The current Zhihu account does not match the work order." },
   "editor_not_found": { "message": "The Zhihu answer editor was not found. The page may have changed." },
   "editor_not_empty": { "message": "The editor already contains a draft." },
-  "empty_content": { "message": "The work order content is empty." }
+  "empty_content": { "message": "The work order content is empty." },
+  "copyTitle": { "message": "Copy title" },
+  "manualPlatformNote": { "message": "Assisted manual publishing: open the editor, copy the title and body, review and publish yourself, then submit the publication receipt." }
 }

@@ -120,8 +120,8 @@ function initializeLinkedFields(form, i18n) {
     const togglePublishInterval = () => {
         if (!needReviewCheckbox || !publishIntervalInput) return;
 
-        publishIntervalInput.disabled = needReviewCheckbox.checked;
-        publishIntervalInput.parentElement?.classList.toggle('opacity-50', needReviewCheckbox.checked);
+        publishIntervalInput.disabled = false;
+        publishIntervalInput.parentElement?.classList.toggle('opacity-50', false);
     };
 
     const handleCategoryModeChange = () => {
@@ -207,18 +207,27 @@ function initializeLinkedFields(form, i18n) {
         const enabled = aiQualityToggle.checked;
         aiQualitySettings.classList.toggle('hidden', !enabled);
         aiQualityRequiredFields.forEach((field) => { field.required = enabled; });
-        if (aiQualityTimeoutSampling) {
-            aiQualityTimeoutSampling.disabled = !enabled;
-            if (!enabled) aiQualityTimeoutSampling.checked = false;
-        }
+        aiQualitySettings.querySelectorAll('[name="ai_quality_prompt_id"], [name="ai_quality_model_id"], [name="ai_quality_pass_score"], [name="ai_quality_manual_override_min_score"]')
+            .forEach((field) => { field.disabled = !enabled && Boolean(form.dataset.taskId); });
+        const optimizationAvailable = aiQualityOptimization?.dataset.available !== 'false';
         if (aiQualityOptimizationToggle) {
-            aiQualityOptimizationToggle.disabled = !enabled;
+            aiQualityOptimizationToggle.disabled = !enabled || (!optimizationAvailable && !aiQualityOptimizationToggle.checked);
             if (!enabled) aiQualityOptimizationToggle.checked = false;
+            aiQualityOptimizationToggle.setCustomValidity?.(enabled && aiQualityOptimizationToggle.checked && !optimizationAvailable
+                ? aiQualityOptimization.dataset.blockedMessage || '' : '');
         }
         const optimizationEnabled = enabled && aiQualityOptimizationToggle?.checked === true;
+        const retrievalMode = form.querySelector('[data-retrieval-mode-input]:checked')?.value;
+        const samplingSupported = !optimizationEnabled && ['atomic_first', 'chunk'].includes(retrievalMode);
+        if (aiQualityTimeoutSampling) {
+            aiQualityTimeoutSampling.disabled = !enabled || !samplingSupported;
+            if (!enabled || !samplingSupported) aiQualityTimeoutSampling.checked = false;
+        }
+        form.querySelector('[data-ai-quality-sampling-note]')?.classList.toggle('hidden', samplingSupported);
         aiQualityOptimizationLevels.forEach((field) => { field.disabled = !optimizationEnabled; });
         aiQualityOptimization?.classList.toggle('opacity-60', !enabled);
-        aiQualityWorkflowOptimization.forEach((element) => element.classList.toggle('hidden', !optimizationEnabled));
+        aiQualityWorkflowOptimization.forEach((element) => element.classList.toggle('hidden', !optimizationEnabled || !optimizationAvailable));
+        form.querySelectorAll('[data-ai-quality-workflow-inspect]').forEach((element) => element.classList.toggle('hidden', !enabled));
         if (aiQualityState) {
             aiQualityState.textContent = enabled
                 ? aiQualityState.dataset.enabledLabel || ''
@@ -233,6 +242,8 @@ function initializeLinkedFields(form, i18n) {
                 ? aiQualityWorkflow.dataset.manualLabel || ''
                 : aiQualityWorkflow.dataset.autoLabel || '';
         }
+        const cadence = form.querySelector('[data-task-publish-cadence]');
+        if (cadence) cadence.textContent = String(i18n.publishCadence || '').replace('__MINUTES__', String(Math.max(1, toCount(publishIntervalInput?.value) || 60)));
     };
 
     imageLibrarySelect?.addEventListener('change', toggleImageCountByLibrary);
@@ -241,6 +252,9 @@ function initializeLinkedFields(form, i18n) {
     aiQualityToggle?.addEventListener('change', syncAiQualitySettings);
     aiQualityOptimizationToggle?.addEventListener('change', syncAiQualitySettings);
     aiQualityPassScore?.addEventListener('input', syncOptimizationTargets);
+    publishIntervalInput?.addEventListener('input', syncAiQualitySettings);
+    form.addEventListener('ai-quality-retrieval-changed', syncAiQualitySettings);
+    form.querySelectorAll('[data-retrieval-mode-input]').forEach((input) => input.addEventListener('change', syncAiQualitySettings));
     articleLimitInput?.addEventListener('input', syncDraftLimitMax);
     categoryModeRadios.forEach((radio) => radio.addEventListener('change', handleCategoryModeChange));
     publishScopeRadios.forEach((radio) => radio.addEventListener('change', syncDistributionChannelsByScope));

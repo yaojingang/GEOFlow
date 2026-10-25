@@ -5,22 +5,15 @@ namespace App\Http\Controllers\Admin;
 use App\Contracts\SystemUpdater\AgentClient;
 use App\Exceptions\SystemUpdaterPreparationException;
 use App\Http\Controllers\Controller;
-use App\Services\Admin\SystemUpdateOperationGuard;
 use App\Services\Admin\SystemUpdaterBootstrapService;
-use App\Services\Admin\SystemUpdaterMutationPolicy;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SystemUpdaterOperationController extends Controller
 {
-    public function __construct(private readonly SystemUpdaterMutationPolicy $mutationPolicy) {}
-
     public function prepare(SystemUpdaterBootstrapService $bootstrapService): RedirectResponse
     {
         $this->ensureUpdateCenterEnabled();
@@ -68,57 +61,6 @@ class SystemUpdaterOperationController extends Controller
         );
     }
 
-    public function update(Request $request, AgentClient $agentClient, SystemUpdateOperationGuard $operationGuard): RedirectResponse
-    {
-        $this->ensureUpdateCenterEnabled();
-        $authorizationCode = $this->validateMutationRequest($request);
-
-        return $this->startOperation(
-            fn (): array => $this->startAuthorizedMutation(
-                $agentClient,
-                'update',
-                fn (): array => $agentClient->startUpdate($authorizationCode),
-                $operationGuard,
-            ),
-            'update',
-        );
-    }
-
-    public function backup(Request $request, AgentClient $agentClient, SystemUpdateOperationGuard $operationGuard): RedirectResponse
-    {
-        $this->ensureUpdateCenterEnabled();
-        $authorizationCode = $this->validateMutationRequest($request);
-
-        return $this->startOperation(
-            fn (): array => $this->startAuthorizedMutation(
-                $agentClient,
-                'backup',
-                fn (): array => $agentClient->startBackup($authorizationCode),
-                $operationGuard,
-            ),
-            'backup',
-        );
-    }
-
-    public function rollback(Request $request, AgentClient $agentClient, SystemUpdateOperationGuard $operationGuard): RedirectResponse
-    {
-        $this->ensureUpdateCenterEnabled();
-        $authorizationCode = $this->validateMutationRequest($request);
-        $validated = $request->validate([
-            'recovery_point_id' => ['required', 'regex:/\A[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}\z/'],
-        ]);
-
-        return $this->startOperation(
-            fn (): array => $this->startAuthorizedMutation(
-                $agentClient,
-                'rollback',
-                fn (): array => $agentClient->startRollback((string) $validated['recovery_point_id'], $authorizationCode),
-                $operationGuard,
-            ),
-            'rollback',
-        );
-    }
-
     public function verify(AgentClient $agentClient): RedirectResponse
     {
         $this->ensureUpdateCenterEnabled();
@@ -129,46 +71,6 @@ class SystemUpdaterOperationController extends Controller
         );
     }
 
-    private function validateMutationRequest(Request $request): string
-    {
-        $validated = $request->validate([
-            'updater_authorization_code' => ['required', 'regex:/\A[0-9]{6}\z/'],
-        ]);
-
-        if ((bool) config('geoflow.update_require_admin_password', true)) {
-            $password = $request->validate([
-                'current_admin_password' => ['required', 'string'],
-            ]);
-            $admin = $request->user('admin');
-            if (! $admin || ! Hash::check((string) $password['current_admin_password'], (string) $admin->password)) {
-                throw ValidationException::withMessages([
-                    'current_admin_password' => __('admin.system_updates.error.admin_password_invalid'),
-                ]);
-            }
-        }
-
-        return (string) $validated['updater_authorization_code'];
-    }
-
-    /**
-     * @param  \Closure(): array<string, mixed>  $start
-     * @return array<string, mixed>
-     */
-    private function startAuthorizedMutation(
-        AgentClient $agentClient,
-        string $kind,
-        \Closure $start,
-        SystemUpdateOperationGuard $operationGuard,
-    ): array {
-        $status = $agentClient->status();
-        if ($this->mutationPolicy->allows($status, $kind)) {
-            return $operationGuard->run($start, $status);
-        }
-
-        throw new \RuntimeException('Updater mutation preconditions are unavailable.');
-    }
-
-    /** @param  \Closure(): array<string, mixed>  $start */
     private function startOperation(\Closure $start, string $kind): RedirectResponse
     {
         try {

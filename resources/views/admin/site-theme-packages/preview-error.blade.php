@@ -1,0 +1,2 @@
+<!DOCTYPE html>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ __('admin.theme_packages.preview.title') }}</title><link rel="stylesheet" href="{{ asset('assets/css/style.css') }}"></head><body><main class="p-8"><h1 class="text-xl">{{ __('admin.theme_packages.preview.title') }}</h1><p class="mt-4">{{ $message }}</p></main></body></html>

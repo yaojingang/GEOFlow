@@ -142,6 +142,70 @@ final class AiVisibilityService
         );
     }
 
+    public function runTermCleanup(SystemAiIdentity $identity, AiModel $model, string $prompt): AiVisibilityRun
+    {
+        $identity->assertCanCollectVisibility();
+        $run = $this->createRun([
+            'keyword' => '',
+            'prompt' => $prompt,
+            'provider_type' => AiVisibilityRun::PROVIDER_TERM_CLEANUP,
+            'provider_key' => 'deepseek',
+            'ai_model_id' => $model->id,
+            'model_id' => $model->model_id,
+        ]);
+
+        return $this->runModelCall(
+            identity: $identity,
+            run: $run,
+            model: $model,
+            bindingType: 'deepseek',
+            callKeyPrefix: 'term_cleanup',
+            operation: 'ai_visibility.term_cleanup',
+            maxProviderAttempts: 1,
+            requestPayload: fn (): AiVisibilityPreparedModelRequest => $this->deepSeekAnalysisClient->prepareRequest($prompt, []),
+            provider: function (AiModel $current, AiVisibilityPreparedModelRequest $prepared) use ($prompt): AiVisibilityResult {
+                $result = $this->deepSeekAnalysisClient->analyze($current, $prompt, [], ['max_tokens' => config('geoflow.ai_visibility.term_cleanup_max_tokens', 2048), 'timeout' => config('geoflow.ai_visibility.term_cleanup_timeout', 20)], $prepared);
+                if (AiVisibilityTermCleanupClient::parseTopics($result->answerText) === null) {
+                    throw new RuntimeException('ai_term_cleanup_response_invalid');
+                }
+
+                return $result;
+            },
+        );
+    }
+
+    public function runCompetitorDetection(SystemAiIdentity $identity, AiModel $model, AiVisibilityRun $source, string $prompt, ?string $executionUuid = null): AiVisibilityRun
+    {
+        $identity->assertCanCollectVisibility();
+        $run = $this->createRun([
+            'uuid' => $executionUuid,
+            'parent_run_id' => $source->id,
+            'keyword' => $source->keyword,
+            'prompt' => $prompt,
+            'provider_type' => AiVisibilityRun::PROVIDER_COMPETITOR_DETECTION,
+            'provider_key' => 'deepseek',
+            'ai_model_id' => $model->id,
+            'model_id' => $model->model_id,
+        ]);
+
+        return $this->runModelCall(
+            identity: $identity,
+            run: $run,
+            model: $model,
+            bindingType: 'deepseek',
+            callKeyPrefix: 'competitor',
+            operation: 'ai_visibility.detect_competitors',
+            maxProviderAttempts: 1,
+            requestPayload: fn (): AiVisibilityPreparedModelRequest => $this->deepSeekAnalysisClient->prepareRequest($prompt, []),
+            provider: function (AiModel $current, AiVisibilityPreparedModelRequest $prepared) use ($prompt): AiVisibilityResult {
+                $result = $this->deepSeekAnalysisClient->analyze($current, $prompt, [], [], $prepared);
+                app(AiVisibilityCompetitorParser::class)->parse($result->answerText);
+
+                return $result;
+            },
+        );
+    }
+
     /**
      * @param  array<string,mixed>  $searchOptions
      * @param  array<string,mixed>  $analysisOptions
@@ -179,12 +243,13 @@ final class AiVisibilityService
     private function createRun(array $attributes, ?AiVisibilityTopic $topic = null): AiVisibilityRun
     {
         $keyword = (string) $attributes['keyword'];
-        $keywordHash = AiVisibilityKeywordNormalizer::hash($keyword);
+        $isSample = in_array($attributes['provider_type'], AiVisibilityRun::SAMPLE_PROVIDERS, true);
+        $keywordHash = $isSample ? AiVisibilityKeywordNormalizer::hash($keyword) : null;
         $attributes['keyword_hash'] = $keywordHash;
-        $attributes['ai_visibility_topic_id'] = $topic?->id
+        $attributes['ai_visibility_topic_id'] = ! $isSample ? null : ($topic?->id
             ?? ($keywordHash === AiVisibilityKeywordNormalizer::hash('')
                 ? null
-                : AiVisibilityTopicKeyword::query()->where('keyword_hash', $keywordHash)->value('ai_visibility_topic_id'));
+                : AiVisibilityTopicKeyword::query()->where('keyword_hash', $keywordHash)->value('ai_visibility_topic_id')));
 
         return AiVisibilityRun::query()->create(array_replace([
             'status' => AiVisibilityRun::STATUS_RUNNING,
@@ -375,6 +440,10 @@ final class AiVisibilityService
 
     private function providerErrorCode(Throwable $exception): string
     {
+        if (in_array($exception->getMessage(), ['ai_competitor_response_invalid', 'ai_term_cleanup_response_invalid'], true)) {
+            return $exception->getMessage();
+        }
+
         return preg_match('/(?:HTTP\s*)?(?:401|403)\b/i', $exception->getMessage()) === 1
             ? 'ai_provider_auth_failed'
             : 'ai_provider_request_failed';

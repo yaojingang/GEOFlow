@@ -112,52 +112,6 @@ class AiVisibilityServiceTest extends TestCase
             && ($request['Filter']['BlockHosts'] ?? null) === ['blocked.example']);
     }
 
-    public function test_custom_search_builds_the_documented_filter_and_query_control_payload(): void
-    {
-        Http::preventStrayRequests();
-        Http::fake(['https://open.feedcoopapi.com/search_api/web_search' => Http::response(['Result' => ['WebResults' => []]])]);
-
-        $provider = $this->createSearchProvider();
-        app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, 'GEOFlow', [
-            'mode' => 'custom',
-            'count' => 50,
-            'query_rewrite' => true,
-            'time_range' => 'OneMonth',
-            'industry' => 'finance',
-            'sites' => ['toutiao.com', 'zhonghua.com'],
-            'block_hosts' => ['spam.example'],
-            'auth_info_level' => 1,
-            'content_formats' => 'markdown',
-            'summary_length' => 1200,
-            'image_count' => 4,
-        ]);
-
-        Http::assertSent(fn ($request): bool => $request['Count'] === 50
-            && ($request['QueryControl']['QueryRewrite'] ?? null) === true
-            && ($request['Filter']['TimeRange'] ?? null) === 'OneMonth'
-            && ($request['Filter']['Industry'] ?? null) === 'finance'
-            && ($request['Filter']['Sites'] ?? null) === 'toutiao.com|zhonghua.com'
-            && ($request['Filter']['BlockHosts'] ?? null) === 'spam.example'
-            && ($request['Filter']['AuthInfoLevel'] ?? null) === 1
-            && ($request['Filter']['ContentFormats'] ?? null) === 'markdown');
-        $request = Http::recorded()[0][0];
-        $this->assertSame(1200, $request['Filter']['SummaryLength']);
-        $this->assertSame(4, $request['Filter']['ImageCount']);
-    }
-
-    public function test_global_search_caps_the_result_count_at_twenty(): void
-    {
-        Http::preventStrayRequests();
-        Http::fake(['https://open.feedcoopapi.com/search_api/web_search' => Http::response(['Result' => ['WebResults' => []]])]);
-
-        app(AiVisibilityService::class)->runDoubaoSearchCustom($this->createSearchProvider(), 'GEOFlow', [
-            'mode' => 'global',
-            'count' => 50,
-        ]);
-
-        Http::assertSent(fn ($request): bool => $request['Count'] === 20);
-    }
-
     public function test_it_persists_doubao_ark_responses_answer_and_sources(): void
     {
         Http::preventStrayRequests();
@@ -353,6 +307,164 @@ class AiVisibilityServiceTest extends TestCase
         $this->assertSame(1, (int) $model->fresh()->used_today);
     }
 
+    public function test_search_omits_empty_site_filters_saved_in_provider_metadata(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+        $provider = $this->createSearchProvider([
+            'metadata_json' => [
+                'sites' => [],
+                'block_hosts' => [],
+                'need_content' => false,
+                'need_url' => false,
+            ],
+        ]);
+
+        $run = app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, 'GEOFlow');
+
+        $this->assertSame(AiVisibilityRun::STATUS_COMPLETED, $run->status);
+        Http::assertSentCount(1);
+        Http::assertSent(function ($request): bool {
+            $filter = $request->data()['Filter'];
+
+            return ! array_key_exists('Sites', $filter)
+                && ! array_key_exists('BlockHosts', $filter)
+                && $filter['NeedContent'] === false
+                && $filter['NeedUrl'] === false
+                && $filter['ContentFormats'] === 'Markdown';
+        });
+    }
+
+    public function test_search_preserves_non_empty_site_filters_saved_in_provider_metadata(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+        $provider = $this->createSearchProvider([
+            'metadata_json' => [
+                'sites' => ['example.com'],
+                'block_hosts' => ['blocked.example.com'],
+            ],
+        ]);
+
+        $run = app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, 'GEOFlow');
+
+        $this->assertSame(AiVisibilityRun::STATUS_COMPLETED, $run->status);
+        Http::assertSentCount(1);
+        Http::assertSent(function ($request): bool {
+            $filter = $request->data()['Filter'];
+
+            return $filter['Sites'] === ['example.com']
+                && $filter['BlockHosts'] === ['blocked.example.com'];
+        });
+    }
+
+    private function createSearchProvider(array $overrides = []): AiSourceProvider
+    {
+        return AiSourceProvider::query()->create(array_merge([
+            'name' => 'Doubao Search Custom',
+            'provider_key' => AiSourceProvider::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            'endpoint_url' => 'https://open.feedcoopapi.com/search_api/web_search',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-search-key'),
+            'status' => 'active',
+            'daily_limit' => 0,
+            'used_today' => 0,
+            'total_used' => 0,
+        ], $overrides));
+    }
+
+    private function createAiModel(array $overrides = []): AiModel
+    {
+        $owner = Admin::query()->create([
+            'username' => 'visibility-owner-'.uniqid(),
+            'display_name' => 'Visibility Owner',
+            'password' => 'secret',
+            'role' => 'super_admin',
+            'status' => 'active',
+            'ai_config_access_version' => 1,
+        ]);
+        $model = new AiModel(array_merge([
+            'name' => 'DeepSeek V4 Flash',
+            'version' => 'v4',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-model-key'),
+            'model_id' => 'deepseek-v4-flash',
+            'model_type' => 'chat',
+            'api_url' => 'https://api.deepseek.com',
+            'failover_priority' => 100,
+            'daily_limit' => 0,
+            'used_today' => 0,
+            'total_used' => 0,
+            'status' => 'active',
+        ], $overrides));
+        $model->forceFill([
+            'owner_admin_id' => $owner->id,
+            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
+        ])->save();
+
+        return $model;
+    }
+
+    private function bindModel(string $settingKey, AiModel $model): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => $settingKey],
+            ['setting_value' => (string) $model->id],
+        );
+    }
+
+    public function test_custom_search_builds_the_documented_filter_and_query_control_payload(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://open.feedcoopapi.com/search_api/web_search' => Http::response(['Result' => ['WebResults' => []]])]);
+
+        $provider = $this->createSearchProvider();
+        app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, 'GEOFlow', [
+            'mode' => 'custom',
+            'count' => 50,
+            'query_rewrite' => true,
+            'time_range' => 'OneMonth',
+            'industry' => 'finance',
+            'sites' => ['toutiao.com', 'zhonghua.com'],
+            'block_hosts' => ['spam.example'],
+            'auth_info_level' => 1,
+            'content_formats' => 'markdown',
+            'summary_length' => 1200,
+            'image_count' => 4,
+        ]);
+
+        Http::assertSent(fn ($request): bool => $request['Count'] === 50
+            && ($request['QueryControl']['QueryRewrite'] ?? null) === true
+            && ($request['Filter']['TimeRange'] ?? null) === 'OneMonth'
+            && ($request['Filter']['Industry'] ?? null) === 'finance'
+            && ($request['Filter']['Sites'] ?? null) === 'toutiao.com|zhonghua.com'
+            && ($request['Filter']['BlockHosts'] ?? null) === 'spam.example'
+            && ($request['Filter']['AuthInfoLevel'] ?? null) === 1
+            && ($request['Filter']['ContentFormats'] ?? null) === 'markdown');
+        $request = Http::recorded()[0][0];
+        $this->assertSame(1200, $request['Filter']['SummaryLength']);
+        $this->assertSame(4, $request['Filter']['ImageCount']);
+    }
+
+    public function test_global_search_caps_the_result_count_at_twenty(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://open.feedcoopapi.com/search_api/web_search' => Http::response(['Result' => ['WebResults' => []]])]);
+
+        app(AiVisibilityService::class)->runDoubaoSearchCustom($this->createSearchProvider(), 'GEOFlow', [
+            'mode' => 'global',
+            'count' => 50,
+        ]);
+
+        Http::assertSent(fn ($request): bool => $request['Count'] === 20);
+    }
+
     public function test_it_attaches_the_selected_topic_to_a_search_run(): void
     {
         Http::preventStrayRequests();
@@ -456,58 +568,5 @@ class AiVisibilityServiceTest extends TestCase
         $this->assertNotNull($searchRun->ai_visibility_topic_id);
         $this->assertSame((int) $topic->id, (int) $searchRun->ai_visibility_topic_id);
         $this->assertSame($searchRun->ai_visibility_topic_id, $analysisRun->ai_visibility_topic_id);
-    }
-
-    private function createSearchProvider(array $overrides = []): AiSourceProvider
-    {
-        return AiSourceProvider::query()->create(array_merge([
-            'name' => 'Doubao Search Custom',
-            'provider_key' => AiSourceProvider::PROVIDER_DOUBAO_SEARCH_CUSTOM,
-            'endpoint_url' => 'https://open.feedcoopapi.com/search_api/web_search',
-            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-search-key'),
-            'status' => 'active',
-            'daily_limit' => 0,
-            'used_today' => 0,
-            'total_used' => 0,
-        ], $overrides));
-    }
-
-    private function createAiModel(array $overrides = []): AiModel
-    {
-        $owner = Admin::query()->create([
-            'username' => 'visibility-owner-'.uniqid(),
-            'display_name' => 'Visibility Owner',
-            'password' => 'secret',
-            'role' => 'super_admin',
-            'status' => 'active',
-            'ai_config_access_version' => 1,
-        ]);
-        $model = new AiModel(array_merge([
-            'name' => 'DeepSeek V4 Flash',
-            'version' => 'v4',
-            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-model-key'),
-            'model_id' => 'deepseek-v4-flash',
-            'model_type' => 'chat',
-            'api_url' => 'https://api.deepseek.com',
-            'failover_priority' => 100,
-            'daily_limit' => 0,
-            'used_today' => 0,
-            'total_used' => 0,
-            'status' => 'active',
-        ], $overrides));
-        $model->forceFill([
-            'owner_admin_id' => $owner->id,
-            'access_scope' => AiModel::ACCESS_SCOPE_SYSTEM_ONLY,
-        ])->save();
-
-        return $model;
-    }
-
-    private function bindModel(string $settingKey, AiModel $model): void
-    {
-        SiteSetting::query()->updateOrCreate(
-            ['setting_key' => $settingKey],
-            ['setting_value' => (string) $model->id],
-        );
     }
 }

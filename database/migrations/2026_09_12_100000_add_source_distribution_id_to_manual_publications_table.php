@@ -11,7 +11,7 @@ return new class extends Migration
         if (Schema::hasTable('manual_publications') && ! Schema::hasColumn('manual_publications', 'source_distribution_id')) {
             Schema::table('manual_publications', function (Blueprint $table): void {
                 $table->unsignedBigInteger('source_distribution_id')->nullable()->after('article_id');
-                $table->index('source_distribution_id');
+                $table->unique('source_distribution_id');
             });
         }
     }
@@ -20,7 +20,7 @@ return new class extends Migration
     {
         if (Schema::hasTable('manual_publications') && Schema::hasColumn('manual_publications', 'source_distribution_id')) {
             Schema::table('manual_publications', function (Blueprint $table): void {
-                $table->dropIndex(['source_distribution_id']);
+                $table->dropUnique(['source_distribution_id']);
                 $table->dropColumn('source_distribution_id');
             });
         }

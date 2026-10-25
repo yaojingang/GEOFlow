@@ -11,6 +11,8 @@ use Closure;
 use Laravel\Ai\Responses\AgentResponse;
 use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\StreamableAgentResponse;
+use Laravel\Ai\Streaming\Events\TextDelta;
+use Laravel\Ai\Streaming\Events\TextEnd;
 use RuntimeException;
 use Throwable;
 
@@ -21,9 +23,9 @@ final class ArticleContentGenerationService
         private readonly AiUsageQuotaService $usageQuota,
     ) {}
 
-    public function generate(AiModel $aiModel, string $prompt, ?Closure $beforeProvider = null): AgentResponse
+    public function generate(AiModel $aiModel, string $prompt, ?Closure $beforeProvider = null, ?string $instructions = null, ?int $providerTimeout = null): AgentResponse
     {
-        [$agent, $providerName, $modelId, $providerUrl] = $this->resolveRuntime($aiModel, 'article_content');
+        [$agent, $providerName, $modelId, $providerUrl] = $this->resolveRuntime($aiModel, 'article_content', $instructions);
 
         $reservation = $this->reserveDailyUsage($aiModel);
         if ($reservation === null) {
@@ -32,7 +34,7 @@ final class ArticleContentGenerationService
 
         try {
             $beforeProvider?->__invoke($aiModel);
-            $response = $agent->prompt($prompt, [], $providerName, $modelId);
+            $response = $agent->prompt($prompt, [], $providerName, $modelId, $providerTimeout);
         } catch (Throwable $exception) {
             $this->releaseDailyUsage($reservation);
 
@@ -43,7 +45,13 @@ final class ArticleContentGenerationService
             );
         }
 
-        if (OpenAiRuntimeProvider::normalizeGeneratedText((string) ($response->text ?? '')) === '') {
+        $normalized = OpenAiRuntimeProvider::normalizeGeneratedText($response->text);
+        $content = ArticleReasoningFilter::clean($normalized);
+        if ($content !== $normalized) {
+            $response->text = $content;
+        }
+
+        if (trim($content) === '') {
             $this->releaseDailyUsage($reservation);
 
             return $response;
@@ -141,9 +149,29 @@ final class ArticleContentGenerationService
             $upstream->invocationId,
             function () use ($upstream, $reservation, $providerUrl): iterable {
                 $streamEnded = false;
+                $filters = [];
+                $lastDeltas = [];
 
                 try {
                     foreach ($upstream as $event) {
+                        if ($event instanceof TextDelta) {
+                            $filter = $filters[$event->messageId] ??= new ArticleReasoningFilter;
+                            $lastDeltas[$event->messageId] = $event;
+                            $event = clone $event;
+                            $event->delta = $filter->push($event->delta);
+                            if ($event->delta === '') {
+                                continue;
+                            }
+                        } elseif ($event instanceof TextEnd && isset($filters[$event->messageId])) {
+                            $remaining = $filters[$event->messageId]->finish();
+                            if ($remaining !== '') {
+                                $lastDelta = clone $lastDeltas[$event->messageId];
+                                $lastDelta->delta = $remaining;
+                                yield $lastDelta;
+                            }
+                            unset($filters[$event->messageId], $lastDeltas[$event->messageId]);
+                        }
+
                         yield $event;
                     }
                     $streamEnded = true;
@@ -220,7 +248,7 @@ final class ArticleContentGenerationService
     /**
      * @return array{MarkdownContentWriterAgent, string, string, string}
      */
-    private function resolveRuntime(AiModel $aiModel, string $registrySlot): array
+    private function resolveRuntime(AiModel $aiModel, string $registrySlot, ?string $instructions = null): array
     {
         $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) ($aiModel->api_url ?? ''));
         if ($providerUrl === '') {
@@ -239,9 +267,12 @@ final class ArticleContentGenerationService
 
         $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, $modelId);
         $providerName = OpenAiRuntimeProvider::registerProvider($registrySlot, $driver, $providerUrl, $apiKey);
+        $host = strtolower((string) parse_url($providerUrl, PHP_URL_HOST));
+        $separateReasoning = in_array($host, ['api.minimaxi.com', 'api.minimax.io', 'api.minimax.cn'], true)
+            && str_starts_with(strtolower($modelId), 'minimax-m');
 
         return [
-            new MarkdownContentWriterAgent(maxTokens: $this->maxTokens($aiModel)),
+            new MarkdownContentWriterAgent(instructions: $instructions ?? '你是专业文章写作助手，请输出高质量、可发布的 Markdown 文章。最终文章禁止出现 [K1]、[K2][K3] 等内部证据编号、引用占位符或编号引用标记；需要说明依据时使用自然语言。', maxTokens: $this->maxTokens($aiModel), separateReasoning: $separateReasoning),
             $providerName,
             $modelId,
             $providerUrl,

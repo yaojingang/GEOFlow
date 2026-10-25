@@ -3,6 +3,7 @@
 namespace App\Services\AiWorkspace;
 
 use App\Ai\Agents\AdminHelpAssistant;
+use App\Ai\Agents\TaskCreationAssistant;
 use App\Contracts\AiWorkspace\AdminHelpResponder;
 use App\Data\Ai\AiWorkspaceExecutionContext;
 use App\Data\Ai\AiWorkspaceModelExecutionReceipt;
@@ -24,6 +25,7 @@ use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
+use Laravel\Ai\Responses\StructuredAgentResponse;
 use Laravel\Ai\Streaming\Events\Error;
 use Laravel\Ai\Streaming\Events\ReasoningStart;
 use Laravel\Ai\Streaming\Events\StreamEnd;
@@ -358,12 +360,14 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
         string $knowledgeContext,
         iterable $messages,
         AiWorkspaceExecutionContext $context,
+        bool $taskDraft = false,
+        ?float $deadline = null,
     ): array {
 
-        return $this->withConcurrencySlot(function () use ($prompt, $knowledgeContext, $messages, $context): array {
+        return $this->withConcurrencySlot(function () use ($prompt, $knowledgeContext, $messages, $context, $taskDraft, $deadline): array {
             $lastException = null;
             $attempt = 0;
-            $deadline = microtime(true) + (int) config('ai-workspace.model_total_timeout_seconds', 90);
+            $deadline ??= microtime(true) + (int) config('ai-workspace.model_total_timeout_seconds', 90);
             $usageRequestId = $this->usageAttempts->requestId();
 
             foreach ($this->models($context) as $candidate) {
@@ -380,7 +384,8 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                     [$model, $receipt] = $this->executionGuard->claimModelForCall($context, (int) $candidate->getKey());
                     $timeout = $this->remainingAttemptTimeout($deadline);
                     [$provider, $reservation] = $this->modelContext($model, $context->modelAccessAdminId);
-                    $agent = new AdminHelpAssistant(
+                    $agentClass = $taskDraft ? TaskCreationAssistant::class : AdminHelpAssistant::class;
+                    $agent = new $agentClass(
                         $messages,
                         $knowledgeContext,
                         (string) $model->model_id,
@@ -391,13 +396,23 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                         $model,
                         $usageRequestId,
                         'candidate-'.$attempt,
-                        'ai_workspace.answer',
+                        $taskDraft ? 'ai_workspace.task_draft' : 'ai_workspace.answer',
                         $prompt."\n".$knowledgeContext,
                     );
                     $response = $agent->prompt($prompt, [], $provider, (string) $model->model_id, $timeout);
                     $providerReturned = true;
                     $usage = $response->usage->toArray();
-                    $answer = trim((string) $response->text);
+                    $answer = $taskDraft && $response instanceof StructuredAgentResponse
+                        ? json_encode($response->toArray(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)
+                        : trim((string) $response->text);
+                    if ($taskDraft) {
+                        $structured = $response instanceof StructuredAgentResponse ? $response->toArray() : [];
+                        if (! in_array($structured['intent'] ?? null, ['collect', 'cancel', 'unsupported'], true)
+                            || ! is_string($structured['reply'] ?? null) || trim($structured['reply']) === ''
+                            || ! is_array($structured['draft'] ?? null) || $structured['draft'] === []) {
+                            throw new TaskDraftOutputException('AI task draft output was empty or incomplete.');
+                        }
+                    }
                     if ($answer === '') {
                         throw new RuntimeException('AI 模型未返回文本内容。');
                     }
@@ -410,6 +425,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
 
                     return [
                         'answer' => $answer,
+                        'structured' => $response instanceof StructuredAgentResponse ? $response->toArray() : null,
                         'completion_receipt' => $receipt,
                         'usage_delivery' => $usageDelivery,
                     ];
@@ -423,7 +439,7 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
                     if ($reservation !== null) {
                         $this->usageQuota->recordModelAttempt($reservation);
                     }
-                    if ($exception instanceof AiModelAccessException || $exception instanceof PermanentAiProviderException) {
+                    if ($exception instanceof AiModelAccessException || $exception instanceof PermanentAiProviderException || $exception instanceof TaskDraftOutputException) {
                         throw $exception;
                     }
                     $lastException = $this->runtimeException($exception, $model);
@@ -451,6 +467,42 @@ final readonly class AiWorkspaceModelRuntime implements AdminHelpResponder
 
             throw $lastException ?? new RuntimeException('没有可用的对话模型');
         });
+    }
+
+    public function draftTask(
+        string $prompt,
+        string $contextData,
+        iterable $messages,
+        AiWorkspaceExecutionContext $context,
+        callable $commit,
+    ): mixed {
+        $deadline = microtime(true) + (int) config('ai-workspace.model_total_timeout_seconds', 90);
+        try {
+            $result = $this->answerResult($prompt, $contextData, $messages, $context, true, $deadline);
+        } catch (TaskDraftOutputException) {
+            $result = $this->answerResult($prompt."\n请返回符合 schema 的完整 JSON 任务草稿，保留未修改的字段。", $contextData, $messages, $context, true, $deadline);
+        }
+        $delivery = $result['usage_delivery'];
+        try {
+            $data = $result['structured'] ?? null;
+            if (! is_array($data)) {
+                throw new RuntimeException('Invalid task draft response.');
+            }
+            $committed = $commit($data, $result['completion_receipt']);
+            if ($committed === null) {
+                $delivery->discarded('ai_result_not_committed');
+            } else {
+                $delivery->succeeded();
+            }
+
+            return $committed;
+        } catch (AiModelAccessException $exception) {
+            $delivery->revoked($exception->getErrorCode());
+            throw $exception;
+        } catch (Throwable $exception) {
+            $delivery->discarded('ai_result_not_committed');
+            throw $exception;
+        }
     }
 
     /** @return array<string,mixed> */

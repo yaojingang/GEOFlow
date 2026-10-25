@@ -235,3 +235,7 @@ Preview must be isolated from the active public template until the operator conf
 - do not display image captions when the caption is only a filename
 - do not hard-code admin URLs
 - do not change controllers, database queries, route definitions, or markdown rendering services in a design-only package
+
+## Topic package coverage
+
+For topic-capable templates, preserve `topic` contract 1 in the manifest, `topics/index.blade.php`, `topics/show.blade.php`, declared custom layout files, topic CSS/JS, and the page mappings `topics-index` / `topics-show`. Missing overrides use core fallback; declared custom files must exist. Review home `topic_collection`, list/detail and empty states before finalizing. See [topic-workflow.md](topic-workflow.md) for the exact declaration and data contracts. Packages contain presentation files; topic content stays in the content system.

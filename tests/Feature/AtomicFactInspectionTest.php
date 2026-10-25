@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeFactLibrary;
+use App\Services\GeoFlow\ArticleAiQualityScorer;
+use App\Services\GeoFlow\ArticleAiQualityScorerV2;
 use App\Services\GeoFlow\KnowledgeFacts\ArticleAtomicFactInspector;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -111,6 +113,97 @@ class AtomicFactInspectionTest extends TestCase
 
         $this->assertSame(1, $result['conflict_count']);
         $this->assertSame(0, $result['contradicted_count']);
+    }
+
+    public function test_ordinary_cross_library_conflicts_deduct_once_and_keep_chunk_fallback(): void
+    {
+        [$first] = $this->readyLibrary('product.version', '版本', 'version', '版本是 v2.1.0。', 'v2.1.0', importance: 'normal');
+        [$second] = $this->readyLibrary('product.version', '版本', 'version', '版本是 v2.2.0。', 'v2.2.0', importance: 'normal');
+
+        $result = app(ArticleAtomicFactInspector::class)->inspect('当前版本是 v2.1.0。当前版本是 v2.1.0。', [$first->id, $second->id]);
+
+        $this->assertSame(2, $result['conflict_count']);
+        $this->assertSame(2, $result['fallback_count']);
+        $this->assertSame(0, $result['supported_count']);
+        $this->assertStringContainsString('当前版本是 v2.1.0。', $result['fallback_content']);
+        $this->assertSame([], $result['issues']);
+        $this->assertCount(1, $result['uncertainties']);
+        $this->assertSame('medium', $result['uncertainties'][0]['materiality']);
+        foreach ([ArticleAiQualityScorer::class, ArticleAiQualityScorerV2::class] as $scorer) {
+            $score = app($scorer)->score($result + ['knowledge_coverage' => 'sufficient'], 85, 70);
+            $this->assertSame(97, $score['score']);
+            $this->assertSame('passed', $score['decision']);
+        }
+    }
+
+    public function test_critical_cross_library_conflicts_block_regardless_of_library_creation_order(): void
+    {
+        foreach ([['normal', 'critical'], ['critical', 'normal']] as $index => $importance) {
+            [$first] = $this->readyLibrary('product.version.'.$index, '版本', 'version', '版本是 v2.1.0。', 'v2.1.0', importance: $importance[0]);
+            [$second] = $this->readyLibrary('product.version.'.$index, '版本', 'version', '版本是 v2.2.0。', 'v2.2.0', importance: $importance[1]);
+
+            $result = app(ArticleAtomicFactInspector::class)->inspect('当前版本是 v2.1.0。', [$first->id, $second->id]);
+
+            $this->assertSame(1, $result['conflict_count']);
+            $this->assertSame(1, $result['fallback_count']);
+            $this->assertSame([], $result['uncertainties']);
+            $this->assertSame('critical', data_get($result, 'issues.0.severity'));
+            $this->assertTrue(data_get($result, 'issues.0.hard_blocker'));
+            foreach ([ArticleAiQualityScorer::class, ArticleAiQualityScorerV2::class] as $scorer) {
+                $score = app($scorer)->score($result + ['knowledge_coverage' => 'sufficient'], 75, 60);
+                $this->assertGreaterThanOrEqual(75, $score['score']);
+                $this->assertSame('blocked', $score['decision']);
+                $this->assertContains('confirmed_hard_blocker', $score['gate_reasons']);
+            }
+        }
+    }
+
+    public function test_high_importance_cross_library_conflict_keeps_its_high_uncertainty_penalty(): void
+    {
+        [$first] = $this->readyLibrary('product.version', '版本', 'version', '版本是 v2.1.0。', 'v2.1.0', importance: 'normal');
+        [$second] = $this->readyLibrary('product.version', '版本', 'version', '版本是 v2.2.0。', 'v2.2.0', importance: 'high');
+
+        $result = app(ArticleAtomicFactInspector::class)->inspect('当前版本是 v2.1.0。', [$first->id, $second->id]);
+
+        $this->assertSame('high', data_get($result, 'uncertainties.0.materiality'));
+        $this->assertSame([], $result['issues']);
+        $this->assertSame(1, $result['fallback_count']);
+        foreach ([ArticleAiQualityScorer::class, ArticleAiQualityScorerV2::class] as $scorer) {
+            $score = app($scorer)->score($result + ['knowledge_coverage' => 'sufficient'], 85, 70);
+            $this->assertSame(94, $score['score']);
+            $this->assertSame('passed', $score['decision']);
+        }
+    }
+
+    public function test_conflict_uncertainties_preserve_numeric_signs_and_decimal_points(): void
+    {
+        [$first] = $this->readyLibrary('company.growth', '增长率', 'percentage', '增长率为 1%。', '1', importance: 'normal');
+        [$second] = $this->readyLibrary('company.growth', '增长率', 'percentage', '增长率为 2%。', '2', importance: 'normal');
+
+        $result = app(ArticleAtomicFactInspector::class)->inspect('增长率为 -10%。增长率为 10%。增长率为 1.5%。增长率为 15%。', [$first->id, $second->id]);
+
+        $this->assertSame(4, $result['conflict_count']);
+        $this->assertCount(4, $result['uncertainties']);
+        $this->assertCount(4, array_unique(array_column($result['uncertainties'], 'claim_hash')));
+        foreach ([ArticleAiQualityScorer::class, ArticleAiQualityScorerV2::class] as $scorer) {
+            $score = app($scorer)->score($result + ['knowledge_coverage' => 'sufficient'], 85, 70);
+            $this->assertSame(88, $score['score']);
+            $this->assertSame('passed', $score['decision']);
+        }
+    }
+
+    public function test_conflicting_numeric_answers_preserve_signs_and_decimal_points(): void
+    {
+        foreach ([['-10', '10'], ['1.5', '15']] as $index => $values) {
+            [$first] = $this->readyLibrary('company.growth.'.$index, '增长率', 'percentage', '增长率为 '.$values[0].'%。', $values[0]);
+            [$second] = $this->readyLibrary('company.growth.'.$index, '增长率', 'percentage', '增长率为 '.$values[1].'%。', $values[1]);
+
+            $result = app(ArticleAtomicFactInspector::class)->inspect('增长率为 '.$values[0].'%。', [$first->id, $second->id]);
+
+            $this->assertSame(1, $result['conflict_count']);
+            $this->assertSame(1, $result['fallback_count']);
+            $this->assertTrue(data_get($result, 'issues.0.hard_blocker'));
+        }
     }
 
     public function test_claim_limit_moves_overflow_into_chunk_fallback_without_omitting_content(): void
@@ -229,6 +322,7 @@ class AtomicFactInspectionTest extends TestCase
         string $subject = 'GEOFlow',
         string $predicate = '值为',
         string $unit = '',
+        string $importance = 'critical',
     ): array {
         $base = KnowledgeBase::query()->create([
             'name' => $label,
@@ -245,7 +339,7 @@ class AtomicFactInspectionTest extends TestCase
             'published_at' => now(),
             'manifest_json' => ['schema_version' => 1, 'source_hash' => str_repeat('a', 64), 'facts' => [[
                 'stable_key' => $stableKey, 'label' => $label, 'subject' => $subject, 'predicate' => $predicate,
-                'value_type' => $type, 'importance' => 'critical', 'aliases' => [],
+                'value_type' => $type, 'importance' => $importance, 'aliases' => [],
                 'values' => [['canonical_value' => array_filter(['value' => $value, 'unit' => $unit]), 'canonical_answer' => $answer, 'evidence' => [['knowledge_chunk_id' => 1, 'excerpt' => $answer]]]],
             ]]],
         ]);

@@ -1700,6 +1700,14 @@
 
         .tt-brand {
             font-size: 21px;
+            min-width: 0;
+            flex: 1 1 0;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+
+        .tt-brand > span {
+            min-width: 0;
         }
 
         .tt-topnav {
@@ -1708,6 +1716,9 @@
 
         .tt-mobile-menu {
             display: inline-flex;
+            flex: 0 0 44px;
+            min-height: 44px;
+            justify-content: center;
         }
 
         .tt-layout {

@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\ApiException;
 use App\Exceptions\DistributionTaskRevisionMismatch;
 use App\Exceptions\TaskTitleReadinessException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\TaskTitleReadinessRequest;
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
@@ -15,21 +17,31 @@ use App\Models\ImageLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\Task;
+use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Models\Topic;
 use App\Services\Admin\AdminAiModelAccessResolver;
+use App\Services\Api\IdempotencyService;
 use App\Services\GeoFlow\AiQualityRetrievalReadinessService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\TaskDistributionChannelSelector;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\GeoFlow\TaskMonitoringQueryService;
 use App\Services\GeoFlow\TaskTitleReadinessService;
+use App\Services\Topics\TopicFreshnessService;
+use App\Services\Topics\TopicImportRows;
+use App\Services\Topics\TopicTaskProgress;
+use App\Services\Topics\TopicTaskService;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\AiQualityRetrievalMode;
+use App\Support\TopicAdminContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -261,6 +273,8 @@ class TaskController extends Controller
             return back()
                 ->with('title_readiness_report', $this->presentTitleReadiness($report))
                 ->withErrors($e->getMessage());
+        } catch (ApiException $e) {
+            return back()->withInput()->withErrors($e->getDetails()['field_errors'] ?? $e->getMessage());
         } catch (Throwable $e) {
             return back()->withErrors(__('admin.tasks.message.status_update_failed'));
         }
@@ -319,8 +333,11 @@ class TaskController extends Controller
     /**
      * 任务创建页（先接入可用创建链路，后续继续做 1:1 细节对齐）。
      */
-    public function create(): View
+    public function create(Request $request): View
     {
+        if ($request->input('content_type') === 'topic' || old('content_type') === 'topic') {
+            return $this->topicForm($request);
+        }
         $formOptions = $this->loadTaskFormOptions($this->authenticatedAdmin());
 
         // 创建页选项与 tasks.php 数据口径一致（库/模型/作者/分类）。
@@ -343,6 +360,9 @@ class TaskController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        if ($request->input('content_type') === 'topic') {
+            return $this->saveTopicTask($request);
+        }
         if (! Category::query()->exists()) {
             return redirect()
                 ->route('admin.categories.create')
@@ -376,6 +396,8 @@ class TaskController extends Controller
                 ->withInput()
                 ->with('title_readiness_report', $this->presentTitleReadiness($report))
                 ->withErrors($e->getMessage());
+        } catch (ApiException $e) {
+            return back()->withInput()->withErrors($e->getDetails()['field_errors'] ?? $e->getMessage());
         } catch (Throwable $e) {
             // 保留输入并回显服务层错误，便于在页面直接修正。
             return back()->withInput()->withErrors($e->getMessage());
@@ -392,6 +414,10 @@ class TaskController extends Controller
     public function edit(int $taskId): View|RedirectResponse
     {
         $this->assertCanManageHostedTask($taskId);
+        $topicTask = Task::query()->findOrFail($taskId);
+        if ($topicTask->content_type === 'topic') {
+            return $this->topicForm(request(), $topicTask);
+        }
 
         try {
             $task = $this->taskLifecycleService->getTask($taskId);
@@ -441,6 +467,10 @@ class TaskController extends Controller
                 'ai_quality_pass_score' => (string) ($task['ai_quality_pass_score'] ?? 85),
                 'ai_quality_manual_override_min_score' => (string) ($task['ai_quality_manual_override_min_score'] ?? 70),
                 'ai_quality_policy_version' => (int) ($task['ai_quality_policy_version'] ?? 1),
+                'ai_quality_config_version' => (int) ($task['ai_quality_config_version'] ?? 1),
+                'affected_unpublished_count' => Article::query()->where('task_id', $taskId)->where('status', '!=', 'published')->count(),
+                'held_unpublished_count' => Article::query()->where('task_id', $taskId)->where('status', '!=', 'published')
+                    ->where(fn ($query) => $query->where('publication_intent', 'hold')->orWhere('review_status', 'rejected'))->count(),
                 'is_loop' => (int) ($task['is_loop'] ?? 1),
                 'auto_keywords' => (int) ($task['auto_keywords'] ?? 1),
                 'auto_description' => (int) ($task['auto_description'] ?? 1),
@@ -458,6 +488,13 @@ class TaskController extends Controller
     public function update(Request $request, int $taskId): RedirectResponse
     {
         $this->assertCanManageHostedTask($taskId);
+        $existing = Task::query()->findOrFail($taskId);
+        if ($request->filled('content_type') && $request->input('content_type') !== ($existing->content_type ?: 'article')) {
+            throw ValidationException::withMessages(['content_type' => '任务类型保持不变，请创建新任务。']);
+        }
+        if ($existing->content_type === 'topic') {
+            return $this->saveTopicTask($request, $existing);
+        }
 
         if (! Category::query()->exists()) {
             return redirect()
@@ -466,7 +503,7 @@ class TaskController extends Controller
         }
 
         $payload = $this->validateTaskForm($request);
-        $taskData = $this->buildTaskPayload($request, $payload);
+        $taskData = $this->buildTaskPayload($request, $payload, true);
         $channelIds = $this->selectedDistributionChannelIds($request);
         $this->validateHostedChannelContract($taskData, $channelIds);
         $taskRevision = (string) $payload['task_revision'];
@@ -635,6 +672,7 @@ class TaskController extends Controller
             'waitingPublish' => __('admin.tasks.status.waiting_publish'),
             'draftPoolFull' => __('admin.tasks.status.draft_pool_full'),
             'limitReached' => __('admin.tasks.status.limit_reached'),
+            'topicLimitReached' => __('ai-task.topic_runtime.limit_reached'),
             'queued' => __('admin.tasks.status.pending'),
             'running' => __('admin.tasks.status.running'),
             'nextRunAt' => __('admin.tasks.label.next_run_at', ['time' => '__TIME__']),
@@ -689,6 +727,108 @@ class TaskController extends Controller
      *     distributionChannels: list<array{id:int,name:string,domain:string}>
      * }
      */
+    private function topicForm(Request $request, ?Task $task = null): View
+    {
+        $site = TopicAdminContext::site($request, $task?->target_site_key);
+        $batchKey = $request->input('fromBatch', old('batch_snapshot_key'));
+        $batchTransfer = null;
+        $batchTransferError = null;
+        if (! $task && is_string($batchKey)) {
+            $snapshot = $request->session()->get('topic_batch_transfer.'.$batchKey);
+            if (is_array($snapshot)) {
+                abort_unless((int) ($snapshot['owner_admin_id'] ?? 0) === (int) $this->authenticatedAdmin()->id && ($snapshot['site'] ?? null) === $site, 404);
+                if (now()->lessThan(Carbon::parse($snapshot['expires_at'])) && ! empty($snapshot['rows'])) {
+                    $batchTransfer = $snapshot + ['key' => $batchKey];
+                }
+            }
+            if (! $batchTransfer) {
+                $batchTransferError = '批量输入已过期或没有有效标题，请返回批量新建重新检查。';
+            }
+        }
+        $formOptions = $this->loadTaskFormOptions($this->authenticatedAdmin(), $task);
+        $boundTopics = Topic::query()->where('site_key', $site)->orderBy('title')->get(['id', 'title']);
+        $fromTopic = $request->integer('fromTopic');
+        if ($fromTopic) {
+            abort_unless($boundTopics->contains('id', $fromTopic), 404);
+        }
+
+        return view('admin.tasks.topic', [
+            'pageTitle' => $task ? '编辑专题任务' : '创建专题任务', 'activeMenu' => 'tasks', 'adminSiteName' => AdminWeb::siteName(),
+            'formOptions' => $formOptions, 'task' => $task, 'topicProgress' => $task ? app(TopicTaskProgress::class)->forTasks([(int) $task->id])[$task->id] : [], 'sites' => TopicAdminContext::sites(), 'site' => $site,
+            'boundTopics' => $boundTopics, 'fromTopic' => $fromTopic, 'batchTransfer' => $batchTransfer, 'batchTransferError' => $batchTransferError, 'requestKey' => (string) Str::uuid(),
+        ]);
+    }
+
+    private function saveTopicTask(Request $request, ?Task $task = null): RedirectResponse
+    {
+        if (is_array($request->input('topic_settings', []))) {
+            $settings = $request->input('topic_settings', []);
+            foreach (['category_ids', 'bound_topic_ids', 'fallback_model_ids'] as $key) {
+                $settings[$key] ??= [];
+            }$request->merge(['topic_settings' => $settings]);
+        }
+        $data = $request->validate([
+            'content_type' => ['required', 'in:topic'], 'name' => ['required', 'string', 'max:200'],
+            'target_site_key' => ['required', 'string', 'max:80'], 'title_library_id' => ['nullable', 'integer', 'exists:title_libraries,id'],
+            'ai_model_id' => ['nullable', 'integer', 'exists:ai_models,id'], 'topic_limit' => ['required', 'integer', 'between:1,99999'],
+            'interval_value' => ['required', 'integer', 'min:1'], 'interval_unit' => ['required', 'in:second,minute,hour,day'],
+            'topic_config_version' => [$task ? 'required' : 'nullable', 'integer', 'min:1'], 'status' => ['required', 'in:paused,active'],
+            'topic_settings' => ['nullable', 'array:after,template_key,target_count,rules,category_ids,bound_topic_ids,update_existing,auto_maintain,protect_manual,fallback_model_ids,freshness,matching_rules,title_overrides,title_ids'],
+            'request_key' => ['nullable', 'uuid'], 'batch_snapshot_key' => ['nullable', 'uuid'],
+            'topic_settings.category_ids' => ['nullable', 'array', 'max:100'], 'topic_settings.category_ids.*' => ['integer', 'exists:categories,id'],
+        ] + TopicFreshnessService::rules('topic_settings.freshness'));
+        $data['publish_interval'] = $data['interval_value'] * ['second' => 1, 'minute' => 60, 'hour' => 3600, 'day' => 86400][$data['interval_unit']];
+        foreach (['auto_maintain', 'protect_manual', 'update_existing'] as $flag) {
+            $data['topic_settings'][$flag] = $request->boolean('topic_settings.'.$flag);
+        }
+        $data['topic_settings']['category_ids'] = $request->input('topic_settings.category_ids', []);
+        $data['topic_settings']['bound_topic_ids'] = $request->input('topic_settings.bound_topic_ids', []);
+        $data['topic_settings']['fallback_model_ids'] = $request->input('topic_settings.fallback_model_ids', []);
+        $actor = $this->authenticatedAdmin();
+        if ($task) {
+            app(TopicTaskService::class)->save($data, $actor, $task);
+        } else {
+            $snapshot = null;
+            if (! empty($data['batch_snapshot_key'])) {
+                $snapshot = $request->session()->get('topic_batch_transfer.'.$data['batch_snapshot_key']);
+                if (! is_array($snapshot) || empty($snapshot['rows']) || now()->greaterThanOrEqualTo(Carbon::parse($snapshot['expires_at'] ?? '1970-01-01'))) {
+                    throw ValidationException::withMessages(['batch_snapshot_key' => '批量标题已过期，请返回批量新建重新检查后保存。']);
+                }
+                abort_unless((int) ($snapshot['owner_admin_id'] ?? 0) === (int) $actor->id && ($snapshot['site'] ?? null) === $data['target_site_key'], 404);
+            }
+            $key = $data['request_key'] ?? (string) Str::uuid();
+            $payload = array_diff_key($data, ['request_key' => true]);
+            $operationRequest = Request::create($request->url(), 'POST', $payload);
+            $operationRequest->headers->set('X-Idempotency-Key', $key);
+            IdempotencyService::executeJson($operationRequest, 'admin.topic_tasks.create:'.$actor->id, function () use ($payload, $actor, $snapshot): JsonResponse {
+                $input = $payload;
+                if ($snapshot) {
+                    $library = ! empty($input['title_library_id']) ? TitleLibrary::query()->lockForUpdate()->findOrFail($input['title_library_id']) : TitleLibrary::query()->create(['name' => mb_substr($input['name'], 0, 170).' 标题库', 'description' => '从专题批量创建导入', 'title_count' => 0]);
+                    $overrides = [];
+                    $titleIds = [];
+                    foreach ($snapshot['rows'] as $row) {
+                        $binding = app(TopicImportRows::class)->taskTitle($row, $input['topic_settings'] ?? []);
+                        $title = ! empty($binding['overrides']['topic_title']) ? Title::query()->where('library_id', $library->id)->whereRaw('lower(title) = ?', [mb_strtolower(Title::normalizeText($binding['library_title']), 'UTF-8')])->orderBy('id')->first() : null;
+                        $title ??= Title::query()->firstOrCreate(['library_id' => $library->id, 'title_fingerprint' => Title::fingerprintFor($binding['library_title'])], ['title' => $binding['library_title'], 'is_ai_generated' => 0, 'used_count' => 0]);
+                        $titleIds[] = (int) $title->id;
+                        if (! empty($binding['overrides'])) {
+                            $overrides[$title->id] = $binding['overrides'];
+                        }
+                    }
+                    $library->update(['title_count' => $library->titles()->count()]);
+                    $input['title_library_id'] = $library->id;
+                    $input['topic_settings']['title_overrides'] = $overrides;
+                    $input['topic_settings']['title_ids'] = $titleIds;
+                }
+                $created = app(TopicTaskService::class)->save($input, $actor);
+
+                return response()->json(['task_id' => $created->id], 201);
+            }, fingerprintContext: ['actor_id' => (int) $actor->id, 'batch_snapshot' => $snapshot]);
+        }
+
+        return redirect()->route('admin.tasks.index')->with('message', '专题任务已保存。')->with('topic_task_saved', true);
+    }
+
     private function loadTaskFormOptions(Admin $actor, ?Task $task = null): array
     {
         // 直接附带标题总数与可用数，避免 Blade 层再次查询。
@@ -834,6 +974,7 @@ class TaskController extends Controller
             'imageLibraries' => $imageLibraries,
             'knowledgeBases' => $knowledgeBases,
             'aiQualityRetrievalReadinessByKnowledgeBase' => $retrievalReadinessByKnowledgeBase,
+            'configurationCapabilities' => $this->taskLifecycleService->taskConfigurationCapabilities([]),
             'authors' => $authors,
             'categories' => $categories,
             'distributionChannels' => $distributionChannels,
@@ -913,10 +1054,9 @@ class TaskController extends Controller
             ->values();
         $protectedTaskIds = Task::query()
             ->whereIn('id', $taskIds)
-            ->whereHas('distributionChannels', fn ($query) => $query->where(
-                'channel_type',
-                DistributionChannel::TYPE_HOSTED_SITE
-            ))
+            ->where(fn ($query) => $query->whereHas('distributionChannels', fn ($channels) => $channels->where(
+                'channel_type', DistributionChannel::TYPE_HOSTED_SITE
+            ))->orWhere(fn ($topics) => $topics->where('content_type', 'topic')->where('target_site_key', '!=', 'primary')))
             ->pluck('id')
             ->mapWithKeys(static fn ($id): array => [(int) $id => true]);
 
@@ -999,16 +1139,13 @@ class TaskController extends Controller
      * @param  array<string, mixed>  $payload
      * @return array<string, int|string|null>
      */
-    private function buildTaskPayload(Request $request, array $payload): array
+    private function buildTaskPayload(Request $request, array $payload, bool $isUpdate = false): array
     {
         $categoryMode = (string) ($payload['category_mode'] ?? 'smart');
-        if ($categoryMode === 'random') {
-            $categoryMode = 'smart';
-        }
 
         $knowledgeBaseIds = $this->selectedKnowledgeBaseIds($payload);
 
-        return [
+        $data = [
             'name' => (string) $payload['task_name'],
             'title_library_id' => (int) $payload['title_library_id'],
             'image_library_id' => isset($payload['image_library_id']) ? (int) $payload['image_library_id'] : null,
@@ -1046,6 +1183,16 @@ class TaskController extends Controller
             'ai_quality_manual_override_min_score' => (int) ($payload['ai_quality_manual_override_min_score'] ?? 70),
             ...isset($payload['config_version']) ? ['config_version' => (int) $payload['config_version']] : [],
         ];
+
+        if ($isUpdate) {
+            foreach (['publish_interval', 'ai_quality_optimization_level', 'ai_quality_prompt_id', 'ai_quality_model_id', 'ai_quality_pass_score', 'ai_quality_manual_override_min_score'] as $field) {
+                if (! array_key_exists($field, $payload)) {
+                    unset($data[$field]);
+                }
+            }
+        }
+
+        return $data;
     }
 
     /**
@@ -1123,10 +1270,9 @@ class TaskController extends Controller
 
         $hasHostedChannel = Task::query()
             ->whereKey($taskId)
-            ->whereHas('distributionChannels', fn ($query) => $query->where(
-                'channel_type',
-                DistributionChannel::TYPE_HOSTED_SITE
-            ))
+            ->where(fn ($query) => $query->whereHas('distributionChannels', fn ($channels) => $channels->where(
+                'channel_type', DistributionChannel::TYPE_HOSTED_SITE
+            ))->orWhere(fn ($topics) => $topics->where('content_type', 'topic')->where('target_site_key', '!=', 'primary')))
             ->exists();
         abort_if($hasHostedChannel, 403);
     }
@@ -1165,10 +1311,9 @@ class TaskController extends Controller
             ->values();
         $hostedTaskIds = Task::query()
             ->whereIn('id', $taskIds)
-            ->whereHas('distributionChannels', fn ($query) => $query->where(
-                'channel_type',
-                DistributionChannel::TYPE_HOSTED_SITE
-            ))
+            ->where(fn ($query) => $query->whereHas('distributionChannels', fn ($channels) => $channels->where(
+                'channel_type', DistributionChannel::TYPE_HOSTED_SITE
+            ))->orWhere(fn ($topics) => $topics->where('content_type', 'topic')->where('target_site_key', '!=', 'primary')))
             ->pluck('id')
             ->mapWithKeys(static fn ($id): array => [(int) $id => true]);
 

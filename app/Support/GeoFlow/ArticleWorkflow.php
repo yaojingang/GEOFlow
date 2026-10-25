@@ -2,7 +2,7 @@
 
 namespace App\Support\GeoFlow;
 
-use App\Models\Article;
+use App\Services\GeoFlow\ArticleSlugRegistry;
 
 final class ArticleWorkflow
 {
@@ -30,18 +30,6 @@ final class ArticleWorkflow
             $status = 'draft';
         }
 
-        if ($status === 'published' && in_array($reviewStatus, ['pending', 'rejected'], true)) {
-            $reviewStatus = 'approved';
-        }
-
-        if ($status !== 'published' && $reviewStatus === 'auto_approved') {
-            $status = 'published';
-        }
-
-        if ($status === 'published' && $reviewStatus === 'pending') {
-            $reviewStatus = 'approved';
-        }
-
         if ($status === 'published') {
             $publishedAt = $publishedAt ?: date('Y-m-d H:i:s');
         } else {
@@ -55,36 +43,24 @@ final class ArticleWorkflow
         ];
     }
 
-    public static function generateUniqueSlug(string $title, ?int $excludeArticleId = null): string
+    /**
+     * @param  array{status: string, review_status: string, published_at: mixed}  $workflowState
+     * @return array{status: string, review_status: string, published_at: mixed}
+     */
+    public static function normalizeForPublishScope(array $workflowState, ?string $publishScope): array
     {
-        $slug = self::randomSlug(8);
-
-        while (true) {
-            try {
-                $q = Article::withTrashed()->where('slug', $slug);
-                if ($excludeArticleId !== null) {
-                    $q->where('id', '!=', $excludeArticleId);
-                }
-
-                if (! $q->exists()) {
-                    return $slug;
-                }
-
-                $slug = self::randomSlug(8);
-            } catch (\Throwable) {
-                return self::randomSlug(8);
-            }
+        if ((string) $publishScope !== 'distribution_only' || $workflowState['status'] !== 'published') {
+            return $workflowState;
         }
+
+        $workflowState['status'] = 'private';
+        $workflowState['published_at'] = null;
+
+        return $workflowState;
     }
 
-    private static function randomSlug(int $length): string
+    public static function generateUniqueSlug(string $title, ?int $excludeArticleId = null): string
     {
-        $characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
-        $slug = '';
-        for ($i = 0; $i < $length; $i++) {
-            $slug .= $characters[random_int(0, strlen($characters) - 1)];
-        }
-
-        return $slug;
+        return app(ArticleSlugRegistry::class)->generate($excludeArticleId);
     }
 }

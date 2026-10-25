@@ -51,10 +51,21 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
                 ->where('channel_type', DistributionChannel::TYPE_PLATFORM_WEB)
                 ->where('channel_config->platform', $platform))
             ->exists();
-        if ($syncedExists) {
+        $knownWorkOrder = ManualPublication::query()->where('article_id', (int) $distribution->article_id)
+            ->where('platform', $platform)->whereNotNull('source_distribution_id')
+            ->where('source_distribution_id', '!=', (int) $distribution->id)
+            ->whereIn('status', [ManualPublication::STATUS_READY, ManualPublication::STATUS_IN_PROGRESS, ManualPublication::STATUS_COMPLETED, ManualPublication::STATUS_OUTCOME_UNKNOWN])
+            ->exists();
+        if ($syncedExists || $knownWorkOrder) {
             throw new PlatformPublishBlockedException(
                 '该文章已成功发布到平台「'.PlatformCatalog::label($platform).'」，同平台严禁重发。'
             );
+        }
+
+        $this->actorFor($channel);
+        $boundAccount = ManualPublicationAccount::query()->with('persona')->find((int) ($config['manual_publication_account_id'] ?? 0));
+        if (! $boundAccount || ! $boundAccount->is_active || ! $boundAccount->persona?->is_active || $boundAccount->platform !== $platform) {
+            throw new RuntimeException('platform_web 渠道未绑定有效的平台账号。');
         }
 
         $publication = ManualPublication::query()
@@ -103,10 +114,14 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
         $account = $accountId === null
             ? null
             : ManualPublicationAccount::query()->find((int) $accountId);
-        if (! $account instanceof ManualPublicationAccount) {
+        if (! $account instanceof ManualPublicationAccount || ! $account->is_active || ! $account->persona?->is_active || $account->platform !== $platform) {
             throw new RuntimeException('platform_web 渠道未绑定有效的平台账号。');
         }
         $article = $distribution->article()->withTrashed()->firstOrFail();
+        $snapshot = $payload['article'] ?? null;
+        if (! is_array($snapshot) || ! is_string($snapshot['content'] ?? null)) {
+            throw new RuntimeException('platform_web 缺少不可变文章载荷。');
+        }
         $publication = $this->manualPublicationService->create([
             'type' => ManualPublication::TYPE_POST,
             'platform' => $platform,
@@ -116,11 +131,15 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
             // create() 对 status=ready 强制要求指派管理员，这里指派给渠道创建管理员。
             'assigned_admin_id' => (int) $actor->getKey(),
             'status' => ManualPublication::STATUS_READY,
-            'content' => PlatformWebContentFormatter::plainText((string) $article->content),
+            'content' => PlatformWebContentFormatter::plainText((string) $snapshot['content']),
             'target_url' => (string) $config['editor_url'],
-            'publication_payload_extras' => $this->bridge->payloadExtras($distribution, $config),
+            'publication_payload_extras' => $this->bridge->payloadExtras($distribution, $config, $payload),
         ], $actor);
-        $publication->forceFill(['source_distribution_id' => (int) $distribution->id])->save();
+        $publication->forceFill([
+            'source_distribution_id' => (int) $distribution->id,
+            'source_snapshot' => $snapshot,
+            'publication_payload' => array_replace((array) $publication->publication_payload, ['title' => (string) ($snapshot['title'] ?? '')]),
+        ])->save();
 
         return $this->pendingResponse($publication);
     }
@@ -197,7 +216,7 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
     private function actorFor(DistributionChannel $channel): Admin
     {
         $actor = Admin::query()->find((int) $channel->created_by_admin_id);
-        if (! $actor instanceof Admin) {
+        if (! $actor instanceof Admin || $actor->status !== 'active') {
             throw new RuntimeException('platform_web 渠道缺少有效的创建管理员，无法创建发布工单。');
         }
         // 工单重开（failed→ready）走 ManualPublicationPolicy::reopen，要求超级管理员；创建工单的

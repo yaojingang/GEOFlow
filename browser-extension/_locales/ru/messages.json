@@ -55,5 +55,7 @@
   "account_mismatch": { "message": "Текущий аккаунт Zhihu не совпадает с заданием." },
   "editor_not_found": { "message": "Редактор ответа не найден. Страница могла измениться." },
   "editor_not_empty": { "message": "В редакторе уже есть черновик." },
-  "empty_content": { "message": "Текст задания пуст." }
+  "empty_content": { "message": "Текст задания пуст." },
+  "copyTitle": { "message": "Copy title" },
+  "manualPlatformNote": { "message": "Assisted manual publishing: open the editor, copy the title and body, review and publish yourself, then submit the publication receipt." }
 }

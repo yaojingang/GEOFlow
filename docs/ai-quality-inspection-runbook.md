@@ -248,6 +248,20 @@ geoflow article ai-quality-status ARTICLE_ID
 | `model_output_truncated` | 模型输出被截断 | 已授权任务进入抽样；检查输出预算 |
 | `remaining_budget_insufficient` | 全文剩余时间不足以继续分段 | 已授权任务进入抽样 |
 
+### GLM / MiniMax 生成正常、质检返回 `invalid_model_output`
+
+文章生成接收文本，质检还会校验 JSON 字段、类型和引用。这个错误码表示结果未通过解析或校验，页面的模型配置提示不能单独证明 API Key 有误。
+
+质检会先解析当前响应，兼容开头完整的 `<think>...</think>` 和 JSON 代码围栏；JSON 字符串内的原文标签会保留。结构化结果为空或格式无效时，在剩余时间和调用额度允许的情况下回退一次 JSON 请求。每次实际调用分别记录用量；被丢弃的响应保留安全错误码和 token 用量。响应标记 `finish_reason=length` 或 JSON 明显截断时，报告 `model_output_truncated`，进入已有截断处理流程。
+
+官方接口使用以下参数适配：
+
+- `open.bigmodel.cn`、`api.z.ai` 的 GLM 4.5 及后续型号：关闭思考，使用 `response_format.type=json_object`，继续执行后端完整字段校验。
+- `api.minimaxi.com`、`api.minimax.io` 的 MiniMax M 系列：使用 `reasoning_split=true` 分离思考内容。
+- 第三方网关保留原有请求参数，使用同一套返回解析和回退处理。
+
+排查时记录具体模型 ID、接口域名、质检错误码和调用模式。输出预算仍由 `GEOFLOW_AI_QUALITY_MAX_OUTPUT_TOKENS` 与模型最大输出配置共同限制。相关回归测试位于 `tests/Feature/LaravelArticleAiQualityReviewerTest.php`，使用模拟 HTTP 响应验证真实 SDK 调用路径。
+
 ## 黄金集评测
 
 默认命令读取合成与脱敏 starter 数据，不调用模型：

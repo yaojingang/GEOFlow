@@ -26,7 +26,7 @@
             $schemaItems[] = [
                 $schemaAtType => 'ListItem',
                 'position' => count($schemaItems) + 1,
-                'url' => route('site.article', $schemaArticle->slug),
+                'url' => $siteUrls->article($schemaArticle),
                 'name' => $schemaArticle->title,
             ];
         }
@@ -78,19 +78,19 @@
                         <div class="ne-home-lead-main">
                             <div class="ne-page-kicker">{{ $siteSubtitle !== '' ? $siteSubtitle : $siteTitle }}</div>
                             <h1>
-                                <a href="{{ route('site.article', $leadArticle->slug) }}">{{ $leadArticle->title }}</a>
+                                <a href="{{ $siteUrls->article($leadArticle) }}">{{ $leadArticle->title }}</a>
                             </h1>
                             @if($leadSummary !== '')
                                 <p>{{ $leadSummary }}</p>
                             @elseif($siteDescription !== '')
                                 <p>{{ $siteDescription }}</p>
                             @endif
-                            <a href="{{ route('site.article', $leadArticle->slug) }}" class="ne-card-action">{{ __('site.home_read_more') }}</a>
+                            <a href="{{ $siteUrls->article($leadArticle) }}" class="ne-card-action">{{ __('site.home_read_more') }}</a>
                         </div>
                         <div class="ne-home-headlines">
                             <div class="ne-mini-title">{{ __('site.home_featured') }}</div>
                             @forelse($headlineArticles as $headlineArticle)
-                                <a href="{{ route('site.article', $headlineArticle->slug) }}">{{ $headlineArticle->title }}</a>
+                                <a href="{{ $siteUrls->article($headlineArticle) }}">{{ $headlineArticle->title }}</a>
                             @empty
                                 <span>{{ $siteDescription !== '' ? $siteDescription : __('site.home_hero_fallback') }}</span>
                             @endforelse
@@ -100,7 +100,7 @@
                 @if($homepageHotArticles->isNotEmpty())
                     <div class="ne-hot-carousel" data-hot-carousel>
                         @foreach($homepageHotArticles as $hotArticle)
-                            <a href="{{ route('site.article', $hotArticle->slug) }}" class="ne-breaking {{ $loop->first ? 'is-active' : '' }}" data-hot-slide>
+                            <a href="{{ $siteUrls->article($hotArticle) }}" class="ne-breaking {{ $loop->first ? 'is-active' : '' }}" data-hot-slide>
                                 <strong>{{ __('site.home_hot_badge') }}</strong>
                                 <span>{{ $hotArticle->title }}</span>
                             </a>

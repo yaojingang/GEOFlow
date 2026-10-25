@@ -16,17 +16,26 @@ use App\Http\Controllers\Api\V1\BrowserManualPublicationController;
 use App\Http\Controllers\Api\V1\BrowserSessionController;
 use App\Http\Controllers\Api\V1\CatalogController;
 use App\Http\Controllers\Api\V1\JobController;
+use App\Http\Controllers\Api\V1\ManagementOperationController;
+use App\Http\Controllers\Api\V1\ManagementSessionController;
+use App\Http\Controllers\Api\V1\ManagementSiteController;
+use App\Http\Controllers\Api\V1\ManagementUpdaterController;
 use App\Http\Controllers\Api\V1\MaterialController;
 use App\Http\Controllers\Api\V1\TaskController;
+use App\Http\Controllers\Api\V1\ThemeWorkspaceController;
 use Illuminate\Support\Facades\Route;
 
 // 实际路径形如：/api/v1/...
 Route::prefix('v1')
     ->middleware(['api.request_id'])
     ->group(function (): void {
+        Route::get('management/theme-previews/{workspace}/{revision}/{sitePath?}', [ThemeWorkspaceController::class, 'previewFrame'])
+            ->whereUuid(['workspace', 'revision'])->where('sitePath', '.*')->middleware(['throttle:60,1,theme-preview:', 'site.locale'])->name('api.v1.theme-preview');
+        Route::get('management/theme-preview-assets/{workspace}/{revision}/{assetPath}', [ThemeWorkspaceController::class, 'previewAsset'])
+            ->whereUuid(['workspace', 'revision'])->where('assetPath', '.*')->middleware('throttle:120,1,theme-preview-asset:')->name('api.v1.theme-preview-asset');
         // 公开：管理员登录，返回 API Token（无需 Bearer）
         Route::post('auth/login', [AuthController::class, 'login'])
-            ->middleware('throttle:admin-login');
+            ->middleware('throttle:admin-login')->name('api.v1.auth.login');
 
         Route::middleware(['browser.protocol'])
             ->prefix('browser-operations')
@@ -38,13 +47,40 @@ Route::prefix('v1')
             });
 
         // 需有效 Token + 对应 scope
-        Route::middleware(['api.auth'])->group(function (): void {
+        Route::middleware(['api.auth', 'api.recovery'])->group(function (): void {
+            Route::prefix('management/updater')->name('api.v1.management.updater.')->group(function (): void {
+                Route::get('status', [ManagementUpdaterController::class, 'status'])->name('status');
+                Route::get('recovery-points', [ManagementUpdaterController::class, 'recoveryPoints'])->name('recovery-points');
+                Route::post('plans', [ManagementUpdaterController::class, 'plan'])->middleware('throttle:5,1,updater-plans:')->name('plans');
+                Route::post('operations', [ManagementUpdaterController::class, 'submit'])->middleware('throttle:10,1,updater-submit:')->name('submit');
+                Route::get('requests/{requestId}', [ManagementUpdaterController::class, 'lookup'])->where('requestId', '[A-Za-z0-9][A-Za-z0-9._-]{7,127}')->name('lookup');
+                Route::get('operations/{operationId}', [ManagementUpdaterController::class, 'operation'])->where('operationId', '[0-9]{8}T[0-9]{6}\.[0-9]{9}Z-[a-f0-9]{16}')->name('operation');
+            });
+            Route::get('capabilities', [ManagementSessionController::class, 'capabilities'])->name('api.v1.capabilities');
+            Route::get('auth/session', [ManagementSessionController::class, 'show'])->name('api.v1.auth.session');
+            Route::post('auth/logout', [ManagementSessionController::class, 'destroy'])->name('api.v1.auth.logout');
+            Route::get('management/sites', [ManagementSiteController::class, 'index'])->middleware('api.scope:sites:read');
+            Route::get('management/sites/{site}', [ManagementSiteController::class, 'show'])->middleware('api.scope:sites:read');
+            Route::get('management/operations/lookup', [ManagementOperationController::class, 'lookup']);
+            Route::get('management/operations/{operation}', [ManagementOperationController::class, 'show'])->whereUuid('operation');
+            Route::prefix('management')->middleware('throttle:60,1,theme-management:')->group(function (): void {
+                Route::get('themes', [ThemeWorkspaceController::class, 'themes']);
+                Route::get('theme-contract', [ThemeWorkspaceController::class, 'contract']);
+                Route::post('theme-workspaces', [ThemeWorkspaceController::class, 'store']);
+                Route::get('theme-workspaces/{workspace}', [ThemeWorkspaceController::class, 'show'])->whereUuid('workspace');
+                Route::get('theme-workspaces/{workspace}/contract', [ThemeWorkspaceController::class, 'contract'])->whereUuid('workspace');
+                Route::post('theme-workspaces/{workspace}/discard', [ThemeWorkspaceController::class, 'discard'])->whereUuid('workspace');
+                Route::get('theme-workspaces/{workspace}/files', [ThemeWorkspaceController::class, 'file'])->whereUuid('workspace');
+                Route::post('theme-workspaces/{workspace}/changes', [ThemeWorkspaceController::class, 'change'])->whereUuid('workspace');
+                Route::post('theme-workspaces/{workspace}/code-authorizations', [ThemeWorkspaceController::class, 'authorizeCode'])->whereUuid('workspace')->middleware('throttle:5,1,theme-code-authorization:');
+                Route::post('theme-workspaces/{workspace}/previews', [ThemeWorkspaceController::class, 'preview'])->whereUuid('workspace');
+            });
             Route::middleware(['browser.protocol', 'api.scope:browser-operations:read'])
                 ->prefix('browser-operations')
                 ->group(function (): void {
                     Route::get('session', [BrowserSessionController::class, 'show'])->middleware('throttle:120,1');
                     Route::delete('session', [BrowserSessionController::class, 'destroy'])
-                        ->middleware(['api.scope:browser-operations:execute', 'throttle:30,1']);
+                        ->middleware(['api.scope:browser-operations:execute', 'throttle:30,1'])->name('api.v1.browser-session.logout');
                 });
 
             Route::middleware(['browser.protocol', 'api.scope:browser-operations:read'])
@@ -134,6 +170,12 @@ Route::prefix('v1')
                 ->whereNumber('article')
                 ->middleware(['api.scope:articles:publish', 'throttle:60,1']);
             Route::post('articles/{article}/publish', [ArticleController::class, 'publish'])
+                ->whereNumber('article')
+                ->middleware(['api.scope:articles:publish', 'throttle:60,1']);
+            Route::post('articles/{article}/schedule', [ArticleController::class, 'schedule'])
+                ->whereNumber('article')
+                ->middleware(['api.scope:articles:publish', 'throttle:60,1']);
+            Route::post('articles/{article}/hold', [ArticleController::class, 'hold'])
                 ->whereNumber('article')
                 ->middleware(['api.scope:articles:publish', 'throttle:60,1']);
             Route::post('articles/{article}/ai-quality/recheck', [ArticleController::class, 'recheckAiQuality'])

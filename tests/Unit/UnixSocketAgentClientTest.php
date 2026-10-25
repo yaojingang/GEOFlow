@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Services\SystemUpdater\AgentProtocolException;
 use App\Services\SystemUpdater\UnixSocketAgentClient;
 use Monolog\Formatter\LineFormatter;
 use Monolog\Level;
@@ -196,7 +197,7 @@ class UnixSocketAgentClientTest extends TestCase
         $pid = pcntl_fork();
 
         if ($pid === 0) {
-            for ($index = 0; $index < 4; $index++) {
+            for ($index = 0; $index < 6; $index++) {
                 $connection = stream_socket_accept($server, 5);
                 if (! is_resource($connection)) {
                     exit(1);
@@ -232,8 +233,12 @@ class UnixSocketAgentClientTest extends TestCase
                     'started_at' => '2026-08-27T12:34:56Z',
                 ];
                 $status = '200 OK';
-                if ($firstLine === 'POST /v1/instances/primary/updates HTTP/1.0' && $updateAuthorized) {
+                if ($firstLine === 'POST /v1/instances/primary/updates HTTP/1.0' && $updateAuthorized
+                    && ($requestBody === '' || $requestBody === json_encode(['allow_maintenance' => true, 'expected_plan_sha256' => str_repeat('a', 64)]))) {
                     $status = '202 Accepted';
+                } elseif ($firstLine === 'POST /v1/instances/primary/switch-backs HTTP/1.0' && $updateAuthorized && $requestBody === '') {
+                    $status = '202 Accepted';
+                    $operation['kind'] = 'switch-back';
                 } elseif ($firstLine === 'POST /v1/instances/primary/rollbacks HTTP/1.0'
                     && $requestBody === '{"recovery_point_id":"20260827T120000Z-1234abcd"}'
                     && $rollbackAuthorized) {
@@ -275,6 +280,8 @@ class UnixSocketAgentClientTest extends TestCase
             $client = new UnixSocketAgentClient;
 
             $this->assertSame('update', $client->startUpdate('123456')['kind']);
+            $this->assertSame('update', $client->startPlannedUpdate('123456', true, str_repeat('a', 64))['kind']);
+            $this->assertSame('switch-back', $client->startSwitchBack('123456')['kind']);
             $this->assertSame('rollback', $client->startRollback('20260827T120000Z-1234abcd', '234567')['kind']);
             $this->assertSame('running', $client->currentOperation()['status']);
             $this->assertSame('20260827T120000Z-1234abcd', $client->recoveryPoints()[0]['id']);
@@ -376,6 +383,28 @@ class UnixSocketAgentClientTest extends TestCase
         $this->assertSame('recovery_required', $operation['status']);
     }
 
+    public function test_recovery_operation_from_another_instance_is_rejected_at_the_socket_boundary(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('invalid operation response');
+        $this->withAgentResponse([
+            'schema_version' => 1, 'id' => '20260827T123456.000000000Z-0011223344556677',
+            'instance_id' => 'other-instance', 'kind' => 'update', 'status' => 'recovery_required',
+            'stages' => [], 'started_at' => '2026-08-27T12:34:56Z',
+        ], fn (UnixSocketAgentClient $client): ?array => $client->currentOperation());
+    }
+
+    public function test_recovery_status_from_another_instance_is_rejected_at_the_socket_boundary(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('unsupported status response');
+        $this->withAgentResponse([
+            'schema_version' => 1, 'status' => 'fail', 'updater_version' => '0.3.0',
+            'instance' => ['id' => 'other-instance', 'version' => '3.0.0', 'release_sequence' => 17],
+            'checks' => [['id' => 'mutation-authorization', 'status' => 'pass', 'message' => 'Configured']],
+        ], fn (UnixSocketAgentClient $client): array => $client->status());
+    }
+
     /**
      * @template T
      *
@@ -383,7 +412,93 @@ class UnixSocketAgentClientTest extends TestCase
      * @param  callable(UnixSocketAgentClient): T  $callback
      * @return T
      */
-    private function withAgentResponse(array $payload, callable $callback, int $httpStatus = 200): mixed
+    public function test_preview_accepts_a_complete_plan_and_rejects_malformed_fields(): void
+    {
+        $plan = ['schema_version' => 1, 'source_sequence' => 17, 'target_sequence' => 18, 'target_version' => '3.0.0',
+            'strategy' => 'maintenance', 'plan_sha256' => str_repeat('a', 64), 'upgrade_plan_sha256' => str_repeat('b', 64),
+            'layout_change' => true, 'pending_migrations' => [],
+            'steps' => [['id' => 'migrate', 'kind' => 'migrate', 'phase' => 'apply', 'timeout_seconds' => 600, 'online' => false]]];
+        $this->assertSame($plan, $this->withAgentResponse($plan, fn (UnixSocketAgentClient $client): array => $client->preview()));
+        foreach (['plan_sha256' => 'wrong', 'strategy' => 'automatic', 'layout_change' => 'true', 'pending_migrations' => [false], 'steps' => [['kind' => 'shell']]] as $key => $value) {
+            try {
+                $this->withAgentResponse(array_replace($plan, [$key => $value]), fn (UnixSocketAgentClient $client): array => $client->preview());
+                $this->fail('Invalid preview field accepted: '.$key);
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString('Updater returned', $exception->getMessage());
+            }
+        }
+    }
+
+    public function test_planned_update_rejects_a_bad_preview_hash_before_connecting(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('preview hash is invalid');
+        (new UnixSocketAgentClient)->startPlannedUpdate('123456', true, '../bad');
+    }
+
+    public function test_preview_accepts_equal_sequence_only_for_maintenance_layout_conversion(): void
+    {
+        $plan = ['schema_version' => 1, 'source_sequence' => 17, 'target_sequence' => 17, 'target_version' => '3.1.0',
+            'strategy' => 'maintenance', 'plan_sha256' => str_repeat('a', 64), 'upgrade_plan_sha256' => str_repeat('b', 64),
+            'layout_change' => true, 'pending_migrations' => [],
+            'steps' => [['id' => 'migrate', 'kind' => 'migrate', 'phase' => 'apply', 'timeout_seconds' => 600, 'online' => false]]];
+        $this->assertSame($plan, $this->withAgentResponse($plan, fn (UnixSocketAgentClient $client): array => $client->preview()));
+        foreach ([['target_sequence' => 16], ['strategy' => 'online'], ['layout_change' => false], ['layout_change' => 'true']] as $conflict) {
+            $this->assertThrows(
+                fn () => $this->withAgentResponse(array_replace($plan, $conflict), fn (UnixSocketAgentClient $client): array => $client->preview()),
+                RuntimeException::class,
+            );
+        }
+    }
+
+    private function coordinatedCapabilities(): array
+    {
+        return ['schema_version' => 2, 'instance_id' => 'primary', 'protocol_version' => 2, 'updater_protocol' => 5,
+            'actions' => ['update', 'backup', 'restore', 'switch-back'], 'features' => ['plans' => true, 'requests' => true, 'idempotency' => true, 'recovery_epoch' => true],
+            'maintenance_confirmation' => true, 'restore_policy' => 'latest_update_checkpoint', 'background_status' => 'ready',
+            'recovery' => ['host_id' => str_repeat('b', 32), 'epoch' => str_repeat('a', 32), 'phase' => 'ready']];
+    }
+
+    public function test_coordinated_capabilities_require_the_real_versioned_contract(): void
+    {
+        $payload = $this->coordinatedCapabilities();
+        $this->assertSame($payload, $this->withAgentResponse($payload, fn ($client) => $client->capabilities(), expectedLine: 'GET /v2/instances/primary/capabilities HTTP/1.0'));
+        $payload['features']['idempotency'] = false;
+        $this->expectException(RuntimeException::class);
+        $this->withAgentResponse($payload, fn ($client) => $client->capabilities());
+    }
+
+    public function test_only_an_exact_versioned_request_not_found_is_a_missing_receipt(): void
+    {
+        $this->assertNull($this->withAgentResponse(['error' => 'request_not_found'], fn ($client) => $client->requestReceipt('original-request-001'), 404,
+            expectedLine: 'GET /v2/instances/primary/requests/original-request-001 HTTP/1.0'));
+        $this->expectException(AgentProtocolException::class);
+        $this->withAgentResponse(['error' => 'not_found'], fn ($client) => $client->requestReceipt('original-request-001'), 404);
+    }
+
+    public function test_coordinated_rate_limit_preserves_retry_after_without_retrying_the_request(): void
+    {
+        try {
+            $this->withAgentResponse(['error' => 'rate_limited'], fn ($client) => $client->requestReceipt('original-request-001'), 429, responseHeaders: "Retry-After: 17\r\n");
+            $this->fail('Rate limit should be returned to caller.');
+        } catch (AgentProtocolException $exception) {
+            $this->assertSame(429, $exception->httpStatus);
+            $this->assertSame(17, $exception->retryAfterSeconds);
+        }
+    }
+
+    public function test_receipt_lookup_rejects_another_request_identity_even_when_the_operation_is_pending(): void
+    {
+        $envelope = ['schema_version' => 2, 'instance_id' => 'primary', 'client_request_id' => 'another-request-002',
+            'business_sha256' => str_repeat('d', 64), 'operation_id' => '20260916T120000.000000001Z-'.str_repeat('f', 16),
+            'action' => 'backup', 'plan_id' => str_repeat('c', 32), 'accepted_epoch' => str_repeat('a', 32),
+            'admission_status' => 'pending', 'background_status' => 'ready', 'operation' => null];
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('different request receipt');
+        $this->withAgentResponse($envelope, fn ($client) => $client->requestReceipt('original-request-001'));
+    }
+
+    private function withAgentResponse(array $payload, callable $callback, int $httpStatus = 200, ?string $expectedLine = null, string $responseHeaders = ''): mixed
     {
         $directory = sys_get_temp_dir().'/geoflow-updater-client-'.bin2hex(random_bytes(8));
         mkdir($directory, 0700, true);
@@ -399,14 +514,20 @@ class UnixSocketAgentClientTest extends TestCase
         if ($pid === 0) {
             $connection = stream_socket_accept($server, 5);
             if (is_resource($connection)) {
+                $received = '';
                 while (! feof($connection)) {
                     $chunk = fread($connection, 4096);
+                    $received .= is_string($chunk) ? $chunk : '';
                     if (! is_string($chunk) || $chunk === '' || str_contains($chunk, "\r\n\r\n")) {
                         break;
                     }
                 }
+                if ($expectedLine !== null && ! str_starts_with($received, $expectedLine."\r\n")) {
+                    $httpStatus = 400;
+                    $payload = ['error' => 'unexpected_protocol_endpoint'];
+                }
                 $body = json_encode($payload, JSON_THROW_ON_ERROR);
-                fwrite($connection, "HTTP/1.0 {$httpStatus} Response\r\nContent-Type: application/json\r\nContent-Length: ".strlen($body)."\r\n\r\n".$body);
+                fwrite($connection, "HTTP/1.0 {$httpStatus} Response\r\n{$responseHeaders}Content-Type: application/json\r\nContent-Length: ".strlen($body)."\r\n\r\n".$body);
                 fclose($connection);
             }
             fclose($server);

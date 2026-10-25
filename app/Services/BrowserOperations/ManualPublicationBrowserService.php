@@ -7,9 +7,12 @@ use App\Exceptions\ArticleAiQualityGateException;
 use App\Exceptions\ArticleRiskGateException;
 use App\Models\Admin;
 use App\Models\Article;
+use App\Models\ArticleDistribution;
+use App\Models\DistributionChannel;
 use App\Models\ManualPublication;
 use App\Models\ManualPublicationAccount;
 use App\Models\ManualPublicationTransition;
+use App\Models\Task;
 use App\Services\GeoFlow\ArticlePublicationQualityGate;
 use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebDistributionBridge;
 use Carbon\CarbonInterface;
@@ -142,7 +145,7 @@ final class ManualPublicationBrowserService
         string $clientVersion,
     ): ManualPublication {
         [$publication, $hasSourceDistribution] = DB::transaction(function () use ($admin, $tokenId, $publicationId, $revision, $receipt, $clientVersion): array {
-            $publication = $this->lockVisible($admin, $publicationId);
+            $publication = $this->lockVisible($admin, $publicationId, allowUnavailable: true);
             $this->assertRevision($publication, $revision);
             $this->assertClaimOwner($publication, $tokenId);
 
@@ -219,21 +222,40 @@ final class ManualPublicationBrowserService
         // 扩展将收到 5xx。桥接自身会加锁重读工单最新状态，非终态自动跳过；
         // 提交与桥接之间的崩溃由对账命令（Task 7）兜底重推。
         if ($hasSourceDistribution) {
-            try {
-                $this->platformWebBridge->handleReceipt($publication);
-            } catch (\Throwable $e) {
-                Log::warning('platform_web 回执桥接失败，将由对账命令兜底。', [
-                    'manual_publication_id' => (int) $publication->getKey(),
-                    'error' => $e::class.': '.$e->getMessage(),
-                ]);
-            }
+            DB::afterCommit(function () use ($publication): void {
+                try {
+                    $this->platformWebBridge->handleReceipt($publication);
+                } catch (\Throwable $e) {
+                    Log::warning('platform_web 回执桥接失败，将由对账命令兜底。', [
+                        'manual_publication_id' => (int) $publication->getKey(),
+                        'error' => $e::class.': '.$e->getMessage(),
+                    ]);
+                }
+            });
         }
 
         return $publication;
     }
 
-    private function lockVisible(Admin $admin, int $publicationId): ManualPublication
+    private function lockVisible(Admin $admin, int $publicationId, bool $allowUnavailable = false): ManualPublication
     {
+        $sourceId = ManualPublication::query()->whereKey($publicationId)->value('source_distribution_id');
+        if ($sourceId !== null) {
+            $candidate = ArticleDistribution::query()->find((int) $sourceId);
+            $channel = $candidate ? DistributionChannel::query()->whereKey($candidate->distribution_channel_id)->lockForUpdate()->first() : null;
+            if (! $allowUnavailable && (! $channel || $channel->status !== DistributionChannel::STATUS_ACTIVE)) {
+                throw new ApiException('publication_unavailable', '渠道不可用，无法领取工作单', 409);
+            }
+            if ($candidate) {
+                $taskId = Article::withTrashed()->whereKey($candidate->article_id)->value('task_id');
+                $task = $taskId ? Task::query()->whereKey($taskId)->lockForUpdate()->first() : null;
+                Article::withTrashed()->whereKey($candidate->article_id)->lockForUpdate()->first();
+                ArticleDistribution::query()->whereKey($candidate->id)->lockForUpdate()->first();
+                if (! $allowUnavailable && $taskId && ! $task) {
+                    throw new ApiException('publication_unavailable', '任务不可用，无法领取工作单', 409);
+                }
+            }
+        }
         $publication = ManualPublication::query()
             ->visibleTo($admin)
             ->with('account:id,account_name,platform,profile_url')

@@ -74,7 +74,7 @@ class AiVisibilityAnalyticsService
     /**
      * @return array<string, mixed>
      */
-    public function overview(int|AiVisibilityAnalyticsFilter $filter = 14): array
+    public function overview(int|AiVisibilityAnalyticsFilter $filter = 14, bool $refreshTermCleanup = false): array
     {
         $filter = is_int($filter) ? AiVisibilityAnalyticsFilter::forDays($filter) : $filter;
         $days = $filter->days();
@@ -161,7 +161,7 @@ class AiVisibilityAnalyticsService
             ],
             'trend' => $this->trend($dailyKeywordMetrics, $start, $days),
             'keywords' => $this->keywordMetrics($dailyKeywordMetrics),
-            'terms' => $this->termCloud($analyzedRuns),
+            'terms' => $this->termCloud($analyzedRuns, $refreshTermCleanup),
             'sources' => $sourcePreferences,
             'source_distribution' => $this->sourceDistribution($analyzedRuns, $topicNames),
             'attention_sources' => $this->attentionSources($sourcePreferences),
@@ -173,6 +173,7 @@ class AiVisibilityAnalyticsService
     private function periodRunsQuery(Carbon $start, Carbon $end, ?AiVisibilityAnalyticsFilter $filter = null): Builder
     {
         return AiVisibilityRun::query()
+            ->whereIn('provider_type', AiVisibilityRun::SAMPLE_PROVIDERS)
             ->where(function (Builder $query) use ($start, $end): void {
                 $query
                     ->whereBetween('completed_at', [$start, $end])
@@ -341,7 +342,7 @@ class AiVisibilityAnalyticsService
                 return [
                     'id' => (int) $source->id,
                     'title' => trim((string) $source->title),
-                    'url' => trim((string) $source->url),
+                    'url' => $this->safeSourceUrl((string) $source->url),
                     'domain' => $domain,
                     'site_name' => trim((string) $source->site_name),
                     'authority_level' => trim((string) $source->authority_level),
@@ -568,7 +569,7 @@ class AiVisibilityAnalyticsService
      * @param  Collection<int, array<string, mixed>>  $runs
      * @return list<array<string, mixed>>
      */
-    private function termCloud(Collection $runs): array
+    private function termCloud(Collection $runs, bool $refresh = false): array
     {
         $terms = [];
 
@@ -584,7 +585,7 @@ class AiVisibilityAnalyticsService
             return [];
         }
 
-        $cleaned = $this->cleanedTopics($terms);
+        $cleaned = $this->cleanedTopics($terms, $refresh);
         if ($cleaned !== null) {
             return $cleaned;
         }
@@ -609,7 +610,7 @@ class AiVisibilityAnalyticsService
      * @param  array<string, float>  $terms
      * @return list<array<string, mixed>>|null
      */
-    private function cleanedTopics(array $terms): ?array
+    private function cleanedTopics(array $terms, bool $refresh): ?array
     {
         if (! filter_var(config('geoflow.ai_visibility.term_cleanup_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
             return null;
@@ -622,31 +623,38 @@ class AiVisibilityAnalyticsService
             return null;
         }
 
-        $cacheKey = 'geoflow:ai_visibility:term_cloud:'.hash('sha256', (string) json_encode($candidates, JSON_UNESCAPED_UNICODE));
-        $ttl = max(60, (int) config('geoflow.ai_visibility.term_cleanup_cache_ttl', 43200));
+        $model = $this->configuration->deepSeekModel(SystemAiIdentity::forVisibilityAnalytics());
+        $version = $model === null ? null : [
+            $model->id, $model->model_id, $model->api_url, $model->status, $model->access_scope,
+            $model->owner_admin_id, $model->max_tokens, config('geoflow.ai_visibility.term_cleanup_max_tokens', 2048), hash('sha256', (string) $model->getRawOriginal('api_key')),
+        ];
+        $cacheKey = 'geoflow:ai_visibility:term_cloud:v2:'.hash('sha256', json_encode([$candidates, $version], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
         $cached = Cache::get($cacheKey);
         if (is_array($cached)) {
-            return $cached['ok'] === true ? $cached['topics'] : null;
+            return ($cached['ok'] ?? false) === true ? $cached['topics'] : null;
         }
-
-        $topics = $this->termCleanup->clean($candidates);
-        if ($topics === null || $topics === []) {
-            // 失败只短缓存，避免数据未变化时每次渲染都等待一次注定失败的 AI 调用。
-            Cache::put($cacheKey, ['ok' => false], min($ttl, 600));
-
+        if (! $refresh) {
             return null;
         }
 
-        $shaped = $this->shapeTopics($topics, $terms);
-        if ($shaped === []) {
-            Cache::put($cacheKey, ['ok' => false], min($ttl, 600));
-
+        $lock = Cache::lock($cacheKey.':lock', 180);
+        if (! $lock->get()) {
             return null;
         }
+        try {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached)) {
+                return ($cached['ok'] ?? false) === true ? $cached['topics'] : null;
+            }
+            $topics = $this->termCleanup->clean($candidates);
+            $shaped = $topics === null ? [] : $this->shapeTopics($topics, $terms);
+            $ttl = max(60, (int) config('geoflow.ai_visibility.term_cleanup_cache_ttl', 43200));
+            Cache::put($cacheKey, ['ok' => $shaped !== [], 'topics' => $shaped], $shaped === [] ? min($ttl, 600) : $ttl);
 
-        Cache::put($cacheKey, ['ok' => true, 'topics' => $shaped], $ttl);
-
-        return $shaped;
+            return $shaped === [] ? null : $shaped;
+        } finally {
+            $lock->release();
+        }
     }
 
     /**
@@ -849,7 +857,7 @@ class AiVisibilityAnalyticsService
                 $key = $topicName.'|'.$name;
                 $rows[$key] ??= ['name' => $name, 'topic' => $topicName, 'mention_count' => 0, 'evidence' => []];
                 foreach (($competitor['evidence'] ?? []) as $evidence) {
-                    if (is_array($evidence) && trim((string) ($evidence['url'] ?? '')) !== '') {
+                    if (is_array($evidence) && $this->safeSourceUrl((string) ($evidence['url'] ?? '')) !== '') {
                         $rows[$key]['evidence'][(string) $evidence['url']] = $evidence;
                     }
                 }
@@ -1313,5 +1321,11 @@ class AiVisibilityAnalyticsService
         }
 
         return round(((float) $numerator / (float) $denominator) * 100, 1);
+    }
+
+    private function safeSourceUrl(string $url): string
+    {
+        return filter_var($url, FILTER_VALIDATE_URL) !== false
+            && in_array(strtolower((string) parse_url($url, PHP_URL_SCHEME)), ['http', 'https'], true) ? $url : '';
     }
 }

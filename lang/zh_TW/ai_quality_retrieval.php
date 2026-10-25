@@ -1,0 +1,56 @@
+<?php
+
+return [
+    'title' => '質檢方式',
+    'help' => '系統會根據所選知識庫判斷可用方式。新配置預設使用當前可用的最高精度方式。',
+    'available' => '可用',
+    'unavailable' => '暫不可用',
+    'unavailable_reasons' => '暫不可用原因',
+    'select_knowledge_base' => '請先選擇至少一個知識庫',
+    'selection_unavailable' => '當前沒有可用的質檢方式，請點選問號檢視原因。',
+    'details' => '檢視:mode說明',
+    'inherit' => '跟隨任務',
+    'inherit_help' => '使用任務當前儲存的質檢方式。',
+    'source_task' => '知識庫由任務配置提供',
+    'source_article' => '知識庫由當前文章配置提供',
+    'current_execution' => '最近一次實際執行：:mode',
+    'results' => [
+        'primary_title' => ':mode',
+        'participates_in_scoring' => '已參與評分',
+        'strategy_version' => '策略 :version',
+        'primary_tokens' => '模型質檢 :tokens Token',
+        'atomic_shadow_title' => '原子事實影子核驗',
+        'atomic_formal_title' => '原子事實核驗',
+        'validation_only' => '驗證資料 · 未參與評分',
+        'algorithm_version' => '演算法 :version',
+        'fact_versions' => '事實版本 :versions',
+        'atomic_tokens' => '原子核驗 :tokens Token',
+        'coverage' => '覆蓋率 :rate%',
+        'none' => '暫無',
+        'metrics' => [
+            'supported' => '命中',
+            'contradicted' => '衝突',
+            'uncovered' => '未覆蓋',
+            'ambiguous' => '歧義',
+            'fallback' => '回退',
+            'elapsed' => '耗時',
+        ],
+    ],
+    'modes' => [
+        'atomic_first' => [
+            'label' => '原子質檢',
+            'badge' => '精準優先',
+            'description' => '使用已釋出的原子事實逐條核驗，未覆蓋主張繼續使用切片。',
+        ],
+        'chunk' => [
+            'label' => '切片質檢',
+            'badge' => '效率均衡',
+            'description' => '按文章主張召回相關切片，兼顧準確度、成本和速度。',
+        ],
+        'knowledge_broad' => [
+            'label' => '知識庫質檢',
+            'badge' => '覆蓋優先',
+            'description' => '從知識庫正文按段落與前中後區域做寬範圍取證，噪音、Token 和耗時更高。',
+        ],
+    ],
+];

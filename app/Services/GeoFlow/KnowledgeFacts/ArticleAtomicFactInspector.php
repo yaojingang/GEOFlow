@@ -7,7 +7,7 @@ use Illuminate\Support\Collection;
 
 class ArticleAtomicFactInspector
 {
-    public const ALGORITHM_VERSION = 'atomic-facts-2.3.0';
+    public const ALGORITHM_VERSION = 'atomic-facts-2.4.0';
 
     public function __construct(private readonly AtomicFactComparator $comparator) {}
 
@@ -43,29 +43,48 @@ class ArticleAtomicFactInspector
         }
 
         $results = $results->unique(fn (array $row): string => $row['claim_index'].'|'.$row['stable_key'].'|'.$row['status'])->values();
-        $issues = $results->where('status', 'contradicted')->map(function (array $result): array {
-            return [
-                'code' => 'knowledge_contradiction',
-                'severity' => $result['importance'] === 'critical' ? 'critical' : 'high',
-                'field' => 'content',
-                'reason' => sprintf('文章中的“%s”与原子事实标准答案不一致。', $result['label']),
-                'quote' => $result['article_claim'],
-                'suggestion' => '请依据标准答案修正：'.$result['standard_answer'],
-                'location_status' => 'resolved',
-                'references_valid' => true,
-                'hard_blocker' => $result['importance'] === 'critical',
-                'claim_hash' => hash('sha256', $result['article_claim']),
-                'knowledge_refs' => array_values(array_filter(array_map(static fn (array $evidence): string => (string) ($evidence['knowledge_chunk_id'] ?? ''), $result['evidence']))),
-                'atomic_fact' => [
-                    'stable_key' => $result['stable_key'],
-                    'standard_answer' => $result['standard_answer'],
-                    'comparison_method' => $result['comparison_method'],
-                    'revision_id' => $result['revision_id'],
-                    'revision_version' => $result['revision_version'],
-                    'evidence' => $result['evidence'],
-                ],
-            ];
-        })->values()->all();
+        $issues = $results->filter(static fn (array $result): bool => $result['status'] === 'contradicted'
+            || ($result['status'] === 'conflict' && $result['importance'] === 'critical'))
+            ->map(function (array $result): array {
+                $crossLibraryConflict = $result['status'] === 'conflict';
+
+                return [
+                    'code' => 'knowledge_contradiction',
+                    'severity' => $result['importance'] === 'critical' ? 'critical' : 'high',
+                    'field' => 'content',
+                    'reason' => $crossLibraryConflict
+                        ? sprintf('多个知识库对关键事实“%s”的标准答案存在冲突。', $result['label'])
+                        : sprintf('文章中的“%s”与原子事实标准答案不一致。', $result['label']),
+                    'quote' => $result['article_claim'],
+                    'suggestion' => $crossLibraryConflict
+                        ? '请先核对并统一知识库中的标准答案，再重新质检。'
+                        : '请依据标准答案修正：'.$result['standard_answer'],
+                    'location_status' => 'resolved',
+                    'references_valid' => true,
+                    'hard_blocker' => $result['importance'] === 'critical',
+                    'claim_hash' => hash('sha256', $result['article_claim']),
+                    'knowledge_refs' => array_values(array_filter(array_map(static fn (array $evidence): string => (string) ($evidence['knowledge_chunk_id'] ?? ''), $result['evidence']))),
+                    'atomic_fact' => [
+                        'stable_key' => $result['stable_key'],
+                        'standard_answer' => $result['standard_answer'],
+                        'comparison_method' => $result['comparison_method'],
+                        'revision_id' => $result['revision_id'],
+                        'revision_version' => $result['revision_version'],
+                        'evidence' => $result['evidence'],
+                    ],
+                ];
+            })->values()->all();
+        $uncertainties = $results->filter(static fn (array $result): bool => $result['status'] === 'conflict'
+            && $result['importance'] !== 'critical')
+            ->sortByDesc(static fn (array $result): int => $result['importance'] === 'high' ? 2 : 1)
+            ->unique(fn (array $result): string => $this->normalizedFactText($result['article_claim']))
+            ->map(fn (array $result): array => [
+                'claim' => $result['article_claim'],
+                'claim_hash' => hash('sha256', $this->normalizedFactText($result['article_claim'])),
+                'materiality' => $result['importance'] === 'high' ? 'high' : 'medium',
+                'reason' => sprintf('多个知识库对“%s”的标准答案存在冲突，当前依据尚未统一。', $result['label']),
+                'source' => 'atomic_fact_conflict',
+            ])->values()->all();
         $counts = $results->countBy('status');
         $fallbackClaims = collect($claims)->reject(fn (string $_claim, int $index): bool => isset($coveredClaimIndexes[$index]))->values();
         $overflowFallbackCount = max(0, count($claims) - count($atomicClaims));
@@ -96,6 +115,7 @@ class ArticleAtomicFactInspector
             'usage' => ['input_tokens' => 0, 'output_tokens' => 0, 'total_tokens' => 0],
             'results' => $results->all(),
             'issues' => $issues,
+            'uncertainties' => $uncertainties,
         ];
     }
 
@@ -120,8 +140,11 @@ class ArticleAtomicFactInspector
         }
 
         return $compiled->groupBy('stable_key')->map(function (Collection $group): array {
+            $group = $group->sortByDesc(static fn (array $fact): int => match ($fact['importance'] ?? 'normal') {
+                'critical' => 3, 'high' => 2, default => 1,
+            });
             $first = $group->first();
-            $answers = $group->map(fn (array $fact): string => $this->normalized((string) data_get($fact, 'value.canonical_answer')))->filter()->unique();
+            $answers = $group->map(fn (array $fact): string => $this->normalizedFactText((string) data_get($fact, 'value.canonical_answer')))->filter()->unique();
             if ($answers->count() > 1 && $group->pluck('library_id')->unique()->count() > 1) {
                 $first['compiled_conflict'] = true;
             }
@@ -286,7 +309,7 @@ class ArticleAtomicFactInspector
         if ($scoped->isEmpty() && $values->count() === 1) {
             return $values;
         }
-        if ($scoped->count() > 1 && $scoped->map(fn (array $fact): string => $this->normalized((string) data_get($fact, 'value.canonical_answer')))->unique()->count() === 1) {
+        if ($scoped->count() > 1 && $scoped->map(fn (array $fact): string => $this->normalizedFactText((string) data_get($fact, 'value.canonical_answer')))->unique()->count() === 1) {
             return collect([$scoped->first()]);
         }
 
@@ -304,6 +327,14 @@ class ArticleAtomicFactInspector
             'knowledge_base_id' => (int) ($fact['knowledge_base_id'] ?? 0), 'source_hash' => (string) ($fact['source_hash'] ?? ''),
             'evidence' => (array) ($fact['evidence'] ?? []),
         ];
+    }
+
+    private function normalizedFactText(string $text): string
+    {
+        $text = preg_replace('/\s+/u', '', $text) ?? $text;
+        $text = preg_replace('/[。！？!?；;，,：:]+$/u', '', $text) ?? $text;
+
+        return mb_strtolower($text, 'UTF-8');
     }
 
     private function normalized(string $text): string

@@ -8,11 +8,11 @@ X: https://x.com/yaojingang
 
 # Operation Boundary
 
-The `operations` mode operates a running GEOFlow system. Product code changes require an explicit switch to `development`. When `bin/geoflow` exists, GEOFlow CLI 0.2.0 is the preferred API v1 client for catalog, task, job, material, and article operations. API v1 is the fallback when the CLI is absent. Blade admin routes handle management workflows such as Analytics, manual publication, distribution, enterprise knowledge, leads, AI source providers, article editor assistance, URL Import, System Updates, site settings, Theme Replication, homepage modules, API tokens, and frontend-capability sync.
+The `operations` mode operates a running GEOFlow system. Product code changes require a switch to `development`. Prefer the installed `geoflow` CLI and follow [remote-cli-workflow.md](remote-cli-workflow.md): discover the selected instance, identity and supported operations before acting. Source is optional; repository `bin/geoflow` remains a compatibility entrypoint. The preview supports remote theme draft files and signed previews, plus existing content operations. Publication and rollback remain unavailable. Blade admin routes cover remaining management workflows only when their actual effect is authorized.
 
 ## Allowed Actions
 
-- Run `bin/geoflow --version` and `bin/geoflow --help`, then use a listed CLI command when it supports the action.
+- Run `geoflow --version`, `--help`, `whoami`, `capabilities`, and `doctor` with the selected profile, then use a supported command. Fall back to repository `bin/geoflow` if no installed executable exists.
 - Use Laravel `/api/v1` fallback for exposed catalog/material/task/job/article operations.
 - Use authenticated admin web routes for capabilities not exposed through CLI or API v1.
 - Run local Artisan maintenance commands through `php artisan` or the deployed application container when the command exists in `routes/console.php`.
@@ -27,7 +27,7 @@ The `operations` mode operates a running GEOFlow system. Product code changes re
 - Editing backend/frontend code to complete an operations request.
 - Replacing a supported CLI action with raw `curl`.
 - Claiming admin-only manual publication, distribution, enterprise knowledge, lead management, Analytics, AI source providers, article editor assistance/risk scan, URL Import, System Updates, Theme Replication, homepage editing, frontend-capability sync, API tokens, admin users, site settings, security settings, or async generation flows are available through API v1 unless route inspection proves it.
-- Claiming a live Theme Editor exists in the current repository. Current `routes/web.php` has Theme Replication routes and no live Theme Editor route.
+- Claiming a browser live Theme Editor or remote publish/rollback is available. Remote draft editing is offered by the management API and CLI when discovered; it does not activate a draft on the public site.
 - Bypassing admin authentication, CSRF validation, super-admin checks, current-password checks, or configured update-center gates.
 - Printing distribution secrets, WordPress Application Passwords, generic API secrets, full API tokens, package secrets, or lead personal data in final summaries.
 
@@ -35,7 +35,7 @@ The `operations` mode operates a running GEOFlow system. Product code changes re
 
 Before the first mutating action in a workspace:
 
-1. Verify whether `bin/geoflow` exists. If it does, run `--version` and `--help`. If it does not, verify a Laravel GEOFlow app with `artisan` and `routes/api.php`.
+1. Prefer installed `geoflow`, verify version/help and selected profile. Use source discovery only for a repository client or development work; do not require local source for remote operations.
 2. If CLI configuration is missing, run `geoflow login` first. If using API fallback, obtain a bearer token through `/api/v1/auth/login` or the provided token source.
 3. Interpret authenticated failures before changing credentials: `401` means invalid or expired authentication; `403` means missing permission or scope; `423` means a resource lock; `429` means rate limiting. Refresh login/token only for `401` or explicit token-invalid output.
 4. Verify an authenticated read such as `catalog` succeeds; public homepage checks alone are not sufficient.
@@ -74,7 +74,7 @@ For distribution-channel deletion, use the exact preview, prepare, optional canc
 
 ## Current Admin And Local-Command Boundary
 
-Use admin web when CLI/API v1 has no matching capability. Current admin-only surfaces include the six Analytics pages, manual-publication workbench, AI source providers, article editor assistant and risk scan, staged distribution-channel deletion, and the GET homepage-module editor. Admin web login and API login are rate limited; API tokens can be revoked from the super-admin token page. Password or admin-status changes also revoke affected sessions and API tokens.
+Use authorized admin web operations when CLI/API v1 has no matching capability. For a remote template request, report unavailable publication/configuration operations and do not substitute template-package upload/download. Remaining admin-only surfaces include the six Analytics pages, manual-publication workbench, AI source providers, article editor assistant and risk scan, staged distribution-channel deletion, and the GET homepage-module editor. Login is rate limited. Current-token revocation is available through CLI logout; super administrators can manage other tokens on the admin token page. Password or admin-status changes also revoke affected sessions and API tokens.
 
 Current local-only maintenance commands are:
 

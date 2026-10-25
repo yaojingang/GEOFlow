@@ -7,12 +7,21 @@ export const combineRetrievalReadiness = (selectedIds, readinessByKnowledgeBase,
     const result = Object.fromEntries(retrievalModes.map((mode) => [mode, {
         available: ids.length > 0,
         blockers: ids.length > 0 ? [] : [emptySelectionLabel],
+        auto_pass_blockers: [],
     }]));
 
     ids.forEach((id) => {
         const knowledgeBase = readinessByKnowledgeBase?.[id];
         retrievalModes.forEach((mode) => {
             const state = knowledgeBase?.modes?.[mode];
+            (state?.auto_pass_blockers || []).forEach((blocker) => {
+                if (!blocker?.message) return;
+                const name = String(knowledgeBase?.name || '').trim();
+                result[mode].auto_pass_blockers.push({
+                    message: name ? name + '：' + blocker.message : String(blocker.message),
+                    manage_url: blocker.manage_url || null,
+                });
+            });
             if (state?.available) return;
 
             result[mode].available = false;
@@ -150,6 +159,24 @@ const renderSelector = (root, readiness, selectedValue) => {
         const blockers = readiness?.[mode]?.blockers || [];
         if (blockerWrapper) blockerWrapper.hidden = available;
         if (blockerText) blockerText.textContent = blockers.join('；') || root.dataset.unavailableLabel;
+        const autoPass = card.querySelector('[data-retrieval-auto-pass]');
+        if (autoPass) {
+            const warnings = available ? readiness?.[mode]?.auto_pass_blockers || [] : [];
+            autoPass.replaceChildren();
+            autoPass.hidden = warnings.length === 0;
+            warnings.forEach((warning) => {
+                const text = document.createElement('p');
+                text.textContent = warning.message;
+                autoPass.append(text);
+                if (warning.manage_url) {
+                    const link = document.createElement('a');
+                    link.href = warning.manage_url;
+                    link.textContent = root.dataset.governanceLabel || '';
+                    link.className = 'underline';
+                    autoPass.append(link);
+                }
+            });
+        }
     });
 };
 
@@ -174,6 +201,7 @@ export const initializeAiQualityRetrievalSelector = (root) => {
         const selectionInvalid = !allowInherit && touched && selectedValue === '';
         root.dataset.selectionInvalid = selectionInvalid ? 'true' : 'false';
         renderSelector(root, readiness, selectedValue);
+        root.dispatchEvent(new CustomEvent('ai-quality-retrieval-changed', { bubbles: true }));
         const live = root.querySelector('[data-retrieval-mode-live]');
         if (live) {
             const status = selectedValue
@@ -210,6 +238,8 @@ export const initializeAiQualityRetrievalSelector = (root) => {
     if (form && root.dataset.submitGuardReady !== 'true') {
         root.dataset.submitGuardReady = 'true';
         form.addEventListener('submit', (event) => {
+            const qualityToggle = form.querySelector('[data-ai-quality-toggle]');
+            if (qualityToggle && !qualityToggle.checked) return;
             refresh();
             if (root.dataset.selectionInvalid !== 'true') return;
 

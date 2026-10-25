@@ -19,6 +19,8 @@ use App\Models\KnowledgeChunk;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\Title;
+use App\Services\Site\UrlChangeInspector;
+use App\Services\Topics\TopicTaskRunner;
 use App\Support\GeoFlow\AiExecutionErrorSanitizer;
 use App\Support\GeoFlow\AiModelFailoverDecider;
 use App\Support\GeoFlow\ArticleWorkflow;
@@ -48,7 +50,6 @@ class WorkerExecutionService
      */
     public function __construct(
         private readonly KnowledgeRetrievalService $knowledgeRetrievalService,
-        private readonly DistributionOrchestrator $distributionOrchestrator,
         private readonly ArticleRiskScanner $articleRiskScanner,
         private readonly ArticleWorkflowTransitionService $articleWorkflowTransitionService,
         private readonly ArticleContentPromptRenderer $articleContentPromptRenderer,
@@ -62,6 +63,9 @@ class WorkerExecutionService
         private readonly AiExecutionErrorSanitizer $aiExecutionErrorSanitizer,
         private readonly AiModelFailoverDecider $aiModelFailoverDecider,
         private readonly JobQueueService $jobQueueService,
+        private readonly UrlChangeInspector $urlChangeInspector,
+        private readonly ArticlePublicationEligibilityService $publicationEligibility,
+        private readonly TopicTaskRunner $topicTaskRunner,
     ) {}
 
     /**
@@ -80,13 +84,12 @@ class WorkerExecutionService
             throw new RuntimeException('任务未激活');
         }
 
+        if ($task->content_type === 'topic') {
+            return $this->topicTaskRunner->execute($task, $executionContext);
+        }
+
         $publishResult = $this->publishDueDraftArticle($task, $executionContext, $executionStartedAt);
         if ($publishResult !== null) {
-            if ($publishResult['article_id'] !== null
-                && (string) ($publishResult['meta']['action'] ?? '') === 'publish_draft') {
-                $this->distributionOrchestrator->enqueueForArticle((int) $publishResult['article_id']);
-            }
-
             return $publishResult;
         }
 
@@ -147,6 +150,9 @@ class WorkerExecutionService
                     if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
                         throw new RuntimeException('任务未激活');
                     }
+                    if ((int) $freshTask->automation_version !== (int) $task->automation_version) {
+                        throw new RuntimeException('task_automation_superseded');
+                    }
 
                     $this->jobQueueService->lockRunningJobForWorker(
                         $executionContext,
@@ -167,11 +173,11 @@ class WorkerExecutionService
                     $qualityPolicySnapshot = $this->articleAiQualityPolicyResolver->snapshot($qualityPolicy);
                     $workflow = [
                         'status' => 'draft',
-                        'review_status' => (int) ($freshTask->need_review ?? 1) === 1 ? 'pending' : 'approved',
+                        'review_status' => (int) ($freshTask->need_review ?? 1) === 1 ? 'pending' : 'auto_approved',
                         'published_at' => null,
                     ];
 
-                    $pendingWorkflow = ArticleWorkflow::normalizeState('draft', 'pending');
+                    $pendingWorkflow = $workflow;
                     $article = Article::query()->create([
                         'title' => (string) $titleRow->title,
                         'slug' => ArticleWorkflow::generateUniqueSlug((string) $titleRow->title),
@@ -182,21 +188,23 @@ class WorkerExecutionService
                         'task_id' => (int) $task->id,
                         'source_title_id' => (int) $titleRow->id,
                         'original_keyword' => $keyword,
-                        'keywords' => $keyword,
-                        'meta_description' => mb_substr($excerpt, 0, 120),
+                        'keywords' => $freshTask->auto_keywords ? $keyword : '',
+                        'meta_description' => $freshTask->auto_description ? mb_substr($excerpt, 0, 120) : '',
                         'status' => $pendingWorkflow['status'],
                         'review_status' => $pendingWorkflow['review_status'],
                         'is_ai_generated' => 1,
                         'published_at' => $pendingWorkflow['published_at'],
                         'view_count' => 0,
+                        'publication_intent' => 'scheduled',
                         'ai_quality_required_at_creation' => (bool) ($qualityPolicy['required'] ?? false),
                         'ai_quality_policy_snapshot' => $qualityPolicySnapshot,
                         'generation_evidence_snapshot' => $generationEvidenceSnapshot,
                     ]);
 
+                    $this->urlChangeInspector->assertArticleCompatible($article);
                     $this->articleRiskScanner->record($article, 'worker_generation');
 
-                    if ($workflow['review_status'] === 'approved') {
+                    if ($workflow['review_status'] === 'auto_approved') {
                         try {
                             $this->articleWorkflowTransitionService->transition(
                                 $article,
@@ -234,7 +242,7 @@ class WorkerExecutionService
                         'loop_count' => DB::raw('COALESCE(loop_count,0)+1'),
                         'updated_at' => now(),
                     ];
-                    if ($freshTask->next_publish_at === null || ! $freshTask->next_publish_at->greaterThan(now())) {
+                    if ($freshTask->next_publish_at === null) {
                         $taskUpdate['next_publish_at'] = now()->addSeconds($this->normalizePublishInterval($freshTask));
                     }
                     Task::query()->whereKey($task->id)->update($taskUpdate);
@@ -294,99 +302,123 @@ class WorkerExecutionService
             return null;
         }
 
-        $candidateArticleId = Article::query()
-            ->where('task_id', (int) $task->id)
-            ->where('status', 'draft')
-            ->whereIn('review_status', ['approved', 'auto_approved'])
-            ->whereNull('deleted_at')
-            ->orderBy('id')
-            ->value('id');
-        if (! $candidateArticleId) {
-            return null;
-        }
-
-        return DB::transaction(function () use ($task, $candidateArticleId, $executionContext, $executionStartedAt): ?array {
-            $freshTask = Task::query()
-                ->whereKey((int) $task->id)
-                ->lockForUpdate()
-                ->first(['id', 'status', 'schedule_enabled', 'publish_interval', 'next_publish_at', 'publish_scope']);
-            if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
-                throw new RuntimeException('任务未激活');
-            }
-
-            if ($freshTask->next_publish_at !== null && $freshTask->next_publish_at->greaterThan(now())) {
-                return null;
-            }
-
-            if ($executionContext instanceof AiExecutionContext) {
-                $this->jobQueueService->lockRunningJobForWorker(
-                    $executionContext,
-                    (int) $freshTask->getKey(),
-                );
-            }
-
-            /** @var Article|null $article */
-            $article = Article::query()
-                ->whereKey((int) $candidateArticleId)
-                ->where('task_id', (int) $task->id)
-                ->where('status', 'draft')
-                ->whereIn('review_status', ['approved', 'auto_approved'])
-                ->whereNull('deleted_at')
-                ->lockForUpdate()
-                ->first(['id', 'task_id', 'title', 'review_status']);
-            if (! $article) {
-                return null;
-            }
-
-            $qualityModelId = $this->articleAiQualityGate->modelIdThatWouldBeDispatched($article);
-            if ($qualityModelId !== null) {
-                if (! $executionContext instanceof AiExecutionContext) {
-                    throw AiModelAccessException::configAccessRevokedForAdminId(
-                        (int) ($freshTask->model_access_admin_id ?? 0),
-                    );
+        $candidateIds = Article::query()->scheduledCandidates($task)->orderBy('id')->lazyById(100, 'id');
+        foreach ($candidateIds as $candidate) {
+            $candidateArticleId = (int) $candidate->id;
+            $result = DB::transaction(function () use ($task, $candidateArticleId, $executionContext, $executionStartedAt): ?array {
+                $freshTask = Task::query()
+                    ->whereKey((int) $task->id)
+                    ->lockForUpdate()
+                    ->first();
+                if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
+                    throw new RuntimeException('任务未激活');
                 }
-                $executionAdmin = $this->aiExecutionAccessGuard->assertCurrent($executionContext);
-                $this->aiExecutionAccessGuard->assertModelCurrent(
-                    $executionContext,
-                    $qualityModelId,
-                    $executionAdmin,
-                );
-            }
 
-            $publishScope = (string) ($freshTask->publish_scope ?? 'local_and_distribution');
-            $targetStatus = $publishScope === 'distribution_only' ? 'private' : 'published';
-            $reviewStatus = (string) ($article->review_status ?: 'approved');
-            $workflow = ArticleWorkflow::normalizeState($targetStatus, $reviewStatus);
-            $fallbackWorkflow = ArticleWorkflow::normalizeState('draft', 'pending');
-
-            try {
-                $this->articleWorkflowTransitionService->transition(
-                    $article,
-                    $workflow,
-                    'worker_publish',
-                    null,
-                    null,
-                    $reviewStatus !== 'auto_approved',
-                    $fallbackWorkflow,
-                );
-            } catch (ArticleRiskGateException) {
-                return null;
-            } catch (ArticleAiQualityGateException $exception) {
-                if ($qualityModelId === null || $exception->getCheck() === null) {
+                if ($freshTask->next_publish_at !== null && $freshTask->next_publish_at->greaterThan(now())) {
                     return null;
                 }
 
+                if ($executionContext instanceof AiExecutionContext) {
+                    $this->jobQueueService->lockRunningJobForWorker(
+                        $executionContext,
+                        (int) $freshTask->getKey(),
+                    );
+                }
+
+                /** @var Article|null $article */
+                $article = Article::query()
+                    ->whereKey((int) $candidateArticleId)
+                    ->where('task_id', (int) $task->id)
+                    ->where('publication_intent', 'scheduled')
+                    ->where('status', 'draft')
+                    ->whereIn('review_status', $freshTask->need_review ? ['approved'] : ['approved', 'auto_approved', 'pending'])
+                    ->whereNull('deleted_at')
+                    ->lockForUpdate()
+                    ->first();
+                if (! $article) {
+                    return null;
+                }
+
+                $qualityModelId = $this->articleAiQualityGate->modelIdThatWouldBeDispatched($article);
+                if ($qualityModelId !== null) {
+                    if (! $executionContext instanceof AiExecutionContext) {
+                        throw AiModelAccessException::configAccessRevokedForAdminId(
+                            (int) ($freshTask->model_access_admin_id ?? 0),
+                        );
+                    }
+                    $executionAdmin = $this->aiExecutionAccessGuard->assertCurrent($executionContext);
+                    $this->aiExecutionAccessGuard->assertModelCurrent(
+                        $executionContext,
+                        $qualityModelId,
+                        $executionAdmin,
+                    );
+                }
+
+                $publishScope = (string) ($freshTask->publish_scope ?? 'local_and_distribution');
+                $targetStatus = $publishScope === 'distribution_only' ? 'private' : 'published';
+                $reviewStatus = $this->publicationEligibility->reviewStatus($article);
+                $workflow = ArticleWorkflow::normalizeState($targetStatus, $reviewStatus);
+                $fallbackWorkflow = ArticleWorkflow::normalizeState('draft', 'pending');
+
+                try {
+                    $this->articleWorkflowTransitionService->transition(
+                        $article,
+                        $workflow,
+                        'worker_publish',
+                        null,
+                        null,
+                        true,
+                        $fallbackWorkflow,
+                    );
+                } catch (ArticleRiskGateException) {
+                    return null;
+                } catch (ArticleAiQualityGateException $exception) {
+                    if ($qualityModelId === null || $exception->getCheck() === null) {
+                        return null;
+                    }
+
+                    $result = [
+                        'article_id' => null,
+                        'title' => (string) $article->title,
+                        'message' => '草稿等待 AI 质检',
+                        'meta' => [
+                            'task_id' => (int) $freshTask->id,
+                            'action' => 'await_ai_quality',
+                            'ai_quality_check_id' => (int) $exception->getCheck()->id,
+                            'ai_quality_error_code' => $exception->getErrorCode(),
+                        ],
+                    ];
+                    $this->completePersistedExecution(
+                        $freshTask,
+                        $result,
+                        $executionContext,
+                        $executionStartedAt ?? microtime(true),
+                    );
+
+                    return $result;
+                }
+
+                $publishInterval = $this->normalizePublishInterval($freshTask);
+                Task::query()->whereKey((int) $freshTask->id)->update([
+                    'published_count' => DB::raw('COALESCE(published_count,0)+'.($targetStatus === 'published' ? '1' : '0')),
+                    'next_publish_at' => now()->addSeconds($publishInterval),
+                    'updated_at' => now(),
+                ]);
+
                 $result = [
-                    'article_id' => null,
+                    'article_id' => (int) $article->id,
                     'title' => (string) $article->title,
-                    'message' => '草稿等待 AI 质检',
+                    'message' => '草稿发布成功',
                     'meta' => [
                         'task_id' => (int) $freshTask->id,
-                        'action' => 'await_ai_quality',
-                        'ai_quality_check_id' => (int) $exception->getCheck()->id,
-                        'ai_quality_error_code' => $exception->getErrorCode(),
+                        'action' => 'publish_draft',
+                        'publish_interval' => $publishInterval,
+                        'workflow_fence' => $this->publicationEligibility->fence($article->fresh()),
+                        'local_published' => $targetStatus === 'published',
+                        'distribution_status' => $publishScope === 'local_only' ? 'not_requested' : 'pending',
                     ],
                 ];
+
                 $this->completePersistedExecution(
                     $freshTask,
                     $result,
@@ -395,35 +427,13 @@ class WorkerExecutionService
                 );
 
                 return $result;
+            });
+            if ($result !== null) {
+                return $result;
             }
+        }
 
-            $publishInterval = $this->normalizePublishInterval($freshTask);
-            Task::query()->whereKey((int) $freshTask->id)->update([
-                'published_count' => DB::raw('COALESCE(published_count,0)+1'),
-                'next_publish_at' => now()->addSeconds($publishInterval),
-                'updated_at' => now(),
-            ]);
-
-            $result = [
-                'article_id' => (int) $article->id,
-                'title' => (string) $article->title,
-                'message' => '草稿发布成功',
-                'meta' => [
-                    'task_id' => (int) $freshTask->id,
-                    'action' => 'publish_draft',
-                    'publish_interval' => $publishInterval,
-                ],
-            ];
-
-            $this->completePersistedExecution(
-                $freshTask,
-                $result,
-                $executionContext,
-                $executionStartedAt ?? microtime(true),
-            );
-
-            return $result;
-        });
+        return null;
     }
 
     /**
@@ -711,6 +721,10 @@ class WorkerExecutionService
             return Category::query()->find((int) $task->fixed_category_id);
         }
 
+        if ($task->category_mode === 'random') {
+            return Category::query()->inRandomOrder()->first();
+        }
+
         return Category::query()->orderBy('sort_order')->orderBy('id')->first();
     }
 
@@ -728,7 +742,7 @@ class WorkerExecutionService
     private function buildImageContext(Task $task): string
     {
         $libraryId = (int) ($task->image_library_id ?? 0);
-        if ($libraryId <= 0) {
+        if ($libraryId <= 0 || (int) $task->image_count <= 0) {
             return '';
         }
 
@@ -747,14 +761,14 @@ class WorkerExecutionService
             if ($url === '') {
                 continue;
             }
-            $remark = trim((string) ($image->tags ?? ''));
+            $remark = preg_replace('/[\r\n\t|]+/u', ' ', trim((string) ($image->tags ?? ''))) ?? '';
             if ($remark === '') {
                 $remark = ImageUrlNormalizer::readableAlt((string) ($image->original_name ?? ''));
             }
             $lines[] = '- '.($remark !== '' ? $remark.' | ' : '').$url;
         }
 
-        return implode("\n", $lines);
+        return $lines === [] ? '' : 'Maximum images / 配图数量上限：'.min(5, (int) $task->image_count)."\n".implode("\n", $lines);
     }
 
     /**
@@ -910,7 +924,10 @@ class WorkerExecutionService
     private function insertTaskImagesIntoContent(Task $task, string $content): array
     {
         $libraryId = (int) ($task->image_library_id ?? 0);
-        if ($libraryId <= 0) {
+        $imageCount = min(5, max(0, (int) ($task->image_count ?? 0)));
+        if ($libraryId <= 0 || $imageCount === 0) {
+            $content = preg_replace('/!\[[^\]]*\]\([^)]*\)|<img\b[^>]*>/iu', '', $content) ?? $content;
+
             return ['content' => $content, 'images' => []];
         }
 
@@ -919,17 +936,33 @@ class WorkerExecutionService
             ->where('library_id', $libraryId)
             ->orderByDesc('created_at')
             ->orderByDesc('id')
+            ->limit(self::IMAGE_CONTEXT_LIMIT)
             ->get(['id', 'file_path', 'original_name', 'tags']);
         if ($libraryImages->isEmpty()) {
+            $content = preg_replace('/!\[[^\]]*\]\([^)]*\)|<img\b[^>]*>/iu', '', $content) ?? $content;
+
             return ['content' => $content, 'images' => []];
         }
 
-        $selectedImages = $this->detectAiInsertedImages($content, $libraryImages);
+        $imageCount = min(5, max(0, (int) ($task->image_count ?? 0)));
+        $allowed = $libraryImages->keyBy(fn (Image $image): string => ImageUrlNormalizer::toPublicUrl((string) $image->file_path));
+        $selectedImages = [];
+        $content = preg_replace_callback('/!\[[^\]]*\]\(([^)\s]+)(?:\s+["\'][^"\']*["\'])?\)/u', function (array $match) use ($allowed, $imageCount, &$selectedImages): string {
+            $image = $allowed->get($match[1]);
+            if (! $image || count($selectedImages) >= $imageCount || isset($selectedImages[$image->id])) {
+                return '';
+            }
+            $selectedImages[$image->id] = $image;
+
+            return $match[0];
+        }, $content) ?? $content;
+        $content = preg_replace('/<img\b[^>]*>/iu', '', $content) ?? $content;
+        $selectedImages = array_values($selectedImages);
         if ($selectedImages !== []) {
             return ['content' => $content, 'images' => $selectedImages];
         }
 
-        $imageCount = max(0, (int) ($task->image_count ?? 0));
+        $imageCount = min(5, max(0, (int) ($task->image_count ?? 0)));
         if ($imageCount <= 0) {
             return ['content' => $content, 'images' => []];
         }
@@ -953,25 +986,6 @@ class WorkerExecutionService
         }
 
         return ['content' => $content, 'images' => $images];
-    }
-
-    /**
-     * 从正文中识别模型实际插入的图片库图片（按提示词提供的 URL 精确匹配）。
-     *
-     * @param  Collection<int, Image>  $libraryImages
-     * @return list<Image>
-     */
-    private function detectAiInsertedImages(string $content, Collection $libraryImages): array
-    {
-        $selected = [];
-        foreach ($libraryImages as $image) {
-            $url = ImageUrlNormalizer::toPublicUrl(trim((string) ($image->file_path ?? '')));
-            if ($url !== '' && str_contains($content, $url)) {
-                $selected[] = $image;
-            }
-        }
-
-        return $selected;
     }
 
     /**

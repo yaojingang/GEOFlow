@@ -159,7 +159,7 @@ class ManualPublicationService
                 $updates['publication_payload'] = $this->publicationPayloadBuilder->build(array_merge(
                     $current->getAttributes(),
                     $updates,
-                    ['publication_payload_extras' => Arr::only(
+                    ['source_snapshot' => $current->source_snapshot, 'publication_payload_extras' => Arr::only(
                         (array) ($current->publication_payload ?? []),
                         PublicationPayloadBuilder::EXTRA_KEYS,
                     )],

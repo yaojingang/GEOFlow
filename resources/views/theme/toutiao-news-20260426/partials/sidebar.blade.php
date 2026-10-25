@@ -24,7 +24,7 @@
         </div>
         <div class="tt-hot-list">
             @forelse($sidebarArticles as $hotArticle)
-                <a href="{{ route('site.article', $hotArticle->slug) }}" class="tt-hot-item">
+                <a href="{{ $siteUrls->article($hotArticle) }}" class="tt-hot-item">
                     <span class="tt-hot-index">{{ $loop->iteration }}</span>
                     <span>{{ $hotArticle->title }}</span>
                 </a>

@@ -1,5 +1,5 @@
 import { GeoFlowApiClient, GeoFlowApiError } from '../lib/api-client.js';
-import { hasConflictingActiveTask, resumeClaimedTask } from '../lib/task-state.js';
+import { hasConflictingActiveTask, publicationClipboardText, resumeClaimedTask } from '../lib/task-state.js';
 import { normalizeGeoflowBaseUrl, originPermissionPattern } from '../lib/url-policy.js';
 import {
     clearConnection, clearCurrentTask, clearPendingAuthorization, configureTrustedStorage,
@@ -15,7 +15,7 @@ const elements = Object.fromEntries([
     'open-approval', 'cancel-pairing', 'admin-name', 'connection-dot', 'refresh-tasks', 'disconnect',
     'queue-view', 'task-view', 'task-list', 'empty-state', 'queue-meta', 'back-to-queue',
     'task-platform', 'task-status', 'task-title', 'task-account', 'task-content', 'claim-task',
-    'open-target', 'copy-content', 'fill-zhihu', 'release-task', 'result-panel', 'completion-url',
+    'open-target', 'copy-content', 'copy-title', 'manual-platform-note', 'fill-zhihu', 'release-task', 'result-panel', 'completion-url',
     'result-note', 'observe-result', 'complete-task', 'unknown-task', 'cancel-task', 'fail-task', 'notice',
 ].map((id) => [id.replaceAll('-', '_'), byId(id)]));
 
@@ -213,6 +213,11 @@ async function selectTask(task) {
     elements.task_content.textContent = task.publication_payload?.body_plain ?? '';
     const claimed = task.status === 'in_progress';
     elements.claim_task.classList.toggle('hidden', claimed);
+    const manualPlatform = ['toutiao_post', 'sohu_post', 'netease_post'].includes(task.publication_payload?.target_action);
+    elements.manual_platform_note.classList.toggle('hidden', ! manualPlatform);
+    elements.copy_title.classList.toggle('hidden', ! manualPlatform);
+    elements.observe_result.classList.toggle('hidden', manualPlatform);
+    elements.completion_url.placeholder = manualPlatform ? 'https://…' : 'https://www.zhihu.com/question/.../answer/...';
     elements.fill_zhihu.classList.toggle('hidden', ! claimed || task.publication_payload?.target_action !== 'zhihu_answer');
     elements.release_task.classList.toggle('hidden', ! claimed);
     elements.result_panel.classList.toggle('hidden', ! claimed);
@@ -310,8 +315,8 @@ async function sha256Profile(value) {
     return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-async function copyTaskContent() {
-    const content = selectedTask.publication_payload?.body_plain ?? '';
+async function copyTaskContent(copyTitle = false) {
+    const content = publicationClipboardText(selectedTask.publication_payload, copyTitle);
     try {
         await navigator.clipboard.writeText(content);
     } catch {
@@ -410,6 +415,9 @@ elements.disconnect.addEventListener('click', async () => {
 elements.back_to_queue.addEventListener('click', () => { elements.task_view.classList.add('hidden'); elements.queue_view.classList.remove('hidden'); });
 elements.claim_task.addEventListener('click', claimTask);
 elements.open_target.addEventListener('click', openTarget);
+elements.copy_title.addEventListener('click', async () => {
+    try { await copyTaskContent(true); } catch (error) { showNotice(error.message, true); }
+});
 elements.copy_content.addEventListener('click', async () => {
     try { await copyTaskContent(); } catch (error) { showNotice(error.message, true); }
 });

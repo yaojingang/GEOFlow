@@ -123,12 +123,18 @@ final class AdminAiModelTestPreparationService
         }, 3);
     }
 
-    public function revalidateImmediatelyBeforeOutbound(AdminAiModelTestSnapshot $snapshot): bool
+    public function revalidateImmediatelyBeforeOutbound(AdminAiModelTestSnapshot $snapshot, bool $workspaceCheck = false): bool
     {
         return $this->withValidatedSnapshot(
             $snapshot,
             false,
-            static fn (Admin $actor, AiModel $model): bool => $actor->isSuperAdmin(),
+            function (Admin $actor, AiModel $model) use ($snapshot, $workspaceCheck): bool {
+                if ($workspaceCheck) {
+                    $this->assertWorkspaceProbePermission($snapshot, $actor, $model);
+                }
+
+                return $actor->isSuperAdmin();
+            },
         );
     }
 
@@ -307,7 +313,7 @@ final class AdminAiModelTestPreparationService
         Admin $actor,
         AiModel $model,
     ): void {
-        if (! $snapshot->preparedAsSuperAdmin || ! $actor->isSuperAdmin()) {
+        if ($snapshot->preparedAsSuperAdmin !== $actor->isSuperAdmin()) {
             throw AiModelAccessException::configAccessRevoked($actor, $model);
         }
     }

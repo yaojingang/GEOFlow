@@ -2,6 +2,7 @@
 
 namespace App\Console\GeoFlowCli;
 
+use App\Support\Api\ManagementOperationRegistry;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\PendingRequest;
@@ -18,11 +19,15 @@ class ApiClient
 
     private bool $unsupportedResponseEncoding = false;
 
+    private bool $recoveryDiscovered = false;
+
     public function __construct(
         private readonly HttpFactory $httpFactory,
         private readonly string $baseUrl,
         private readonly ?string $token,
         private readonly int $timeout,
+        private ?string $recoveryEpoch = null,
+        private readonly bool $discoverRecoveryBeforeWrite = false,
     ) {}
 
     /**
@@ -37,17 +42,49 @@ class ApiClient
         ?array $body = null,
         ?string $idempotencyKey = null,
         ?string $uploadPath = null,
+        ?string $clientRequestId = null,
+        ?float $timeoutSeconds = null,
     ): ApiResult {
         $this->responseLimitExceeded = false;
         $this->unsupportedResponseEncoding = false;
-        $operation = OperationRegistry::get($operationName);
+        $operation = isset(ManagementOperationRegistry::all()[$operationName])
+            ? ManagementOperationRegistry::get($operationName) : OperationRegistry::get($operationName);
         $secrets = array_values(array_filter(array_merge(
             [$this->token],
             SecretRedactor::sensitiveValues($body ?? []),
         ), static fn (mixed $value): bool => is_string($value) && $value !== ''));
         $path = $this->interpolatePath($operation['path'], $pathParameters);
         $url = rtrim($this->baseUrl, '/').'/api/v1/'.$path;
-        $pendingRequest = $this->pendingRequest($operation['auth']);
+        if ($uploadPath !== null) {
+            $this->assertUploadPath($uploadPath);
+        }
+        if ($this->discoverRecoveryBeforeWrite && ! $this->recoveryDiscovered && $this->recoveryEpoch === null
+            && $operation['auth'] && ! in_array($operation['method'], ['GET', 'HEAD'], true)) {
+            try {
+                $this->send('auth.session');
+            } catch (ApiException $exception) {
+                if ($exception->httpStatus !== 404) {
+                    throw $exception;
+                }
+                // Older Core releases have no management session route. This read never submits business work.
+            }
+            $this->recoveryDiscovered = true;
+        }
+        $pendingRequest = $this->pendingRequest($operation['auth'], $timeoutSeconds);
+
+        if ($operation['auth'] && ! in_array($operation['method'], ['GET', 'HEAD'], true) && $this->recoveryEpoch !== null) {
+            if (preg_match('/^[a-f0-9]{32}$/D', $this->recoveryEpoch) !== 1) {
+                throw new CliException('配置中的恢复代次无效，请重新登录');
+            }
+            $pendingRequest->withHeader('X-GEOFlow-Recovery-Epoch', $this->recoveryEpoch);
+        }
+
+        if ($clientRequestId !== null) {
+            if (preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{7,127}$/D', $clientRequestId) !== 1) {
+                throw new CliException('客户端请求 ID 格式无效');
+            }
+            $pendingRequest->withHeader('X-Client-Request-Id', $clientRequestId);
+        }
 
         if ($operation['idempotent'] && is_string($idempotencyKey) && trim($idempotencyKey) !== '') {
             $pendingRequest->withHeader('X-Idempotency-Key', trim($idempotencyKey));
@@ -76,11 +113,35 @@ class ApiClient
             throw $exception;
         }
 
-        return $this->parseResponse($response, $secrets);
+        $result = $this->parseResponse($response, $secrets);
+        if (in_array($operationName, ['capabilities', 'auth.session'], true)) {
+            $this->recoveryEpoch = self::recoveryEpoch($result->payload['data'] ?? []);
+            $this->recoveryDiscovered = true;
+        }
+
+        return $result;
     }
 
-    private function pendingRequest(bool $requiresAuth): PendingRequest
+    public static function recoveryEpoch(array $identity): ?string
     {
+        $recovery = $identity['recovery'] ?? null;
+        if ($recovery === null || (is_array($recovery) && ($recovery['supported'] ?? null) === false)) {
+            return null;
+        }
+        if (! is_array($recovery) || ($recovery['supported'] ?? null) !== true
+            || ! is_string($recovery['epoch'] ?? null) || preg_match('/^[a-f0-9]{32}$/D', $recovery['epoch']) !== 1) {
+            throw new CliException('目标未提供有效的恢复代次，请核对实例状态');
+        }
+
+        return $recovery['epoch'];
+    }
+
+    private function pendingRequest(bool $requiresAuth, ?float $timeoutSeconds = null): PendingRequest
+    {
+        if ($timeoutSeconds !== null && (! is_finite($timeoutSeconds) || $timeoutSeconds <= 0)) {
+            throw new CliException('请求等待时间必须大于零');
+        }
+        $timeout = $timeoutSeconds === null ? $this->timeout : min($this->timeout, $timeoutSeconds);
         $headers = [
             'X-Request-Id' => $this->requestId(),
             'Accept-Encoding' => 'identity',
@@ -98,8 +159,8 @@ class ApiClient
         return $this->httpFactory
             ->acceptJson()
             ->withHeaders($headers)
-            ->timeout($this->timeout)
-            ->connectTimeout(min(10, $this->timeout))
+            ->timeout($timeout)
+            ->connectTimeout(min(10, $timeout))
             ->withOptions([
                 'verify' => true,
                 'decode_content' => false,
@@ -156,12 +217,7 @@ class ApiClient
         if ($method !== 'POST') {
             throw new CliException('文件上传仅支持 POST 操作');
         }
-        if (is_link($path)) {
-            throw new CliException("图片文件不能是符号链接: {$path}");
-        }
-        if (! is_file($path) || ! is_readable($path)) {
-            throw new CliException("图片文件不存在或不可读: {$path}");
-        }
+        $this->assertUploadPath($path);
 
         $stream = @fopen($path, 'rb');
         if ($stream === false) {
@@ -183,6 +239,16 @@ class ApiClient
             return $request->attach('image', $stream, basename($path))->post($url);
         } finally {
             fclose($stream);
+        }
+    }
+
+    private function assertUploadPath(string $path): void
+    {
+        if (is_link($path)) {
+            throw new CliException("图片文件不能是符号链接: {$path}");
+        }
+        if (! is_file($path) || ! is_readable($path)) {
+            throw new CliException("图片文件不存在或不可读: {$path}");
         }
     }
 
@@ -228,7 +294,10 @@ class ApiClient
                 ...$secrets,
             );
             $safeRaw = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-            throw new ApiException($message, $response->status(), $payload, $safeRaw);
+            $retryHeader = trim($response->header('Retry-After'));
+            $retryAfter = ctype_digit($retryHeader) ? min(86400, (int) $retryHeader)
+                : (($timestamp = strtotime($retryHeader)) !== false ? min(86400, max(0, $timestamp - time())) : null);
+            throw new ApiException($message, $response->status(), $payload, $safeRaw, $retryAfter);
         }
 
         return new ApiResult($raw, $payload, $response->status());

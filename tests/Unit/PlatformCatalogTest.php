@@ -23,8 +23,8 @@ class PlatformCatalogTest extends TestCase
         $this->assertFalse(PlatformCatalog::isSupported('zhihu'));
 
         $this->assertSame(
-            'https://mp.sohu.com/custom',
-            PlatformCatalog::editorUrl('sohu', 'https://mp.sohu.com/custom')
+            'https://mp.sohu.com/suc-ce/article/custom',
+            PlatformCatalog::editorUrl('sohu', 'https://mp.sohu.com/suc-ce/article/custom')
         );
         $this->assertStringStartsWith(
             'https://mp.sohu.com',

@@ -53,6 +53,7 @@ def build_snapshot(root: Path) -> dict:
         "public_site": capability(root, "app/Http/Controllers/Site/HomeController.php", "resources/views/site"),
         "lead_capture": capability(root, "app/Http/Controllers/Site/LeadFormController.php", "app/Http/Controllers/Admin/LeadFormController.php", "app/Http/Controllers/Admin/LeadController.php"),
         "tasks_jobs_articles": capability(root, "app/Http/Controllers/Admin/TaskController.php", "app/Http/Controllers/Api/V1/TaskController.php", "app/Services/GeoFlow/JobQueueService.php", "app/Http/Controllers/Admin/ArticleController.php"),
+        "topics": capability(root, "routes/admin-topics.php", "app/Models/Topic.php", "app/Services/Topics/TopicService.php", "app/Services/Topics/TopicTemplateCatalog.php", "resources/views/site/topics"),
         "materials": capability(root, "app/Http/Controllers/Api/V1/MaterialController.php", "app/Services/GeoFlow/MaterialLibraryService.php", "resources/views/admin/materials"),
         "enterprise_knowledge": capability(root, "app/Http/Controllers/Admin/EnterpriseKnowledgeController.php", "app/Services/GeoFlow/EnterpriseKnowledgeDraftService.php"),
         "analytics": capability(root, "app/Http/Controllers/Admin/AnalyticsController.php", "app/Services/Admin/Analytics"),

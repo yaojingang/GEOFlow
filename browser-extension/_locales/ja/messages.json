@@ -55,5 +55,7 @@
   "account_mismatch": { "message": "現在の Zhihu アカウントが作業指定と一致しません。" },
   "editor_not_found": { "message": "回答エディターが見つかりません。ページが変更された可能性があります。" },
   "editor_not_empty": { "message": "エディターに下書きがあります。" },
-  "empty_content": { "message": "作業本文が空です。" }
+  "empty_content": { "message": "作業本文が空です。" },
+  "copyTitle": { "message": "Copy title" },
+  "manualPlatformNote": { "message": "Assisted manual publishing: open the editor, copy the title and body, review and publish yourself, then submit the publication receipt." }
 }

@@ -1,0 +1,28 @@
+name: CLI distribution checks
+on:
+  pull_request:
+    paths: ['packages/geoflow-cli/**', 'scripts/build-geoflow-cli.php', 'app/Console/GeoFlowCli/**', '.github/workflows/cli-*.yml']
+  push:
+    branches: [main]
+    paths: ['packages/geoflow-cli/**', 'scripts/build-geoflow-cli.php', 'app/Console/GeoFlowCli/**', '.github/workflows/cli-*.yml']
+permissions:
+  contents: read
+jobs:
+  distribution:
+    strategy:
+      matrix:
+        php: ['8.3', '8.4']
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, curl, fileinfo, sodium
+          coverage: none
+          tools: composer:v2
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: vendor/bin/phpunit packages/geoflow-cli/tests tests/Unit/GeoFlowCli/StandaloneInstallerTest.php tests/Unit/GeoFlowCli/StandaloneBuildTest.php
+      - run: python3 -B -m unittest discover -s packages/geoflow-cli/tests -p 'test_*.py'
+      - run: php packages/geoflow-cli/smoke.php

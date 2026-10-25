@@ -34,6 +34,7 @@ final class AdminBasePathManager
             'images',
             'js',
             'storage',
+            'theme-assets',
             'vendor',
         ];
     }

@@ -1,3 +1,6 @@
+@if(!collect($homepageModules??[])->contains(fn($m)=>($m['type']??'')==='topic_collection' && ($m['enabled']??true)))
+@include('site.partials.topic-home')
+@endif
 @php
     $modules = collect($homepageModules ?? [])->filter(fn ($module) => is_array($module) && !empty($module['enabled']))->values();
     $style = array_merge([
@@ -221,6 +224,8 @@
                             </div>
                         @endforeach
                     </div>
+                @elseif($type === 'topic_collection')
+                    @include('site.partials.topic-home')
                 @elseif($type === 'article_collection')
                     <div class="geo-home-module__header">
                         @if($title !== '')
@@ -232,7 +237,7 @@
                     </div>
                     <div class="geo-home-module__articles">
                         @foreach($moduleArticles as $moduleArticle)
-                            <a href="{{ route('site.article', $moduleArticle->slug) }}" class="geo-home-module__article">
+                            <a href="{{ $siteUrls->article($moduleArticle) }}" class="geo-home-module__article">
                                 <span>{{ $moduleArticle->title }}</span>
                                 @if(!empty($moduleArticle->published_at))
                                     <time>{{ $moduleArticle->published_at->format('m-d') }}</time>

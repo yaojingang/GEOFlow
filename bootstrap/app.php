@@ -17,14 +17,18 @@ use App\Http\Middleware\EnsureApiScope;
 use App\Http\Middleware\EnsureBrowserOperationsProtocol;
 use App\Http\Middleware\EnsureHostedSitesEnabled;
 use App\Http\Middleware\EnsureSuperAdmin;
+use App\Http\Middleware\GuardRecoveryTraffic;
+use App\Http\Middleware\GuardRecoveryWrites;
 use App\Http\Middleware\LimitArticleMarkdownExportRequestSize;
 use App\Http\Middleware\LogAdminActivity;
 use App\Http\Middleware\NormalizeRequestHost;
 use App\Http\Middleware\RecordSiteViewLog;
 use App\Http\Middleware\RenderAiWorkspaceJsonErrors;
 use App\Http\Middleware\ResolveCurrentSite;
+use App\Http\Middleware\ScopeThemeRevision;
 use App\Http\Middleware\SiteWebLocale;
 use App\Http\Middleware\TrackAdminRecentPage;
+use App\Services\Api\ThemeReleaseService;
 use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
@@ -33,8 +37,11 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Exception\SuspiciousOperationException;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -46,9 +53,19 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $workspaceFileChanges = static fn (Request $request): bool => $request->isMethod('POST')
+            && count($request->segments()) === 6
+            && $request->is('api/v1/management/theme-workspaces/*/changes')
+            && Str::isUuid((string) $request->segment(5));
+        $middleware->trimStrings(except: ['friend_links.links.*.url', $workspaceFileChanges]);
+        $middleware->convertEmptyStringsToNull(except: [$workspaceFileChanges]);
         $middleware->prepend(LimitArticleMarkdownExportRequestSize::class);
         $middleware->trustHosts(static function (): array {
             $patterns = [];
+            $readbackBase = ThemeReleaseService::trustedReadbackBase();
+            if ($readbackBase) {
+                $patterns[] = '^'.preg_quote((string) parse_url($readbackBase, PHP_URL_HOST), '/').'$';
+            }
             foreach (config('geoflow.hosted_sites.primary_hosts', []) as $hostname) {
                 $patterns[] = '^'.preg_quote($hostname, '/').'$';
             }
@@ -62,7 +79,10 @@ return Application::configure(basePath: dirname(__DIR__))
             NormalizeRequestHost::class,
             ResolveCurrentSite::class,
             EnforceCurrentSiteSurface::class,
+            ScopeThemeRevision::class,
         ]);
+        $middleware->prependToGroup('web', GuardRecoveryTraffic::class);
+        $middleware->prependToGroup('api', GuardRecoveryTraffic::class);
         $middleware->appendToGroup('web', AssignApiRequestId::class);
 
         $middleware->alias([
@@ -70,6 +90,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'api.request_id' => AssignApiRequestId::class,
             // Authorization: Bearer，解析 Sanctum token 并注入 ApiAuthContext
             'api.auth' => AuthenticateApiToken::class,
+            'api.recovery' => GuardRecoveryWrites::class,
             // 校验 Token scopes，如 api.scope:catalog:read
             'api.scope' => EnsureApiScope::class,
             'browser.protocol' => EnsureBrowserOperationsProtocol::class,
@@ -99,11 +120,15 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->dontFlash([
+            'credential',
+            'preview_credential',
+            'confirmation',
             'api_key',
             'package_password',
             'current_password',
             'current_admin_password',
             'updater_authorization_code',
+            'authorization_code',
             'new_password',
             'confirm_password',
             'keywords_text',
@@ -148,10 +173,23 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(function (ApiException $e, Request $request) {
             if (! $request->is('api/*')) {
-                return null;
+                if ($request->expectsJson() && str_starts_with((string) $request->route()?->getName(), 'admin.link-pool.theme-adaptations.')) {
+                    return response()->json(['message' => $e->getMessage(), 'error_code' => $e->getErrorCode()], $e->getHttpStatus())
+                        ->header('Cache-Control', 'no-store, private');
+                }
+
+                return response($e->getMessage(), $e->getHttpStatus())
+                    ->header('Content-Type', 'text/plain; charset=utf-8')
+                    ->header('Cache-Control', 'no-store, private');
             }
 
             $rid = (string) ($request->attributes->get('request_id') ?? Str::uuid()->toString());
+
+            $headers = ['X-Request-Id' => $rid];
+            $retryAfter = $e->getDetails()['retry_after'] ?? null;
+            if ($e->getHttpStatus() === 429 && is_int($retryAfter) && $retryAfter >= 0 && $retryAfter <= 86400) {
+                $headers['Retry-After'] = (string) $retryAfter;
+            }
 
             return ApiResponse::error(
                 $e->getErrorCode(),
@@ -159,7 +197,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 $rid,
                 $e->getHttpStatus(),
                 $e->getDetails()
-            )->withHeaders(['X-Request-Id' => $rid]);
+            )->withHeaders($headers);
         });
 
         $exceptions->render(function (Throwable $e, Request $request) {
@@ -181,6 +219,12 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null;
             }
 
+            if ($e instanceof ValidationException) {
+                $rid = (string) ($request->attributes->get('request_id') ?? Str::uuid()->toString());
+
+                return ApiResponse::error('validation_failed', $e->getMessage(), $rid, 422, ['errors' => $e->errors()])->withHeaders(['X-Request-Id' => $rid]);
+            }
+
             $hostRejected = $e instanceof SuspiciousOperationException
                 || ($e instanceof BadRequestHttpException
                     && $e->getPrevious() instanceof SuspiciousOperationException);
@@ -193,6 +237,15 @@ return Application::configure(basePath: dirname(__DIR__))
                     $rid,
                     404
                 )->withHeaders(['X-Request-Id' => $rid]);
+            }
+
+            if ($e instanceof HttpExceptionInterface) {
+                $rid = (string) ($request->attributes->get('request_id') ?? Str::uuid()->toString());
+                $status = $e->getStatusCode();
+
+                return ApiResponse::error('http_'.$status, Response::$statusTexts[$status] ?? 'Request failed', $rid, $status)
+                    ->withHeaders(array_intersect_key($e->getHeaders(), array_flip(['Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining'])))
+                    ->withHeaders(['X-Request-Id' => $rid]);
             }
 
             Log::error($e->getMessage(), [

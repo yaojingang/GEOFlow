@@ -1,0 +1,249 @@
+.geo-topics {
+    --topic-ink: #16243b;
+    --topic-blue: #2563eb;
+    --topic-muted: #64748b;
+    --topic-line: #e2e8f0;
+    --topic-soft: #f5f8fc;
+    --topic-radius: 12px;
+    box-sizing: border-box;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 36px 32px 64px;
+    color: var(--topic-ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 15px;
+    line-height: 1.8;
+    overflow-wrap: anywhere;
+    container-type: inline-size;
+    container-name: topic;
+    -webkit-font-smoothing: antialiased;
+}
+.geo-topics *, .geo-topics *::before, .geo-topics *::after { box-sizing: border-box; }
+.geo-topics a { color: inherit; text-decoration: none; }
+.geo-topics button, .geo-topics input, .geo-topics summary { font: inherit; }
+.geo-topics button, .geo-topics summary { cursor: pointer; touch-action: manipulation; }
+.geo-topics :focus-visible { outline: 3px solid var(--topic-blue); outline-offset: 4px; }
+.geo-topics h1, .geo-topics h2, .geo-topics h3 { color: var(--topic-ink); letter-spacing: 0; text-wrap: pretty; }
+.geo-topics p { text-wrap: pretty; }
+.geo-topics time { font-variant-numeric: tabular-nums; }
+.geo-topics [id] { scroll-margin-top: 88px; }
+.geo-topics button:active, .topic-primary-link:active, .topic-tags a:active, .topic-route a:active { transform: scale(.98); }
+.topic-breadcrumb { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; color: var(--topic-muted); font-size: 12px; line-height: 1.8; }
+.topic-breadcrumb > span:last-child { color: var(--topic-muted); }
+.topic-kicker { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; color: var(--topic-blue); font-size: 12px; font-weight: 600; letter-spacing: 0; line-height: 1.5; }
+.topic-status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--topic-blue); flex-shrink: 0; }
+.topic-hero { display: block; grid-template-columns: minmax(0,1fr) 224px; gap: 32px; padding: 28px; margin-bottom: 36px; background: var(--topic-soft); border-radius: var(--topic-radius); }
+.topic-hero:has(> .topic-hero-copy) { display: grid; }
+.topic-hero h1 { margin: 0; font-family: inherit; font-size: clamp(30px,3vw,36px); font-weight: 700; text-wrap: balance; line-height: 1.38; }
+.topic-intro { margin: 20px 0 0; color: #536176; font-size: 15px; line-height: 1.9; white-space: pre-line; }
+.topic-tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.topic-tags a { display: inline-flex; align-items: center; min-height: 36px; padding: 6px 11px; background: #f1f5f9; border-radius: 6px; color: #42536b; font-size: 12px; line-height: 1.6; }
+.topic-tags a[aria-current] { background: #e8efff; color: #1d4ed8; font-weight: 600; }
+.topic-hero-tags a { background: #eaf0fa; color: #345780; }
+.topic-hero-meta { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 22px; color: var(--topic-muted); font-size: 12px; }
+.topic-hero-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; margin-top: 20px; }
+.topic-primary-link, .topic-copy-button { display: inline-flex; align-items: center; justify-content: center; gap: 22px; min-height: 42px; padding: 10px 16px; border-radius: 7px; font-size: 13px; font-weight: 500; line-height: 1.5; }
+.geo-topics .topic-primary-link { background: var(--topic-blue); color: #fff; }
+.topic-copy-button { color: #3c4d66; background: #fff; border: 1px solid var(--topic-line); }
+[data-topic-copy-status] { color: var(--topic-muted); font-size: 12px; }
+.topic-route { align-self: start; padding-top: 4px; }
+.topic-route-label { margin: 0 0 8px; font-size: 11px; color: var(--topic-muted); }
+.topic-route h2 { margin: 0 0 20px; font-size: 16px; font-weight: 600; line-height: 1.5; }
+.topic-route ol { list-style: none; margin: 0; padding: 0; }
+.topic-route li { border-top: 1px solid #dce4ef; }
+.topic-route a { display: flex; align-items: center; gap: 12px; padding: 14px 0; font-size: 13px; line-height: 1.7; }
+.topic-route-number { color: var(--topic-blue); font-variant-numeric: tabular-nums; font-size: 11px; font-weight: 600; }
+.topic-route-arrow { margin-left: auto; color: var(--topic-muted); }
+.topic-route-note, .topic-route-description { font-size: 12px; line-height: 1.8; color: var(--topic-muted); margin: 14px 0 0; }
+.topic-detail-grid { display: grid; grid-template-columns: minmax(0,1fr) 240px; gap: 44px; align-items: start; }
+.topic-detail-main, .topic-sidebar, .topic-auxiliary-content { min-width: 0; }
+.topic-summary { padding: 0 0 28px; margin-bottom: 36px; border-bottom: 1px solid var(--topic-line); }
+.topic-section-heading { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 16px; }
+.topic-section-heading h2, .topic-summary h2, .topic-faq h2, .topic-article-links h2 { margin: 0; font-family: inherit; font-size: 22px; font-weight: 650; line-height: 1.5; }
+.topic-section-heading > span, .topic-section-heading > a { font-size: 12px; color: var(--topic-muted); }
+.topic-conclusion { margin: 0 0 18px; font-size: 17px; line-height: 1.95; font-weight: 500; }
+.topic-key-points, .topic-reading-advice { border-top: 1px solid var(--topic-line); }
+.topic-key-points > summary, .topic-reading-advice > summary { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 12px 0; list-style: none; color: #345780; font-size: 13px; font-weight: 500; }
+.geo-topics summary::-webkit-details-marker { display: none; }
+.topic-key-points > summary > span { margin-left: auto; color: var(--topic-muted); font-size: 11px; font-weight: 400; }
+.topic-key-points > summary::after, .topic-reading-advice > summary::after, .topic-faq summary::after, .topic-auxiliary > summary::after { content: '+'; color: var(--topic-muted); font-size: 18px; font-weight: 400; margin-left: auto; flex-shrink: 0; }
+.topic-key-points[open] > summary::after, .topic-reading-advice[open] > summary::after, .topic-faq details[open] > summary::after, .topic-auxiliary[open] > summary::after { content: '−'; }
+.topic-facts { margin: 8px 0 18px; padding-left: 20px; }
+.topic-facts li { padding: 10px 0; font-size: 14px; line-height: 1.95; }
+.topic-citations { margin-left: 6px; font-size: 12px; }
+.geo-topics .topic-citations a, .topic-faq p a { color: var(--topic-blue); text-decoration: underline; text-underline-offset: 3px; }
+.topic-fact-evidence { margin-top: 6px; }
+.topic-fact-evidence summary { display: inline-flex; align-items: center; min-height: 36px; color: var(--topic-muted); font-size: 12px; }
+.topic-fact-evidence blockquote { max-height: 280px; overflow: auto; overscroll-behavior: contain; white-space: pre-line; margin: 8px 0; padding: 14px 16px; border: 0; background: var(--topic-soft); border-radius: 6px; color: #536176; font-size: 13px; line-height: 1.9; }
+.topic-summary-row { margin: 10px 0 18px; }
+.topic-summary-row h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.topic-summary-row p { margin: 0; color: #536176; font-size: 14px; line-height: 1.95; white-space: pre-line; }
+.topic-source-section { min-width: 0; }
+.topic-source-cards { display: grid; grid-template-columns: 1fr; }
+.topic-group-title { display: flex; align-items: center; gap: 10px; margin: 28px 0 0; padding: 10px 0; border-bottom: 1px solid var(--topic-line); color: #345780; font-size: 14px; font-weight: 600; line-height: 1.7; }
+.topic-group-title::before { content: ''; width: 5px; height: 5px; background: var(--topic-blue); border-radius: 50%; flex-shrink: 0; }
+.topic-source { display: grid; grid-template-columns: 32px minmax(0,1fr); gap: 12px; padding: 24px 0; border-bottom: 1px solid var(--topic-line); }
+.topic-source-number { font-size: 12px; line-height: 2.25; font-variant-numeric: tabular-nums; font-weight: 600; color: #94a3b8; }
+.topic-source h3 { margin: 0 0 10px; font-size: 18px; font-weight: 600; line-height: 1.7; }
+.topic-source p { margin: 0 0 16px; color: var(--topic-muted); font-size: 14px; line-height: 1.9; }
+.topic-source-meta { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; color: var(--topic-muted); font-size: 12px; }
+.geo-topics .topic-source-meta > a, .geo-topics .topic-roundup-link { display: inline-flex; align-items: center; gap: 12px; min-height: 36px; color: var(--topic-blue); font-size: 12px; font-weight: 500; }
+.topic-sidebar { position: sticky; top: 88px; }
+.topic-page-index { padding: 0 0 24px; margin-bottom: 24px; border-bottom: 1px solid var(--topic-line); }
+.topic-sidebar-label { margin: 0 0 12px; color: var(--topic-muted); font-size: 11px; font-weight: 600; }
+.topic-page-index a { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; color: #42536b; font-size: 13px; }
+.topic-page-index a > span { color: #94a3b8; font-size: 11px; }
+.topic-page-index .topic-index-group { padding-left: 16px; color: var(--topic-muted); font-size: 12px; }
+.topic-page-index a[aria-current] { color: var(--topic-blue); font-weight: 600; }
+.topic-info { padding: 0 0 24px; margin: 0 0 24px; background: transparent; border: 0; border-bottom: 1px solid var(--topic-line); border-radius: 0; }
+.topic-info h2, .topic-info > summary { margin: 0 0 12px; font-family: inherit; font-size: 14px; font-weight: 600; line-height: 1.6; list-style: none; }
+.topic-info dl { margin: 0; }
+.topic-info dl > div { display: grid; grid-template-columns: 82px minmax(0,1fr); gap: 10px; padding: 7px 0; font-size: 12px; line-height: 1.85; }
+.topic-info dt { color: var(--topic-muted); }
+.topic-info dd { margin: 0; text-align: right; }
+.topic-info > p { margin: 6px 0 0; color: var(--topic-muted); font-size: 12px; line-height: 1.95; }
+.topic-info .topic-tags { margin: 0; }
+.topic-info .topic-tags a { font-size: 11px; min-height: 32px; }
+.topic-auxiliary > summary { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 13px; color: #42536b; list-style: none; }
+.topic-faq { margin-top: 40px; }
+.topic-faq details { border-bottom: 1px solid var(--topic-line); }
+.topic-faq summary { display: flex; justify-content: space-between; align-items: center; gap: 20px; list-style: none; min-height: 52px; padding: 16px 0; font-size: 15px; font-weight: 500; line-height: 1.8; }
+.topic-faq p { margin: 0 0 16px; color: var(--topic-muted); font-size: 14px; line-height: 1.95; }
+.topic-notice { padding: 14px 18px; margin-bottom: 24px; background: #f1f5f9; color: var(--topic-muted); border-radius: 8px; font-size: 13px; line-height: 1.8; }
+.topic-back-link { padding-top: 32px; margin-top: 36px; border-top: 1px solid var(--topic-line); color: var(--topic-blue); font-size: 13px; }
+.topic-score { padding: 24px; margin-bottom: 24px; border-radius: var(--topic-radius); background: #1c416f; color: #f0f4fa; }
+.topic-score .topic-kicker { color: #d2deef; }
+.topic-score-total { display: flex; align-items: baseline; gap: 10px; margin: 0; }
+.topic-score-total strong { font-size: 60px; line-height: 1.3; font-weight: 500; font-variant-numeric: tabular-nums; }
+.topic-score-total > span { font-size: 13px; color: #d2deef; }
+.topic-stars { position: relative; width: max-content; font-size: 18px; letter-spacing: 3px; line-height: 1.5; margin: 10px 0 20px; }
+.topic-stars > span:first-child { color: #6e8aad; }
+.topic-stars > span:last-child { position: absolute; top: 0; left: 0; white-space: nowrap; overflow: hidden; color: #f0f4fa; }
+.topic-score-dimension { display: grid; grid-template-columns: 72px minmax(0,1fr) 28px; align-items: center; gap: 8px; margin: 14px 0; font-size: 12px; }
+.topic-score-dimension > div { height: 4px; background: #6686ac; }
+.topic-score-dimension i { display: block; height: 100%; background: #f0f4fa; }
+.topic-score-dimension strong { font-weight: 400; text-align: right; }
+.topic-score > p:not(.topic-score-total):not(.topic-kicker), .topic-score-method { margin: 12px 0 0; font-size: 11px; line-height: 1.85; color: #d2deef; }
+.topic-score-method summary { min-height: 36px; color: #f0f4fa; }
+.topic-score-method p, .topic-score-method ul { margin-top: 10px; }
+.topic-score-method a { color: #f0f4fa; text-decoration: underline; }
+.topic-list-heading { margin-bottom: 24px; }
+.topic-list-heading h1 { margin: 0 0 12px; font-size: 40px; line-height: 1.4; font-weight: 700; }
+.topic-list-heading > p:last-child { margin: 0; color: var(--topic-muted); font-size: 15px; }
+.topic-search { display: flex; align-items: center; gap: 10px; max-width: 640px; margin: 24px 0 20px; }
+.topic-search input { min-width: 0; flex: 1; height: 44px; border: 1px solid var(--topic-line); border-radius: 7px; padding: 10px 14px; background: #fff; color: var(--topic-ink); font-size: 14px; }
+.topic-search button, .topic-empty > a { border: 0; background: var(--topic-blue); color: #fff; padding: 10px 18px; min-height: 44px; border-radius: 7px; font-size: 13px; line-height: 1.8; white-space: nowrap; }
+.topic-search > a { color: var(--topic-blue); font-size: 12px; }
+.topic-tag-filter { margin-bottom: 28px; }
+.topic-tag-filter .topic-tags { margin: 8px 0; }
+.topic-tags-more > summary { display: inline-flex; align-items: center; min-height: 40px; font-size: 12px; color: var(--topic-muted); list-style: none; }
+.topic-tags-more > summary::after { content: '+'; margin-left: 8px; }
+.topic-tags-more[open] > summary::after { content: '−'; }
+.topic-results-heading { padding-bottom: 16px; border-bottom: 1px solid var(--topic-line); margin-bottom: 0; }
+.topic-results-heading h2 { font-size: 18px; }
+.topic-collection { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 36px; }
+.topic-collection-item { display: flex; flex-direction: column; min-width: 0; padding: 28px 0; border-bottom: 1px solid var(--topic-line); }
+.topic-collection-item .topic-kicker { margin-bottom: 12px; font-size: 11px; }
+.topic-collection-item h2, .topic-collection-item h3 { margin: 0 0 12px; font-size: 21px; line-height: 1.7; font-weight: 600; }
+.topic-collection-item > p:not(.topic-kicker) { margin: 0 0 18px; color: var(--topic-muted); font-size: 14px; line-height: 1.95; }
+.topic-item-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-top: auto; color: var(--topic-muted); font-size: 11px; }
+.topic-item-footer > a { display: inline-flex; align-items: center; gap: 8px; color: var(--topic-blue); min-height: 36px; font-size: 12px; }
+.topic-empty { grid-column: 1/-1; padding: 48px 0; }
+.topic-empty h2 { margin: 0 0 12px; font-size: 22px; }
+.topic-empty p { margin-bottom: 24px; color: var(--topic-muted); }
+.topic-empty > a { display: inline-block; }
+.topic-pagination { margin-top: 32px; }
+.topic-home-module { padding-top: 24px; padding-bottom: 24px; }
+.topic-article-links { margin-top: 32px; padding: 24px 0; border-top: 1px solid var(--topic-line); }
+.topic-article-links p { line-height: 1.9; }
+.topic-article-links span { font-size: 12px; color: var(--topic-muted); }
+.topic-nav-link { font: inherit; font-size: 14px; font-weight: 500; color: inherit; padding: 8px 0; }
+.topic-reading-index { margin-bottom: 24px; padding: 18px 20px; background: var(--topic-soft); border-radius: 8px; }
+.topic-reading-index > summary { min-height: 36px; font-weight: 600; font-size: 14px; }
+.topic-reading-index ol { padding-left: 20px; margin: 12px 0 0; font-size: 13px; line-height: 1.9; max-height: 310px; overflow: auto; }
+.topic-reading-index li + li { margin-top: 8px; }
+.topic-reading-index a { color: var(--topic-blue); }
+.topic-reading-steps .topic-source-number { color: var(--topic-blue); }
+.topic-roundup-item { display: grid; grid-template-columns: 62px minmax(0,1fr); gap: 20px; padding: 24px 0; border-bottom: 1px solid var(--topic-line); }
+.topic-roundup-date time { display: flex; flex-direction: column; gap: 6px; color: var(--topic-muted); }
+.topic-roundup-date strong { font-size: 22px; color: var(--topic-blue); font-weight: 500; }
+.topic-roundup-date span { font-size: 11px; }
+.topic-roundup-item h3 { margin: 0 0 10px; font-size: 18px; line-height: 1.7; }
+.topic-roundup-item p { color: var(--topic-muted); font-size: 14px; line-height: 1.9; }
+@media (hover:hover) {
+    .geo-topics a:hover { color: var(--topic-blue); }
+    .geo-topics .topic-primary-link:hover { background: #1d4ed8; color: #fff; }
+    .topic-tags a:hover { background: #e8efff; color: #1d4ed8; }
+    .topic-source h3 a:hover, .topic-collection-item h2 a:hover { text-decoration: underline; text-underline-offset: 4px; }
+    .topic-copy-button:hover { background: #f1f5f9; }
+    .topic-route a:hover .topic-route-arrow { color: var(--topic-blue); }
+}
+@media (min-width:901px) { .topic-auxiliary > summary { display: none; } }
+@media (max-width:1000px) {
+    .topic-hero { grid-template-columns: minmax(0,1fr) 210px; gap: 28px; padding: 28px; }
+    .topic-detail-grid { grid-template-columns: minmax(0,1fr) 210px; gap: 28px; }
+    .topic-hero h1 { font-size: 34px; }
+}
+@media (max-width:900px) {
+    .topic-detail-grid { grid-template-columns: 1fr; gap: 32px; }
+    .topic-sidebar { position: static; }
+    .topic-page-index { display: none; }
+    .topic-auxiliary-content { padding-top: 16px; }
+}
+@media (max-width:700px) {
+    .geo-topics { padding: 24px 20px 40px; }
+    .topic-breadcrumb { margin-bottom: 20px; font-size: 11px; gap: 6px; }
+    .topic-hero { grid-template-columns: 1fr; gap: 24px; padding: 24px 20px; margin-bottom: 28px; }
+    .topic-hero h1 { font-size: 28px; line-height: 1.5; }
+    .topic-intro { margin-top: 16px; font-size: 14px; line-height: 1.9; }
+    .topic-hero-meta { gap: 6px 12px; margin-top: 18px; font-size: 11px; }
+    .topic-route { border-top: 1px solid var(--topic-line); padding-top: 20px; }
+    .topic-route-label, .topic-route h2, .topic-route-note { display: none; }
+    .topic-route ol { display: flex; flex-wrap: wrap; gap: 8px; }
+    .topic-route li { border: 0; }
+    .topic-route a { padding: 6px 10px; min-height: 36px; border: 1px solid #dce4ef; border-radius: 6px; gap: 8px; font-size: 11px; }
+    .topic-route-arrow { display: none; }
+    .topic-route-description { margin-top: 0; }
+    .topic-summary { margin-bottom: 28px; padding-bottom: 24px; }
+    .topic-section-heading h2 { font-size: 20px; }
+    .topic-conclusion { font-size: 15px; line-height: 1.95; }
+    .topic-source { grid-template-columns: 24px minmax(0,1fr); gap: 8px; padding: 20px 0; }
+    .topic-source h3, .topic-roundup-item h3 { font-size: 17px; line-height: 1.75; }
+    .topic-source p { font-size: 13px; }
+    .topic-source-meta { font-size: 11px; }
+    .topic-collection { grid-template-columns: 1fr; }
+    .topic-list-heading h1 { font-size: 32px; }
+    .topic-list-heading > p:last-child { font-size: 14px; }
+    .topic-collection-item h2, .topic-collection-item h3 { font-size: 19px; }
+    .topic-search { flex-wrap: wrap; gap: 8px; }
+    .topic-search input { flex-basis: 180px; font-size: 16px; }
+    .topic-roundup-item { grid-template-columns: 52px minmax(0,1fr); gap: 12px; }
+    .topic-score { max-width: 360px; }
+}
+@media (prefers-reduced-motion:reduce) { .geo-topics *, .geo-topics *::before, .geo-topics *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+
+/* Keep the installed site's navigation while giving topics their own reading space. */
+.wiki-main:has(> .geo-topics:is(.topic-detail,.topic-index)) { padding-top: 0; padding-bottom: 0; }
+.wiki-main > .geo-topics:is(.topic-detail,.topic-index) { padding-left: 0; padding-right: 0; }
+@media (min-width:1151px) {
+    .wiki-page-frame:has(.geo-topics:is(.topic-detail,.topic-index)) { grid-template-columns: 172px minmax(0,1fr); }
+    .wiki-page-frame:has(.geo-topics:is(.topic-detail,.topic-index)) > .wiki-right { display: none; }
+}
+@container topic (max-width:760px) {
+    .topic-hero { grid-template-columns: 1fr; gap: 20px; }
+    .topic-hero h1 { font-size: 30px; }
+    .topic-route { border-top: 1px solid var(--topic-line); padding-top: 16px; }
+    .topic-route-label, .topic-route h2, .topic-route-note { display: none; }
+    .topic-route ol { display: flex; flex-wrap: wrap; gap: 8px; }
+    .topic-route li { border: 0; }
+    .topic-route a { padding: 6px 10px; min-height: 36px; border: 1px solid #dce4ef; border-radius: 6px; gap: 8px; font-size: 11px; }
+    .topic-route-arrow { display: none; }
+    .topic-detail-grid { grid-template-columns: 1fr; }
+    .topic-sidebar { position: static; }
+    .topic-page-index { display: none; }
+}
+@media (max-width:700px) { .topic-hero h1 { font-size: 28px; } }
+
+.geo-topics .topic-search .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.geo-topics .topic-source h3 a, .geo-topics .topic-collection-item h2 a { color: var(--topic-ink); }
+@media (hover:hover) { .geo-topics .topic-source h3 a:hover, .geo-topics .topic-collection-item h2 a:hover { color: var(--topic-blue); } }

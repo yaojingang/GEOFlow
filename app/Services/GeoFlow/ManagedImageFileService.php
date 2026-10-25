@@ -125,7 +125,7 @@ class ManagedImageFileService extends ManagedImagePathHasherV1
     /**
      * @return array{processed:int,resolved:int,terminal:int,remaining:int,registry_reconciled:int,registry_failed:int,deletion_enabled:bool,ready:bool}
      */
-    public function managedPathHashReadiness(bool $reconcileRegistry = true): array
+    public function managedPathHashReadiness(bool $reconcileRegistry = true, bool $readOnly = false): array
     {
         $processed = 0;
         $resolved = 0;
@@ -136,7 +136,10 @@ class ManagedImageFileService extends ManagedImagePathHasherV1
         Image::query()
             ->whereNull('managed_path_hash')
             ->select(['id', 'file_path'])
-            ->chunkById(200, function ($images) use (&$processed, &$resolved, &$terminal): void {
+            ->chunkById(200, function ($images) use (&$processed, &$resolved, &$terminal, $readOnly): void {
+                if ($readOnly) {
+                    return;
+                }
                 foreach ($images as $image) {
                     $filePath = (string) $image->file_path;
                     $isTerminal = false;
@@ -167,9 +170,25 @@ class ManagedImageFileService extends ManagedImagePathHasherV1
 
             Image::query()
                 ->select(['id', 'file_path', 'managed_path_hash'])
-                ->chunkById(200, function ($images) use (&$terminal, &$registryReconciled, &$registryFailed, &$reconciledPaths): void {
+                ->chunkById(200, function ($images) use (&$terminal, &$registryReconciled, &$registryFailed, &$reconciledPaths, $readOnly): void {
                     foreach ($images as $image) {
                         $filePath = (string) $image->file_path;
+
+                        if ($readOnly) {
+                            if (hash_equals($this->terminalHashV1($filePath), (string) $image->managed_path_hash)) {
+                                $terminal++;
+
+                                continue;
+                            }
+                            $root = str_starts_with($filePath, 'storage/')
+                                ? Storage::disk('public')->path('uploads/images')
+                                : public_path('uploads/images');
+                            if (! is_dir($root)) {
+                                $registryFailed++;
+
+                                continue;
+                            }
+                        }
 
                         try {
                             $managed = $this->resolve($filePath, false);
@@ -189,6 +208,17 @@ class ManagedImageFileService extends ManagedImagePathHasherV1
                             continue;
                         }
                         $reconciledPaths[$managed['path_hash']] = true;
+
+                        if ($readOnly) {
+                            $registry = ManagedImagePath::query()->where('path_hash', $managed['path_hash'])->first();
+                            $contentHash = $managed['exists'] ? hash_file('sha256', $managed['absolute_path']) : false;
+                            if (! $registry || $registry->state !== 'present' || ! is_string($contentHash)
+                                || ! hash_equals((string) $registry->content_sha256, $contentHash)) {
+                                $registryFailed++;
+                            }
+
+                            continue;
+                        }
 
                         if (! $managed['exists']) {
                             try {

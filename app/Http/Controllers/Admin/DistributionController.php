@@ -13,8 +13,10 @@ use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
 use App\Models\DistributionLog;
 use App\Models\LeadForm;
+use App\Models\ManualPublicationAccount;
 use App\Models\Task;
 use App\Services\GeoFlow\ArticleCitationMarkerCleaner;
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformCatalog;
 use App\Services\GeoFlow\DistributionChannelDeletionConfirmation;
 use App\Services\GeoFlow\DistributionChannelDeletionService;
 use App\Services\GeoFlow\DistributionChannelOperationLeaseService;
@@ -126,6 +128,7 @@ class DistributionController extends Controller
             'activeMenu' => 'distribution',
             'adminSiteName' => AdminWeb::siteName(),
             'availableThemes' => $this->siteThemeCatalog->all(),
+            'platformAccounts' => ManualPublicationAccount::query()->with('persona')->where('is_active', true)->whereHas('persona', fn ($q) => $q->where('is_active', true))->whereIn('platform', array_keys(PlatformCatalog::all()))->get(),
         ]);
     }
 
@@ -165,6 +168,10 @@ class DistributionController extends Controller
                 ->with('message', __('admin.distribution.message.created'));
         }
 
+        if ($channel->isPlatformWeb()) {
+            return redirect()->route('admin.distribution.edit', ['channelId' => $channel->id])->with('message', __('admin.distribution.message.created'));
+        }
+
         $secret = $this->createChannelSecret($channel);
 
         return redirect()
@@ -200,6 +207,7 @@ class DistributionController extends Controller
             'channel' => $channel,
             'remoteSiteSettings' => $channel->resolvedSiteSettings(),
             'availableThemes' => $this->siteThemeCatalog->all(),
+            'platformAccounts' => ManualPublicationAccount::query()->with('persona')->where('is_active', true)->whereHas('persona', fn ($q) => $q->where('is_active', true))->whereIn('platform', array_keys(PlatformCatalog::all()))->get(),
             'articleDetailTextAds' => ArticleTextAdPicker::all(false),
             'articleTextAdPolicy' => $channel->resolvedArticleTextAdPolicy(),
             'frontendExperienceMode' => $channel->frontendExperienceMode(),
@@ -221,8 +229,8 @@ class DistributionController extends Controller
             return $redirect;
         }
 
+        $request->merge(['channel_type' => $channel->channelType()]);
         $payload = $this->validateChannel($request);
-        $payload['channel_type'] = $channel->channelType();
         try {
             $channel = DB::transaction(function () use ($channelId, $payload): ?DistributionChannel {
                 $lockedChannel = DistributionChannel::query()
@@ -236,6 +244,10 @@ class DistributionController extends Controller
                     throw new DistributionChannelDeletionBlocked('operation_blocked');
                 }
                 $this->channelOperationLeaseService->assertNoActiveLease($lockedChannel);
+                if ($lockedChannel->isPlatformWeb() && $lockedChannel->articleDistributions()->exists()
+                    && ($payload['platform'] ?? '') !== $lockedChannel->resolvedPlatformWebConfig()['platform']) {
+                    throw ValidationException::withMessages(['platform' => '该渠道已有分发记录。变更平台请新建渠道。']);
+                }
 
                 if (($payload['channel_type'] ?? 'geoflow_agent') === 'generic_http_api') {
                     $genericAuthType = (string) ($payload['generic_auth_type'] ?? 'bearer');
@@ -737,6 +749,8 @@ class DistributionController extends Controller
             if ((string) $channel->status !== DistributionChannel::STATUS_ACTIVE) {
                 return 'unavailable';
             }
+            $taskId = (int) Article::query()->whereKey((int) $candidate->article_id)->value('task_id');
+            $task = $taskId ? Task::query()->whereKey($taskId)->lockForUpdate()->first(['id']) : null;
             $article = Article::query()
                 ->whereKey((int) $candidate->article_id)
                 ->lockForUpdate()
@@ -744,10 +758,7 @@ class DistributionController extends Controller
             if (! $article) {
                 return 'article_unavailable';
             }
-            $task = $article->task_id
-                ? Task::query()->whereKey((int) $article->task_id)->lockForUpdate()->first(['id'])
-                : null;
-            if ($article->task_id && ! $task) {
+            if ((int) $article->task_id !== $taskId || ($taskId && ! $task)) {
                 return 'article_unavailable';
             }
             $distribution = ArticleDistribution::query()
@@ -824,6 +835,9 @@ class DistributionController extends Controller
         if (! $distribution || ! $distribution->article || ! $distribution->channel) {
             return back()->withErrors(__('admin.distribution.message.job_not_found'));
         }
+        if ($distribution->channel->isPlatformWeb()) {
+            return back()->withErrors('平台网页渠道的更新和删除请在目标平台人工完成。');
+        }
         if ($redirect = $this->hostedSiteRedirect($distribution->channel)) {
             return $redirect;
         }
@@ -850,6 +864,9 @@ class DistributionController extends Controller
 
         if (! $distribution || ! $distribution->article || ! $distribution->channel) {
             return back()->withErrors(__('admin.distribution.message.job_not_found'));
+        }
+        if ($distribution->channel->isPlatformWeb()) {
+            return back()->withErrors('平台网页渠道的更新和删除请在目标平台人工完成。');
         }
         if ($redirect = $this->hostedSiteRedirect($distribution->channel)) {
             return $redirect;
@@ -917,6 +934,11 @@ class DistributionController extends Controller
 
             return back()->withErrors(__('admin.distribution.message.job_not_found'));
         }
+        if ($distribution->channel->isPlatformWeb()) {
+            $message = '平台网页渠道的更新和删除请在目标平台人工完成。';
+
+            return $request->expectsJson() ? response()->json(['ok' => false, 'message' => $message], 422) : back()->withErrors($message);
+        }
         if ($redirect = $this->hostedSiteRedirect($distribution->channel)) {
             return $redirect;
         }
@@ -932,7 +954,7 @@ class DistributionController extends Controller
         }
 
         try {
-            $this->distributionOrchestrator->deleteRemoteArticle($distribution);
+            $distribution = $this->distributionOrchestrator->deleteRemoteArticle($distribution);
         } catch (Throwable $e) {
             if ($request->expectsJson()) {
                 return response()->json([
@@ -944,7 +966,6 @@ class DistributionController extends Controller
             return back()->withErrors(__('admin.distribution.message.remote_article_delete_failed', ['message' => $e->getMessage()]));
         }
 
-        $distribution->refresh();
         if ($request->expectsJson()) {
             return response()->json([
                 'ok' => true,
@@ -1250,6 +1271,12 @@ class DistributionController extends Controller
             function (DistributionChannel $lockedChannel): array {
                 try {
                     $result = $this->publisherManager->forChannel($lockedChannel)->syncSiteSettings($lockedChannel);
+                    if (isset($result['article_permalink_revision'])) {
+                        $capabilities = $lockedChannel->frontendCapabilitiesCache();
+                        $capabilities['current_article_permalink_revision'] = (int) $result['article_permalink_revision'];
+                        $capabilities['current_article_permalink_pattern'] = (string) ($result['article_permalink_pattern'] ?? '');
+                        $lockedChannel->fillFrontendCapabilitiesCache($capabilities)->save();
+                    }
                     $this->distributionOrchestrator->log(
                         'info',
                         '目标站点设置已同步',
@@ -1334,13 +1361,17 @@ class DistributionController extends Controller
     {
         $payload = $request->validate([
             'name' => ['required', 'string', 'max:120'],
-            'domain' => ['required', 'string', 'max:255'],
-            'endpoint_url' => ['required', 'string', 'max:500'],
-            'channel_type' => ['nullable', 'string', 'in:geoflow_agent,wordpress_rest,generic_http_api'],
+            'domain' => ['required_unless:channel_type,platform_web', 'nullable', 'string', 'max:255'],
+            'endpoint_url' => ['required_unless:channel_type,platform_web', 'nullable', 'string', 'max:500'],
+            'channel_type' => ['nullable', 'string', 'in:geoflow_agent,wordpress_rest,generic_http_api,platform_web'],
             'front_mode' => ['nullable', 'string', 'in:static,rewrite'],
             'template_key' => ['nullable', 'string', 'max:120'],
             'status' => ['required', 'string', 'in:active,paused'],
             'description' => ['nullable', 'string', 'max:1000'],
+            'platform' => ['nullable', 'in:toutiao,sohu,netease'],
+            'manual_publication_account_id' => ['nullable', 'integer'],
+            'editor_url' => ['nullable', 'string', 'max:500'],
+            'append_source_link' => ['nullable', 'boolean'],
             'wordpress_username' => ['nullable', 'string', 'max:120'],
             'wordpress_application_password' => ['nullable', 'string', 'max:255'],
             'wordpress_post_status' => ['nullable', 'string', 'in:publish,draft,pending,private'],
@@ -1402,17 +1433,36 @@ class DistributionController extends Controller
             'article_text_ad_policy.content_bottom.custom_modules' => ['nullable', 'array'],
         ]);
 
-        $payload['endpoint_url'] = $this->normalizeEndpointUrl((string) $payload['endpoint_url']);
+        $payload['endpoint_url'] = $this->normalizeEndpointUrl((string) ($payload['endpoint_url'] ?? ''));
         $payload['channel_type'] = (string) ($payload['channel_type'] ?? 'geoflow_agent');
         $payload['front_mode'] = (string) ($payload['front_mode'] ?? 'static');
         $payload['frontend_experience_mode'] = DistributionChannel::normalizeFrontendExperienceMode($payload['frontend_experience_mode'] ?? null);
         $payload['homepage_style_payload'] = $this->decodeOptionalFrontendJson($payload['homepage_style_json'] ?? null, 'homepage_style_json');
         $payload['homepage_modules_payload'] = $this->decodeOptionalFrontendJson($payload['homepage_modules_json'] ?? null, 'homepage_modules_json');
         $payload['home_carousel_slides_payload'] = $this->decodeOptionalFrontendJson($payload['home_carousel_slides_json'] ?? null, 'home_carousel_slides_json');
-        if (! $this->isValidHttpEndpoint((string) $payload['endpoint_url'])) {
+        if ($payload['channel_type'] !== 'platform_web' && ! $this->isValidHttpEndpoint((string) $payload['endpoint_url'])) {
             throw ValidationException::withMessages([
                 'endpoint_url' => __('admin.distribution.validation.endpoint_url'),
             ]);
+        }
+        if ($payload['channel_type'] === 'platform_web') {
+            $platform = (string) ($payload['platform'] ?? '');
+            $account = ManualPublicationAccount::query()->with('persona')->find((int) ($payload['manual_publication_account_id'] ?? 0));
+            if (! PlatformCatalog::isSupported($platform) || ! $account || ! $account->is_active
+                || ! $account->persona?->is_active || $account->platform !== $platform) {
+                throw ValidationException::withMessages(['manual_publication_account_id' => '请选择同平台的有效账号及启用的人设。']);
+            }
+            $actor = $request->user('admin');
+            if (! $actor?->isSuperAdmin() || $actor->status !== 'active') {
+                abort(403);
+            }
+            $editorUrl = trim((string) ($payload['editor_url'] ?? ''));
+            if ($editorUrl !== '' && ! PlatformCatalog::acceptsEditorUrl($platform, $editorUrl)) {
+                throw ValidationException::withMessages(['editor_url' => '编辑器地址必须为对应平台的 HTTPS 编辑页面。']);
+            }
+            $payload['editor_url'] = PlatformCatalog::editorUrl($platform, $editorUrl);
+            $payload['endpoint_url'] = PlatformCatalog::origin($platform);
+            $payload['domain'] = (string) parse_url($payload['endpoint_url'], PHP_URL_HOST);
         }
         if ($payload['channel_type'] === 'wordpress_rest') {
             if (! filled($payload['wordpress_username'] ?? null)) {
@@ -1769,6 +1819,14 @@ class DistributionController extends Controller
             $payload['frontend_experience_mode'] ?? $channel?->frontendExperienceMode()
         );
 
+        if ($channelType === 'platform_web') {
+            return [
+                'platform' => $payload['platform'],
+                'manual_publication_account_id' => (int) $payload['manual_publication_account_id'],
+                'editor_url' => $payload['editor_url'],
+                'append_source_link' => (bool) ($payload['append_source_link'] ?? false),
+            ];
+        }
         if ($channelType === 'generic_http_api') {
             $defaults = $channel?->resolvedGenericHttpConfig() ?? (new DistributionChannel)->resolvedGenericHttpConfig();
 

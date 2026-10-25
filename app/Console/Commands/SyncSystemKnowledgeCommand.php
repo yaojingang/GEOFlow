@@ -11,12 +11,27 @@ final class SyncSystemKnowledgeCommand extends Command
 {
     protected $signature = 'geoflow:sync-system-knowledge
         {--key=ai_workspace_manual : Stable system knowledge key}
-        {--media : Import the bundled, hash-verified knowledge screenshots}';
+        {--media : Import the bundled, hash-verified knowledge screenshots}
+        {--verify : Read only and verify the synchronized official version or preserved customization}
+        {--json : Emit a structured synchronization report}';
 
     protected $description = 'Create or safely update GEOFlow system knowledge without overwriting customized content';
 
     public function handle(SystemKnowledgeBaseManager $manager, SystemKnowledgeMediaManager $media): int
     {
+        if ($this->option('verify')) {
+            $key = trim((string) $this->option('key'));
+            $binding = $manager->binding($key);
+            $definition = $manager->definition($key);
+            $complete = $binding !== null && $binding->knowledgeBase !== null
+                && $binding->official_version === $definition['official_version']
+                && hash_equals((string) $binding->official_content_hash, $definition['content_hash'])
+                && ($binding->customized_at !== null || hash_equals($definition['content_hash'], hash('sha256', (string) $binding->knowledgeBase->content)));
+            $report = ['schema_version' => 1, 'status' => $complete ? 'pass' : 'fail', 'key' => $key];
+            $this->line($this->option('json') ? json_encode($report, JSON_THROW_ON_ERROR) : 'System knowledge: '.$report['status']);
+
+            return $complete ? self::SUCCESS : self::FAILURE;
+        }
         try {
             $result = $manager->sync(trim((string) $this->option('key')));
         } catch (Throwable $exception) {

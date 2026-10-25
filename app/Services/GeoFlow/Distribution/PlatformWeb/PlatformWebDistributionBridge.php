@@ -4,10 +4,12 @@ namespace App\Services\GeoFlow\Distribution\PlatformWeb;
 
 use App\Models\Article;
 use App\Models\ArticleDistribution;
+use App\Models\DistributionChannel;
 use App\Models\DistributionLog;
 use App\Models\ManualPublication;
 use App\Models\ManualPublicationTransition;
 use App\Services\Site\SiteUrlGenerator;
+use App\Services\SystemUpdater\RecoveryState;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -24,8 +26,7 @@ class PlatformWebDistributionBridge
      *
      * completed → synced；outcome_unknown → outcome_unknown；其余（failed/skipped/cancelled）→ failed。
      * 防陈旧回执：事务内加锁重读工单最新状态（调用方快照可能过期），非终态（如重开后的 ready）
-     * 直接忽略；分发行仅在 awaiting_extension/sending/outcome_unknown 时接受写回，
-     * 避免覆盖 synced/failed 等已定状态。
+     * 直接忽略。已终止的分发行仅补存完成事实及远端身份，保留终止状态。
      */
     public function handleReceipt(ManualPublication $publication): void
     {
@@ -35,78 +36,94 @@ class PlatformWebDistributionBridge
         }
 
         DB::transaction(function () use ($sourceDistributionId, $publication): void {
-            $distribution = ArticleDistribution::query()
-                ->whereKey((int) $sourceDistributionId)
-                ->lockForUpdate()
-                ->first();
-            if (! $distribution instanceof ArticleDistribution
-                || ! in_array((string) $distribution->status, ['awaiting_extension', 'sending', 'outcome_unknown'], true)) {
+            $candidate = ArticleDistribution::query()->find((int) $sourceDistributionId);
+            if (! $candidate) {
                 return;
             }
-
-            $current = ManualPublication::query()
-                ->whereKey((int) $publication->getKey())
-                ->lockForUpdate()
-                ->first();
-            if (! $current instanceof ManualPublication) {
+            $channel = DistributionChannel::query()->whereKey($candidate->distribution_channel_id)->lockForUpdate()->first();
+            if (! $channel) {
                 return;
             }
-            $workOrderStatus = (string) $current->status;
-            if (! in_array($workOrderStatus, [
-                ManualPublication::STATUS_COMPLETED,
-                ManualPublication::STATUS_FAILED,
-                ManualPublication::STATUS_SKIPPED,
-                ManualPublication::STATUS_CANCELLED,
-                ManualPublication::STATUS_OUTCOME_UNKNOWN,
-            ], true)) {
+            $distribution = ArticleDistribution::query()->whereKey((int) $sourceDistributionId)->lockForUpdate()->first();
+            if (! $distribution || ! in_array((string) $distribution->status, ['awaiting_extension', 'sending', 'outcome_unknown', 'failed', 'cancelled'], true)) {
                 return;
             }
-
-            $distributionStatus = match ($workOrderStatus) {
+            $current = ManualPublication::query()->whereKey($publication->id)->lockForUpdate()->first();
+            if (! $current || (int) $current->source_distribution_id !== (int) $distribution->id
+                || ! in_array((string) $current->status, [
+                    ManualPublication::STATUS_COMPLETED, ManualPublication::STATUS_FAILED, ManualPublication::STATUS_SKIPPED,
+                    ManualPublication::STATUS_CANCELLED, ManualPublication::STATUS_OUTCOME_UNKNOWN,
+                ], true)) {
+                return;
+            }
+            $stopped = $channel->status === DistributionChannel::STATUS_DELETING
+                || in_array((string) $distribution->status, ['failed', 'cancelled'], true);
+            if ($stopped && $current->status !== ManualPublication::STATUS_COMPLETED) {
+                return;
+            }
+            $meta = (array) $distribution->remote_meta;
+            if ((int) ($meta['platform_web_receipt_revision'] ?? 0) >= (int) $current->revision) {
+                return;
+            }
+            $status = match ((string) $current->status) {
                 ManualPublication::STATUS_COMPLETED => 'synced',
                 ManualPublication::STATUS_OUTCOME_UNKNOWN => 'outcome_unknown',
                 default => 'failed',
             };
-
-            $receipt = is_array($current->execution_receipt) ? $current->execution_receipt : [];
-            $errorCode = trim((string) ($receipt['error_code'] ?? ''));
-            $resultNote = trim((string) ($current->result_note ?? ''));
-            $lastErrorMessage = $distributionStatus === 'synced'
-                ? null
-                : ($errorCode !== ''
-                    ? $errorCode
-                    : ($resultNote !== '' ? $resultNote : 'extension_reported_failure'));
-
+            $status = $stopped ? (string) $distribution->status : $status;
+            $receipt = (array) $current->execution_receipt;
+            $error = trim((string) ($receipt['error_code'] ?? $current->result_note ?? '')) ?: 'extension_reported_failure';
+            $meta['platform_web_receipt_revision'] = (int) $current->revision;
+            $meta['work_order_status'] = (string) $current->status;
+            $meta['pending_extension'] = false;
             $distribution->forceFill([
-                'status' => $distributionStatus,
-                'remote_id' => (string) $current->getKey(),
-                'remote_url' => $distributionStatus === 'synced' ? $current->completion_url : null,
+                'status' => $status,
+                'remote_id' => (string) $current->id,
+                'remote_url' => $current->completion_url ?: $distribution->remote_url,
+                'remote_meta' => $meta,
+                'next_retry_at' => null,
                 'last_attempt_at' => now(),
-                'last_error_message' => $lastErrorMessage,
+                'last_error_message' => $stopped ? $distribution->last_error_message : ($status === 'synced' ? null : $error),
             ])->save();
-
             DistributionLog::query()->create([
                 'distribution_channel_id' => (int) $distribution->distribution_channel_id,
                 'article_distribution_id' => (int) $distribution->id,
                 'article_id' => (int) $distribution->article_id,
-                'level' => $distributionStatus === 'synced' ? 'info' : 'error',
+                'level' => $status === 'synced' ? 'info' : 'error',
                 'event' => 'platform_web_receipt',
-                'message' => '扩展发布工单 #'.$current->getKey().' 已回执：'.$workOrderStatus,
-                'context' => [
-                    'work_order_status' => $workOrderStatus,
-                    'completion_url' => $current->completion_url,
-                ],
+                'message' => '人工发布工单 #'.$current->id.' 已回执：'.$current->status,
+                'context' => ['work_order_status' => $current->status, 'receipt_revision' => $current->revision, 'completion_url' => $current->completion_url],
                 'created_at' => now(),
             ]);
         });
     }
 
+    public function reconcile(int $limit = 100): int
+    {
+        $revisionColumn = DB::connection()->getQueryGrammar()->wrap('article_distributions.remote_meta->platform_web_receipt_revision');
+        $integerCast = DB::getDriverName() === 'mysql' ? 'UNSIGNED' : 'INTEGER';
+        $publications = ManualPublication::query()->select('manual_publications.*')
+            ->join('article_distributions', 'article_distributions.id', '=', 'manual_publications.source_distribution_id')
+            ->where(fn ($query) => $query->whereIn('article_distributions.status', ['awaiting_extension', 'sending', 'outcome_unknown'])
+                ->orWhere(fn ($stopped) => $stopped->whereIn('article_distributions.status', ['failed', 'cancelled'])->where('manual_publications.status', ManualPublication::STATUS_COMPLETED)))
+            ->whereIn('manual_publications.status', [ManualPublication::STATUS_COMPLETED, ManualPublication::STATUS_FAILED,
+                ManualPublication::STATUS_SKIPPED, ManualPublication::STATUS_CANCELLED, ManualPublication::STATUS_OUTCOME_UNKNOWN])
+            ->where(fn ($q) => $q->whereNull('article_distributions.remote_meta->platform_web_receipt_revision')
+                ->orWhereRaw('manual_publications.revision > CAST('.$revisionColumn.' AS '.$integerCast.')'))
+            ->orderBy('manual_publications.id')->limit(max(1, min(500, $limit)))->get();
+        foreach ($publications as $publication) {
+            app(RecoveryState::class)->assertBackgroundReady();
+            $this->handleReceipt($publication);
+        }
+
+        return $publications->count();
+    }
+
     /**
      * 分发行被取消/删除时联动取消挂起的扩展发布工单。
      *
-     * 工单状态可转到 cancelled（draft/ready/in_progress）时直接取消并留痕；
-     * 其余状态（failed/skipped/cancelled/completed/outcome_unknown）不可达 cancelled，
-     * 仅在 result_note 为空时补记取消说明。
+     * 未领取工单取消，已领取工单标记结果待核验；清理领取并推进版本。
+     * 调用方已持有渠道或任务锁，再按分发、工单顺序加锁，既有终态保持不变。
      */
     public function cancelWorkOrdersForDistributions(array $distributionIds, string $note): int
     {
@@ -119,40 +136,30 @@ class PlatformWebDistributionBridge
         }
 
         $cancelled = 0;
-        ManualPublication::query()
-            ->whereIn('source_distribution_id', $distributionIds)
-            ->orderBy('id')
-            ->chunkById(100, function ($publications) use ($note, &$cancelled): void {
-                foreach ($publications as $publication) {
-                    $fromStatus = (string) $publication->status;
-                    if (! in_array($fromStatus, [
-                        ManualPublication::STATUS_DRAFT,
-                        ManualPublication::STATUS_READY,
-                        ManualPublication::STATUS_IN_PROGRESS,
-                    ], true)) {
-                        if (trim((string) $publication->result_note) === '') {
-                            $publication->forceFill(['result_note' => $note])->save();
-                        }
-
-                        continue;
-                    }
-                    $publication->forceFill([
-                        'status' => ManualPublication::STATUS_CANCELLED,
-                        'status_changed_at' => now(),
-                        'result_note' => $note,
-                    ])->save();
-                    ManualPublicationTransition::query()->create([
-                        'manual_publication_id' => (int) $publication->getKey(),
-                        'changed_by_admin_id' => null,
-                        'from_status' => $fromStatus,
-                        'to_status' => ManualPublication::STATUS_CANCELLED,
-                        'completion_url' => null,
-                        'result_note' => $note,
-                        'created_at' => now(),
-                    ]);
-                    $cancelled++;
+        foreach (ArticleDistribution::query()->whereIn('id', $distributionIds)->orderBy('id')->lockForUpdate()->get() as $distribution) {
+            foreach (ManualPublication::query()->where('source_distribution_id', $distribution->id)->orderBy('id')->lockForUpdate()->get() as $publication) {
+                $fromStatus = (string) $publication->status;
+                if (! in_array($fromStatus, [ManualPublication::STATUS_DRAFT, ManualPublication::STATUS_READY, ManualPublication::STATUS_IN_PROGRESS], true)) {
+                    continue;
                 }
-            });
+                $status = $fromStatus === ManualPublication::STATUS_IN_PROGRESS
+                    ? ManualPublication::STATUS_OUTCOME_UNKNOWN : ManualPublication::STATUS_CANCELLED;
+                $publication->forceFill([
+                    'status' => $status, 'status_changed_at' => now(), 'result_note' => $note,
+                    'revision' => (int) $publication->revision + 1,
+                    'browser_claimed_by_token_id' => null, 'browser_claimed_at' => null, 'browser_last_seen_at' => null,
+                ])->save();
+                if ($status === ManualPublication::STATUS_OUTCOME_UNKNOWN) {
+                    $distribution->forceFill(['status' => 'outcome_unknown', 'next_retry_at' => null, 'last_error_message' => $note])->save();
+                }
+                ManualPublicationTransition::query()->create([
+                    'manual_publication_id' => (int) $publication->id, 'changed_by_admin_id' => null,
+                    'from_status' => $fromStatus, 'to_status' => $status,
+                    'completion_url' => $publication->completion_url, 'result_note' => $note, 'created_at' => now(),
+                ]);
+                $cancelled++;
+            }
+        }
 
         return $cancelled;
     }
@@ -163,12 +170,13 @@ class PlatformWebDistributionBridge
      * @param  array<string, mixed>  $config  resolvedPlatformWebConfig()
      * @return array{images: list<mixed>, append_source_link: bool, source_url: ?string}
      */
-    public function payloadExtras(ArticleDistribution $distribution, array $config): array
+    public function payloadExtras(ArticleDistribution $distribution, array $config, array $payload = []): array
     {
         $appendSourceLink = (bool) ($config['append_source_link'] ?? false);
         $sourceUrl = null;
         if ($appendSourceLink) {
-            $article = $distribution->article()->withTrashed()->first();
+            $snapshot = $payload['article'] ?? null;
+            $article = is_array($snapshot) ? (new Article)->forceFill($snapshot) : null;
             if ($article instanceof Article && trim((string) $article->slug) !== '') {
                 $sourceUrl = $this->siteUrlGenerator->article($article);
             }

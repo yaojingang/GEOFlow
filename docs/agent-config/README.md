@@ -13,6 +13,7 @@ This folder keeps human-readable agent instructions in one place so the reposito
 
 Some integration files intentionally remain at the repository root because the related tools discover them by convention. Do not move these into `docs/` unless the tool configuration is changed and verified:
 
+- `AGENTS.md` - discoverable entry point that loads the project rules in this folder, including the maintainer's commit-to-PR-and-merge workflow.
 - `.mcp.json` - shared MCP server configuration for Laravel Boost.
 - `boost.json` - Laravel Boost install and skill configuration.
 - `opencode.json` - OpenCode MCP configuration.

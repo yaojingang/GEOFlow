@@ -77,6 +77,8 @@ final class CommandRuntime
             (string) $config['base_url'],
             (string) $config['token'],
             $config['timeout'],
+            $config['recovery_epoch'] ?? null,
+            true,
         );
     }
 
@@ -85,9 +87,9 @@ final class CommandRuntime
         $this->apiClient();
     }
 
-    public function client(string $baseUrl, ?string $token, int $timeout): ApiClient
+    public function client(string $baseUrl, ?string $token, int $timeout, ?string $recoveryEpoch = null): ApiClient
     {
-        return new ApiClient($this->httpFactory, $baseUrl, $token, $timeout);
+        return new ApiClient($this->httpFactory, $baseUrl, $token, $timeout, $recoveryEpoch);
     }
 
     /** @param array<string,mixed> $config */
@@ -106,6 +108,13 @@ final class CommandRuntime
 
     public function targetConfigPath(): string
     {
+        if (isset($this->context->options['profile'])) {
+            if (isset($this->context->options['config']) || isset($this->context->options['file'])) {
+                throw new CliException('--profile 不能与 --config/--file 同时使用');
+            }
+
+            return $this->configuration->profilePath((string) $this->context->options['profile']);
+        }
         $path = $this->context->options['file']
             ?? $this->context->options['config']
             ?? $this->configuration->defaultPath();

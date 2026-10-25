@@ -48,6 +48,7 @@ class DistributionPayloadBuilder
                 'is_featured' => (bool) $article->is_featured,
                 'is_hot' => (bool) $article->is_hot,
                 'published_at' => $article->published_at?->toISOString(),
+                'created_at' => $article->created_at?->toISOString(),
                 'updated_at' => $article->updated_at?->toISOString(),
                 'category' => $article->category ? [
                     'id' => (int) $article->category->id,

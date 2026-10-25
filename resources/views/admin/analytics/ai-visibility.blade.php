@@ -200,6 +200,7 @@
                     </div>
                 </section>
 
+                @include('admin.analytics._ai-visibility-competitors')
                 <section class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm" data-ai-visibility-evidence>
                     <h3 class="text-lg font-semibold text-gray-950">竞品同行清洗</h3>
                     <p class="mt-1 text-sm text-gray-500">DeepSeek 仅展示可回溯到原始搜索结果的证据。</p>
@@ -235,6 +236,7 @@
                         <div class="rounded-lg bg-white/80 px-2 py-2.5 ring-1 ring-violet-100"><p class="font-mono text-lg font-semibold tabular-nums text-gray-900">{{ number_format((int) ($polling['runs'] ?? 0)) }}</p><p class="mt-0.5 text-[11px] text-gray-500">{{ __('admin.growth_center.ai_visibility.raw_polls') }}</p></div>
                         <div class="rounded-lg bg-white/80 px-2 py-2.5 ring-1 ring-violet-100"><p class="font-mono text-sm font-semibold tabular-nums text-gray-900">{{ $polling['latest_completed_at'] ? \Illuminate\Support\Carbon::parse($polling['latest_completed_at'])->format('m-d H:i') : __('admin.growth_center.ai_visibility.never_updated') }}</p><p class="mt-0.5 text-[11px] text-gray-500">{{ __('admin.growth_center.ai_visibility.last_updated') }}</p></div>
                     </div>
+
                     <div class="mt-4 flex flex-wrap gap-2">
                         <a href="{{ $sourceConfigRoute }}" class="inline-flex min-h-9 flex-1 items-center justify-center rounded-md border border-violet-200 bg-white px-3 text-sm font-semibold text-violet-800 hover:border-violet-400 hover:bg-violet-50"><i data-lucide="settings-2" class="mr-2 h-4 w-4"></i>{{ __('admin.growth_center.ai_visibility.configure_action') }}</a>
                         <a href="{{ route('admin.articles.index') }}" class="inline-flex min-h-9 flex-1 items-center justify-center rounded-md bg-violet-600 px-3 text-sm font-semibold text-white hover:bg-violet-700"><i data-lucide="file-plus-2" class="mr-2 h-4 w-4"></i>{{ __('admin.growth_center.ai_visibility.content_action') }}</a>
@@ -244,6 +246,13 @@
                 <section class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm" data-ai-visibility-section="topics">
                     <h3 class="text-lg font-semibold text-gray-950">{{ __('admin.growth_center.ai_visibility.term_cloud_title') }}</h3>
                     <p class="mt-1 text-sm text-gray-500">{{ __('admin.growth_center.ai_visibility.term_cloud_desc') }}</p>
+                    @if (auth('admin')->user()?->isSuperAdmin())
+                        <form method="POST" action="{{ route('admin.analytics.ai-visibility.refresh-terms', request()->query()) }}" class="mt-3">
+                            @csrf
+                            <button type="submit" class="rounded-md border border-gray-300 px-3 py-2 text-sm active:translate-y-px">刷新词云清洗</button>
+                            <p class="mt-1 text-xs text-gray-500">会消耗系统分析模型额度。相同候选词与模型配置使用缓存。</p>
+                        </form>
+                        @endif
                     <div class="mt-4 flex min-h-24 flex-wrap content-center items-center gap-x-3 gap-y-2.5">
                         @forelse (($ai['terms'] ?? []) as $term)
                             <span class="inline-flex items-center gap-1.5 rounded-md bg-violet-50 px-2.5 py-1.5 text-sm font-medium text-violet-800"><span>{{ $term['term'] }}</span><span class="font-mono text-xs tabular-nums text-violet-400">{{ $term['weight'] }}</span></span>
@@ -292,6 +301,11 @@
         </div>
         @endif
     </div>
+
+    @include('admin.analytics._ai-visibility-top-urls')
+    @if (auth('admin')->user()?->isSuperAdmin())
+        @include('admin.analytics._ai-visibility-collect')
+    @endif
 
     {{-- ═══ 采集工作台抽屉：豆包搜索按需唤起，不打断数据阅读 ═══ --}}
     <div class="ai-drawer-mask" data-ai-visibility-drawer-mask></div>
@@ -355,7 +369,7 @@
                         <div class="mt-4 max-h-[28rem] space-y-3 overflow-y-auto pr-1" data-result-list>
                             @forelse (($selectedRun?->sources ?? collect()) as $source)
                                 @php($authorityLabel = $source->metadata_json['authority_label'] ?? match((string) $source->authority_level){'1'=>'非常权威','2'=>'正常权威','3'=>'一般权威','4'=>'一般不权威',default=>'未知'})
-                                <article class="rounded-md border border-slate-800 bg-slate-900 p-3" data-result-item data-site="{{ $source->site_name }}" data-authority="{{ $authorityLabel }}"><div class="flex items-start justify-between gap-3"><h4 class="text-sm font-semibold leading-5 text-white">{{ $source->title ?: '未命名结果' }}</h4><span class="shrink-0 rounded-full bg-slate-800 px-2 py-1 text-[11px] text-slate-300">{{ $authorityLabel }}</span></div><div class="mt-2 flex items-center justify-between gap-2 text-xs text-slate-400"><span>{{ $source->site_name ?: $source->domain }}</span><span>#{{ $source->rank }}</span></div><p class="mt-2 line-clamp-3 text-xs leading-5 text-slate-300">{{ $source->summary ?: $source->snippet }}</p>@if($source->url)<a href="{{ $source->url }}" target="_blank" rel="noreferrer" class="mt-2 inline-flex items-center text-xs font-semibold text-violet-300 hover:text-white"><i data-lucide="external-link" class="mr-1 h-3.5 w-3.5"></i>打开原文</a>@endif</article>
+                                <article class="rounded-md border border-slate-800 bg-slate-900 p-3" data-result-item data-site="{{ $source->site_name }}" data-authority="{{ $authorityLabel }}"><div class="flex items-start justify-between gap-3"><h4 class="text-sm font-semibold leading-5 text-white">{{ $source->title ?: '未命名结果' }}</h4><span class="shrink-0 rounded-full bg-slate-800 px-2 py-1 text-[11px] text-slate-300">{{ $authorityLabel }}</span></div><div class="mt-2 flex items-center justify-between gap-2 text-xs text-slate-400"><span>{{ $source->site_name ?: $source->domain }}</span><span>#{{ $source->rank }}</span></div><p class="mt-2 line-clamp-3 text-xs leading-5 text-slate-300">{{ $source->summary ?: $source->snippet }}</p>@if(filter_var($source->url, FILTER_VALIDATE_URL) && in_array(strtolower((string) parse_url($source->url, PHP_URL_SCHEME)), ['http', 'https'], true))<a href="{{ $source->url }}" target="_blank" rel="noreferrer" class="mt-2 inline-flex items-center text-xs font-semibold text-violet-300 hover:text-white"><i data-lucide="external-link" class="mr-1 h-3.5 w-3.5"></i>打开原文</a>@endif</article>
                             @empty
                                 <p class="py-16 text-center text-sm text-slate-400">提交搜索后，这里会显示豆包返回的结果。</p>
                             @endforelse

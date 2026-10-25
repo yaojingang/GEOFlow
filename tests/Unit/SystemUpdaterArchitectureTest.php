@@ -36,14 +36,16 @@ class SystemUpdaterArchitectureTest extends TestCase
                 continue;
             }
             $source = $file->getContents();
-            if (preg_match('/->start(?:Update|Backup|Rollback)\s*\(/', $source) === 1) {
+            if (preg_match('/->submitAction\s*\(/', $source) === 1) {
                 $callers[] = $file->getRealPath();
             }
         }
 
         $this->assertSame([
-            realpath(app_path('Http/Controllers/Admin/SystemUpdaterOperationController.php')),
+            realpath(app_path('Services/SystemUpdater/RemoteUpdaterService.php')),
         ], $callers);
+        $this->assertDoesNotMatchRegularExpression('/->start(?:Update|Backup|Rollback|PlannedUpdate|SwitchBack)\s*\(/',
+            file_get_contents(app_path('Http/Controllers/Admin/SystemUpdaterOperationController.php')));
     }
 
     public function test_runtime_configuration_contains_no_legacy_update_worker(): void

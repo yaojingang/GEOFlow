@@ -22,7 +22,11 @@
         </div>
     @endif
 
+    @if(app(\App\Support\Site\SiteThemePreviewContext::class)->isActive())
+        <p class="mb-4 text-sm text-gray-600">{{ __('admin.theme_packages.preview.form_readonly') }}</p>
+    @endif
     <form method="POST" action="{{ route('site.lead-forms.submit', ['slug' => $leadForm->slug]) }}" class="space-y-4">
+        <fieldset class="space-y-4" @disabled(app(\App\Support\Site\SiteThemePreviewContext::class)->isActive())>
         @csrf
         <input type="hidden" name="source_url" value="{{ url()->full() }}">
         <div class="absolute left-[-9999px] top-auto h-1 w-1 overflow-hidden" aria-hidden="true">
@@ -70,5 +74,6 @@
         <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800">
             {{ $leadForm->submit_button_label ?: __('site.lead_forms.submit') }}
         </button>
+        </fieldset>
     </form>
 </div>

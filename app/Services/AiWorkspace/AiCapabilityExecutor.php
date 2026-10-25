@@ -258,7 +258,7 @@ final readonly class AiCapabilityExecutor implements AiWorkspaceCapabilityDriver
             'total_tasks' => Task::query()->count(),
             'active_tasks' => Task::query()->where('status', 'active')->count(),
             'new_leads' => LeadSubmission::query()->whereBetween('created_at', [$start, $end])->count(),
-            'visibility_runs' => AiVisibilityRun::query()->whereBetween('created_at', [$start, $end])->count(),
+            'visibility_runs' => AiVisibilityRun::query()->whereIn('provider_type', AiVisibilityRun::SAMPLE_PROVIDERS)->whereBetween('created_at', [$start, $end])->count(),
         ];
         if ($admin->isSuperAdmin()) {
             $payload['successful_distributions'] = DB::table('article_distributions as ad')
@@ -293,7 +293,7 @@ final readonly class AiCapabilityExecutor implements AiWorkspaceCapabilityDriver
     {
         $query = trim((string) $parameters['query']);
         $days = min(90, max(1, (int) ($parameters['days'] ?? 30)));
-        $runs = AiVisibilityRun::query()
+        $runs = AiVisibilityRun::query()->whereIn('provider_type', AiVisibilityRun::SAMPLE_PROVIDERS)
             ->where('keyword', 'like', '%'.$this->escapeLike($query).'%')
             ->where('created_at', '>=', now()->subDays($days))
             ->latest()

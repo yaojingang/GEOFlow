@@ -5,6 +5,7 @@ namespace App\Services\GeoFlow;
 use App\Exceptions\DistributionChannelDeletionBlocked;
 use App\Models\DistributionChannel;
 use App\Models\DistributionChannelOperation;
+use App\Services\SystemUpdater\RecoveryState;
 use Closure;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -15,6 +16,7 @@ final class DistributionChannelOperationLeaseService
 
     public function run(DistributionChannel $channel, string $operation, Closure $callback): mixed
     {
+        app(RecoveryState::class)->assertBackgroundReady();
         [$lease, $lockedChannel] = DB::transaction(function () use ($channel, $operation): array {
             $lockedChannel = DistributionChannel::query()
                 ->whereKey((int) $channel->id)

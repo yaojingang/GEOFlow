@@ -9,7 +9,7 @@
             $schemaItems[] = [
                 $schemaAtType => 'ListItem',
                 'position' => count($schemaItems) + 1,
-                'url' => route('site.article', $schemaArticle->slug),
+                'url' => $siteUrls->article($schemaArticle),
                 'name' => $schemaArticle->title,
             ];
         }
@@ -61,7 +61,7 @@
                 <div class="ent-category-featured">
                     <div><span>精选</span><strong>重点洞察</strong></div>
                     @foreach(collect($hotArticles)->take(3) as $hotArticle)
-                        <a href="{{ route('site.article', $hotArticle->slug) }}">
+                        <a href="{{ $siteUrls->article($hotArticle) }}">
                             <span>{{ str_pad((string) $loop->iteration, 2, '0', STR_PAD_LEFT) }}</span>
                             <strong>{{ $hotArticle->title }}</strong>
                             <i data-lucide="arrow-up-right" aria-hidden="true"></i>

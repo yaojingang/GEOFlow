@@ -45,10 +45,32 @@ final class PlatformCatalog
 
     public static function editorUrl(string $platform, ?string $override): string
     {
-        if ($override !== null && $override !== '') {
+        if ($override !== null && $override !== '' && self::acceptsEditorUrl($platform, $override)) {
             return $override;
         }
 
         return self::CATALOG[$platform]['editor_url'] ?? '';
+    }
+
+    public static function acceptsEditorUrl(string $platform, string $url): bool
+    {
+        $parts = parse_url($url);
+        $origin = self::origin($platform);
+        if ($origin === '' || ! is_array($parts) || ($parts['scheme'] ?? '') !== 'https'
+            || isset($parts['user']) || isset($parts['pass']) || isset($parts['port'])
+            || 'https://'.strtolower((string) ($parts['host'] ?? '')) !== $origin) {
+            return false;
+        }
+        $path = (string) ($parts['path'] ?? '/');
+        if (preg_match('~(?:^|/)\.{1,2}(?:/|$)|[\\\\\x00-\x20]~', rawurldecode($path))) {
+            return false;
+        }
+
+        return match ($platform) {
+            'toutiao' => str_starts_with($path, '/profile_v4/graph/articles/'),
+            'sohu' => str_starts_with($path, '/suc-ce/article/'),
+            'netease' => str_starts_with($path, '/jizhe-mp/'),
+            default => false,
+        };
     }
 }

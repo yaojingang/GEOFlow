@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 class AiVisibilityRun extends Model
@@ -23,7 +24,14 @@ class AiVisibilityRun extends Model
 
     public const PROVIDER_DEEPSEEK_ANALYSIS = 'deepseek_analysis';
 
+    public const PROVIDER_TERM_CLEANUP = 'term_cleanup';
+
+    public const PROVIDER_COMPETITOR_DETECTION = 'competitor_detection';
+
+    public const SAMPLE_PROVIDERS = [self::PROVIDER_DEEPSEEK_ANALYSIS, self::PROVIDER_DOUBAO_ARK_RESPONSES, self::PROVIDER_DOUBAO_SEARCH_CUSTOM];
+
     protected $fillable = [
+        'parent_run_id',
         'uuid',
         'keyword',
         'ai_visibility_topic_id',
@@ -50,6 +58,7 @@ class AiVisibilityRun extends Model
     protected function casts(): array
     {
         return [
+            'parent_run_id' => 'integer',
             'ai_model_id' => 'integer',
             'ai_visibility_topic_id' => 'integer',
             'ai_source_provider_id' => 'integer',
@@ -90,5 +99,10 @@ class AiVisibilityRun extends Model
     public function sources(): HasMany
     {
         return $this->hasMany(AiVisibilitySource::class, 'ai_visibility_run_id');
+    }
+
+    public function competitorDetection(): HasOne
+    {
+        return $this->hasOne(AiVisibilityCompetitorDetection::class, 'run_id');
     }
 }

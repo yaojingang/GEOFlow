@@ -20,7 +20,7 @@ class GeoFlowBackfillAiVisibilityKeywordHashes extends Command
         $matched = 0;
         $scanned = 0;
 
-        AiVisibilityRun::query()
+        AiVisibilityRun::query()->whereIn('provider_type', AiVisibilityRun::SAMPLE_PROVIDERS)
             ->whereNull('keyword_hash')
             ->select(['id', 'keyword', 'keyword_hash', 'ai_visibility_topic_id'])
             ->chunkById(500, function ($runs) use (&$updated, &$matched, &$scanned, $sentinelHash): void {

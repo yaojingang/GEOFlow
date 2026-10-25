@@ -124,13 +124,19 @@ def replace_text_in_files(root: Path, old: str, new: str) -> None:
             path.write_text(text.replace(old, new), encoding="utf-8")
 
 
-def build_preview_routes(theme_id: str) -> list[str]:
-    return [
+def build_preview_routes(theme_id: str, workspace: Path = None) -> list[str]:
+    routes = [
         "/",
         "/category/{slug}",
         "/article/{slug}",
         "/archive",
     ]
+    if workspace is not None:
+        from discover_themes import detect_topic_contract
+        for route in detect_topic_contract(workspace)["public_route_samples"]:
+            if route not in routes:
+                routes.append(route)
+    return routes
 
 
 def main() -> None:
@@ -205,7 +211,8 @@ def main() -> None:
     manifest["mode"] = "edit_theme"
     manifest["session_state"] = "preview"
     manifest["created_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
-    manifest["preview_routes"] = build_preview_routes(preview_theme_id)
+    preview_routes = build_preview_routes(preview_theme_id, workspace if framework == "laravel" else None)
+    manifest["preview_routes"] = preview_routes
     notes = manifest.get("notes")
     if not isinstance(notes, list):
         notes = []
@@ -225,11 +232,11 @@ def main() -> None:
     else:
         for path in sorted((preview_dir / "templates").glob("*.php")):
             editable_files.append(path.relative_to(preview_dir).as_posix())
-    for relative in ("assets/theme.css", "manifest.json", "tokens.json", "mapping.json"):
+    for relative in ("assets/theme.css", "assets/topics.css", "assets/topics.js", "manifest.json", "tokens.json", "mapping.json"):
         if (preview_dir / relative).is_file():
             editable_files.append(relative)
     if public_assets_copied:
-        for relative in ("theme.css", "theme.js"):
+        for relative in ("theme.css", "theme.js", "topics.css", "topics.js"):
             public_relative = f"public/themes/{preview_theme_id}/{relative}"
             if (workspace / public_relative).is_file():
                 editable_files.append(public_relative)
@@ -241,8 +248,8 @@ def main() -> None:
         "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "session_state": "preview",
         "change_request": args.change_request.strip(),
-        "preview_routes": build_preview_routes(preview_theme_id),
-        "preview_note": "Laravel GEOFlow does not expose isolated /preview/{theme} routes by default; use static previews or activate the preview theme only after operator confirmation.",
+        "preview_routes": preview_routes,
+        "preview_note": "Source-fork paths are public route samples, not isolated previews. Use static artifacts or discovered signed workspace preview links; keep the active binding separate from source edits.",
         "public_assets_dir": public_assets_dir,
         "public_assets_copied": public_assets_copied,
         "editable_files": editable_files,
@@ -272,6 +279,7 @@ def main() -> None:
             "## Preview Checklist",
             "",
             "- check home/category/article/archive preview routes",
+            "- when topic routes are present, check topic list/detail, empty/filter states and homepage topic collection",
             "- for Laravel GEOFlow, confirm whether preview is static or temporarily activated through Site Settings",
             "- verify layout, typography, spacing, and module hierarchy",
             "- confirm GEOFlow data placeholders still render correctly",
@@ -290,7 +298,7 @@ def main() -> None:
         "framework": framework,
         "preview_theme_path": str(preview_dir),
         "public_assets_path": public_assets_dir,
-        "preview_routes": build_preview_routes(preview_theme_id),
+        "preview_routes": preview_routes,
         "preview_support": "admin_activation_or_static_preview" if framework == "laravel" else "legacy_preview_routes",
         "editable_files": editable_files,
     }

@@ -23,6 +23,8 @@ use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class AdminArticleAssistantTest extends TestCase
@@ -728,9 +730,10 @@ class AdminArticleAssistantTest extends TestCase
         $this->assertSame(0, (int) $model->fresh()->total_used);
     }
 
-    public function test_empty_ai_stream_does_not_consume_usage_or_knowledge_statistics(): void
+    #[DataProvider('emptyArticleStreams')]
+    public function test_empty_ai_stream_does_not_consume_usage_or_knowledge_statistics(string $raw): void
     {
-        MarkdownContentWriterAgent::fake([''])->preventStrayPrompts();
+        MarkdownContentWriterAgent::fake([$raw])->preventStrayPrompts();
 
         $admin = $this->createAdmin('assistant_empty_stream');
         $prompt = $this->createPrompt();
@@ -750,6 +753,72 @@ class AdminArticleAssistantTest extends TestCase
         $this->assertSame(0, (int) $model->fresh()->used_today);
         $this->assertSame(0, (int) $model->fresh()->total_used);
         $this->assertSame(0, (int) $knowledgeBase->fresh()->usage_count);
+    }
+
+    public static function emptyArticleStreams(): array
+    {
+        return [
+            'empty' => [''],
+            'reasoning only' => ['<think>Analyze only.</think>'],
+            'unfinished reasoning' => ['<think>Analyze without a final answer.'],
+            'unfinished opening tag' => ['<think'],
+        ];
+    }
+
+    #[DataProvider('articleStreamResponses')]
+    public function test_editor_filters_reasoning_before_streaming_each_delta(string $raw, string $expected): void
+    {
+        $admin = $this->createAdmin('assistant_reasoning_stream');
+        $prompt = $this->createPrompt();
+        $knowledgeBase = $this->createKnowledgeBase();
+        $model = $this->createModel(['api_url' => 'https://api.minimaxi.com/v1', 'model_id' => 'MiniMax-M2.5']);
+        $sse = '';
+        foreach (mb_str_split($raw) as $character) {
+            $sse .= 'data: '.json_encode(['choices' => [['delta' => ['content' => $character], 'finish_reason' => null]]])."\n\n";
+        }
+        $sse .= 'data: '.json_encode(['choices' => [['delta' => [], 'finish_reason' => 'stop']], 'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 20]])."\n\ndata: [DONE]\n\n";
+        Http::preventStrayRequests();
+        Http::fake(['https://api.minimaxi.com/v1/chat/completions' => Http::response($sse, 200, ['Content-Type' => 'text/event-stream'])]);
+
+        $response = $this->actingAs($admin, 'admin')->postJson(route('admin.articles.editor.generate'), [
+            'title' => '示例产品 榜单',
+            'knowledge_base_id' => $knowledgeBase->id,
+            'prompt_id' => $prompt->id,
+            'ai_model_id' => $model->id,
+        ]);
+        $response->assertOk();
+        $events = [];
+        foreach (explode("\n", $response->streamedContent()) as $line) {
+            if (str_starts_with($line, 'data: ') && ($event = json_decode(substr($line, 6), true))) {
+                $events[] = $event;
+            }
+        }
+        $deltas = array_values(array_filter($events, fn (array $event): bool => $event['type'] === 'text_delta'));
+        $replacement = array_values(array_filter($events, fn (array $event): bool => $event['type'] === 'article_content_replacement'));
+        $this->assertNotEmpty($deltas);
+        $this->assertSame($expected, implode('', array_column($deltas, 'delta')));
+        $this->assertCount(1, $replacement);
+        $this->assertSame($expected, $replacement[0]['content']);
+        $types = array_column($events, 'type');
+        $this->assertLessThan(array_search('text_end', $types), max(array_keys($types, 'text_delta')));
+        $this->assertSame(1, (int) $model->fresh()->total_used);
+        $this->assertSame(1, (int) $knowledgeBase->fresh()->usage_count);
+        $this->assertSame(20, AiModelUsageEvent::query()->sole()->output_tokens);
+        Http::assertSent(fn ($request): bool => ($request['reasoning_split'] ?? false) === true);
+    }
+
+    public static function articleStreamResponses(): array
+    {
+        $body = "## 中文正文\n\n内容完整。";
+
+        return [
+            'split tags' => [" \n<THINK>Let me write this carefully.</THINK>\n<think>Again.</think>\n".$body, $body],
+            'plain article' => [$body, $body],
+            'literal tags in code' => ["```html\n<think>示例</think>\n```", "```html\n<think>示例</think>\n```"],
+            'similar tag' => ['<thinking>中文正文</thinking>', '<thinking>中文正文</thinking>'],
+            'short literal' => ['<', '<'],
+            'partial ordinary tag' => ['<th', '<th'],
+        ];
     }
 
     public function test_ai_generation_rejects_non_content_prompt(): void

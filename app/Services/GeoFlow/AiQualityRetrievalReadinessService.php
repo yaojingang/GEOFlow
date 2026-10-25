@@ -19,7 +19,7 @@ class AiQualityRetrievalReadinessService
      *   modes:array<string,array{available:bool,blockers:list<array<string,mixed>>}>
      * }
      */
-    public function inspect(array $knowledgeBaseIds): array
+    public function inspect(array $knowledgeBaseIds, bool $readOnly = false): array
     {
         $ids = collect($knowledgeBaseIds)
             ->map(static fn (mixed $id): int => (int) $id)
@@ -55,7 +55,7 @@ class AiQualityRetrievalReadinessService
             ->get()
             ->groupBy('knowledge_base_id');
 
-        $rollout = $this->rolloutPolicy->state();
+        $rollout = $this->rolloutPolicy->state($readOnly);
         $rows = $ids->map(function (int $id) use ($knowledgeBases, $chunkCounts, $rollout): array {
             $knowledgeBase = $knowledgeBases->get($id);
             if (! $knowledgeBase) {
@@ -80,6 +80,7 @@ class AiQualityRetrievalReadinessService
         $modes = [];
         foreach (AiQualityRetrievalMode::values() as $mode) {
             $blockers = [];
+            $autoPassBlockers = [];
             if ($rows === []) {
                 $blockers[] = [
                     'knowledge_base_id' => null,
@@ -91,6 +92,13 @@ class AiQualityRetrievalReadinessService
 
             foreach ($rows as $row) {
                 $modeState = $row['modes'][$mode];
+                foreach ($modeState['auto_pass_blockers'] ?? [] as $blocker) {
+                    $autoPassBlockers[] = [
+                        'knowledge_base_id' => $row['id'],
+                        'knowledge_base_name' => $row['name'],
+                        ...$blocker,
+                    ];
+                }
                 if ($modeState['available']) {
                     continue;
                 }
@@ -107,6 +115,8 @@ class AiQualityRetrievalReadinessService
             $modes[$mode] = [
                 'available' => $blockers === [],
                 'blockers' => $blockers,
+                'auto_pass_prerequisites_ready' => $blockers === [] && $autoPassBlockers === [],
+                'auto_pass_blockers' => array_values(array_unique([...$blockers, ...$autoPassBlockers], SORT_REGULAR)),
             ];
         }
 
@@ -190,8 +200,13 @@ class AiQualityRetrievalReadinessService
      * @param  list<array{code:string,message:string}>  $blockers
      * @return array{available:bool,blockers:list<array{code:string,message:string}>}
      */
-    private function state(array $blockers): array
+    private function state(array $blockers, array $autoPassBlockers = []): array
     {
-        return ['available' => $blockers === [], 'blockers' => $blockers];
+        return [
+            'available' => $blockers === [],
+            'blockers' => $blockers,
+            'auto_pass_prerequisites_ready' => $blockers === [] && $autoPassBlockers === [],
+            'auto_pass_blockers' => [...$blockers, ...$autoPassBlockers],
+        ];
     }
 }

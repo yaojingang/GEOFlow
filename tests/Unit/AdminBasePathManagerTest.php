@@ -27,4 +27,11 @@ class AdminBasePathManagerTest extends TestCase
 
         AdminBasePathManager::normalize('api');
     }
+
+    public function test_rejects_the_managed_theme_asset_namespace(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        AdminBasePathManager::normalize('theme-assets');
+    }
 }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { normalizeGeoflowBaseUrl, originPermissionPattern } from '../../browser-extension/src/lib/url-policy.js';
 import { configureTrustedStorage } from '../../browser-extension/src/lib/storage.js';
-import { hasConflictingActiveTask, resumeClaimedTask } from '../../browser-extension/src/lib/task-state.js';
+import { hasConflictingActiveTask, publicationClipboardText, resumeClaimedTask } from '../../browser-extension/src/lib/task-state.js';
 import { runZhihuAnswerAdapter } from '../../browser-extension/src/adapters/zhihu-answer.js';
 
 test('GEOFlow base URL accepts HTTPS and local HTTP while rejecting unsafe shapes', () => {
@@ -152,4 +152,50 @@ test('Zhihu adapter fills an empty answer editor for the expected account', () =
     assert.equal(result.ok, true);
     assert.equal(result.code, 'draft_filled');
     assert.deepEqual(commands.at(-1), ['insertText', '回答正文']);
+});
+
+test('browser client discovers recovery epoch before writes and preserves uncertain failures', async () => {
+    const { GeoFlowApiClient } = await import('../../browser-extension/src/lib/api-client.js');
+    const originalFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (url, options) => {
+        calls.push({ url, ...options });
+        if (url.endsWith('/session')) return { ok: true, json: async () => ({ success: true, data: { recovery: { supported: true, epoch: 'a'.repeat(32) } } }) };
+        throw new Error('response lost');
+    };
+    try {
+        const client = new GeoFlowApiClient({ baseUrl: 'https://geo.example', token: 'test-token' });
+        await assert.rejects(client.request('/api/v1/browser-operations/publications/1/claim', { method: 'POST', body: {}, idempotencyKey: 'original-key' }), /Could not reach/);
+        assert.equal(calls.length, 2);
+        assert.equal(calls[0].method, 'GET');
+        assert.equal(calls[1].headers['X-GEOFlow-Recovery-Epoch'], 'a'.repeat(32));
+        assert.equal(calls[1].headers['X-Idempotency-Key'], 'original-key');
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+test('browser client rejects malformed recovery discovery before sending any mutation', async () => {
+    const { GeoFlowApiClient } = await import('../../browser-extension/src/lib/api-client.js');
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => {
+        calls++;
+        return { ok: true, json: async () => ({ success: true, data: { recovery: { supported: true, epoch: 'bad' } } }) };
+    };
+    try {
+        const client = new GeoFlowApiClient({ baseUrl: 'https://geo.example', token: 'test-token' });
+        await assert.rejects(client.request('/api/v1/browser-operations/publications/1/claim', { method: 'POST' }), /recovery/);
+        assert.equal(calls, 1);
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+test('assisted manual publishing copies immutable title and body with optional safe source link', () => {
+    const payload = { title: 'Saved title', body_plain: 'Saved body', append_source_link: true, source_url: 'https://geo.example/article/1' };
+    assert.equal(publicationClipboardText(payload, true), 'Saved title');
+    assert.equal(publicationClipboardText(payload), 'Saved body\n\nhttps://geo.example/article/1');
+    assert.equal(publicationClipboardText({ ...payload, append_source_link: false }), 'Saved body');
+    assert.equal(publicationClipboardText({ ...payload, source_url: 'javascript:alert(1)' }), 'Saved body');
 });

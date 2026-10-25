@@ -1,0 +1,1094 @@
+[
+  {
+    "viewport": [
+      1280,
+      720
+    ],
+    "slide": 1,
+    "title": "GEOFlow",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H1",
+        "className": "cover-mark reveal delay-1",
+        "client": [
+          445,
+          106
+        ],
+        "scroll": [
+          445,
+          133
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      720
+    ],
+    "slide": 2,
+    "title": "GEOFlow 把分散的 GEO 工作接成一条持续运营链",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          1132,
+          46
+        ],
+        "scroll": [
+          1132,
+          53
+        ]
+      },
+      {
+        "tag": "STRONG",
+        "className": "",
+        "client": [
+          387,
+          140
+        ],
+        "scroll": [
+          387,
+          145
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      720
+    ],
+    "slide": 3,
+    "title": "五个环节把可信事实沉淀为可复用的答案资产",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          1132,
+          46
+        ],
+        "scroll": [
+          1132,
+          53
+        ]
+      },
+      {
+        "tag": "STRONG",
+        "className": "",
+        "client": [
+          157,
+          25
+        ],
+        "scroll": [
+          157,
+          27
+        ]
+      },
+      {
+        "tag": "STRONG",
+        "className": "",
+        "client": [
+          157,
+          25
+        ],
+        "scroll": [
+          157,
+          27
+        ]
+      },
+      {
+        "tag": "STRONG",
+        "className": "",
+        "client": [
+          157,
+          25
+        ],
+        "scroll": [
+          157,
+          27
+        ]
+      },
+      {
+        "tag": "STRONG",
+        "className": "",
+        "client": [
+          157,
+          25
+        ],
+        "scroll": [
+          157,
+          27
+        ]
+      },
+      {
+        "tag": "STRONG",
+        "className": "",
+        "client": [
+          157,
+          25
+        ],
+        "scroll": [
+          157,
+          27
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      720
+    ],
+    "slide": 4,
+    "title": "知识先被原子化，内容才拥有稳定的事实边界",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          1132,
+          46
+        ],
+        "scroll": [
+          1132,
+          53
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      720
+    ],
+    "slide": 5,
+    "title": "内容生产由任务编排驱动，规模与规则可以同时控制",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          1132,
+          46
+        ],
+        "scroll": [
+          1132,
+          53
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      720
+    ],
+    "slide": 6,
+    "title": "AI 质检成为发布门禁，每次判断都有证据与状态",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          1132,
+          46
+        ],
+        "scroll": [
+          1132,
+          53
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      720
+    ],
+    "slide": 7,
+    "title": "一次审核完成后，内容可以进入官网、托管站点与外部渠道",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          1132,
+          46
+        ],
+        "scroll": [
+          1132,
+          53
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      720
+    ],
+    "slide": 8,
+    "title": "数据中心把内容、访问、分发、线索与 AI 可见性放进同一结果链",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          1132,
+          93
+        ],
+        "scroll": [
+          1132,
+          99
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      720
+    ],
+    "slide": 9,
+    "title": "产品亮点集中在可运营、可审计与可扩展",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          1132,
+          46
+        ],
+        "scroll": [
+          1132,
+          53
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      720
+    ],
+    "slide": 10,
+    "title": "五类场景都围绕长期内容资产与持续运营展开",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          1132,
+          46
+        ],
+        "scroll": [
+          1132,
+          53
+        ]
+      },
+      {
+        "tag": "H3",
+        "className": "",
+        "client": [
+          295,
+          111
+        ],
+        "scroll": [
+          295,
+          113
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      720
+    ],
+    "slide": 11,
+    "title": "10 万元获得 GEOFlow 终身商业授权部署",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          1132,
+          46
+        ],
+        "scroll": [
+          1132,
+          53
+        ]
+      },
+      {
+        "tag": "DIV",
+        "className": "price",
+        "client": [
+          564,
+          115
+        ],
+        "scroll": [
+          564,
+          147
+        ]
+      },
+      {
+        "tag": "H3",
+        "className": "",
+        "client": [
+          477,
+          31
+        ],
+        "scroll": [
+          477,
+          33
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      720
+    ],
+    "slide": 12,
+    "title": "把 GEO 从一次项目沉淀为企业长期基础设施",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "closing-statement reveal-left delay-1",
+        "client": [
+          661,
+          118
+        ],
+        "scroll": [
+          661,
+          125
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      600
+    ],
+    "slide": 1,
+    "title": "GEOFlow",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H1",
+        "className": "cover-mark reveal delay-1",
+        "client": [
+          445,
+          106
+        ],
+        "scroll": [
+          445,
+          133
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      600
+    ],
+    "slide": 2,
+    "title": "GEOFlow 把分散的 GEO 工作接成一条持续运营链",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          845,
+          35
+        ],
+        "scroll": [
+          845,
+          39
+        ]
+      },
+      {
+        "tag": "STRONG",
+        "className": "",
+        "client": [
+          387,
+          140
+        ],
+        "scroll": [
+          387,
+          145
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      600
+    ],
+    "slide": 3,
+    "title": "五个环节把可信事实沉淀为可复用的答案资产",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          845,
+          35
+        ],
+        "scroll": [
+          845,
+          39
+        ]
+      },
+      {
+        "tag": "STRONG",
+        "className": "",
+        "client": [
+          157,
+          25
+        ],
+        "scroll": [
+          157,
+          27
+        ]
+      },
+      {
+        "tag": "STRONG",
+        "className": "",
+        "client": [
+          157,
+          25
+        ],
+        "scroll": [
+          157,
+          27
+        ]
+      },
+      {
+        "tag": "STRONG",
+        "className": "",
+        "client": [
+          157,
+          25
+        ],
+        "scroll": [
+          157,
+          27
+        ]
+      },
+      {
+        "tag": "STRONG",
+        "className": "",
+        "client": [
+          157,
+          25
+        ],
+        "scroll": [
+          157,
+          27
+        ]
+      },
+      {
+        "tag": "STRONG",
+        "className": "",
+        "client": [
+          157,
+          25
+        ],
+        "scroll": [
+          157,
+          27
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      600
+    ],
+    "slide": 4,
+    "title": "知识先被原子化，内容才拥有稳定的事实边界",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          845,
+          35
+        ],
+        "scroll": [
+          845,
+          39
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      600
+    ],
+    "slide": 5,
+    "title": "内容生产由任务编排驱动，规模与规则可以同时控制",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          845,
+          35
+        ],
+        "scroll": [
+          845,
+          39
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      600
+    ],
+    "slide": 6,
+    "title": "AI 质检成为发布门禁，每次判断都有证据与状态",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          845,
+          35
+        ],
+        "scroll": [
+          845,
+          39
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      600
+    ],
+    "slide": 7,
+    "title": "一次审核完成后，内容可以进入官网、托管站点与外部渠道",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          845,
+          35
+        ],
+        "scroll": [
+          845,
+          39
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      600
+    ],
+    "slide": 8,
+    "title": "数据中心把内容、访问、分发、线索与 AI 可见性放进同一结果链",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          845,
+          69
+        ],
+        "scroll": [
+          845,
+          74
+        ]
+      },
+      {
+        "tag": "DIV",
+        "className": "body-stage",
+        "client": [
+          1152,
+          465
+        ],
+        "scroll": [
+          1152,
+          474
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      600
+    ],
+    "slide": 9,
+    "title": "产品亮点集中在可运营、可审计与可扩展",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          845,
+          35
+        ],
+        "scroll": [
+          845,
+          39
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      600
+    ],
+    "slide": 10,
+    "title": "五类场景都围绕长期内容资产与持续运营展开",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          845,
+          35
+        ],
+        "scroll": [
+          845,
+          39
+        ]
+      },
+      {
+        "tag": "H3",
+        "className": "",
+        "client": [
+          295,
+          111
+        ],
+        "scroll": [
+          295,
+          113
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      600
+    ],
+    "slide": 11,
+    "title": "10 万元获得 GEOFlow 终身商业授权部署",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          845,
+          35
+        ],
+        "scroll": [
+          845,
+          39
+        ]
+      },
+      {
+        "tag": "DIV",
+        "className": "price",
+        "client": [
+          564,
+          115
+        ],
+        "scroll": [
+          564,
+          147
+        ]
+      },
+      {
+        "tag": "H3",
+        "className": "",
+        "client": [
+          477,
+          31
+        ],
+        "scroll": [
+          477,
+          33
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      1280,
+      600
+    ],
+    "slide": 12,
+    "title": "把 GEO 从一次项目沉淀为企业长期基础设施",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "closing-statement reveal-left delay-1",
+        "client": [
+          661,
+          118
+        ],
+        "scroll": [
+          661,
+          125
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "slide": 1,
+    "title": "GEOFlow",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H1",
+        "className": "cover-mark reveal delay-1",
+        "client": [
+          229,
+          54
+        ],
+        "scroll": [
+          229,
+          68
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "slide": 2,
+    "title": "GEOFlow 把分散的 GEO 工作接成一条持续运营链",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          351,
+          51
+        ],
+        "scroll": [
+          351,
+          54
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "slide": 3,
+    "title": "五个环节把可信事实沉淀为可复用的答案资产",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          351,
+          51
+        ],
+        "scroll": [
+          351,
+          54
+        ]
+      },
+      {
+        "tag": "P",
+        "className": "",
+        "client": [
+          50,
+          99
+        ],
+        "scroll": [
+          54,
+          99
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "slide": 4,
+    "title": "知识先被原子化，内容才拥有稳定的事实边界",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          351,
+          51
+        ],
+        "scroll": [
+          351,
+          54
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "slide": 5,
+    "title": "内容生产由任务编排驱动，规模与规则可以同时控制",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          351,
+          51
+        ],
+        "scroll": [
+          351,
+          54
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "slide": 6,
+    "title": "AI 质检成为发布门禁，每次判断都有证据与状态",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          351,
+          51
+        ],
+        "scroll": [
+          351,
+          54
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "slide": 7,
+    "title": "一次审核完成后，内容可以进入官网、托管站点与外部渠道",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          351,
+          51
+        ],
+        "scroll": [
+          351,
+          54
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "slide": 8,
+    "title": "数据中心把内容、访问、分发、线索与 AI 可见性放进同一结果链",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          351,
+          51
+        ],
+        "scroll": [
+          351,
+          54
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "slide": 9,
+    "title": "产品亮点集中在可运营、可审计与可扩展",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          351,
+          51
+        ],
+        "scroll": [
+          351,
+          54
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "slide": 10,
+    "title": "五类场景都围绕长期内容资产与持续运营展开",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          351,
+          51
+        ],
+        "scroll": [
+          351,
+          54
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "slide": 11,
+    "title": "10 万元获得 GEOFlow 终身商业授权部署",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "",
+        "client": [
+          351,
+          51
+        ],
+        "scroll": [
+          351,
+          54
+        ]
+      },
+      {
+        "tag": "DIV",
+        "className": "price",
+        "client": [
+          152,
+          69
+        ],
+        "scroll": [
+          152,
+          88
+        ]
+      }
+    ]
+  },
+  {
+    "viewport": [
+      390,
+      844
+    ],
+    "slide": 12,
+    "title": "把 GEO 从一次项目沉淀为企业长期基础设施",
+    "outside": [],
+    "internal": [
+      {
+        "tag": "H2",
+        "className": "closing-statement reveal-left delay-1",
+        "client": [
+          351,
+          72
+        ],
+        "scroll": [
+          351,
+          76
+        ]
+      },
+      {
+        "tag": "STRONG",
+        "className": "",
+        "client": [
+          319,
+          20
+        ],
+        "scroll": [
+          319,
+          22
+        ]
+      }
+    ]
+  }
+]

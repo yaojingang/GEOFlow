@@ -15,6 +15,7 @@ use App\Services\GeoFlow\AiVisibility\AiVisibilityCollectionService;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityConfigurationResolver;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityService;
 use App\Services\GeoFlow\AiVisibility\AiVisibilitySourceData;
+use App\Services\GeoFlow\AiVisibility\AiVisibilityTermCleanupClient;
 use App\Services\GeoFlow\AiVisibility\DeepSeekAnalysisClient;
 use App\Services\GeoFlow\AiVisibility\DoubaoArkResponsesClient;
 use App\Support\GeoFlow\ApiKeyCrypto;
@@ -680,6 +681,69 @@ final class AiVisibilitySystemModelUsageTelemetryTest extends TestCase
             hash('sha256', $prepared->digestPayload),
             $event->request_payload_digest,
         );
+    }
+
+    public function test_term_cleanup_respects_quota_without_provider_calls(): void
+    {
+        $owner = $this->superAdmin('cleanup-quota-owner');
+        $model = $this->systemModel($owner, ['daily_limit' => 1, 'used_today' => 1, 'usage_date' => now()->toDateString()]);
+        $this->bindModel(AiVisibilityConfigurationResolver::DEEPSEEK_MODEL_SETTING_KEY, $model);
+        MarkdownContentWriterAgent::fake()->preventStrayPrompts();
+        $this->assertNull(app(AiVisibilityTermCleanupClient::class)->clean(['education' => 1.0]));
+        MarkdownContentWriterAgent::assertNeverPrompted();
+        $this->assertDatabaseCount('ai_model_usage_events', 0);
+        $run = AiVisibilityRun::query()->sole();
+        $this->assertSame('ai_model_quota_exhausted', $run->error_message);
+        $this->assertNull($run->keyword_hash);
+        $this->assertNull($run->ai_visibility_topic_id);
+    }
+
+    public function test_term_cleanup_records_real_system_usage_and_excludes_auxiliary_run_from_samples(): void
+    {
+        $owner = $this->superAdmin('cleanup-success-owner');
+        $model = $this->systemModel($owner);
+        $this->bindModel(AiVisibilityConfigurationResolver::DEEPSEEK_MODEL_SETTING_KEY, $model);
+        MarkdownContentWriterAgent::fake(['{"topics":[{"name":"教育","terms":["education"]}]}'])->preventStrayPrompts();
+        $topics = app(AiVisibilityTermCleanupClient::class)->clean(['education' => 1.0]);
+        $this->assertSame('教育', $topics[0]['name']);
+        $run = AiVisibilityRun::query()->sole();
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiVisibilityRun::PROVIDER_TERM_CLEANUP, $run->provider_type);
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $event->status);
+        $this->assertSame('ai_visibility.term_cleanup', $event->operation);
+        $this->assertSame(AiModelUsageEvent::EXECUTION_SCOPE_SYSTEM, $event->execution_scope);
+        $this->assertSame(1, (int) $model->fresh()->used_today);
+        $this->assertSame(0, AiVisibilityRun::whereIn('provider_type', AiVisibilityRun::SAMPLE_PROVIDERS)->count());
+        $this->artisan('geoflow:ai-visibility:backfill-keyword-hashes')->expectsOutputToContain('0 scanned')->assertSuccessful();
+        $this->assertNull($run->fresh()->keyword_hash);
+    }
+
+    public function test_term_cleanup_invalid_response_records_failed_attempt(): void
+    {
+        $owner = $this->superAdmin('cleanup-failure-owner');
+        $model = $this->systemModel($owner);
+        $this->bindModel(AiVisibilityConfigurationResolver::DEEPSEEK_MODEL_SETTING_KEY, $model);
+        MarkdownContentWriterAgent::fake(['not valid JSON'])->preventStrayPrompts();
+        $this->assertNull(app(AiVisibilityTermCleanupClient::class)->clean(['education' => 1.0]));
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_FAILED, $event->status);
+        $this->assertSame(1, (int) $model->fresh()->used_today);
+        $this->assertSame('failed', AiVisibilityRun::query()->sole()->status);
+    }
+
+    public function test_term_cleanup_discards_result_after_binding_revoked_during_model_call(): void
+    {
+        $owner = $this->superAdmin('cleanup-revocation-owner');
+        $model = $this->systemModel($owner);
+        $this->bindModel(AiVisibilityConfigurationResolver::DEEPSEEK_MODEL_SETTING_KEY, $model);
+        MarkdownContentWriterAgent::fake(function () {
+            SiteSetting::where('setting_key', AiVisibilityConfigurationResolver::DEEPSEEK_MODEL_SETTING_KEY)->delete();
+
+            return '{"topics":[{"name":"教育","terms":["education"]}]}';
+        })->preventStrayPrompts();
+        $this->assertNull(app(AiVisibilityTermCleanupClient::class)->clean(['education' => 1.0]));
+        $this->assertSame(AiModelUsageEvent::STATUS_REVOKED, AiModelUsageEvent::query()->sole()->status);
+        $this->assertNull(AiVisibilityRun::query()->sole()->answer_text);
     }
 
     private function superAdmin(string $username): Admin

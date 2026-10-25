@@ -16,6 +16,7 @@ After Chrome or the side panel restarts, reopen a claimed work order from the qu
 
 ## Supported behavior
 
+- Toutiao, Sohu and NetEase: assisted manual publishing with copy title, copy body, optional source link and human receipts. Operators review and publish in the platform editor.
 - Generic work orders: claim, open target, copy content, release, and report result.
 - Zhihu answers: verify the active profile, locate the answer editor, and fill plain text.
 - The extension never clicks the final Publish button.

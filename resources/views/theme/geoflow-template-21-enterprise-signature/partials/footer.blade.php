@@ -28,6 +28,7 @@
             </div>
         </div>
 
+        @include('site.partials.friend-links')
         <div class="ent-footer__bottom">
             <div>
                 {{ $footerCopyright !== '' ? $footerCopyright : '© '.date('Y').' '.$siteName.'. All rights reserved.' }}

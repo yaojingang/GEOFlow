@@ -59,6 +59,8 @@ final class HostedSiteTechnicalProbe
 
         $about = $this->fetch($baseUrl.'/about', $headers);
         $robots = $this->fetch($baseUrl.'/robots.txt', $headers);
+        $llms = $this->fetch($baseUrl.'/llms.txt', $headers);
+        $sitemapText = $this->fetch($baseUrl.'/sitemap.txt', $headers);
         $sitemap = $this->fetch($baseUrl.'/sitemap.xml', $headers);
         $checks += [
             'canonical' => str_contains($home['body'], 'href="'.$baseUrl.'/"'),
@@ -67,6 +69,10 @@ final class HostedSiteTechnicalProbe
                 && str_contains($about['body'], 'href="'.$baseUrl.'/about"'),
             'robots' => $robots['status'] === 200
                 && str_contains($robots['body'], 'User-agent: *'),
+            'llms' => $llms['status'] === 200
+                && str_contains($llms['body'], '## Site'),
+            'sitemap_text' => $sitemapText['status'] === 200
+                && str_contains($sitemapText['body'], $baseUrl.'/'),
             'sitemap' => $sitemap['status'] === 200
                 && (str_contains($sitemap['body'], '<urlset')
                     || str_contains($sitemap['body'], '<sitemapindex')),
