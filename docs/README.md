@@ -14,6 +14,7 @@
 
 ## 管理与运营
 
+- [知识文档导入](knowledge-import.md)：支持格式、OCR 要求及上传和解析限制。
 - [AI 质检运行手册](ai-quality-inspection-runbook.md)。
 - [管理员 AI 模型隔离与共享](admin-ai-config-sharing-runbook.md)。
 - [AI 工作台与系统帮助](ai-workspace-runbook.md)。

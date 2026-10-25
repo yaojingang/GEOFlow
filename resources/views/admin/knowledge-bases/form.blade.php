@@ -138,6 +138,8 @@
                                 <option value="markdown" @selected(old('file_type', (string) ($knowledgeForm['file_type'] ?? 'markdown')) === 'markdown')>{{ __('admin.status.markdown') }}</option>
                                 <option value="word" @selected(old('file_type', (string) ($knowledgeForm['file_type'] ?? 'markdown')) === 'word')>{{ __('admin.status.word_document') }}</option>
                                 <option value="text" @selected(old('file_type', (string) ($knowledgeForm['file_type'] ?? 'markdown')) === 'text')>{{ __('admin.status.text') }}</option>
+                                <option value="pdf" @selected(old('file_type', (string) ($knowledgeForm['file_type'] ?? 'markdown')) === 'pdf')>{{ __('admin.status.pdf_document') }}</option>
+                                <option value="presentation" @selected(old('file_type', (string) ($knowledgeForm['file_type'] ?? 'markdown')) === 'presentation')>{{ __('admin.status.presentation') }}</option>
                             </select>
                         </div>
                         <fieldset class="border-t border-gray-100 pt-5 disabled:opacity-70" @disabled($systemMetadataReadOnly)>
@@ -295,7 +297,7 @@
                                         <p class="mt-1 text-sm text-gray-500">{{ __('admin.knowledge_bases.source_files_desc') }}</p>
                                     </div>
                                     <div class="rounded-xl border-2 border-dashed border-orange-200 bg-orange-50/30 px-6 py-8 text-center transition hover:border-orange-300 hover:bg-orange-50" data-knowledge-upload-dropzone>
-                                        <input type="file" id="knowledge-files-input" name="knowledge_files[]" accept=".txt,.md,.docx" multiple class="sr-only" data-knowledge-files-input>
+                                        <input type="file" id="knowledge-files-input" name="knowledge_files[]" accept=".txt,.md,.markdown,.docx,.pdf,.pptx" multiple class="sr-only" data-knowledge-files-input>
                                         <label for="knowledge-files-input" class="cursor-pointer">
                                             <span class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white text-orange-600 shadow-sm ring-1 ring-orange-100">
                                                 <i data-lucide="upload-cloud" class="h-6 w-6"></i>
@@ -420,7 +422,7 @@
                 const progressBar = document.querySelector('[data-import-progress-bar]');
                 const clientError = form.querySelector('[data-import-client-error]');
                 const clientErrorMessage = form.querySelector('[data-import-client-error-message]');
-                const allowedExtensions = ['txt', 'md', 'docx'];
+                const allowedExtensions = ['txt', 'md', 'markdown', 'docx', 'pdf', 'pptx'];
                 const maxFiles = 10;
                 const maxFileBytes = 8 * 1024 * 1024;
                 let importProgressTimer = null;

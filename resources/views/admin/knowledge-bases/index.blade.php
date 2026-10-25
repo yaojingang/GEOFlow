@@ -130,9 +130,13 @@
                                             $typeBadgeClass = $type === 'markdown'
                                                 ? 'bg-green-100 text-green-800'
                                                 : ($type === 'word' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800');
-                                            $typeText = $type === 'markdown'
-                                                ? __('admin.status.markdown')
-                                                : ($type === 'word' ? __('admin.status.word_document') : __('admin.status.text'));
+                                            $typeText = match ($type) {
+                                                'markdown' => __('admin.status.markdown'),
+                                                'word' => __('admin.status.word_document'),
+                                                'pdf' => __('admin.status.pdf_document'),
+                                                'presentation' => __('admin.status.presentation'),
+                                                default => __('admin.status.text'),
+                                            };
                                         @endphp
                                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ $typeBadgeClass }}">
                                             {{ $typeText }}

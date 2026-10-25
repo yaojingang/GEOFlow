@@ -16,6 +16,7 @@ use App\Services\AiWorkspace\SystemKnowledgeBaseManager;
 use App\Services\GeoFlow\ArticleAiQualityInvalidationService;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
 use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactLibraryPresenter;
+use App\Services\GeoFlow\KnowledgeSourceParser;
 use App\Services\GeoFlow\MaterialLibraryService;
 use App\Support\AdminActivityLogger;
 use App\Support\AdminWeb;
@@ -27,7 +28,6 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\File;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -39,10 +39,6 @@ class KnowledgeBaseController extends Controller
 {
     private const MAX_KNOWLEDGE_BYTES = 8 * 1024 * 1024;
 
-    private const MAX_DOCX_XML_BYTES = 16 * 1024 * 1024;
-
-    private const MAX_DOCX_COMPRESSION_RATIO = 100;
-
     public function __construct(
         private readonly KnowledgeChunkSyncCoordinator $chunkSyncCoordinator,
         private readonly ArticleAiQualityInvalidationService $qualityInvalidationService,
@@ -50,6 +46,7 @@ class KnowledgeBaseController extends Controller
         private readonly AdminHelpFeatureRegistry $adminHelpFeatures,
         private readonly KnowledgeFactLibraryPresenter $factLibraryPresenter,
         private readonly MaterialLibraryService $materialLibraryService,
+        private readonly KnowledgeSourceParser $sourceParser,
     ) {}
 
     /**
@@ -159,7 +156,7 @@ class KnowledgeBaseController extends Controller
             'name' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
             'content' => ['required', 'string'],
-            'file_type' => ['required', 'in:markdown,word,text'],
+            'file_type' => ['required', 'in:markdown,word,text,pdf,presentation'],
         ], [
             'name.required' => __('admin.knowledge_bases.error.name_required'),
             'content.required' => __('admin.knowledge_bases.error.content_required'),
@@ -528,7 +525,7 @@ class KnowledgeBaseController extends Controller
             'name' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
             'content' => ['required', 'string'],
-            'file_type' => ['required', 'in:markdown,word,text'],
+            'file_type' => ['required', 'in:markdown,word,text,pdf,presentation'],
             'source_name' => ['nullable', 'string', 'max:150'],
             'source_url' => ['nullable', 'string', 'max:500'],
             'source_type' => ['nullable', 'in:document,website,business,faq,other'],
@@ -557,7 +554,7 @@ class KnowledgeBaseController extends Controller
             'name' => ['nullable', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
             'content' => ['nullable', 'string'],
-            'file_type' => ['nullable', 'in:markdown,word,text'],
+            'file_type' => ['nullable', 'in:markdown,word,text,pdf,presentation'],
             'source_name' => ['nullable', 'string', 'max:150'],
             'source_url' => ['nullable', 'string', 'max:500'],
             'source_type' => ['nullable', 'in:document,website,business,faq,other'],
@@ -566,13 +563,15 @@ class KnowledgeBaseController extends Controller
             'risk_level' => ['nullable', 'in:low,medium,high'],
             'review_status' => ['nullable', 'in:unreviewed,reviewed'],
             'import_action' => ['nullable', 'in:save,save_and_chunk'],
-            'knowledge_file' => ['nullable', File::types(['txt', 'md', 'docx'])->max(8 * 1024)],
+            'knowledge_file' => ['nullable', File::types(['txt', 'md', 'markdown', 'docx', 'pdf', 'pptx'])->extensions(['txt', 'md', 'markdown', 'docx', 'pdf', 'pptx'])->max(8 * 1024)],
             'knowledge_files' => ['nullable', 'array', 'max:10'],
-            'knowledge_files.*' => ['file', File::types(['txt', 'md', 'docx'])->max(8 * 1024)],
+            'knowledge_files.*' => ['file', File::types(['txt', 'md', 'markdown', 'docx', 'pdf', 'pptx'])->extensions(['txt', 'md', 'markdown', 'docx', 'pdf', 'pptx'])->max(8 * 1024)],
         ], [
+            'knowledge_file.extensions' => __('admin.knowledge_bases.error.file_type_invalid'),
             'knowledge_file.mimes' => __('admin.knowledge_bases.error.file_type_invalid'),
             'knowledge_file.max' => __('admin.knowledge_bases.error.file_too_large'),
             'knowledge_files.max' => __('admin.knowledge_bases.error.files_limit'),
+            'knowledge_files.*.extensions' => __('admin.knowledge_bases.error.file_type_invalid'),
             'knowledge_files.*.mimes' => __('admin.knowledge_bases.error.file_type_invalid'),
             'knowledge_files.*.max' => __('admin.knowledge_bases.error.file_too_large'),
         ]);
@@ -632,8 +631,8 @@ class KnowledgeBaseController extends Controller
         $knowledgeBase = null;
 
         try {
-            $manualContent = $this->normalizeKnowledgeText((string) ($payload['content'] ?? ''));
-            $uploadedFiles = $this->uploadedKnowledgeFiles($request);
+            $manualContent = $this->sourceParser->normalizeKnowledgeText((string) ($payload['content'] ?? ''));
+            $uploadedFiles = $this->sourceParser->uploadedKnowledgeFiles($request);
             $this->assertKnowledgeContentSize($manualContent);
             $this->assertUploadedKnowledgeTotalSize($uploadedFiles);
 
@@ -650,8 +649,8 @@ class KnowledgeBaseController extends Controller
                 ]);
             }
 
-            $parsedFiles = $this->parseUploadedKnowledgeFiles($uploadedFiles, $storedPaths);
-            $content = $this->mergeKnowledgeSources($manualContent, $parsedFiles);
+            $parsedFiles = $this->sourceParser->parseUploadedKnowledgeFiles($uploadedFiles, $storedPaths);
+            $content = $this->sourceParser->mergeKnowledgeSources($manualContent, $parsedFiles);
             $this->assertKnowledgeContentSize($content);
             if ($content === '') {
                 throw ValidationException::withMessages([
@@ -661,10 +660,10 @@ class KnowledgeBaseController extends Controller
 
             $knowledgeName = trim((string) ($payload['name'] ?? ''));
             if ($knowledgeName === '') {
-                $knowledgeName = $this->inferKnowledgeName($uploadedFiles);
+                $knowledgeName = $this->sourceParser->inferKnowledgeName($uploadedFiles);
             }
             if ($knowledgeName === '') {
-                $knowledgeName = $this->inferKnowledgeNameFromContent($manualContent);
+                $knowledgeName = $this->sourceParser->inferKnowledgeNameFromContent($manualContent);
             }
             if ($knowledgeName === '') {
                 throw ValidationException::withMessages([
@@ -672,12 +671,12 @@ class KnowledgeBaseController extends Controller
                 ]);
             }
 
-            $fileType = $this->resolveKnowledgeFileType(
+            $fileType = $this->sourceParser->resolveKnowledgeFileType(
                 (string) ($payload['file_type'] ?? 'markdown'),
                 $manualContent,
                 $parsedFiles
             );
-            $encodedFilePath = $this->encodeKnowledgeFilePaths($storedPaths);
+            $encodedFilePath = $this->sourceParser->encodeKnowledgeFilePaths($storedPaths);
 
             $knowledgeBase = DB::transaction(function () use ($knowledgeName, $payload, $content, $fileType, $encodedFilePath): KnowledgeBase {
                 return KnowledgeBase::query()->create([
@@ -705,7 +704,7 @@ class KnowledgeBaseController extends Controller
                 [],
             );
         } catch (ValidationException $exception) {
-            $this->cleanupKnowledgeFiles($storedPaths);
+            $this->sourceParser->cleanupKnowledgeFiles($storedPaths);
 
             throw $exception;
         } catch (\Throwable $exception) {
@@ -719,7 +718,7 @@ class KnowledgeBaseController extends Controller
                     ]);
             }
 
-            $this->cleanupKnowledgeFiles($storedPaths);
+            $this->sourceParser->cleanupKnowledgeFiles($storedPaths);
 
             return back()
                 ->withInput($request->except(['knowledge_file', 'knowledge_files']))
@@ -893,417 +892,6 @@ class KnowledgeBaseController extends Controller
                     'content_preview' => mb_substr(trim((string) $chunk->content), 0, 240, 'UTF-8'),
                 ];
             });
-    }
-
-    /**
-     * 保存上传知识文件到本地路径。
-     */
-    private function storeUploadedKnowledgeFile(UploadedFile $file): string
-    {
-        $relativeDirectory = 'uploads/knowledge';
-        $extension = strtolower($file->getClientOriginalExtension() ?: 'txt');
-        $filename = uniqid('', true).'.'.$extension;
-        $relativePath = Storage::disk('local')->putFileAs($relativeDirectory, $file, $filename);
-        if (! is_string($relativePath) || $relativePath === '') {
-            throw new \RuntimeException(__('admin.knowledge_bases.message.upload_failed'));
-        }
-
-        return $relativePath;
-    }
-
-    /**
-     * @return array<int, UploadedFile>
-     */
-    private function uploadedKnowledgeFiles(Request $request): array
-    {
-        $files = [];
-
-        /** @var UploadedFile|null $legacyFile */
-        $legacyFile = $request->file('knowledge_file');
-        if ($legacyFile instanceof UploadedFile) {
-            $files[] = $legacyFile;
-        }
-
-        $multiFiles = $request->file('knowledge_files', []);
-        if (is_array($multiFiles)) {
-            foreach ($multiFiles as $file) {
-                if ($file instanceof UploadedFile) {
-                    $files[] = $file;
-                }
-            }
-        }
-
-        return $files;
-    }
-
-    /**
-     * @param  array<int, UploadedFile>  $uploadedFiles
-     * @param  array<int, string>  $storedPaths
-     * @return array<int, array{content:string,file_type:string,original_name:string}>
-     */
-    private function parseUploadedKnowledgeFiles(array $uploadedFiles, array &$storedPaths): array
-    {
-        $parsedFiles = [];
-        $parsedBytes = 0;
-
-        foreach ($uploadedFiles as $uploadedFile) {
-            $storedRelativePath = $this->storeUploadedKnowledgeFile($uploadedFile);
-            $storedPaths[] = $storedRelativePath;
-            $parsed = $this->parseUploadedKnowledgeFile(
-                Storage::disk('local')->path($storedRelativePath),
-                $uploadedFile->getClientOriginalName()
-            );
-
-            $parsedFiles[] = [
-                'content' => $parsed['content'],
-                'file_type' => $parsed['file_type'],
-                'original_name' => (string) $uploadedFile->getClientOriginalName(),
-            ];
-            $parsedBytes += strlen((string) $parsed['content']);
-            if ($parsedBytes > self::MAX_KNOWLEDGE_BYTES) {
-                throw ValidationException::withMessages([
-                    'knowledge_files' => __('admin.knowledge_bases.error.content_too_large'),
-                ]);
-            }
-        }
-
-        return $parsedFiles;
-    }
-
-    /**
-     * @param  array<int, array{content:string,file_type:string,original_name:string}>  $parsedFiles
-     */
-    private function mergeKnowledgeSources(string $manualContent, array $parsedFiles): string
-    {
-        if ($manualContent !== '' && $parsedFiles === []) {
-            return $manualContent;
-        }
-
-        $blocks = [];
-        if ($manualContent !== '') {
-            $blocks[] = "# 手动输入内容\n\n".$manualContent;
-        }
-
-        foreach ($parsedFiles as $parsedFile) {
-            $fileName = trim((string) $parsedFile['original_name']);
-            $blocks[] = '# 文件：'.$fileName."\n\n".trim((string) $parsedFile['content']);
-        }
-
-        return $this->normalizeKnowledgeText(implode("\n\n---\n\n", $blocks));
-    }
-
-    /**
-     * @param  array<int, UploadedFile>  $uploadedFiles
-     */
-    private function inferKnowledgeName(array $uploadedFiles): string
-    {
-        if ($uploadedFiles === []) {
-            return '';
-        }
-
-        $firstName = pathinfo((string) $uploadedFiles[0]->getClientOriginalName(), PATHINFO_FILENAME);
-        $firstName = trim($firstName);
-        if (count($uploadedFiles) === 1) {
-            return $firstName;
-        }
-
-        return $firstName === ''
-            ? __('admin.knowledge_bases.imported_multi_file_name', ['count' => count($uploadedFiles)])
-            : __('admin.knowledge_bases.imported_multi_file_name_with_first', [
-                'name' => $firstName,
-                'count' => count($uploadedFiles),
-            ]);
-    }
-
-    private function inferKnowledgeNameFromContent(string $content): string
-    {
-        $lines = preg_split('/\R/u', $content) ?: [];
-        foreach ($lines as $line) {
-            $candidate = trim((string) $line);
-            if ($candidate === '') {
-                continue;
-            }
-
-            $candidate = preg_replace('/^#{1,6}\s*/u', '', $candidate) ?? $candidate;
-            $candidate = preg_replace('/^[-*+]\s+/u', '', $candidate) ?? $candidate;
-            $candidate = trim(strip_tags($candidate));
-            $candidate = trim($candidate, " \t\n\r\0\x0B#*_`>");
-
-            if ($candidate !== '') {
-                return mb_substr($candidate, 0, 60, 'UTF-8');
-            }
-        }
-
-        return '';
-    }
-
-    /**
-     * @param  array<int, array{content:string,file_type:string,original_name:string}>  $parsedFiles
-     */
-    private function resolveKnowledgeFileType(string $requestedType, string $manualContent, array $parsedFiles): string
-    {
-        if ($parsedFiles === []) {
-            return in_array($requestedType, ['markdown', 'word', 'text'], true) ? $requestedType : 'markdown';
-        }
-
-        if ($manualContent !== '' || count($parsedFiles) > 1) {
-            return 'markdown';
-        }
-
-        $fileType = (string) ($parsedFiles[0]['file_type'] ?? 'markdown');
-
-        return in_array($fileType, ['markdown', 'word', 'text'], true) ? $fileType : 'markdown';
-    }
-
-    /**
-     * @param  array<int, string>  $storedPaths
-     */
-    private function encodeKnowledgeFilePaths(array $storedPaths): string
-    {
-        if ($storedPaths === []) {
-            return '';
-        }
-
-        if (count($storedPaths) === 1) {
-            return (string) $storedPaths[0];
-        }
-
-        return (string) json_encode(array_values($storedPaths), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-    }
-
-    /**
-     * @return array{content:string,file_type:string}
-     */
-    private function parseUploadedKnowledgeFile(string $absolutePath, string $originalName): array
-    {
-        $extension = strtolower((string) pathinfo($originalName, PATHINFO_EXTENSION));
-        if ($extension === 'txt' || $extension === 'md') {
-            $raw = @file_get_contents($absolutePath);
-            if ($raw === false) {
-                throw new \RuntimeException(__('admin.knowledge_bases.message.upload_failed'));
-            }
-
-            $content = $this->normalizeKnowledgeText($this->convertUploadedTextToUtf8($raw));
-            if ($content === '') {
-                throw new \RuntimeException(__('admin.knowledge_bases.error.content_required'));
-            }
-
-            return [
-                'content' => $content,
-                'file_type' => $extension === 'md' ? 'markdown' : 'text',
-            ];
-        }
-
-        if ($extension === 'docx') {
-            $content = $this->extractDocxContent($absolutePath);
-            if ($content === '') {
-                throw new \RuntimeException(__('admin.knowledge_bases.error.file_type_invalid'));
-            }
-
-            return [
-                'content' => $content,
-                'file_type' => 'word',
-            ];
-        }
-
-        throw new \RuntimeException(__('admin.knowledge_bases.error.file_type_invalid'));
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function decodeKnowledgeFilePaths(string $storedValue): array
-    {
-        $storedValue = trim($storedValue);
-        if ($storedValue === '') {
-            return [];
-        }
-
-        $decoded = json_decode($storedValue, true);
-        if (is_array($decoded)) {
-            return array_values(array_filter($decoded, static fn ($path): bool => is_string($path) && trim($path) !== ''));
-        }
-
-        return [$storedValue];
-    }
-
-    /**
-     * @param  array<int, string>  $relativePaths
-     */
-    private function cleanupKnowledgeFiles(array $relativePaths): void
-    {
-        foreach ($relativePaths as $relativePath) {
-            $this->deleteKnowledgeFilePath($relativePath);
-        }
-    }
-
-    private function deleteKnowledgeFilePath(string $relativePath): void
-    {
-        $relativePath = $this->normalizeDeletableKnowledgePath($relativePath);
-        if ($relativePath === null) {
-            return;
-        }
-
-        if (Storage::disk('local')->exists($relativePath)) {
-            Storage::disk('local')->delete($relativePath);
-        }
-    }
-
-    private function normalizeDeletableKnowledgePath(string $relativePath): ?string
-    {
-        $relativePath = trim(str_replace('\\', '/', $relativePath));
-        if (
-            $relativePath === ''
-            || str_starts_with($relativePath, '/')
-            || preg_match('/^[A-Za-z]:\//', $relativePath) === 1
-            || str_contains('/'.$relativePath.'/', '/../')
-        ) {
-            return null;
-        }
-
-        foreach (['knowledge-bases/', 'uploads/knowledge/'] as $allowedPrefix) {
-            if (str_starts_with($relativePath, $allowedPrefix)) {
-                return $relativePath;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * 将文本转换为 UTF-8，兼容上传文件编码差异。
-     */
-    private function convertUploadedTextToUtf8(string $text): string
-    {
-        if ($text === '') {
-            return '';
-        }
-
-        $detectedEncoding = mb_detect_encoding($text, ['UTF-8', 'GB18030', 'GBK', 'BIG5', 'UTF-16LE', 'UTF-16BE'], true);
-        if (! $detectedEncoding || strtoupper($detectedEncoding) === 'UTF-8') {
-            return $text;
-        }
-
-        $converted = @mb_convert_encoding($text, 'UTF-8', $detectedEncoding);
-
-        return $converted === false ? $text : $converted;
-    }
-
-    /**
-     * 统一知识文本换行与空白，提升分块稳定性。
-     */
-    private function normalizeKnowledgeText(string $text): string
-    {
-        $text = str_replace(["\r\n", "\r"], "\n", $text);
-        $text = preg_replace("/\n{3,}/u", "\n\n", $text);
-        $text = preg_replace('/[ \t]{2,}/u', ' ', (string) $text);
-
-        return trim((string) $text);
-    }
-
-    /**
-     * 从 docx 提取正文（优先 ZipArchive，失败时降级为空字符串）。
-     */
-    private function extractDocxContent(string $absolutePath): string
-    {
-        if (! class_exists('ZipArchive') || ! class_exists('XMLReader')) {
-            return '';
-        }
-
-        $zip = new \ZipArchive;
-        if ($zip->open($absolutePath) !== true) {
-            return '';
-        }
-
-        $stat = $zip->statName('word/document.xml');
-        if (! is_array($stat)) {
-            $zip->close();
-
-            return '';
-        }
-
-        $uncompressedSize = max(0, (int) ($stat['size'] ?? 0));
-        $compressedSize = max(1, (int) ($stat['comp_size'] ?? 0));
-        if (
-            $uncompressedSize > self::MAX_DOCX_XML_BYTES
-            || ($uncompressedSize / $compressedSize) > self::MAX_DOCX_COMPRESSION_RATIO
-        ) {
-            $zip->close();
-            throw ValidationException::withMessages([
-                'knowledge_files' => __('admin.knowledge_bases.error.docx_expansion_too_large'),
-            ]);
-        }
-
-        $source = $zip->getStream('word/document.xml');
-        $temporary = tmpfile();
-        if (! is_resource($source) || ! is_resource($temporary)) {
-            if (is_resource($source)) {
-                fclose($source);
-            }
-            if (is_resource($temporary)) {
-                fclose($temporary);
-            }
-            $zip->close();
-
-            return '';
-        }
-
-        $copiedBytes = stream_copy_to_stream($source, $temporary, self::MAX_DOCX_XML_BYTES + 1);
-        fclose($source);
-        $zip->close();
-        if (! is_int($copiedBytes) || $copiedBytes > self::MAX_DOCX_XML_BYTES) {
-            fclose($temporary);
-            throw ValidationException::withMessages([
-                'knowledge_files' => __('admin.knowledge_bases.error.docx_expansion_too_large'),
-            ]);
-        }
-
-        $metadata = stream_get_meta_data($temporary);
-        $temporaryPath = (string) ($metadata['uri'] ?? '');
-        $reader = new \XMLReader;
-        if ($temporaryPath === '' || ! @$reader->open($temporaryPath, null, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING)) {
-            fclose($temporary);
-
-            return '';
-        }
-
-        $wordNamespace = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
-        $textOutput = tmpfile();
-        if (! is_resource($textOutput)) {
-            $reader->close();
-            fclose($temporary);
-
-            return '';
-        }
-        $contentBytes = 0;
-        while ($reader->read()) {
-            if (
-                $reader->nodeType === \XMLReader::ELEMENT
-                && $reader->localName === 't'
-                && $reader->namespaceURI === $wordNamespace
-            ) {
-                $value = trim($reader->readString());
-                if ($value !== '') {
-                    $contentBytes += strlen($value) + 1;
-                    if ($contentBytes > self::MAX_KNOWLEDGE_BYTES) {
-                        $reader->close();
-                        fclose($temporary);
-                        fclose($textOutput);
-                        throw ValidationException::withMessages([
-                            'knowledge_files' => __('admin.knowledge_bases.error.content_too_large'),
-                        ]);
-                    }
-                    fwrite($textOutput, $value."\n");
-                }
-            }
-        }
-        $reader->close();
-        fclose($temporary);
-        rewind($textOutput);
-        $content = stream_get_contents($textOutput, self::MAX_KNOWLEDGE_BYTES + 1);
-        fclose($textOutput);
-
-        return is_string($content) ? $this->normalizeKnowledgeText($content) : '';
     }
 
     private function assertKnowledgeContentSize(string $content): void
