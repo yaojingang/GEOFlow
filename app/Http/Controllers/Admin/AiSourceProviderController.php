@@ -315,7 +315,9 @@ class AiSourceProviderController extends Controller
                 $this->usageQuota->releaseModel($reservation);
             }
 
-            return $this->safeTestFailure($this->safeErrorCode($exception));
+            $errorCode = $this->safeErrorCode($exception);
+
+            return $this->safeTestFailure($errorCode, $this->failureHint($errorCode, $exception));
         }
     }
 
@@ -541,12 +543,58 @@ class AiSourceProviderController extends Controller
         return 'ai_model_unavailable';
     }
 
-    private function safeTestFailure(string $errorCode): JsonResponse
+    private function safeTestFailure(string $errorCode, ?string $hint = null): JsonResponse
     {
         return response()->json([
             'success' => false,
             'error_code' => $errorCode,
-            'message' => __('admin.ai_source_providers.test_failed', ['message' => $errorCode]),
+            'message' => $hint ?? __('admin.ai_source_providers.test_failed', ['message' => $errorCode]),
         ], 422);
+    }
+
+    /**
+     * 把被兜底成 ai_model_unavailable 的上游失败翻译成可操作的提示。
+     *
+     * 连接检测失败时真实原因只会留在日志/模型就绪状态里，页面只拿到 ai_model_unavailable，
+     * 无法区分“Key 无效”“模型 ID 不支持”“网络超时”。这里复用探针的失败分类给出提示，
+     * 但保持 error_code 契约不变。
+     */
+    private function failureHint(string $errorCode, Throwable $exception): ?string
+    {
+        if ($errorCode !== AiModelAccessException::AI_MODEL_UNAVAILABLE) {
+            return null;
+        }
+
+        $failureCode = $this->aiWorkspaceModelProbe->failureCode($exception);
+        if ($failureCode === 'provider_unavailable' && $this->mentionsTimeout($exception)) {
+            $failureCode = 'provider_timeout';
+        }
+
+        $hintKey = match ($failureCode) {
+            'authentication_failed' => 'failure_hint_authentication_failed',
+            'provider_timeout' => 'failure_hint_provider_timeout',
+            'plain_text_invalid', 'capability_incompatible' => 'failure_hint_plain_text_invalid',
+            'configuration_invalid' => 'failure_hint_configuration_invalid',
+            default => 'failure_hint_provider_unavailable',
+        };
+
+        return __('admin.ai_source_providers.error.'.$hintKey);
+    }
+
+    /**
+     * Guzzle 的超时文案是 "Operation timed out"，探针的分类器只匹配 "timeout"，这里补齐。
+     */
+    private function mentionsTimeout(Throwable $exception): bool
+    {
+        for ($current = $exception; $current instanceof Throwable; $current = $current->getPrevious()) {
+            $message = mb_strtolower((string) $current->getMessage());
+            if (str_contains($message, 'timed out')
+                || str_contains($message, 'curl error 28')
+                || str_contains($message, 'deadline')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

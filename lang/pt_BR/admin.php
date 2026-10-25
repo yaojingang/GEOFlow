@@ -3663,6 +3663,11 @@ return array_replace_recursive($base, [
             'unsupported_provider' => 'Este provedor ainda não suporta teste de conexão',
             'ark_model_unavailable' => 'O modelo Ark Web Search selecionado está indisponível. Escolha um modelo de chat Volcengine Ark ativo.',
             'deepseek_model_unavailable' => 'O modelo DeepSeek selecionado está indisponível. Escolha um modelo de chat DeepSeek ativo.',
+            'failure_hint_authentication_failed' => 'A chave de API é inválida ou expirou: o provedor recusou a autenticação (HTTP 401/403). Informe uma chave válida, salve e teste novamente.',
+            'failure_hint_configuration_invalid' => 'O provedor recusou os parâmetros da requisição (HTTP 400/404 e similares). Verifique se a URL base e o ID do modelo são aceitos por esta conta.',
+            'failure_hint_plain_text_invalid' => 'O provedor não retornou texto utilizável. Normalmente o ID do modelo não é aceito ou a resposta veio vazia; confira o ID do modelo.',
+            'failure_hint_provider_timeout' => 'O provedor expirou o tempo limite. Verifique a rede de saída do servidor, proxy ou firewall e tente novamente.',
+            'failure_hint_provider_unavailable' => 'O provedor está indisponível ou recusou a requisição. Verifique saldo da chave, ID do modelo, URL base e status da conta.',
         ],
         'message' => [
             'create_success' => 'Fonte de busca criada com sucesso',

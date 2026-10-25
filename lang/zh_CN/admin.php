@@ -2659,6 +2659,11 @@ return [
             'unsupported_provider' => '暂不支持该供应商测试',
             'ark_model_unavailable' => '所选 Ark Web Search 模型不可用，请选择活跃的火山方舟聊天模型',
             'deepseek_model_unavailable' => '所选 DeepSeek 分析模型不可用，请选择活跃的 DeepSeek 聊天模型',
+            'failure_hint_authentication_failed' => 'API Key 无效或已失效：上游鉴权被拒绝（HTTP 401/403），请重新填写有效 Key 并保存后重试。',
+            'failure_hint_configuration_invalid' => '上游拒绝了请求参数（HTTP 400/404 等）：请核对 API Base URL 与模型 ID 是否被该账号支持。',
+            'failure_hint_plain_text_invalid' => '上游未返回可用正文：多为模型 ID 不被支持或返回内容为空，请核对模型 ID。',
+            'failure_hint_provider_timeout' => '上游接口超时：请检查服务器出口网络、代理或防火墙后重试。',
+            'failure_hint_provider_unavailable' => '上游接口不可用或拒绝了请求：请检查 Key 余额、模型 ID、Base URL 与账号状态。',
         ],
         'message' => [
             'create_success' => '搜索源创建成功',

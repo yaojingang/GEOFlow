@@ -808,6 +808,61 @@ class AdminAiSourceProvidersPageTest extends TestCase
         );
     }
 
+    public function test_model_binding_test_reports_actionable_hint_for_upstream_401(): void
+    {
+        AdminHelpAssistant::fake(function (): string {
+            throw new \RuntimeException('HTTP request returned status code 401 (Unauthorized)');
+        })->preventStrayPrompts();
+
+        $model = $this->createAiModel([
+            'name' => 'DeepSeek Rejected Key',
+            'model_id' => 'deepseek-v4-flash',
+            'api_url' => 'https://api.deepseek.com',
+        ]);
+
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->postJson(route('admin.ai-source-providers.model-bindings.test'), [
+                'binding_type' => 'deepseek',
+                'model_id' => (int) $model->id,
+                'query' => 'GEOFlow',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('error_code', 'ai_model_unavailable')
+            ->assertJsonPath(
+                'message',
+                __('admin.ai_source_providers.error.failure_hint_authentication_failed'),
+            );
+    }
+
+    public function test_model_binding_test_reports_timeout_hint_for_curl_timeouts(): void
+    {
+        AdminHelpAssistant::fake(function (): string {
+            throw new \RuntimeException(
+                'cURL error 28: Operation timed out after 30001 milliseconds with 0 bytes received',
+            );
+        })->preventStrayPrompts();
+
+        $model = $this->createAiModel([
+            'name' => 'DeepSeek Slow Key',
+            'model_id' => 'deepseek-v4-flash',
+            'api_url' => 'https://api.deepseek.com',
+        ]);
+
+        $this->actingAs($this->createAdmin(), 'admin')
+            ->postJson(route('admin.ai-source-providers.model-bindings.test'), [
+                'binding_type' => 'deepseek',
+                'model_id' => (int) $model->id,
+                'query' => 'GEOFlow',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('error_code', 'ai_model_unavailable')
+            ->assertJsonPath(
+                'message',
+                __('admin.ai_source_providers.error.failure_hint_provider_timeout'),
+            );
+    }
+
     public function test_regular_admin_probe_failure_cannot_clear_workspace_model_readiness(): void
     {
         AdminHelpAssistant::fake()->preventStrayPrompts();

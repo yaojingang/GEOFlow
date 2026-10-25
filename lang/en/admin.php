@@ -2611,6 +2611,11 @@ return [
             'unsupported_provider' => 'This provider does not support connection testing yet',
             'ark_model_unavailable' => 'The selected Ark Web Search model is unavailable. Choose an active Volcengine Ark chat model.',
             'deepseek_model_unavailable' => 'The selected DeepSeek analysis model is unavailable. Choose an active DeepSeek chat model.',
+            'failure_hint_authentication_failed' => 'The API key is invalid or expired: the upstream provider rejected authentication (HTTP 401/403). Enter a valid key, save it, and test again.',
+            'failure_hint_configuration_invalid' => 'The upstream provider rejected the request parameters (HTTP 400/404 and similar). Check that the API base URL and model ID are supported by this account.',
+            'failure_hint_plain_text_invalid' => 'The upstream provider returned no usable text. Usually the model ID is not supported or the response was empty; verify the model ID.',
+            'failure_hint_provider_timeout' => 'The upstream provider timed out. Check the server egress network, proxy, or firewall, then retry.',
+            'failure_hint_provider_unavailable' => 'The upstream provider is unavailable or rejected the request. Check the key balance, model ID, base URL, and account status.',
         ],
         'message' => [
             'create_success' => 'Search source created successfully',
