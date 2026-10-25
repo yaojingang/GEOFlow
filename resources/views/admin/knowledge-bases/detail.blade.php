@@ -259,6 +259,8 @@
                             <option value="markdown" @selected(old('file_type', (string) ($knowledgeBase->file_type ?? 'markdown')) === 'markdown')>{{ __('admin.status.markdown') }}</option>
                             <option value="word" @selected(old('file_type', (string) ($knowledgeBase->file_type ?? 'markdown')) === 'word')>{{ __('admin.status.word_document') }}</option>
                             <option value="text" @selected(old('file_type', (string) ($knowledgeBase->file_type ?? 'markdown')) === 'text')>{{ __('admin.status.text') }}</option>
+                            <option value="pdf" @selected(old('file_type', (string) ($knowledgeBase->file_type ?? 'markdown')) === 'pdf')>{{ __('admin.status.pdf_document') }}</option>
+                            <option value="presentation" @selected(old('file_type', (string) ($knowledgeBase->file_type ?? 'markdown')) === 'presentation')>{{ __('admin.status.presentation') }}</option>
                         </select>
                     </div>
                 </div>
