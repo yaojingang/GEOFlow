@@ -119,8 +119,7 @@ final class ManualPublicationBrowserService
             $this->assertRevision($publication, $revision);
             $distribution = app(PlatformWebWorkOrderGuard::class)->assertBoundSnapshot($publication);
             app(DistributionChannelOperationLeaseService::class)->assertNoActiveLease($distribution->channel);
-            if (! Admin::query()->active()->whereKey($distribution->channel->created_by_admin_id)->exists()
-                || ! Admin::query()->active()->whereKey($publication->assigned_admin_id)->exists()) {
+            if (! Admin::query()->active()->whereKey($publication->assigned_admin_id)->exists()) {
                 throw new ApiException('publication_unavailable', '渠道创建管理员或工单执行管理员已停用。', 409);
             }
             $history = (array) data_get($publication->execution_receipt, 'previous_attempts', []);

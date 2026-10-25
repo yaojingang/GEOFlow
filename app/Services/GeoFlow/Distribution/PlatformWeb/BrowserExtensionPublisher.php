@@ -3,7 +3,6 @@
 namespace App\Services\GeoFlow\Distribution\PlatformWeb;
 
 use App\Exceptions\PlatformPublishBlockedException;
-use App\Models\Admin;
 use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\ManualPublication;
@@ -63,7 +62,7 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
             );
         }
 
-        $this->actorFor($channel);
+        PlatformWebWorkOrderGuard::creatorFor($channel);
         $boundAccount = ManualPublicationAccount::query()->with('persona')->find((int) ($config['manual_publication_account_id'] ?? 0));
         if (! $boundAccount || ! $boundAccount->is_active || ! $boundAccount->persona?->is_active || $boundAccount->platform !== $platform) {
             throw new RuntimeException('platform_web 渠道未绑定有效的平台账号。');
@@ -123,7 +122,7 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
                     $publication,
                     ManualPublication::STATUS_READY,
                     (int) $publication->revision,
-                    $this->actorFor($channel),
+                    PlatformWebWorkOrderGuard::creatorFor($channel),
                     fromDistribution: true,
                 );
 
@@ -132,7 +131,7 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
         }
 
         // 无工单 → 创建 ready 工单并绑定分发行。
-        $actor = $this->actorFor($channel);
+        $actor = PlatformWebWorkOrderGuard::creatorFor($channel);
         $accountId = $config['manual_publication_account_id'];
         $account = $accountId === null
             ? null
@@ -235,20 +234,5 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
                 'work_order_status' => (string) $publication->status,
             ],
         ];
-    }
-
-    private function actorFor(DistributionChannel $channel): Admin
-    {
-        $actor = Admin::query()->find((int) $channel->created_by_admin_id);
-        if (! $actor instanceof Admin || $actor->status !== 'active') {
-            throw new RuntimeException('platform_web 渠道缺少有效的创建管理员，无法创建发布工单。');
-        }
-        // 工单重开（failed→ready）走 ManualPublicationPolicy::reopen，要求超级管理员；创建工单的
-        // assigned_admin_id 也指向该管理员。此处前置校验，避免到重试路径才失败。
-        if (! $actor->isSuperAdmin()) {
-            throw new RuntimeException('platform_web 渠道创建管理员必须为超级管理员。');
-        }
-
-        return $actor;
     }
 }

@@ -708,6 +708,21 @@ class PlatformWebDistributionFlowTest extends TestCase
         $this->assertDatabaseCount('manual_publications', 0);
     }
 
+    public function test_demoted_channel_creator_cannot_publish_a_new_work_order(): void
+    {
+        [$article, $channel] = $this->fixtures('demoted-publisher');
+        $orchestrator = app(DistributionOrchestrator::class);
+        $ids = $orchestrator->enqueueForArticle($article);
+        Admin::findOrFail($channel->created_by_admin_id)->update(['role' => 'admin']);
+        try {
+            $orchestrator->process(ArticleDistribution::findOrFail($ids[0]));
+            $this->fail('A demoted creator must not create work orders.');
+        } catch (ApiException $exception) {
+            $this->assertSame('publication_unavailable', $exception->getErrorCode());
+        }
+        $this->assertDatabaseCount('manual_publications', 0);
+    }
+
     public function test_active_platform_accounts_are_shared_instance_management_resources(): void
     {
         [, $channel] = $this->fixtures('shared-account');
@@ -982,6 +997,56 @@ class PlatformWebDistributionFlowTest extends TestCase
         $this->assertStringNotContainsString('replacement body', (string) data_get($ready->execution_receipt, 'previous_attempts.0.source_snapshot.content'));
         $this->assertSame($article->workflow_version, data_get($distribution->fresh()->remote_meta, 'workflow_fence.workflow_version'));
         $this->assertSame('in_progress', $browser->claim($admin, $tokenId, $ready->id, $ready->revision)->status);
+    }
+
+    public function test_demoted_channel_creator_blocks_confirmation_without_changing_failed_attempt(): void
+    {
+        [, , $publication, $creator, $tokenId, $distribution] = $this->guardedWorkOrder('demoted-confirm');
+        $browser = app(ManualPublicationBrowserService::class);
+        $claim = $browser->claim($creator, $tokenId, $publication->id, $publication->revision);
+        $failed = $browser->recordReceipt($creator, $tokenId, $publication->id, $claim->revision, [
+            'outcome' => 'failed', 'target_origin' => 'https://mp.toutiao.com',
+        ], '0.1.0');
+        $before = $failed->getAttributes();
+        $creator->update(['role' => 'admin']);
+        $confirmer = Admin::create(['username' => 'other-confirming-super', 'password' => 'test', 'role' => 'super_admin', 'status' => 'active']);
+        $this->actingAs($confirmer, 'admin')->post(route('admin.distribution.retry', ['distributionId' => $distribution->id]), [
+            'confirm_unpublished' => '确认未发布', 'publication_revision' => $failed->revision,
+        ])->assertSessionHasErrors();
+        $this->assertSame($before, $publication->fresh()->getAttributes());
+        $this->assertSame('failed', $distribution->fresh()->status);
+    }
+
+    public function test_demoted_channel_creator_blocks_a_fresh_linked_browser_claim(): void
+    {
+        [, , $publication, $creator] = $this->guardedWorkOrder('demoted-ready');
+        $creator->update(['role' => 'admin']);
+        $operator = Admin::create(['username' => 'other-browser-super', 'password' => 'test', 'role' => 'super_admin', 'status' => 'active']);
+        $token = $operator->createToken('Demoted creator guard', ['browser-operations:read', 'browser-operations:execute']);
+        $this->withHeaders($this->extensionHeaders($token->plainTextToken) + ['X-Idempotency-Key' => 'demoted-ready-claim'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/claim', ['revision' => $publication->revision])
+            ->assertConflict();
+        $this->assertSame('ready', $publication->fresh()->status);
+        $this->assertSame($publication->revision, $publication->fresh()->revision);
+        $this->assertNull($publication->fresh()->browser_claimed_by_token_id);
+    }
+
+    public function test_creator_demotion_after_claim_preserves_the_observed_completion_receipt(): void
+    {
+        [, , $publication, $creator, , $distribution] = $this->guardedWorkOrder('demoted-receipt');
+        $operator = Admin::create(['username' => 'receipt-browser-super', 'password' => 'test', 'role' => 'super_admin', 'status' => 'active']);
+        $token = $operator->createToken('Receipt facts', ['browser-operations:read', 'browser-operations:execute']);
+        $this->withHeaders($this->extensionHeaders($token->plainTextToken) + ['X-Idempotency-Key' => 'before-creator-demotion'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/claim', ['revision' => $publication->revision])->assertOk();
+        $creator->update(['role' => 'admin']);
+        $this->withHeaders($this->extensionHeaders($token->plainTextToken) + ['X-Idempotency-Key' => 'after-creator-demotion'])
+            ->postJson('/api/v1/manual-publications/'.$publication->id.'/receipt', [
+                'revision' => $publication->fresh()->revision, 'outcome' => 'completed',
+                'completion_url' => 'https://www.toutiao.com/article/123456789/',
+                'adapter_version' => '0.1.0', 'target_origin' => 'https://mp.toutiao.com', 'finished_at' => now()->toIso8601String(),
+            ])->assertOk();
+        $this->assertSame('completed', $publication->fresh()->status);
+        $this->assertSame('synced', $distribution->fresh()->status);
     }
 
     private function fixtures(string $suffix, array $channelConfigOverrides = []): array
