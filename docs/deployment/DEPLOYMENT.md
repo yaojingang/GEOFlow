@@ -24,7 +24,7 @@
 - `scheduler`: `php artisan schedule:work`
 - `reverb`: `php artisan reverb:start`
 - `postgres`: PostgreSQL 16 + pgvector
-- `redis`: Redis 7
+- `redis`: Redis 8，启用 AOF 并挂载实例独立的数据目录
 
 这套方案与当前开发用 `docker-compose.yml` 分离：
 
@@ -107,6 +107,8 @@ REVERB_ALLOWED_ORIGINS=your-domain.com
 export COMPOSE_PROD='docker compose --env-file .env.prod -f docker-compose.prod.yml'
 ```
 
+已有实例首次采用 `REDIS_DATA_DIR` 挂载时，先完成 [3.2 节的数据迁移](#32-首次启用-redis-持久化目录)，再执行启动或升级命令。空宿主机目录会遮住旧容器的 `/data`。
+
 首次部署建议按以下顺序：
 
 ```bash
@@ -138,7 +140,7 @@ $COMPOSE_PROD stop app
 # GEOFLOW_SECURITY_UPGRADE_DRAIN_CONFIRMED=true
 # GEOFLOW_MANAGED_IMAGE_DELETION_ENABLED=false
 
-# 4. 构建新镜像，并由一次性 init 服务执行新版本迁移。
+# 4. 首次新增 Redis 挂载时，先完成 3.2 节的数据迁移；再构建镜像并执行应用迁移。
 $COMPOSE_PROD build
 $COMPOSE_PROD up -d postgres redis
 $COMPOSE_PROD up init
@@ -194,6 +196,55 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --remove-or
 ```
 
 但第一次部署仍建议先观察 `init` 是否完成迁移。
+
+### 3.2 首次启用 Redis 持久化目录
+
+`docker-compose.prod.yml` 和 `docker-compose.prebuilt.yml` 将 `${REDIS_DATA_DIR:-./docker-data/prod/redis}` 挂载到 Redis 的 `/data`。每套实例使用独立目录。全新安装可以直接使用空目录；已有实例首次增加该挂载时，需要将旧 `/data` 中的 RDB、AOF 文件及其子目录一起迁入。仅复制单个 AOF 文件可能遗漏 Redis 多段 AOF 的 manifest 或基础文件。
+
+本次只迁移存储位置，保持原 Redis 镜像版本、密码、Compose 项目名和应用配置。预构建部署将 `COMPOSE_PROD` 中的文件名换成 `docker-compose.prebuilt.yml`，保留实际使用的 `-p` 项目名及其他覆盖文件。以下命令在仓库根目录的独立 Bash 会话中执行；任何一步失败都应停止，保持应用停机并检查原因。
+
+1. 按 3.1 节步骤 1、2 进入维护模式，停止所有入口、Worker、调度器和应用进程，确认没有在途写入。此时保留旧 Redis 容器，暂不执行 `up`、`down`、`rm` 或卷清理。
+2. 记录旧容器，保存快照并停止 Redis，然后复制完整数据。命令通过容器内的 `REDIS_PASSWORD` 完成认证，密码不会出现在命令参数中。
+
+```bash
+set -eu
+REDIS_OLD_CONTAINER=$($COMPOSE_PROD ps -q redis)
+test -n "$REDIS_OLD_CONTAINER"
+REDIS_DATA_PATH=$($COMPOSE_PROD config --format json | python3 -c 'import json,sys; c=json.load(sys.stdin); print(next(v["source"] for v in c["services"]["redis"]["volumes"] if v["target"] == "/data" and v["type"] == "bind"))')
+test -n "$REDIS_DATA_PATH"
+test "$REDIS_DATA_PATH" != /
+mkdir -p ./docker-data/redis-backups
+REDIS_MIGRATION_BACKUP=$(mktemp -d ./docker-data/redis-backups/before-bind.XXXXXX)
+
+docker exec "$REDIS_OLD_CONTAINER" sh -c 'if [ -n "${REDIS_PASSWORD:-}" ]; then export REDISCLI_AUTH="$REDIS_PASSWORD"; fi; exec redis-cli -e SAVE'
+docker exec "$REDIS_OLD_CONTAINER" sh -c 'if [ -n "${REDIS_PASSWORD:-}" ]; then export REDISCLI_AUTH="$REDIS_PASSWORD"; fi; exec redis-cli -e INFO keyspace' > "$REDIS_MIGRATION_BACKUP/keyspace.before"
+docker stop --time 60 "$REDIS_OLD_CONTAINER"
+mkdir "$REDIS_MIGRATION_BACKUP/data"
+docker cp "$REDIS_OLD_CONTAINER:/data/." "$REDIS_MIGRATION_BACKUP/data/"
+
+mkdir -p "$REDIS_DATA_PATH"
+REDIS_DATA_PATH=$(cd "$REDIS_DATA_PATH" && pwd -P)
+test "$REDIS_DATA_PATH" != /
+REDIS_EXISTING_ENTRY=$(find "$REDIS_DATA_PATH" -mindepth 1 -maxdepth 1 -print -quit)
+test -z "$REDIS_EXISTING_ENTRY"
+cp -a "$REDIS_MIGRATION_BACKUP/data/." "$REDIS_DATA_PATH/"
+```
+
+目标目录必须为空。已有文件时，先核实其来源，选择新的实例专用目录并修改 `REDIS_DATA_DIR`，再重新解析 `REDIS_DATA_PATH`；保留两份已有数据。备份位于 Git 忽略的 `docker-data` 下，应按生产数据的权限和备份策略保管。确认复制成功后再重建 Redis；应用和所有写入进程继续保持停止。
+
+3. 启动使用新挂载的 Redis，检查健康状态、数据和持久化状态。
+
+```bash
+$COMPOSE_PROD up -d --wait --wait-timeout 60 --no-deps redis
+$COMPOSE_PROD ps redis
+$COMPOSE_PROD exec -T redis sh -c 'if [ -n "${REDIS_PASSWORD:-}" ]; then export REDISCLI_AUTH="$REDIS_PASSWORD"; fi; exec redis-cli -e PING'
+$COMPOSE_PROD exec -T redis sh -c 'if [ -n "${REDIS_PASSWORD:-}" ]; then export REDISCLI_AUTH="$REDIS_PASSWORD"; fi; exec redis-cli -e INFO keyspace' > "$REDIS_MIGRATION_BACKUP/keyspace.after"
+$COMPOSE_PROD exec -T redis sh -c 'if [ -n "${REDIS_PASSWORD:-}" ]; then export REDISCLI_AUTH="$REDIS_PASSWORD"; fi; exec redis-cli -e INFO persistence'
+```
+
+确认返回 `PONG`、`aof_enabled:1`、`aof_last_write_status:ok`，并对照 `keyspace.before`、`keyspace.after` 及迁移前的队列监控核对各库键数和待处理任务。自然过期的键可能减少，需要区分预期过期与数据缺失。确认目标目录已有 AOF 文件后，继续原升级流程；应用就绪检查通过后再恢复入口和 Worker。
+
+4. 若 Redis 无法启动或核验不符，保持写入进程停止，保存新目录和日志。停止新 Redis，在 `.env.prod` 中将 `REDIS_DATA_DIR` 指向另一个空恢复目录，将保留的完整 `data/` 复制进去，使用原 Redis 镜像重新启动并重复核验。核验通过前持续维护模式。新实例一旦恢复写入，旧快照就不再包含最新数据，此时应先另做最新备份和恢复评估。
 
 ## 4. 访问方式
 
