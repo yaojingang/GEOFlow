@@ -138,6 +138,7 @@ final class ManualPublicationBrowserService
             $receipt = (array) $publication->execution_receipt;
             unset($receipt['previous_attempts']);
             $history[] = ['revision' => $revision, 'status' => $fromStatus, 'receipt' => $receipt,
+                'publication_payload' => $publication->publication_payload, 'source_snapshot' => $publication->source_snapshot,
                 'confirmed_unpublished_by_admin_id' => (int) $actor->id, 'confirmed_at' => now()->toIso8601String()];
             $publication->forceFill(['status' => 'failed'])->save();
             $distribution->forceFill(['status' => 'failed'])->save();

@@ -978,6 +978,8 @@ class PlatformWebDistributionFlowTest extends TestCase
         $article = $workflow->humanAction($article, 'publish', $admin->id, expectedVersion: $article->workflow_version);
         $ready = $browser->confirmUnpublishedRetry($admin, $publication->id, $finished->revision);
         $this->assertSame('Current approved replacement body.', $ready->content);
+        $this->assertStringContainsString('PLATFORMWEB-MARKER', (string) data_get($ready->execution_receipt, 'previous_attempts.0.publication_payload.body_plain'));
+        $this->assertStringNotContainsString('replacement body', (string) data_get($ready->execution_receipt, 'previous_attempts.0.source_snapshot.content'));
         $this->assertSame($article->workflow_version, data_get($distribution->fresh()->remote_meta, 'workflow_fence.workflow_version'));
         $this->assertSame('in_progress', $browser->claim($admin, $tokenId, $ready->id, $ready->revision)->status);
     }
