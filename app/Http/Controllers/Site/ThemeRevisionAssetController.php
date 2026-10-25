@@ -15,14 +15,18 @@ class ThemeRevisionAssetController extends Controller
 {
     public function __invoke(Request $request, string $revision, string $path, ThemeRevisionStorage $storage): BinaryFileResponse
     {
-        abort_if(app(CurrentSite::class)->isHosted(), 404);
-        abort_unless(ThemeRelease::query()->where('revision_id', $revision)->exists(), 404);
+        $site = app(CurrentSite::class);
+        abort_unless($site->isResolved(), 404);
+        $siteKey = $site->isHosted() ? 'hosted:'.$site->profileId() : 'primary';
+        abort_unless(ThemeRelease::query()->where('site_key', $siteKey)
+            ->where(fn ($query) => $query->where('revision_id', $revision)->orWhere('previous_revision_id', $revision))
+            ->exists(), 404);
         $model = ThemeRevision::query()->whereKey($revision)->where('state', 'ready')->firstOrFail();
         $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
         abort_unless(isset(SiteThemePackageGuard::ASSET_MIMES[$extension]), 404);
         $logical = 'public/themes/'.$model->theme_id.'/'.$path;
         $absolute = $storage->path($model, $logical);
-        $bytes = $storage->read($absolute, 5 * 1024 * 1024);
+        $bytes = $storage->read($absolute, app(SiteThemePackageGuard::class)->fileLimit($logical));
         abort_unless(hash_equals($model->files[$logical]['sha256'], hash('sha256', $bytes)), 503);
 
         return response()->file($absolute, [

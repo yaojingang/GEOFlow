@@ -172,6 +172,12 @@ Route::prefix('v1')
             Route::post('articles/{article}/publish', [ArticleController::class, 'publish'])
                 ->whereNumber('article')
                 ->middleware(['api.scope:articles:publish', 'throttle:60,1']);
+            Route::post('articles/{article}/schedule', [ArticleController::class, 'schedule'])
+                ->whereNumber('article')
+                ->middleware(['api.scope:articles:publish', 'throttle:60,1']);
+            Route::post('articles/{article}/hold', [ArticleController::class, 'hold'])
+                ->whereNumber('article')
+                ->middleware(['api.scope:articles:publish', 'throttle:60,1']);
             Route::post('articles/{article}/ai-quality/recheck', [ArticleController::class, 'recheckAiQuality'])
                 ->whereNumber('article')
                 ->middleware(['api.scope:articles:publish', 'throttle:api-ai-quality-manual']);

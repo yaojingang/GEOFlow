@@ -65,8 +65,8 @@
         'content' => old('content', (string) ($articleForm['content'] ?? '')),
         'keywords' => old('keywords', (string) ($articleForm['keywords'] ?? '')),
         'meta_description' => old('meta_description', (string) ($articleForm['meta_description'] ?? '')),
-        'status' => old('status', (string) ($articleForm['status'] ?? 'draft')),
-        'review_status' => old('review_status', (string) ($articleForm['review_status'] ?? 'pending')),
+        'status' => old('status', $isEdit ? 'keep' : 'draft'),
+        'review_status' => old('review_status', $isEdit ? 'keep' : 'pending'),
         'category_id' => old('category_id', (string) ($articleForm['category_id'] ?? '')),
         'author_id' => old('author_id', (string) ($articleForm['author_id'] ?? '')),
         'slug' => (string) ($articleForm['slug'] ?? ''),
@@ -83,8 +83,8 @@
         'has_content' => trim((string) $formData['content']) !== '',
         'has_keywords' => trim((string) $formData['keywords']) !== '',
         'has_meta_description' => trim((string) $formData['meta_description']) !== '',
-        'is_published' => $formData['status'] === 'published',
-        'is_reviewed' => in_array($formData['review_status'], ['approved', 'auto_approved'], true),
+        'is_published' => ($formData['status'] === 'keep' ? ($articleForm['status'] ?? 'draft') : $formData['status']) === 'published',
+        'is_reviewed' => in_array($formData['review_status'] === 'keep' ? ($articleForm['review_status'] ?? 'pending') : $formData['review_status'], ['approved', 'auto_approved'], true),
         'has_category' => trim((string) $formData['category_id']) !== '',
         'has_author' => trim((string) $formData['author_id']) !== '',
         'has_source_task' => trim((string) $formData['task_name']) !== '',
@@ -257,6 +257,7 @@
 
         <form id="article-edit-form" method="POST" action="{{ $formAction }}" class="space-y-8">
             @csrf
+            @if($isEdit)<input type="hidden" name="workflow_version" value="{{ (int) ($articleForm['workflow_version'] ?? 0) }}">@endif
             @if($isEdit)
                 @method('PUT')
             @endif
@@ -343,7 +344,7 @@
                                         <button
                                             type="button"
                                             data-ai-optimization-open
-                                            @disabled(! $aiOptimizationFeatureEnabled || (string) $formData['status'] !== 'draft')
+                                            @disabled(! $aiOptimizationFeatureEnabled || (string) ($articleForm['status'] ?? 'draft') !== 'draft')
                                             class="inline-flex items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-3.5 py-2 text-xs font-semibold text-blue-700 hover:border-blue-300 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400"
                                         >
                                             <i data-lucide="wand-sparkles" class="mr-1.5 h-4 w-4"></i>
@@ -696,6 +697,13 @@
                                     };
                                 @endphp
                                 <div data-ai-quality-failure class="space-y-4 px-6 py-6">
+                                    <p class="text-xs text-gray-600" data-ai-quality-diagnostics>{{ __('article_workflow.diagnostic_summary', ['check' => $aiQualityCheck->id, 'model' => $aiQualityCheck->ai_model_id, 'evidence' => data_get($aiQualityProgressData, 'diagnostics.evidence_count', 0)]) }}</p>
+                                    @if(data_get($aiQualityProgressData, 'diagnostics.failure_stage'))
+                                        <p class="text-xs text-gray-600">{{ __('article_workflow.failure_stage', ['stage' => data_get($aiQualityProgressData, 'diagnostics.failure_stage')]) }}</p>
+                                    @endif
+                                    @if(data_get($aiQualityProgressData, 'technical_retry.next_at'))
+                                        <p class="text-sm text-blue-700" data-ai-quality-retry>{{ __('article_workflow.retry_summary', ['attempt' => data_get($aiQualityProgressData, 'technical_retry.attempt', 0), 'next' => data_get($aiQualityProgressData, 'technical_retry.next_at')]) }}</p>
+                                    @endif
                                     <div class="rounded-lg border border-red-200 bg-white p-5 shadow-sm">
                                         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                                             <div class="flex min-w-0 items-start gap-3">
@@ -859,6 +867,12 @@
                                                 @endif
                                             </div>
                                             <p class="mt-2 text-sm leading-6 text-gray-800">{{ $aiQualityCheck->summary ?: $aiQualityCheck->error_message }}</p>
+                                            @foreach((array) $aiQualityCheck->gate_reasons as $gateReason)
+                                                <p class="mt-1 text-xs text-red-600">{{ __('article_workflow.quality_blocker') }} {{ \Illuminate\Support\Facades\Lang::has('article_workflow.quality_reasons.'.$gateReason) ? __('article_workflow.quality_reasons.'.$gateReason) : __('article_workflow.quality_reason_unknown', ['code' => $gateReason]) }}</p>
+                                            @endforeach
+                                            @foreach((array) data_get($aiQualityCheck->execution_meta, 'score_policy.adjustments', []) as $adjustment)
+                                                <p class="mt-1 text-xs text-gray-500">{{ __('article_workflow.quality_adjustment', ['reason' => __('article_workflow.quality_reasons.'.$adjustment['reason']), 'points' => $adjustment['deduction']]) }}</p>
+                                            @endforeach
                                             <div class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                                                 @foreach($aiQualityDimensionWeights as $dimension => $weight)
                                                     @php
@@ -1442,20 +1456,22 @@
                             <div>
                                 <label for="status" class="block text-sm font-medium text-gray-700">{{ __($i18nRoot.'.field.publish_status') }}</label>
                                 <select id="status" name="status" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                    <option value="draft" @selected($formData['status'] === 'draft')>{{ __('admin.articles.status.draft') }}</option>
-                                    <option value="published" @selected($formData['status'] === 'published')>{{ __('admin.articles.status.published') }}</option>
-                                    <option value="private" @selected($formData['status'] === 'private')>{{ __('admin.articles.status.private') }}</option>
+                                    @if($isEdit)<option value="keep" @selected($formData['status'] === 'keep')>{{ __('article_workflow.keep_publication') }} · {{ __('admin.articles.status.'.($articleForm['status'] ?? 'draft')) }}</option>@endif
+                                    <option value="draft" @selected($formData['status'] === 'draft')>{{ __('article_workflow.hold') }}</option>
+                                    <option value="published" @selected($formData['status'] === 'published')>{{ __('article_workflow.publish') }}</option>
+                                    @if(!empty($articleForm['task_name']))<option value="scheduled" @selected($formData['status'] === 'scheduled')>{{ __('article_workflow.schedule') }}</option>@endif
+                                    <option value="private" @selected($formData['status'] === 'private')>{{ __('article_workflow.private') }}</option>
                                 </select>
                             </div>
                             <div>
                                 <label for="review_status" class="block text-sm font-medium text-gray-700">{{ __($i18nRoot.'.field.review_status') }}</label>
                                 <select id="review_status" name="review_status" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                    @if($isEdit)<option value="keep" @selected($formData['review_status'] === 'keep')>{{ __('article_workflow.keep_review') }} · {{ __('admin.articles.review.'.($articleForm['review_status'] ?? 'pending')) }}</option>@endif
                                     <option value="pending" @selected($formData['review_status'] === 'pending')>{{ __('admin.articles.review.pending') }}</option>
                                     <option value="approved" @selected($formData['review_status'] === 'approved')>{{ __('admin.articles.review.approved') }}</option>
                                     <option value="rejected" @selected($formData['review_status'] === 'rejected')>{{ __('admin.articles.review.rejected') }}</option>
-                                    <option value="auto_approved" @selected($formData['review_status'] === 'auto_approved')>{{ __('admin.articles.review.auto_approved') }}</option>
                                 </select>
-                                <p class="mt-2 text-xs text-gray-500">{{ __($i18nRoot.'.help.review_status') }}</p>
+                                <p class="mt-2 text-xs text-gray-500">{{ __('article_workflow.review_help') }}</p>
                             </div>
                             <div>
                                 <label for="risk_override_reason" class="block text-sm font-medium text-gray-700">{{ __('admin.articles.quality_scorecard.risk_override_reason') }}</label>
@@ -1535,7 +1551,7 @@
                                 <div>{{ __('admin.article_edit.info.published_at') }}: {{ $formData['published_at'] !== '' ? $formData['published_at'] : '-' }}</div>
                             </div>
                         </div>
-                        @if($canCreateManualPublication && in_array((string) $formData['review_status'], ['approved', 'auto_approved'], true))
+                        @if($canCreateManualPublication && in_array((string) ($articleForm['review_status'] ?? $formData['review_status']), ['approved', 'auto_approved'], true))
                             <a href="{{ route('admin.manual-publications.create', ['article_id' => (int) $articleId]) }}" class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-3 text-sm font-semibold text-white hover:bg-purple-700">
                                 <i data-lucide="send" class="h-4 w-4"></i>
                                 {{ __('admin.manual_publications.article_action') }}

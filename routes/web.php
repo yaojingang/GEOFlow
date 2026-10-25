@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\AdminWelcomeController;
 use App\Http\Controllers\Admin\AiModelController;
 use App\Http\Controllers\Admin\AiPromptController;
+use App\Http\Controllers\Admin\AiPromptTestController;
 use App\Http\Controllers\Admin\AiSourceProviderController;
 use App\Http\Controllers\Admin\AiSpecialPromptController;
 use App\Http\Controllers\Admin\AiVisibilityAnalyticsController;
@@ -50,6 +51,8 @@ use App\Http\Controllers\Admin\LeadController;
 use App\Http\Controllers\Admin\LeadFormController;
 use App\Http\Controllers\Admin\LegacyController;
 use App\Http\Controllers\Admin\LegacySystemUpdateHistoryController;
+use App\Http\Controllers\Admin\LinkPoolController;
+use App\Http\Controllers\Admin\LinkPoolThemeAdaptationController;
 use App\Http\Controllers\Admin\ManualPublicationController;
 use App\Http\Controllers\Admin\ManualPublicationSettingsController;
 use App\Http\Controllers\Admin\MaterialsController;
@@ -72,8 +75,11 @@ use App\Http\Controllers\Site\CategoryController as SiteCategoryController;
 use App\Http\Controllers\Site\HomeController;
 use App\Http\Controllers\Site\HostedAssetController;
 use App\Http\Controllers\Site\LeadFormController as SiteLeadFormController;
+use App\Http\Controllers\Site\LinkPoolEventController;
 use App\Http\Controllers\Site\SiteDiscoveryController;
 use App\Http\Controllers\Site\ThemeRevisionAssetController;
+use App\Http\Controllers\Site\TopicController;
+use App\Http\Middleware\RecordLinkPoolResponse;
 use App\Support\AdminUiRegistry;
 use App\Support\Site\ArticlePermalinkPattern;
 use Illuminate\Support\Facades\Auth;
@@ -96,16 +102,24 @@ Route::middleware(['site.locale', 'site.view_log'])->group(function (): void {
     Route::get('/', [HomeController::class, 'index'])->name('site.home');
     Route::get('/about', [AboutController::class, 'index'])->name('site.about');
     Route::get('/robots.txt', [SiteDiscoveryController::class, 'robots'])->name('site.robots');
+    Route::get('/llms.txt', [SiteDiscoveryController::class, 'llms'])->name('site.llms');
+    Route::get('/sitemap.txt', [SiteDiscoveryController::class, 'sitemapText'])->name('site.sitemap.text');
     Route::get('/sitemap.xml', [SiteDiscoveryController::class, 'sitemap'])->name('site.sitemap');
+    Route::get('/sitemaps/topics-{page}.xml', [SiteDiscoveryController::class, 'topicSitemapShard'])->whereNumber('page')->name('site.topics.sitemap');
     Route::get('/sitemaps/pages-{page}.xml', [SiteDiscoveryController::class, 'sitemapShard'])
         ->whereNumber('page')
         ->name('site.sitemap.shard');
+    Route::get('/topics/page/{page}', [TopicController::class, 'index'])->whereNumber('page')->name('site.topics.page');
+    Route::get('/topics', [TopicController::class, 'index'])->name('site.topics.index');
+    Route::get('/topics/{slug}', [TopicController::class, 'show'])->where('slug', '[a-z0-9-]+')->name('site.topics.show');
+    Route::get('/topics/{legacyPath}', [TopicController::class, 'legacy'])->where('legacyPath', '.+')->name('site.topics.legacy');
     Route::get('/archive', [ArchiveController::class, 'index'])->name('site.archive');
     Route::get('/archive/{year}/{month}', [ArchiveController::class, 'month'])
         ->name('site.archive.month')
         ->where(['year' => '[0-9]{4}', 'month' => '[0-9]{2}']);
     Route::get('/category/{slug}', [SiteCategoryController::class, 'show'])->name('site.category');
-    Route::get('/article/{slug}', [SiteArticleController::class, 'show'])->name('site.article');
+    Route::get('/article/{slug}', [SiteArticleController::class, 'show'])->middleware(RecordLinkPoolResponse::class)->name('site.article');
+    Route::post('/link-pool/events', LinkPoolEventController::class)->middleware('throttle:60,1')->name('site.link-pool.events');
     Route::get('/forms/{slug}', [SiteLeadFormController::class, 'show'])->name('site.lead-forms.show');
     Route::post('/forms/{slug}/submissions', [SiteLeadFormController::class, 'submit'])
         ->middleware('throttle:site-lead-submission')
@@ -134,6 +148,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
 
     // 后台受保护路由
     Route::middleware(['admin.auth', 'admin.activity', 'admin.recent'])->group(function () {
+        require __DIR__.'/admin-topics.php';
         // 会话与首页
         Route::post('logout', [AdminAuthController::class, 'logout'])->name('logout');
         Route::post('welcome/dismiss', [AdminWelcomeController::class, 'dismiss'])->name('welcome.dismiss');
@@ -164,6 +179,33 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             });
         });
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+        Route::prefix('link-pool')->name('link-pool.')->group(function (): void {
+            Route::get('/', [LinkPoolController::class, 'overview'])->name('overview');
+            Route::get('targets', [LinkPoolController::class, 'targets'])->name('targets');
+            Route::get('import', [LinkPoolController::class, 'importForm'])->name('import.form');
+            Route::post('import/preflight', [LinkPoolController::class, 'preflight'])->middleware('admin.super')->name('import.preflight');
+            Route::post('import/errors', [LinkPoolController::class, 'importErrors'])->middleware('admin.super')->name('import.errors');
+            Route::post('import', [LinkPoolController::class, 'import'])->middleware('admin.super')->name('import.store');
+            Route::post('import/{batchId}/undo', [LinkPoolController::class, 'undoImport'])->middleware('admin.super')->whereUuid('batchId')->name('import.undo');
+            Route::patch('targets/{targetId}', [LinkPoolController::class, 'updateTarget'])->middleware('admin.super')->whereNumber('targetId')->name('targets.update');
+            Route::post('targets/{targetId}/check', [LinkPoolController::class, 'checkTarget'])->middleware(['admin.super', 'throttle:30,1'])->whereNumber('targetId')->name('targets.check');
+            Route::get('campaigns', [LinkPoolController::class, 'campaigns'])->name('campaigns.index');
+            Route::get('campaigns/create', [LinkPoolController::class, 'createCampaign'])->name('campaigns.create');
+            Route::get('campaigns/{campaignId}', [LinkPoolController::class, 'editCampaign'])->whereNumber('campaignId')->name('campaigns.edit');
+            Route::post('campaigns/draft', [LinkPoolController::class, 'saveCampaignDraft'])->middleware('admin.super')->name('campaigns.draft');
+            Route::post('campaigns/{campaignId}/publish', [LinkPoolController::class, 'publishCampaign'])->middleware('admin.super')->whereNumber('campaignId')->name('campaigns.publish');
+            Route::post('campaigns/{campaignId}/pause', [LinkPoolController::class, 'pauseCampaign'])->middleware('admin.super')->whereNumber('campaignId')->name('campaigns.pause');
+            Route::post('campaigns/{campaignId}/copy', [LinkPoolController::class, 'copyCampaign'])->middleware('admin.super')->whereNumber('campaignId')->name('campaigns.copy');
+            Route::get('preview', [LinkPoolController::class, 'preview'])->name('preview');
+            Route::get('dashboard', [LinkPoolController::class, 'dashboard'])->name('dashboard');
+            Route::get('dashboard.csv', [LinkPoolController::class, 'dashboardCsv'])->name('dashboard.csv');
+            Route::get('settings', [LinkPoolController::class, 'settings'])->name('settings');
+            Route::post('theme-adaptations', [LinkPoolThemeAdaptationController::class, 'store'])->middleware(['admin.super', 'throttle:10,1'])->name('theme-adaptations.store');
+            Route::get('theme-adaptations/{adaptationId}', [LinkPoolThemeAdaptationController::class, 'show'])->whereUuid('adaptationId')->name('theme-adaptations.show');
+            Route::post('theme-adaptations/{adaptationId}/rollback', [LinkPoolThemeAdaptationController::class, 'rollback'])->middleware(['admin.super', 'throttle:10,1'])->whereUuid('adaptationId')->name('theme-adaptations.rollback');
+            Route::post('settings', [LinkPoolController::class, 'updateSettings'])->middleware('admin.super')->name('settings.update');
+            Route::post('emergency', [LinkPoolController::class, 'emergency'])->middleware('admin.super')->name('emergency');
+        });
         Route::prefix('account/browser-clients')->name('account.browser-clients.')->group(function (): void {
             Route::get('/', [BrowserClientController::class, 'index'])->name('index');
             Route::delete('{tokenId}', [BrowserClientController::class, 'destroy'])
@@ -634,6 +676,15 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('ai-prompts/create', [AiPromptController::class, 'create'])->name('ai-prompts.create');
             Route::post('ai-prompts/create', [AiPromptController::class, 'store'])->name('ai-prompts.store');
             Route::get('ai-prompts/{promptId}/edit', [AiPromptController::class, 'edit'])->name('ai-prompts.edit')->whereNumber('promptId');
+            Route::prefix('ai-prompts/{promptId}')->name('ai-prompts.')->whereNumber('promptId')->group(function (): void {
+                Route::get('test-options', [AiPromptTestController::class, 'options'])->middleware('throttle:prompt-test-read')->name('test-options');
+                Route::post('test', [AiPromptTestController::class, 'generate'])->middleware('throttle:prompt-test-generate')->name('test');
+                Route::prefix('tests/{runId}')->whereUuid('runId')->name('tests.')->group(function (): void {
+                    Route::get('/', [AiPromptTestController::class, 'show'])->middleware('throttle:prompt-test-read')->name('show');
+                    Route::post('diagnose', [AiPromptTestController::class, 'diagnose'])->middleware('throttle:prompt-test-diagnose')->name('diagnose');
+                    Route::post('cancel', [AiPromptTestController::class, 'cancel'])->middleware('throttle:prompt-test-cancel')->name('cancel');
+                });
+            });
             Route::post('ai-prompts/{promptId}/copy', [AiPromptController::class, 'copy'])->name('ai-prompts.copy')->whereNumber('promptId');
             Route::put('ai-prompts/{promptId}', [AiPromptController::class, 'update'])->name('ai-prompts.update')->whereNumber('promptId');
             Route::post('ai-prompts/{promptId}/delete', [AiPromptController::class, 'destroy'])->name('ai-prompts.delete')->whereNumber('promptId');
@@ -683,8 +734,11 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                     Route::get('imports/{token}/files/{fileIndex}', [SiteThemePackageController::class, 'file'])->where('token', '[A-Za-z0-9]{40}')->where('fileIndex', '[0-9]{1,9}')->name('imports.file');
                     Route::post('imports/{token}/install', [SiteThemePackageController::class, 'install'])->middleware('throttle:admin-sensitive')->where('token', '[A-Za-z0-9]{40}')->name('imports.install');
                     Route::get('installed/{themeId}/preview/frame/{sitePath?}', [SiteThemePreviewController::class, 'frame'])->middleware('site.locale')->where(['themeId' => '[A-Za-z0-9_-]{1,80}', 'sitePath' => '.*'])->name('preview.frame');
-                    Route::get('installed/{themeId}/preview/{page?}', [SiteThemePreviewController::class, 'show'])->where(['themeId' => '[A-Za-z0-9_-]{1,80}', 'page' => 'home|category|article|about|archive-index|archive-month'])->name('preview');
+                    Route::get('installed/{themeId}/preview/{page?}', [SiteThemePreviewController::class, 'show'])->where(['themeId' => '[A-Za-z0-9_-]{1,80}', 'page' => 'home|category|article|about|archive-index|archive-month|topic-list|topic-show|topic-empty'])->name('preview');
                 });
+                Route::post('themes/library', [SiteSettingsController::class, 'manageThemeLibrary'])->middleware('throttle:admin-sensitive')->name('themes.library');
+                Route::get('themes/{themeId}/preview/frame/{sitePath?}', [SiteThemePreviewController::class, 'libraryFrame'])->middleware('site.locale')->where(['themeId' => '[A-Za-z0-9_-]{1,80}', 'sitePath' => '.*'])->name('themes.preview.frame');
+                Route::get('themes/{themeId}/preview/{page?}', [SiteThemePreviewController::class, 'libraryShow'])->where(['themeId' => '[A-Za-z0-9_-]{1,80}', 'page' => 'home|category|article|about|archive-index|archive-month|topic-list|topic-show|topic-empty'])->name('themes.preview');
                 Route::get('theme-replications/create', [SiteThemeReplicationController::class, 'create'])->name('theme-replications.create');
                 Route::post('theme-replications', [SiteThemeReplicationController::class, 'store'])->name('theme-replications.store');
                 Route::get('theme-replications/{replicationId}', [SiteThemeReplicationController::class, 'show'])
@@ -774,7 +828,7 @@ $reservedPermalinkRoots = implode('|', array_map(
     ArticlePermalinkPattern::reservedFirstSegments($adminPrefix),
 ));
 Route::get('/{permalinkPath}', [SiteArticleController::class, 'resolve'])
-    ->middleware(['site.locale', 'site.view_log'])
+    ->middleware(['site.locale', 'site.view_log', RecordLinkPoolResponse::class])
     ->where('permalinkPath', '(?!(?:'.$reservedPermalinkRoots.')(?:/|$)).*')
     ->fallback()
     ->name('site.article.resolve');

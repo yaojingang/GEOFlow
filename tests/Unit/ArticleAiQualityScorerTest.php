@@ -68,7 +68,7 @@ class ArticleAiQualityScorerTest extends TestCase
         $this->assertSame('blocked', $result['decision']);
     }
 
-    public function test_high_severity_issue_requires_review_even_when_score_stays_above_pass_threshold(): void
+    public function test_high_severity_deduction_passes_when_score_meets_threshold(): void
     {
         $result = (new ArticleAiQualityScorer)->score([
             'promotion_context' => 'informational',
@@ -84,10 +84,10 @@ class ArticleAiQualityScorerTest extends TestCase
         ], 85, 70);
 
         $this->assertSame(88, $result['score']);
-        $this->assertSame('needs_review', $result['decision']);
+        $this->assertSame('passed', $result['decision']);
     }
 
-    public function test_incomplete_knowledge_coverage_forces_manual_review(): void
+    public function test_partial_coverage_deducts_points_and_passes_at_threshold(): void
     {
         $result = (new ArticleAiQualityScorer)->score([
             'promotion_context' => 'informational',
@@ -96,8 +96,8 @@ class ArticleAiQualityScorerTest extends TestCase
             'uncertainties' => [],
         ], 85, 70);
 
-        $this->assertSame(100, $result['score']);
-        $this->assertSame('needs_review', $result['decision']);
+        $this->assertSame(95, $result['score']);
+        $this->assertSame('passed', $result['decision']);
     }
 
     public function test_removed_ai_generation_disclosure_code_is_rejected(): void

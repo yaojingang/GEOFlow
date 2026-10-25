@@ -151,3 +151,20 @@ Recommended helper:
 - do not invent corporate claims, logos, forms, testimonials, or chart data that the current view cannot support
 - do not treat homepage builder import as a preview route; it is a settings change unless the operator has a separate staging workflow
 - do not touch routing, search, SEO generation, or schema generation unless the user explicitly expands scope
+
+## Topic edit coverage
+
+Follow [topic-workflow.md](topic-workflow.md) when topics are in scope. Discover nested `topics/*.blade.php`, `topics/templates/*.blade.php`, the manifest topic declaration, `public/themes/{theme_id}/topics.css` and `topics.js` (or matching package assets). Preserve these through preview forks and finalization. Include topic list/detail, search/tag/pagination, empty states, homepage and article backlinks in review. Signed remote workspace previews provide the actual links; source helper route samples need real content and do not prove isolated preview availability.
+
+## Theme library management
+
+Use the website settings theme section (`#site-settings-theme`) for the local template library. Resolve the configured admin base path before constructing a URL.
+
+- The current theme stays pinned above all filters. Featured shows six curated choices: core default, enterprise signature, section blue, ink editorial, knowledge paper, and research journal.
+- My themes contains installed, private, and unknown custom themes. Archive contains other builtin samples and explicitly archived entries. Search accepts a name, use case, or exact theme ID; pagination retains filters. Customer version groups show the active version first, otherwise the latest, with older versions available in the expanded group.
+- Archive and restore use the authenticated UI batch workflow. Archive is reversible and preserves code, installation receipts, IDs, and existing bindings. The active theme and the core default cannot be archived. Do not delete theme directories to reproduce this operation.
+- `SiteThemeCatalog::all()` and source discovery remain complete runtime catalogs. Library visibility comes from `config/theme-library.php` and `site_settings.theme_library_state`; source discovery can find archived themes. Library state changes do not change the immutable appearance binding or publish content.
+- Generic administrator previews use `site-settings/themes/{theme_id}/preview/{page}` under the configured admin path. `__system_default` selects the core default; `active_theme=''` is the explicit core selection. Keep missing settings distinct from an explicit empty selection.
+- Preview home, category, article, topic list, topic detail, and topic empty states with real published content. A selected active theme keeps its published immutable revision. Previewing another theme isolates that revision and its finder; preview does not activate a theme, count a read, or submit forms.
+- Enable from the selected card after reviewing its inline confirmation. Use the current appearance revision to reject stale writes; reread the pinned theme after success. Export operates on the selected card's ID. Template import, replication, homepage composition, and release continue through their existing workflows.
+- Remote CLI archival support must be discovered from the installed client's help and the target instance's capabilities. These local UI routes do not establish a remote CLI command or management API for archival.

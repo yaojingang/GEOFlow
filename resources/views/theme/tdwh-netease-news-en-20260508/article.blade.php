@@ -122,6 +122,7 @@
                     </div>
                 </section>
             @endif
+            @include('site.partials.link-pool')
         </main>
 
         <aside class="ne-post-aside">
@@ -150,4 +151,5 @@
             </section>
         </aside>
     </div>
+@include('site.partials.related-topics')
 @endsection

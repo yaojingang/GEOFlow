@@ -3,8 +3,12 @@
 namespace App\Services\GeoFlow;
 
 use App\Exceptions\ArticleAiQualityRuntimeException;
+use App\Models\Article;
 use App\Models\ArticleAiQualityCheck;
+use App\Models\Task;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class ArticleAiQualityReconciliationService
 {
@@ -115,7 +119,127 @@ class ArticleAiQualityReconciliationService
             'degraded' => $degraded,
             'recovered' => $recovered,
             'workflows' => $this->recoverCompletedWorkflows($limit),
+            'technical_retries' => $this->retryFailedChecks($limit),
+            'delivery_handoffs' => app(ArticlePublicationDeliveryService::class)->recoverPending($limit),
+            'delivery_queue_submissions' => app(DistributionOrchestrator::class)->recoverUndispatched($limit),
         ];
+    }
+
+    public static function isTransientFailure(string $code): bool
+    {
+        return in_array($code, [
+            'queue_dispatch_failed', 'model_timeout', 'provider_timeout', 'provider_rate_limited',
+            'provider_gateway_error', 'provider_circuit_open', 'worker_interrupted',
+        ], true);
+    }
+
+    /** Resume only the unchanged scheduled retry chain; its attempt budget stays intact. */
+    public function resumeForTask(int $taskId): int
+    {
+        $resumed = 0;
+        foreach (ArticleAiQualityCheck::query()->where('task_id', $taskId)->where('status', 'failed')
+            ->whereNotNull('execution_meta->technical_retry->next_at')->lazyById(100) as $candidate) {
+            $resumed += DB::transaction(function () use ($candidate, $taskId): int {
+                $task = Task::query()->whereKey($taskId)->lockForUpdate()->first();
+                $article = Article::query()->whereKey($candidate->article_id)->lockForUpdate()->first();
+                $check = ArticleAiQualityCheck::query()->whereKey($candidate->id)->lockForUpdate()->first();
+                if (! $task || $task->status !== 'active' || ! $task->schedule_enabled || ! $article || ! $check
+                    || $check->status !== 'failed' || (int) $article->task_id !== $taskId
+                    || $article->publication_intent !== 'scheduled' || $article->review_status === 'rejected'
+                    || ! self::isTransientFailure((string) $check->error_code)
+                    || $article->latestAiQualityCheck()->value('id') !== $check->id) {
+                    return 0;
+                }
+                $article->setRelation('task', $task);
+                $meta = (array) $check->execution_meta;
+                $fence = (array) ($meta['workflow_fence'] ?? []);
+                $retry = (array) ($meta['technical_retry'] ?? []);
+                if (($fence['origin'] ?? '') !== 'automatic' || (int) ($fence['task_id'] ?? 0) !== $taskId
+                    || (int) ($fence['workflow_version'] ?? 0) !== (int) $article->workflow_version
+                    || (int) ($retry['attempt'] ?? 0) >= 2 || ! empty($retry['replacement_id']) || empty($retry['next_at'])) {
+                    return 0;
+                }
+                $policy = app(ArticleAiQualityPolicyResolver::class)->resolve($article);
+                if (! ($policy['required'] ?? false) || ! hash_equals((string) $check->input_fingerprint,
+                    $this->inspection->currentFingerprint($article, $policy, $this->inspection->rules(),
+                        app(ArticleAiQualityVersionPolicy::class)->selection((int) $article->id)))) {
+                    return 0;
+                }
+                $meta['workflow_fence'] = app(ArticlePublicationEligibilityService::class)->fence($article);
+                $check->update(['execution_meta' => $meta]);
+
+                return 1;
+            }, 3);
+        }
+
+        return $resumed;
+    }
+
+    /** Each failed check owns at most one replacement; the chain permits two additional attempts. */
+    public function retryFailedChecks(int $limit = 100, array $articleIds = []): int
+    {
+        $checks = ArticleAiQualityCheck::query()->where('status', 'failed')
+            ->when($articleIds !== [], fn ($query) => $query->whereIn('article_id', $articleIds))
+            ->whereNotNull('execution_meta->technical_retry->next_at')
+            ->whereNull('execution_meta->technical_retry->replacement_id')
+            ->orderBy('id')->lazyById(100);
+        $retried = 0;
+        foreach ($checks as $candidate) {
+            try {
+                $retried += DB::transaction(function () use ($candidate): int {
+                    $task = $candidate->task_id ? Task::query()->whereKey($candidate->task_id)->lockForUpdate()->first() : null;
+                    $article = Article::query()->whereKey($candidate->article_id)->lockForUpdate()->first();
+                    $check = ArticleAiQualityCheck::query()->whereKey($candidate->id)->lockForUpdate()->first();
+                    if (! $article || ! $check || (int) $article->task_id !== (int) $candidate->task_id || $check->status !== 'failed'
+                        || ! $this->isTransientFailure((string) $check->error_code)
+                        || ($task && ($task->status !== 'active' || ! $task->schedule_enabled))) {
+                        return 0;
+                    }
+                    $article->setRelation('task', $task);
+                    $meta = $check->execution_meta ?? [];
+                    $retry = $meta['technical_retry'] ?? [];
+                    $attempt = (int) ($retry['attempt'] ?? 0);
+                    if ($attempt >= 2 || ! empty($retry['replacement_id']) || empty($retry['next_at'])
+                        || Carbon::parse($retry['next_at'])->isFuture()
+                        || (int) data_get($meta, 'workflow_fence.task_id', 0) !== (int) $article->task_id
+                        || (int) data_get($meta, 'workflow_fence.workflow_version', 0) !== (int) $article->workflow_version
+                        || (int) data_get($meta, 'workflow_fence.automation_version', 0) !== (int) ($task?->automation_version ?? 0)
+                        || $article->latestAiQualityCheck()->value('id') !== $check->id) {
+                        return 0;
+                    }
+                    $policy = app(ArticleAiQualityPolicyResolver::class)->resolve($article);
+                    if (! ($policy['required'] ?? false)
+                        || app(ArticleAiQualityBackfillGuard::class)->pauseReason($policy['model'] ?? null) !== null) {
+                        return 0;
+                    }
+                    if (! hash_equals((string) $check->input_fingerprint, $this->inspection->currentFingerprint($article, $policy, $this->inspection->rules(), app(ArticleAiQualityVersionPolicy::class)->selection((int) $article->id)))) {
+                        return 0;
+                    }
+                    $replacement = $this->inspection->createOrReuse($article, trigger: 'technical_retry', dispatch: false, force: true);
+                    if (! $replacement || $replacement->id === $check->id) {
+                        return 0;
+                    }
+                    $replacementMeta = $replacement->execution_meta ?? [];
+                    $replacementMeta['technical_retry'] = ['attempt' => $attempt + 1, 'root_check_id' => (int) ($retry['root_check_id'] ?? $check->id)];
+                    $replacementMeta['workflow_fence'] = $meta['workflow_fence'];
+                    $replacementMeta['requested_workflow_state'] = $meta['requested_workflow_state'] ?? null;
+                    $replacement->update(['execution_meta' => $replacementMeta]);
+                    $meta['technical_retry']['replacement_id'] = (int) $replacement->id;
+                    unset($meta['technical_retry']['next_at']);
+                    $check->update(['execution_meta' => $meta]);
+                    DB::afterCommit(fn () => $this->inspection->dispatchQueuedInspection($replacement));
+
+                    return 1;
+                }, 3);
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+            if ($retried >= max(1, min(100, $limit))) {
+                break;
+            }
+        }
+
+        return $retried;
     }
 
     public function recoverCompletedWorkflows(int $limit = 100): int

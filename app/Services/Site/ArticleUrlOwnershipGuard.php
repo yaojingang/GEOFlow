@@ -20,7 +20,7 @@ final class ArticleUrlOwnershipGuard
         $deadline = microtime(true) + 2;
         foreach ($patterns as $matching) {
             $this->budget(0, $deadline);
-            $matcher = ArticlePermalinkPattern::compile($matching);
+            $matcher = ArticlePermalinkPattern::compileStored($matching);
             $locator = str_contains($matching, '{id}') ? 'id' : 'slug';
             $value = (string) $article->{$locator};
             $matchingSegments = explode('/', trim($matching, '/'));
@@ -28,14 +28,14 @@ final class ArticleUrlOwnershipGuard
             $locatorSegment = str_replace('{'.$locator.'}', rawurlencode($value), $matchingSegments[$position]);
             foreach ($patterns as $rendering) {
                 $this->budget(0, $deadline);
-                if ($rendering === $matching || $matcher->preservesLocatorOf(ArticlePermalinkPattern::compile($rendering))) {
+                if ($rendering === $matching || $matcher->preservesLocatorOf(ArticlePermalinkPattern::compileStored($rendering))) {
                     continue;
                 }
                 $renderingSegments = explode('/', trim($rendering, '/'));
                 if (count($matchingSegments) !== count($renderingSegments)) {
                     continue;
                 }
-                $renderer = ArticlePermalinkPattern::compile($rendering);
+                $renderer = ArticlePermalinkPattern::compileStored($rendering);
                 $variants = [[]];
                 $uncertain = false;
                 $query = clone $scope;

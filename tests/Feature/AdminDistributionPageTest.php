@@ -21,6 +21,7 @@ use App\Models\Prompt;
 use App\Models\SiteSetting;
 use App\Models\Task;
 use App\Models\TitleLibrary;
+use App\Services\GeoFlow\ArticlePublicationEligibilityService;
 use App\Services\GeoFlow\DistributionHttpClient;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionPayloadBuilder;
@@ -111,7 +112,8 @@ class AdminDistributionPageTest extends TestCase
                 ->assertSee('data-distribution-navigation', false)
                 ->assertSee(AdminWeb::routePath('admin.distribution.hosted-sites.index'), false)
                 ->assertSee(AdminWeb::routePath('admin.distribution.jobs'), false)
-                ->assertSee(AdminWeb::routePath('admin.distribution.sync-settings-all.preview'), false);
+                ->assertSee(AdminWeb::routePath('admin.distribution.sync-settings-all.preview'), false)
+                ->assertSee(AdminWeb::routePath('admin.link-pool.overview'), false);
 
             $document = new \DOMDocument;
             $document->loadHTML((string) $response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
@@ -121,16 +123,16 @@ class AdminDistributionPageTest extends TestCase
             $activeItems = $xpath->query('.//*[@aria-current="page"]', $navigation);
 
             self::assertNotNull($navigation, $url);
-            self::assertSame(3, $items?->length, $url);
+            self::assertSame(4, $items?->length, $url);
             self::assertSame(
-                ['hosted-sites', 'distribution-jobs', 'sync-all'],
+                ['hosted-sites', 'distribution-jobs', 'sync-all', 'link-pool'],
                 array_map(
                     static fn (\DOMNode $item): string => (string) $item->attributes?->getNamedItem('data-distribution-navigation-item')?->nodeValue,
                     iterator_to_array($items),
                 ),
                 $url,
             );
-            self::assertSame(3, $xpath->query('.//*[@data-distribution-navigation-icon]', $navigation)?->length, $url);
+            self::assertSame(4, $xpath->query('.//*[@data-distribution-navigation-icon]', $navigation)?->length, $url);
             self::assertSame($activeKey === null ? 0 : 1, $activeItems?->length, $url);
 
             if ($activeKey !== null) {
@@ -1472,6 +1474,7 @@ class AdminDistributionPageTest extends TestCase
         $report = app(FrontendExperienceInspector::class)->inspect($channel->fresh(), true);
         $this->assertSame(DistributionChannel::FRONTEND_EXPERIENCE_INHERIT_DEFAULT, $report['channel']['frontend_experience_mode']);
         $this->assertContains('hero', $report['target_package']['supported_modules']);
+        $this->assertContains('/robots.txt', $report['target_package']['supported_routes']);
         $this->assertSame('not_checked', $report['remote_target']['status']);
         $this->assertArrayHasKey('sync_summary', $report['channel']);
         $this->assertSame('missing_secret', app(FrontendExperienceInspector::class)->inspect($channel->fresh(), true, true)['remote_target']['status']);
@@ -2953,8 +2956,24 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString('class="target-theme-toutiao"', $staticIndex);
         $this->assertStringNotContainsString('<style>', $staticIndex);
         $this->assertStringNotContainsString('</style>', $staticIndex);
-        $this->assertStringContainsString('# 远程门户', (string) $zip->getFromName('llms.txt'));
+        $llmsText = (string) $zip->getFromName('llms.txt');
+        $this->assertStringContainsString('# 远程门户', $llmsText);
+        $this->assertStringContainsString('[XML Sitemap](https://example.com/sitemap.xml)', $llmsText);
+        $this->assertStringContainsString('[Text Sitemap](https://example.com/sitemap.txt)', $llmsText);
+        $robotsText = (string) $zip->getFromName('robots.txt');
+        $this->assertStringContainsString('Sitemap: https://example.com/sitemap.txt', $robotsText);
+        $this->assertStringContainsString('Disallow: /storage/', $robotsText);
+        $this->assertStringContainsString('Disallow: /*.jpg$', $robotsText);
+        $this->assertStringContainsString("User-agent: facebookexternalhit\nDisallow: /", $robotsText);
         $this->assertStringContainsString('https://example.com/', (string) $zip->getFromName('sitemap.txt'));
+        $sitemapXml = (string) $zip->getFromName('sitemap.xml');
+        $this->assertStringContainsString('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', $sitemapXml);
+        $this->assertStringContainsString('<loc>https://example.com/</loc>', $sitemapXml);
+        $this->assertNotFalse(@simplexml_load_string($sitemapXml));
+        $sitemapShardXml = (string) $zip->getFromName('sitemaps/pages-1.xml');
+        $this->assertStringContainsString('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', $sitemapShardXml);
+        $this->assertStringContainsString('<loc>https://example.com/</loc>', $sitemapShardXml);
+        $this->assertNotFalse(@simplexml_load_string($sitemapShardXml));
         $this->assertFalse($zip->locateName('README.md'));
 
         $siteCss = (string) $zip->getFromName('assets/css/site.css');
@@ -3099,12 +3118,21 @@ class AdminDistributionPageTest extends TestCase
         $this->assertStringContainsString('article_storage_not_writable', $frontController);
         $this->assertStringContainsString('site_settings_not_writable', $frontController);
         $this->assertStringContainsString('function renderLlmsText', $frontController);
+        $this->assertStringContainsString('function renderSitemapXml', $frontController);
+        $this->assertStringContainsString('function renderSitemapShard', $frontController);
+        $this->assertStringContainsString('function publicSitemapUrlLimit', $frontController);
+        $this->assertStringContainsString('function xmlResponse', $frontController);
+        $this->assertStringContainsString('function renderRobotsText', $frontController);
+        $this->assertStringContainsString('function robotsBlockedPaths', $frontController);
         $this->assertStringContainsString('function renderSitemapText', $frontController);
         $this->assertStringContainsString('function maxAssetBytes', $frontController);
         $this->assertStringNotContainsString('stream_context_create', $frontController);
         $this->assertStringContainsString("writeStaticFile(\$config, 'llms.txt'", $frontController);
+        $this->assertStringContainsString("writeStaticFile(\$config, 'robots.txt'", $frontController);
         $this->assertStringContainsString("writeStaticFile(\$config, 'sitemap.txt'", $frontController);
+        $this->assertStringContainsString('textResponse(renderRobotsText($config))', $frontController);
         $this->assertStringContainsString('textResponse(renderLlmsText($config))', $frontController);
+        $this->assertStringContainsString('xmlResponse(renderSitemapXml($config))', $frontController);
         $this->assertStringContainsString("writeStaticFile(\$config, 'index.html'", $frontController);
         $this->assertStringContainsString('writeStaticCacheFile($config, $cachePath', $frontController);
         $this->assertStringContainsString('rebuildStaticSite($config)', $frontController);
@@ -3173,6 +3201,12 @@ class AdminDistributionPageTest extends TestCase
 
         try {
             $this->waitForHttpServer($baseUrl);
+
+            $robots = Http::timeout(3)->get($baseUrl.'/robots.txt');
+            $this->assertSame(200, $robots->status());
+            $this->assertStringContainsString('Disallow: /storage/', $robots->body());
+            $this->assertStringContainsString("User-agent: facebookexternalhit\nDisallow: /", $robots->body());
+            $this->assertStringContainsString('Sitemap: '.$baseUrl.'/sitemap.txt', $robots->body());
 
             $httpClient = app(DistributionHttpClient::class);
             $capabilities = $httpClient->frontendCapabilities($channel->fresh());
@@ -4362,6 +4396,7 @@ class AdminDistributionPageTest extends TestCase
             'distribution_channel_id' => (int) $channel->id,
             'action' => 'publish',
             'status' => 'queued',
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article)],
             'idempotency_key' => 'article-'.$article->id.'-channel-'.$channel->id.'-publish-v1',
         ]);
 
@@ -4441,6 +4476,7 @@ MD,
             'distribution_channel_id' => (int) $channel->id,
             'action' => 'publish',
             'status' => 'queued',
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article)],
             'idempotency_key' => 'article-'.$article->id.'-channel-'.$channel->id.'-publish-v1',
         ]);
 
@@ -4510,6 +4546,7 @@ MD,
             'distribution_channel_id' => (int) $channel->id,
             'action' => 'publish',
             'status' => 'queued',
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article)],
             'idempotency_key' => 'article-'.$article->id.'-channel-'.$channel->id.'-publish-v1',
         ]);
 
@@ -5198,6 +5235,7 @@ MD,
             'distribution_channel_id' => (int) $channel->id,
             'action' => 'publish',
             'status' => 'queued',
+            'remote_meta' => ['workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article)],
             'idempotency_key' => 'article-'.$article->id.'-channel-'.$channel->id.'-publish-v1',
         ]);
 

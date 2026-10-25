@@ -69,6 +69,10 @@ if (array_diff($normalizedPrimaryHostCandidates, $primaryHosts) !== []) {
 
 return [
 
+    // 仅在 Web、队列与升级进程共用主题存储和升级锁目录时开启。多节点部署须先验证跨进程可见性。
+    'link_pool_theme_shared_storage' => filter_var(env('GEOFLOW_LINK_POOL_THEME_SHARED_STORAGE', false), FILTER_VALIDATE_BOOLEAN),
+    'link_pool_theme_readback_base_url' => rtrim((string) env('GEOFLOW_LINK_POOL_THEME_READBACK_BASE_URL', ''), '/'),
+
     // Admin UI V3 公共壳层。默认关闭，仅在独立 UI V3 环境显式开启。
     'admin_ui_v3_enabled' => filter_var(env('GEOFLOW_ADMIN_UI_V3_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
 
@@ -183,10 +187,11 @@ return [
     'theme_replication_package_lock_timeout_milliseconds' => max(1, (int) env('GEOFLOW_THEME_REPLICATION_PACKAGE_LOCK_TIMEOUT_MS', 5000)),
 
     'theme_packages' => [
-        'max_archive_bytes' => 10 * 1024 * 1024,
+        'max_archive_bytes' => 32 * 1024 * 1024,
         'max_files' => 500,
         'max_file_bytes' => 5 * 1024 * 1024,
-        'max_total_bytes' => 25 * 1024 * 1024,
+        'max_video_file_bytes' => 25 * 1024 * 1024,
+        'max_total_bytes' => 40 * 1024 * 1024,
         'ttl_minutes' => 60,
         'lock_timeout_milliseconds' => 5000,
     ],

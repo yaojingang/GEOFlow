@@ -5,6 +5,7 @@ namespace App\Services\GeoFlow;
 use App\Ai\Workspace\AiPayloadDigest;
 use App\Ai\Workspace\AiWorkspaceChannelRevision;
 use App\Exceptions\ArticleAiQualityGateException;
+use App\Exceptions\DistributionAcknowledgedResponseException;
 use App\Exceptions\DistributionTaskRevisionMismatch;
 use App\Jobs\ProcessArticleDistributionJob;
 use App\Models\Article;
@@ -13,18 +14,108 @@ use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\DistributionLog;
 use App\Models\HostedSiteArticleAssignment;
+use App\Models\HostedSiteProfile;
 use App\Models\Task;
 use App\Services\AiWorkspace\AiWorkspaceDispatchGuard;
 use App\Services\HostedSites\HostedSiteAllocationRequestService;
 use App\Services\HostedSites\HostedSiteAllocator;
 use App\Services\HostedSites\HostedSiteLifecycleService;
 use App\Support\GeoFlow\DistributionErrorSanitizer;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class DistributionOrchestrator
 {
+    /** Rebind unsent work and previously authorized retries after an explicit task resume. */
+    public function resumeUnsentForTask(int $taskId): int
+    {
+        $resumed = 0;
+        $deliveries = ArticleDistribution::query()->whereHas('article', fn ($query) => $query->where('task_id', $taskId))
+            ->whereIn('status', ['queued', 'cancelled'])
+            ->where(fn ($query) => $query->where(fn ($fresh) => $fresh->where('attempt_count', 0)->whereNull('last_attempt_at'))
+                ->orWhere('remote_meta->transport_not_started', true)->orWhereNotNull('remote_meta->safe_retry_at'))->lazyById(100);
+        foreach ($deliveries as $delivery) {
+            try {
+                $changed = DB::transaction(function () use ($delivery, $taskId): bool {
+                    $channel = DistributionChannel::query()->whereKey($delivery->distribution_channel_id)->lockForUpdate()->first();
+                    $article = $this->lockWorkflowArticle((int) $delivery->article_id);
+                    $locked = ArticleDistribution::query()->whereKey($delivery->id)->lockForUpdate()->first();
+                    $fence = data_get($locked?->remote_meta, 'workflow_fence');
+                    if (! $channel || $channel->status !== DistributionChannel::STATUS_ACTIVE || ! $article || ! $locked
+                        || (int) $article->task_id !== $taskId || $article->task?->status !== 'active' || ! $article->task?->schedule_enabled
+                        || ! in_array($locked->status, ['queued', 'cancelled'], true)
+                        || (($locked->attempt_count || $locked->last_attempt_at) && ! data_get($locked->remote_meta, 'transport_not_started', false)
+                            && ! data_get($locked->remote_meta, 'safe_retry_at'))
+                        || ! is_array($fence) || ($fence['origin'] ?? '') !== 'automatic'
+                        || (int) ($fence['workflow_version'] ?? 0) !== (int) $article->workflow_version
+                        || ((int) ($fence['automation_version'] ?? 0) === (int) $article->task->automation_version
+                            && ($locked->status !== 'queued' || data_get($locked->remote_meta, 'queue_dispatched_at')))
+                        || $article->publication_intent !== 'none' || ! $this->isDistributableSnapshot($article)
+                        || ! $this->currentChannelAllowsDelivery($article, $locked)) {
+                        return false;
+                    }
+                    $meta = (array) $locked->remote_meta;
+                    $meta['workflow_fence'] = app(ArticlePublicationEligibilityService::class)->fence($article);
+                    unset($meta['queue_dispatched_at']);
+                    $locked->update([
+                        'status' => 'queued',
+                        'next_retry_at' => data_get($meta, 'safe_retry_at') ?? now(),
+                        'last_error_message' => null, 'remote_meta' => $meta,
+                    ]);
+                    $this->dispatchDeliveryAfterCommit((int) $locked->id);
+
+                    return true;
+                });
+                $resumed += (int) $changed;
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        return $resumed;
+    }
+
+    /** Recover committed deliveries whose queue submission failed, with a bounded retry budget. */
+    public function recoverUndispatched(int $limit = 100): int
+    {
+        $recovered = 0;
+        $candidates = ArticleDistribution::query()->where('status', 'queued')
+            ->whereNull('remote_meta->queue_dispatched_at')
+            ->where(fn ($query) => $query->whereNull('remote_meta->queue_submit_attempts')->orWhere('remote_meta->queue_submit_attempts', '<', 3))
+            ->where(fn ($query) => $query->whereNull('remote_meta->queue_submit_retry_at')->orWhere('remote_meta->queue_submit_retry_at', '<=', now()->toIso8601String()))
+            ->where(fn ($query) => $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', now()))
+            ->orderBy('id')->limit(max(1, min(100, $limit)))->get();
+        foreach ($candidates as $candidate) {
+            try {
+                $recovered += (int) DB::transaction(function () use ($candidate): bool {
+                    $channel = DistributionChannel::query()->whereKey($candidate->distribution_channel_id)->lockForUpdate()->first();
+                    $article = $this->lockWorkflowArticle((int) $candidate->article_id);
+                    $delivery = ArticleDistribution::query()->whereKey($candidate->id)->lockForUpdate()->first();
+                    if (! $delivery || $delivery->status !== 'queued' || data_get($delivery->remote_meta, 'queue_dispatched_at')) {
+                        return false;
+                    }
+                    if (! $channel || $channel->status !== DistributionChannel::STATUS_ACTIVE || ! $article
+                        || ($delivery->action !== 'delete' && (! $this->workflowFenceMatches($article, data_get($delivery->remote_meta, 'workflow_fence'))
+                            || ! $this->isDistributableSnapshot($article) || ! $this->currentChannelAllowsDelivery($article, $delivery)))) {
+                        $delivery->update(['status' => 'cancelled', 'next_retry_at' => null, 'last_error_message' => 'distribution_workflow_superseded']);
+
+                        return false;
+                    }
+                    $this->dispatchDeliveryAfterCommit((int) $delivery->id);
+
+                    return true;
+                });
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        return $recovered;
+    }
+
     public function __construct(
         private readonly DistributionPayloadBuilder $payloadBuilder,
         private readonly DistributionPublisherManager $publisherManager,
@@ -162,7 +253,7 @@ class DistributionOrchestrator
             'quality_knowledge_base_ids' => $qualityKnowledgeBaseIds,
         ];
 
-        return hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+        return AiPayloadDigest::make($payload);
     }
 
     public function assertTaskRevision(int $taskId, string $expectedRevision): void
@@ -186,8 +277,9 @@ class DistributionOrchestrator
         string $action = 'publish',
         array $aiWorkspaceGuard = [],
         bool $throwOnFailure = false,
+        ?array $workflowFence = null,
     ): array {
-        return $this->enqueueForArticleSelection($article, $action, $aiWorkspaceGuard, null, $throwOnFailure);
+        return $this->enqueueForArticleSelection($article, $action, $aiWorkspaceGuard, null, $throwOnFailure, $workflowFence);
     }
 
     /**
@@ -217,6 +309,7 @@ class DistributionOrchestrator
         array $aiWorkspaceGuard,
         ?array $targetChannelIds = null,
         bool $throwOnFailure = false,
+        ?array $workflowFence = null,
     ): array {
         try {
             $articleModel = $article instanceof Article
@@ -228,6 +321,10 @@ class DistributionOrchestrator
             }
 
             $articleModel->load('task.distributionChannels');
+            $workflowFence ??= app(ArticlePublicationEligibilityService::class)->fence($articleModel);
+            if ($action !== 'delete' && ! $this->workflowFenceMatches($articleModel, $workflowFence)) {
+                throw new \RuntimeException('distribution_workflow_superseded');
+            }
             $publishScope = (string) ($articleModel->task?->publish_scope ?? 'local_and_distribution');
             if ($publishScope === 'local_only') {
                 return [];
@@ -277,9 +374,12 @@ class DistributionOrchestrator
             }
 
             if ($channels->isEmpty()) {
-                return [];
+                throw new \RuntimeException('distribution_channels_unavailable');
             }
 
+            if ($action !== 'delete' && ! $this->isDistributableSnapshot($articleModel)) {
+                throw new \RuntimeException('文章当前状态不允许分发');
+            }
             $qualityCheck = $action !== 'delete'
                 ? $this->publicationQualityGate->check($articleModel, 'distribution_enqueue')
                 : null;
@@ -299,9 +399,9 @@ class DistributionOrchestrator
                     ->where('article_id', (int) $articleModel->id)
                     ->first();
                 if ($existingAssignment?->status === HostedSiteArticleAssignment::STATUS_WITHDRAWN) {
-                    $this->hostedSiteLifecycle->restorePublication($articleModel);
+                    $this->hostedSiteLifecycle->restorePublication($articleModel, $workflowFence);
                 } else {
-                    $allocationRequest = $this->hostedAllocationRequests->request($articleModel);
+                    $allocationRequest = $this->hostedAllocationRequests->request($articleModel, $workflowFence);
                     $this->hostedSiteAllocator->allocate($allocationRequest);
                 }
             } elseif ($action !== 'publish' && $hostedChannels->isNotEmpty()) {
@@ -329,11 +429,11 @@ class DistributionOrchestrator
                     throw new \RuntimeException('AI 工作台分发载荷在审批后已变化。');
                 }
             }
-            $payloadHash = hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+            $payloadHash = AiPayloadDigest::make($payload);
 
             $queuedDistributionIds = [];
             foreach ($channels as $channel) {
-                $distributionId = DB::transaction(function () use ($channel, $articleModel, $action, $payload, $payloadHash, $aiWorkspaceGuard, $qualityCheck, $exactTargets): ?int {
+                $distributionId = DB::transaction(function () use ($channel, $articleModel, $action, $payload, $payloadHash, $aiWorkspaceGuard, $qualityCheck, $exactTargets, $workflowFence): ?int {
                     $lockedChannel = DistributionChannel::query()
                         ->whereKey((int) $channel->id)
                         ->lockForUpdate()
@@ -342,10 +442,7 @@ class DistributionOrchestrator
                         return null;
                     }
 
-                    $lockedArticle = Article::query()
-                        ->whereKey((int) $articleModel->id)
-                        ->lockForUpdate()
-                        ->first(['id', 'task_id', 'status']);
+                    $lockedArticle = $this->lockWorkflowArticle((int) $articleModel->id);
                     if (! $lockedArticle
                         || ! $lockedArticle->task_id
                         || (int) $lockedArticle->task_id !== (int) $articleModel->task_id) {
@@ -354,14 +451,18 @@ class DistributionOrchestrator
                     $lockedTask = Task::query()
                         ->whereKey((int) $lockedArticle->task_id)
                         ->lockForUpdate()
-                        ->first(['id', 'publish_scope', 'distribution_strategy']);
+                        ->first();
                     if (! $lockedTask || (string) $lockedTask->publish_scope === 'local_only') {
                         return null;
+                    }
+                    $lockedArticle->setRelation('task', $lockedTask);
+                    if ($action !== 'delete' && ! $this->workflowFenceMatches($lockedArticle, $workflowFence)) {
+                        throw new \RuntimeException('distribution_workflow_superseded');
                     }
                     $canDistribute = (string) $lockedArticle->status === 'published'
                         || ((string) $lockedTask->publish_scope === 'distribution_only'
                             && in_array((string) $lockedArticle->status, ['private', 'published'], true));
-                    if (! $canDistribute) {
+                    if (! $canDistribute || ($action !== 'delete' && ! $this->isDistributableSnapshot($lockedArticle))) {
                         return null;
                     }
                     if ((! $exactTargets || $lockedChannel->isHostedSite())
@@ -379,15 +480,15 @@ class DistributionOrchestrator
                         ->lockForUpdate()
                         ->get();
                     $distribution = $distributions->firstWhere('action', $action);
-                    if ($lockedChannel->isWordPressRest()) {
-                        $unknownDistribution = $distributions->firstWhere('status', 'outcome_unknown');
-                        if ($unknownDistribution instanceof ArticleDistribution) {
-                            $this->log('warning', 'WordPress 分发结果尚未确认，已阻止重复入队', $lockedChannel->id, $unknownDistribution->id, $articleModel->id, [
-                                'event' => 'distribution.outcome_unknown_requeue_blocked',
-                            ]);
+                    $unknownDistribution = $distributions->firstWhere('status', 'outcome_unknown');
+                    if ($unknownDistribution instanceof ArticleDistribution) {
+                        $this->log('warning', '远端分发结果需要对账，已阻止重复入队', $lockedChannel->id, $unknownDistribution->id, $articleModel->id, [
+                            'event' => 'distribution.outcome_unknown_requeue_blocked',
+                        ]);
 
-                            return null;
-                        }
+                        return null;
+                    }
+                    if ($lockedChannel->isWordPressRest()) {
                         if ($distributions->contains('status', 'sending')) {
                             return null;
                         }
@@ -396,6 +497,22 @@ class DistributionOrchestrator
                         return null;
                     }
                     $remoteMeta = is_array($distribution?->remote_meta) ? $distribution->remote_meta : [];
+                    if ($distribution && ($distribution->status === 'queued' || ($distribution->status === 'synced' && ! $lockedChannel->isWordPressRest()))
+                        && ! data_get($remoteMeta, 'remote_deleted')
+                        && (int) data_get($remoteMeta, 'workflow_fence.workflow_version', 0) === (int) $lockedArticle->workflow_version
+                        && ($distribution->status === 'synced' || (
+                            (int) data_get($remoteMeta, 'workflow_fence.automation_version', 0) === (int) ($lockedArticle->task?->automation_version ?? 0)
+                            && ($qualityCheck === null ? ! isset($remoteMeta['ai_quality_guard']) : $this->qualityGuardMatches($distribution, $qualityCheck))
+                        ))
+                        && hash_equals((string) $distribution->payload_hash, $payloadHash)) {
+                        if ($distribution->status === 'queued' && ! data_get($remoteMeta, 'queue_dispatched_at')) {
+                            $this->dispatchDeliveryAfterCommit((int) $distribution->id);
+                        }
+
+                        return null;
+                    }
+                    $remoteMeta['workflow_fence'] = $workflowFence;
+                    unset($remoteMeta['queue_dispatched_at']);
                     $wordpressPostIds = $lockedChannel->isWordPressRest()
                         ? $distributions
                             ->map(static fn (ArticleDistribution $candidate): ?int => $candidate->wordpressPostId())
@@ -506,6 +623,7 @@ class DistributionOrchestrator
                             (int) $lockedChannel->id,
                             $action,
                             $payloadHash,
+                            (int) ($remoteMeta['remote_copy_version'] ?? 0),
                         ),
                         'remote_meta' => $remoteMeta,
                     ])->save();
@@ -515,9 +633,7 @@ class DistributionOrchestrator
                         'strategy' => (string) ($lockedTask->distribution_strategy ?? TaskDistributionChannelSelector::STRATEGY_BROADCAST),
                         'ai_quality_guard' => $qualityCheck !== null ? $this->qualityGuardAudit($qualityCheck) : null,
                     ]);
-                    ProcessArticleDistributionJob::dispatch((int) $distribution->id)
-                        ->onQueue('distribution')
-                        ->afterCommit();
+                    $this->dispatchDeliveryAfterCommit((int) $distribution->id);
 
                     return (int) $distribution->id;
                 });
@@ -638,7 +754,7 @@ class DistributionOrchestrator
     /** @param array<string,mixed> $payload */
     private function payloadHash(array $payload): string
     {
-        return hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+        return AiPayloadDigest::make($payload);
     }
 
     /**
@@ -678,11 +794,20 @@ class DistributionOrchestrator
             return false;
         }
         $article = $currentDistribution->article;
+        if ($currentDistribution->action !== 'delete'
+            && ! $this->workflowFenceMatches($article, data_get($currentDistribution->remote_meta, 'workflow_fence'))) {
+            ArticleDistribution::query()->whereKey($currentDistribution->id)->where('status', 'queued')->update([
+                'status' => 'cancelled', 'next_retry_at' => null, 'last_error_message' => 'distribution_workflow_superseded',
+            ]);
+
+            return false;
+        }
         if ((string) $currentDistribution->action !== 'delete' && ! $this->isDistributableSnapshot($article)) {
             throw new \RuntimeException('文章当前状态不允许分发');
         }
 
         if ((string) $currentDistribution->action !== 'delete'
+            && (app(ArticleAiQualityPolicyResolver::class)->resolve($article)['required'] ?? false)
             && is_array(data_get($currentDistribution->remote_meta, 'ai_quality_guard'))
             && ! $this->qualityGuardMatches($currentDistribution, $article->latestAiQualityCheck)) {
             throw new ArticleAiQualityGateException(
@@ -709,7 +834,7 @@ class DistributionOrchestrator
                 $qualityCheck,
             );
         }
-        if (! $this->qualityGuardMatches($currentDistribution, $qualityCheck)) {
+        if ($qualityCheck !== null && ! $this->qualityGuardMatches($currentDistribution, $qualityCheck)) {
             throw new ArticleAiQualityGateException(
                 'article_ai_quality_basis_changed',
                 '分发绑定的 AI 质检依据已变化，请重新入队。',
@@ -718,7 +843,8 @@ class DistributionOrchestrator
         }
         $payload = $immutablePayload;
         $payloadHash = $this->payloadHash($payload);
-        if (! hash_equals((string) $currentDistribution->payload_hash, $payloadHash)) {
+        if (! hash_equals((string) $currentDistribution->payload_hash, $payloadHash)
+            && ! hash_equals((string) $currentDistribution->payload_hash, hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: ''))) {
             throw new \RuntimeException('分发载荷摘要校验失败。');
         }
         if ((string) $currentDistribution->action === 'update') {
@@ -739,115 +865,149 @@ class DistributionOrchestrator
             $channel,
             'article_'.(string) $distribution->action,
             function (DistributionChannel $lockedChannel) use ($distribution, $payload, $article): bool {
-                $response = DB::transaction(function () use ($distribution, $payload, $lockedChannel): ?array {
-                    $committedEpoch = $this->aiQualityRolloutPolicy->acquireDistributionLeaseEpoch();
-                    $lockedArticle = Article::query()
-                        ->whereKey((int) $distribution->article_id)
-                        ->lockForUpdate()
-                        ->first();
-                    if (! $lockedArticle instanceof Article) {
-                        return null;
-                    }
-                    $locked = ArticleDistribution::query()
-                        ->whereKey((int) $distribution->id)
-                        ->where('article_id', (int) $lockedArticle->id)
-                        ->lockForUpdate()
-                        ->first();
-                    if (! $locked || (string) $locked->status !== 'sending') {
-                        return null;
-                    }
-                    $locked->setRelation('article', $lockedArticle);
-
-                    if ((string) $locked->action !== 'delete') {
-                        $guard = data_get($locked->remote_meta, 'ai_quality_guard');
-                        $qualityCheck = $this->publicationQualityGate->check($lockedArticle, 'distribution_send_fenced');
-                        $guardEpochMatches = ! is_array($guard)
-                            || (int) ($guard['rollout_epoch'] ?? 0) === $committedEpoch;
-                        if (! $guardEpochMatches || ! $this->qualityGuardMatches($locked, $qualityCheck)) {
-                            throw new ArticleAiQualityGateException(
-                                'article_ai_quality_basis_changed',
-                                '分发绑定的 AI 质检召回版本已变化，请重新入队。',
-                                $qualityCheck,
-                            );
+                $acknowledgedResponse = null;
+                try {
+                    $response = DB::transaction(function () use ($distribution, $payload, $lockedChannel, &$acknowledgedResponse): ?array {
+                        $lockedChannel = DistributionChannel::query()->whereKey($lockedChannel->id)->lockForUpdate()->firstOrFail();
+                        if ($lockedChannel->status !== DistributionChannel::STATUS_ACTIVE) {
+                            throw new \RuntimeException('distribution_channel_unavailable');
                         }
-                    }
-
-                    $workspaceGuard = data_get($locked->remote_meta, 'ai_workspace_guard');
-                    $dispatchChannel = $lockedChannel;
-                    if (is_array($workspaceGuard)) {
-                        $approvedRevision = (string) ($workspaceGuard['channel_revision'] ?? '');
-                        if ($approvedRevision === '' || ! hash_equals($approvedRevision, $this->channelRevision($lockedChannel))) {
-                            throw new \RuntimeException('AI 工作台分发目标在审批后已变化。');
+                        if ($lockedChannel->isHostedSite()) {
+                            HostedSiteProfile::query()->where('distribution_channel_id', $lockedChannel->id)->lockForUpdate()->firstOrFail();
                         }
-                        $dispatchChannel = $this->aiWorkspaceDispatchGuard->authorizeDistributionDispatch($locked);
-                        $locked->refresh();
-                        $locked->setRelation('channel', $dispatchChannel);
-                        $locked->loadMissing('article');
-                    }
+                        $committedEpoch = $this->aiQualityRolloutPolicy->acquireDistributionLeaseEpoch();
+                        $lockedArticle = $this->lockWorkflowArticle((int) $distribution->article_id);
+                        if (! $lockedArticle instanceof Article) {
+                            return null;
+                        }
+                        $locked = ArticleDistribution::query()
+                            ->whereKey((int) $distribution->id)
+                            ->where('article_id', (int) $lockedArticle->id)
+                            ->lockForUpdate()
+                            ->first();
+                        if (! $locked || (string) $locked->status !== 'sending') {
+                            return null;
+                        }
+                        $locked->setRelation('article', $lockedArticle);
 
-                    $publisher = $this->publisherManager->forChannel($dispatchChannel);
-                    try {
-                        $response = match ((string) $locked->action) {
-                            'update' => $publisher->update($locked, $payload),
-                            'delete' => $publisher->delete($locked),
-                            default => $publisher->publish($locked, $payload),
-                        };
-                    } catch (Throwable $exception) {
+                        if ((string) $locked->action !== 'delete') {
+                            if (! $this->workflowFenceMatches($lockedArticle, data_get($locked->remote_meta, 'workflow_fence'))
+                                || ! $this->isDistributableSnapshot($lockedArticle)
+                                || ! $this->currentChannelAllowsDelivery($lockedArticle, $locked)) {
+                                $locked->update([
+                                    'status' => 'cancelled', 'next_retry_at' => null, 'last_error_message' => 'distribution_workflow_superseded',
+                                    'remote_meta' => array_replace((array) $locked->remote_meta, ['transport_not_started' => true]),
+                                ]);
+
+                                return null;
+                            }
+                            $guard = data_get($locked->remote_meta, 'ai_quality_guard');
+                            $qualityCheck = $this->publicationQualityGate->check($lockedArticle, 'distribution_send_fenced');
+                            // A disabled policy returns no check; retained guards remain audit history.
+                            $guardEpochMatches = $qualityCheck === null || ! is_array($guard)
+                                || (int) ($guard['rollout_epoch'] ?? 0) === $committedEpoch;
+                            if ($qualityCheck !== null && (! $guardEpochMatches || ! $this->qualityGuardMatches($locked, $qualityCheck))) {
+                                throw new ArticleAiQualityGateException(
+                                    'article_ai_quality_basis_changed',
+                                    '分发绑定的 AI 质检召回版本已变化，请重新入队。',
+                                    $qualityCheck,
+                                );
+                            }
+                        }
+
+                        $workspaceGuard = data_get($locked->remote_meta, 'ai_workspace_guard');
+                        $dispatchChannel = $lockedChannel;
+                        if (is_array($workspaceGuard)) {
+                            $approvedRevision = (string) ($workspaceGuard['channel_revision'] ?? '');
+                            if ($approvedRevision === '' || ! hash_equals($approvedRevision, $this->channelRevision($lockedChannel))) {
+                                throw new \RuntimeException('AI 工作台分发目标在审批后已变化。');
+                            }
+                            $dispatchChannel = $this->aiWorkspaceDispatchGuard->authorizeDistributionDispatch($locked);
+                            $locked->refresh();
+                            $locked->setRelation('channel', $dispatchChannel);
+                            $locked->loadMissing('article');
+                        }
+
+                        $publisher = $this->publisherManager->forChannel($dispatchChannel);
+                        try {
+                            $response = match ((string) $locked->action) {
+                                'update' => $publisher->update($locked, $payload),
+                                'delete' => $publisher->delete($locked),
+                                default => $publisher->publish($locked, $payload),
+                            };
+                            $acknowledgedResponse = $response;
+                        } catch (Throwable $exception) {
+                            if ($exception instanceof DistributionAcknowledgedResponseException) {
+                                throw $exception;
+                            }
+                            $locked->refresh();
+                            if ((string) $locked->status !== 'sending') {
+                                return ['saved' => false, 'deferred_exception' => $exception];
+                            }
+
+                            throw $exception;
+                        }
                         $locked->refresh();
                         if ((string) $locked->status !== 'sending') {
-                            return ['saved' => false, 'deferred_exception' => $exception];
+                            return ['saved' => false];
                         }
+                        $responseMeta = is_array($response['remote_meta'] ?? null) ? $response['remote_meta'] : [];
 
-                        throw $exception;
-                    }
-                    $locked->refresh();
-                    if ((string) $locked->status !== 'sending') {
-                        return ['saved' => false];
-                    }
-                    $responseMeta = is_array($response['remote_meta'] ?? null) ? $response['remote_meta'] : [];
+                        $existingMeta = is_array($locked->remote_meta) ? $locked->remote_meta : [];
+                        $knownWordPressPostId = $lockedChannel->isWordPressRest()
+                            && (string) $locked->action !== 'delete'
+                            ? $locked->wordpressPostId()
+                            : null;
+                        $returnedWordPressPostId = $this->wordpressPostIdFromResponse($response);
+                        if ($knownWordPressPostId
+                            && $returnedWordPressPostId
+                            && $knownWordPressPostId !== $returnedWordPressPostId) {
+                            $existingMeta['wordpress_identity_conflict'] = [
+                                'expected_post_id' => $knownWordPressPostId,
+                                'returned_post_id' => $returnedWordPressPostId,
+                            ];
+                            $locked->forceFill([
+                                'status' => 'outcome_unknown',
+                                'next_retry_at' => null,
+                                'last_error_message' => 'WordPress 返回的文章 ID 与已知远端身份不一致，需要人工对账。',
+                                'remote_meta' => $existingMeta,
+                            ])->save();
 
-                    $existingMeta = is_array($locked->remote_meta) ? $locked->remote_meta : [];
-                    $knownWordPressPostId = $lockedChannel->isWordPressRest()
-                        && (string) $locked->action !== 'delete'
-                        ? $locked->wordpressPostId()
-                        : null;
-                    $returnedWordPressPostId = $this->wordpressPostIdFromResponse($response);
-                    if ($knownWordPressPostId
-                        && $returnedWordPressPostId
-                        && $knownWordPressPostId !== $returnedWordPressPostId) {
-                        $existingMeta['wordpress_identity_conflict'] = [
-                            'expected_post_id' => $knownWordPressPostId,
-                            'returned_post_id' => $returnedWordPressPostId,
-                        ];
+                            return [
+                                'saved' => false,
+                                'identity_conflict' => true,
+                                'expected_post_id' => $knownWordPressPostId,
+                                'returned_post_id' => $returnedWordPressPostId,
+                            ];
+                        }
+                        if ((string) $locked->action !== 'delete') {
+                            unset($existingMeta['wordpress_remote_deleted_at'], $existingMeta['remote_deleted']);
+                        }
                         $locked->forceFill([
-                            'status' => 'outcome_unknown',
-                            'next_retry_at' => null,
-                            'last_error_message' => 'WordPress 返回的文章 ID 与已知远端身份不一致，需要人工对账。',
-                            'remote_meta' => $existingMeta,
+                            'status' => 'synced',
+                            'remote_id' => is_scalar($response['remote_id'] ?? null) ? (string) $response['remote_id'] : $locked->remote_id,
+                            'remote_url' => (string) $locked->action === 'delete'
+                                ? null
+                                : (is_scalar($response['remote_url'] ?? null) ? (string) $response['remote_url'] : $locked->remote_url),
+                            'remote_meta' => array_replace($existingMeta, $responseMeta),
+                            'last_error_message' => null,
                         ])->save();
 
-                        return [
-                            'saved' => false,
-                            'identity_conflict' => true,
-                            'expected_post_id' => $knownWordPressPostId,
-                            'returned_post_id' => $returnedWordPressPostId,
-                        ];
-                    }
-                    if ($lockedChannel->isWordPressRest() && (string) $locked->action !== 'delete') {
-                        unset($existingMeta['wordpress_remote_deleted_at']);
-                    }
-                    $locked->forceFill([
-                        'status' => 'synced',
-                        'remote_id' => is_scalar($response['remote_id'] ?? null) ? (string) $response['remote_id'] : $locked->remote_id,
-                        'remote_url' => (string) $locked->action === 'delete'
-                            ? null
-                            : (is_scalar($response['remote_url'] ?? null) ? (string) $response['remote_url'] : $locked->remote_url),
-                        'remote_meta' => array_replace($existingMeta, $responseMeta),
-                        'last_error_message' => null,
-                    ])->save();
+                        if ($locked->action === 'delete') {
+                            $this->markRemoteCopyDeleted($locked);
+                        }
 
-                    return ['saved' => true, 'response' => $response];
-                }, 3);
+                        return ['saved' => true, 'response' => $response];
+                    });
+                } catch (Throwable $exception) {
+                    if ($exception instanceof DistributionAcknowledgedResponseException) {
+                        $acknowledgedResponse = $exception->response;
+                    }
+                    if ($acknowledgedResponse !== null) {
+                        $this->preserveAcknowledgedResponse($distribution, $acknowledgedResponse);
+                    }
+                    throw $exception;
+                }
                 if (($response['deferred_exception'] ?? null) instanceof Throwable) {
                     throw $response['deferred_exception'];
                 }
@@ -1044,14 +1204,8 @@ class DistributionOrchestrator
                 ->whereKey((int) $candidate->distribution_channel_id)
                 ->lockForUpdate()
                 ->first();
-            $article = Article::query()
-                ->whereKey((int) $candidate->article_id)
-                ->when($taskId > 0, fn ($query) => $query->where('task_id', $taskId))
-                ->lockForUpdate()
-                ->first(['id']);
-            $task = $taskId > 0
-                ? Task::query()->whereKey($taskId)->lockForUpdate()->first(['id'])
-                : null;
+            $article = $this->lockWorkflowArticle((int) $candidate->article_id);
+            $task = $article?->task;
             $distribution = ArticleDistribution::query()
                 ->whereKey((int) $candidate->id)
                 ->where('distribution_channel_id', (int) $candidate->distribution_channel_id)
@@ -1093,11 +1247,15 @@ class DistributionOrchestrator
                 return null;
             }
 
+            if (data_get($distribution->remote_meta, 'safe_retry_at') && $distribution->next_retry_at?->isFuture()) {
+                return null;
+            }
             $distribution->forceFill([
                 'status' => 'sending',
                 'attempt_count' => (int) $distribution->attempt_count + 1,
                 'last_attempt_at' => now(),
                 'last_error_message' => null,
+                'remote_meta' => Arr::except((array) $distribution->remote_meta, ['transport_not_started', 'safe_retry_at']),
             ])->save();
 
             return $distribution;
@@ -1144,6 +1302,7 @@ class DistributionOrchestrator
                     }
                     $payloadHash = $this->payloadHash($payload);
                     $articleUpdatedAt = $snapshotArticle->updated_at?->toISOString();
+                    $workflowFence = app(ArticlePublicationEligibilityService::class)->fence($snapshotArticle, 'manual');
 
                     $queued = DB::transaction(function () use (
                         $candidate,
@@ -1152,6 +1311,7 @@ class DistributionOrchestrator
                         $payloadHash,
                         $articleUpdatedAt,
                         $qualityCheck,
+                        $workflowFence,
                     ): bool {
                         $lockedChannel = DistributionChannel::query()
                             ->whereKey($channelId)
@@ -1160,18 +1320,14 @@ class DistributionOrchestrator
                         if (! $lockedChannel || (string) $lockedChannel->status !== DistributionChannel::STATUS_ACTIVE) {
                             return false;
                         }
-                        $article = Article::query()
-                            ->whereKey((int) $candidate->article_id)
-                            ->lockForUpdate()
-                            ->first(['id', 'task_id', 'status', 'updated_at']);
+                        $article = $this->lockWorkflowArticle((int) $candidate->article_id);
                         if (! $article
                             || ! in_array((string) $article->status, ['published', 'private'], true)
-                            || $article->updated_at?->toISOString() !== $articleUpdatedAt) {
+                            || $article->updated_at?->toISOString() !== $articleUpdatedAt
+                            || ! $this->workflowFenceMatches($article, $workflowFence)) {
                             return false;
                         }
-                        $task = $article->task_id
-                            ? Task::query()->whereKey((int) $article->task_id)->lockForUpdate()->first(['id', 'publish_scope'])
-                            : null;
+                        $task = $article?->task;
                         if ($article->task_id && (! $task || (string) $task->publish_scope === 'local_only')) {
                             return false;
                         }
@@ -1188,6 +1344,8 @@ class DistributionOrchestrator
                         }
 
                         $remoteMeta = is_array($distribution->remote_meta) ? $distribution->remote_meta : [];
+                        unset($remoteMeta['queue_dispatched_at'], $remoteMeta['transport_not_started']);
+                        $remoteMeta['workflow_fence'] = $workflowFence;
                         $remoteMeta['distribution_payload'] = $payload;
                         if ($qualityCheck instanceof ArticleAiQualityCheck) {
                             $remoteMeta['ai_quality_guard'] = $this->qualityGuardAudit($qualityCheck);
@@ -1209,9 +1367,7 @@ class DistributionOrchestrator
                             ),
                             'remote_meta' => $remoteMeta,
                         ])->save();
-                        ProcessArticleDistributionJob::dispatch((int) $distribution->id)
-                            ->onQueue('distribution')
-                            ->afterCommit();
+                        $this->dispatchDeliveryAfterCommit((int) $distribution->id);
 
                         return true;
                     });
@@ -1258,9 +1414,54 @@ class DistributionOrchestrator
         ]);
     }
 
-    private function idempotencyKey(int $articleId, int $channelId, string $action, ?string $payloadHash = null): string
+    /** Record remote acknowledgement after a failed local commit without sending again. */
+    private function preserveAcknowledgedResponse(ArticleDistribution $candidate, array $response): void
     {
-        $key = 'article-'.$articleId.'-channel-'.$channelId.'-'.$action.'-v1';
+        DB::transaction(function () use ($candidate, $response): void {
+            $channel = DistributionChannel::query()->whereKey($candidate->distribution_channel_id)->lockForUpdate()->first();
+            $this->lockWorkflowArticle((int) $candidate->article_id);
+            $delivery = ArticleDistribution::query()->whereKey($candidate->id)->lockForUpdate()->first();
+            if (! $channel || ! $delivery) {
+                return;
+            }
+            $meta = (array) $delivery->remote_meta;
+            $remoteId = is_scalar($response['remote_id'] ?? null) ? (string) $response['remote_id'] : $delivery->remote_id;
+            $meta['acknowledged_response'] = [
+                'action' => $delivery->action, 'remote_id' => $remoteId,
+                'recorded_at' => now()->toIso8601String(), 'error_code' => 'distribution_local_commit_failed',
+            ];
+            $delivery->update([
+                'status' => $delivery->status === 'sending' ? 'outcome_unknown' : $delivery->status,
+                'remote_id' => $delivery->remote_id ?: $remoteId,
+                'remote_url' => $delivery->action === 'delete' ? null : ($response['remote_url'] ?? $delivery->remote_url),
+                'remote_meta' => $meta, 'next_retry_at' => null,
+                'last_error_message' => '远端已响应成功，本地提交失败；已停止自动重发，请对账确认。',
+            ]);
+        }, 3);
+    }
+
+    /** The caller holds the channel and article locks for the successful deletion. */
+    private function markRemoteCopyDeleted(ArticleDistribution $deleted): void
+    {
+        $siblings = ArticleDistribution::query()->where('article_id', $deleted->article_id)
+            ->where('distribution_channel_id', $deleted->distribution_channel_id)
+            ->orderBy('id')->lockForUpdate()->get();
+        $version = (int) $siblings->max(fn (ArticleDistribution $item): int => (int) data_get($item->remote_meta, 'remote_copy_version', 0));
+        $hasLiveCopy = $siblings->contains(fn (ArticleDistribution $item): bool => $item->action !== 'delete' && ! data_get($item->remote_meta, 'remote_deleted'));
+        $version += (int) $hasLiveCopy;
+        foreach ($siblings as $sibling) {
+            $meta = (array) $sibling->remote_meta;
+            $meta['remote_copy_version'] = $version;
+            $meta['remote_deleted'] = true;
+            $meta['wordpress_remote_deleted_at'] = now()->toIso8601String();
+            unset($meta['wordpress_delivery_fingerprint']);
+            $sibling->update(['remote_url' => null, 'remote_meta' => $meta]);
+        }
+    }
+
+    private function idempotencyKey(int $articleId, int $channelId, string $action, ?string $payloadHash = null, int $copyVersion = 0): string
+    {
+        $key = 'article-'.$articleId.'-channel-'.$channelId.'-'.$action.'-v1'.($copyVersion > 0 ? '-copy-'.$copyVersion : '');
 
         return $payloadHash === null || $payloadHash === ''
             ? $key
@@ -1282,9 +1483,9 @@ class DistributionOrchestrator
         }
         $payloadHash = $action === 'delete'
             ? null
-            : hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+            : AiPayloadDigest::make($payload);
 
-        [$distribution, $channel, $identityConflict] = $this->claimImmediateAction($distribution, $action, $payloadHash);
+        [$distribution, $channel, $identityConflict] = $this->claimImmediateAction($distribution, $action, $payloadHash, $payload);
         if (is_array($identityConflict)) {
             $this->log(
                 'error',
@@ -1308,117 +1509,138 @@ class DistributionOrchestrator
             $channel,
             'article_'.$action,
             function (DistributionChannel $lockedChannel) use ($distribution, $action, $payload, $article, $wordpressDeliveryFingerprint): void {
-                $publisher = $this->publisherManager->forChannel($lockedChannel);
-                $response = $action === 'delete'
-                    ? $publisher->delete($distribution)
-                    : $publisher->update($distribution, $payload);
+                $acknowledgedResponse = null;
+                try {
+                    $result = DB::transaction(function () use ($distribution, $action, $lockedChannel, $payload, $wordpressDeliveryFingerprint, &$acknowledgedResponse): array {
+                        $lockedChannel = DistributionChannel::query()->whereKey($lockedChannel->id)->lockForUpdate()->firstOrFail();
+                        if ($lockedChannel->status !== DistributionChannel::STATUS_ACTIVE) {
+                            throw new \RuntimeException('distribution_channel_unavailable');
+                        }
+                        if ($lockedChannel->isHostedSite()) {
+                            HostedSiteProfile::query()->where('distribution_channel_id', $lockedChannel->id)->lockForUpdate()->firstOrFail();
+                        }
+                        $this->aiQualityRolloutPolicy->acquireDistributionLeaseEpoch();
+                        $article = $this->lockWorkflowArticle((int) $distribution->article_id);
+                        if (! $article) {
+                            return ['saved' => false];
+                        }
+                        $task = $article?->task;
+                        if ($article->task_id && ! $task) {
+                            return ['saved' => false];
+                        }
+                        $locked = ArticleDistribution::query()
+                            ->whereKey((int) $distribution->id)
+                            ->where('article_id', (int) $article->id)
+                            ->lockForUpdate()
+                            ->first();
+                        if (! $locked || (string) $locked->status !== 'sending') {
+                            return ['saved' => false];
+                        }
 
-                $responseMeta = is_array($response['remote_meta'] ?? null) ? $response['remote_meta'] : [];
-                $result = DB::transaction(function () use ($distribution, $response, $responseMeta, $action, $lockedChannel, $payload, $wordpressDeliveryFingerprint): array {
-                    $article = Article::query()
-                        ->whereKey((int) $distribution->article_id)
-                        ->lockForUpdate()
-                        ->first(['id', 'task_id']);
-                    if (! $article) {
-                        return ['saved' => false];
-                    }
-                    $task = $article->task_id
-                        ? Task::query()->whereKey((int) $article->task_id)->lockForUpdate()->first(['id'])
-                        : null;
-                    if ($article->task_id && ! $task) {
-                        return ['saved' => false];
-                    }
-                    $locked = ArticleDistribution::query()
-                        ->whereKey((int) $distribution->id)
-                        ->where('article_id', (int) $article->id)
-                        ->lockForUpdate()
-                        ->first();
-                    if (! $locked || (string) $locked->status !== 'sending') {
-                        return ['saved' => false];
-                    }
+                        $locked->setRelation('article', $article);
+                        $locked->setRelation('channel', $lockedChannel);
+                        if ($action !== 'delete') {
+                            $currentPayload = $this->payloadBuilder->build($article->load(['category:id,name,slug', 'author:id,name', 'articleImages.image']));
+                            $currentPayload['event'] = 'article.update';
+                            if (! $this->workflowFenceMatches($article, data_get($locked->remote_meta, 'workflow_fence'))
+                                || ! $this->isDistributableSnapshot($article)
+                                || ! hash_equals((string) $locked->payload_hash, AiPayloadDigest::make($currentPayload))) {
+                                $locked->update(['status' => 'cancelled', 'next_retry_at' => null, 'last_error_message' => 'distribution_workflow_superseded']);
 
-                    $existingMeta = is_array($locked->remote_meta) ? $locked->remote_meta : [];
-                    $knownWordPressPostId = $lockedChannel->isWordPressRest() && $action !== 'delete'
-                        ? $locked->wordpressPostId()
-                        : null;
-                    $returnedWordPressPostId = $this->wordpressPostIdFromResponse($response);
-                    if ($knownWordPressPostId
-                        && $returnedWordPressPostId
-                        && $knownWordPressPostId !== $returnedWordPressPostId) {
-                        $existingMeta['wordpress_identity_conflict'] = [
-                            'expected_post_id' => $knownWordPressPostId,
-                            'returned_post_id' => $returnedWordPressPostId,
-                        ];
+                                return ['saved' => false, 'superseded' => true];
+                            }
+                            $this->publicationQualityGate->check($article, 'distribution_immediate_send_fenced');
+                        }
+                        $publisher = $this->publisherManager->forChannel($lockedChannel);
+                        $response = $action === 'delete' ? $publisher->delete($locked) : $publisher->update($locked, $payload);
+                        $acknowledgedResponse = $response;
+                        $responseMeta = is_array($response['remote_meta'] ?? null) ? $response['remote_meta'] : [];
+                        $locked->refresh();
+                        if ($locked->status !== 'sending') {
+                            return ['saved' => false];
+                        }
+                        $existingMeta = is_array($locked->remote_meta) ? $locked->remote_meta : [];
+                        $knownWordPressPostId = $lockedChannel->isWordPressRest() && $action !== 'delete'
+                            ? $locked->wordpressPostId()
+                            : null;
+                        $returnedWordPressPostId = $this->wordpressPostIdFromResponse($response);
+                        if ($knownWordPressPostId
+                            && $returnedWordPressPostId
+                            && $knownWordPressPostId !== $returnedWordPressPostId) {
+                            $existingMeta['wordpress_identity_conflict'] = [
+                                'expected_post_id' => $knownWordPressPostId,
+                                'returned_post_id' => $returnedWordPressPostId,
+                            ];
+                            $locked->forceFill([
+                                'status' => 'outcome_unknown',
+                                'next_retry_at' => null,
+                                'last_error_message' => 'WordPress 返回的文章 ID 与已知远端身份不一致，需要人工对账。',
+                                'remote_meta' => $existingMeta,
+                            ])->save();
+
+                            return [
+                                'saved' => false,
+                                'identity_conflict' => true,
+                                'expected_post_id' => $knownWordPressPostId,
+                                'returned_post_id' => $returnedWordPressPostId,
+                            ];
+                        }
+                        if ($action !== 'delete') {
+                            unset($existingMeta['remote_deleted']);
+                        }
+                        if ($wordpressDeliveryFingerprint !== null) {
+                            $existingMeta['wordpress_delivery_fingerprint'] = $wordpressDeliveryFingerprint;
+                            $existingMeta['distribution_payload'] = $payload;
+                            unset($existingMeta['wordpress_remote_deleted_at']);
+                        }
                         $locked->forceFill([
-                            'status' => 'outcome_unknown',
-                            'next_retry_at' => null,
-                            'last_error_message' => 'WordPress 返回的文章 ID 与已知远端身份不一致，需要人工对账。',
-                            'remote_meta' => $existingMeta,
+                            'status' => 'synced',
+                            'remote_id' => is_scalar($response['remote_id'] ?? null) ? (string) $response['remote_id'] : $locked->remote_id,
+                            'remote_url' => $action === 'delete'
+                                ? null
+                                : (is_scalar($response['remote_url'] ?? null) ? (string) $response['remote_url'] : $locked->remote_url),
+                            'remote_meta' => array_replace($existingMeta, $responseMeta),
+                            'last_error_message' => null,
                         ])->save();
+                        if ($action === 'delete') {
+                            $this->markRemoteCopyDeleted($locked);
+                        }
+                        if ($wordpressDeliveryFingerprint !== null) {
+                            ArticleDistribution::query()
+                                ->where('article_id', (int) $locked->article_id)
+                                ->where('distribution_channel_id', (int) $locked->distribution_channel_id)
+                                ->where('id', '!=', (int) $locked->id)
+                                ->where('action', '!=', 'delete')
+                                ->lockForUpdate()
+                                ->get()
+                                ->each(function (ArticleDistribution $sibling) use ($payload, $response, $wordpressDeliveryFingerprint): void {
+                                    $siblingMeta = is_array($sibling->remote_meta) ? $sibling->remote_meta : [];
+                                    $siblingMeta['wordpress_delivery_fingerprint'] = $wordpressDeliveryFingerprint;
+                                    $siblingMeta['distribution_payload'] = $payload;
+                                    unset($siblingMeta['wordpress_remote_deleted_at']);
+                                    $sibling->forceFill([
+                                        'remote_url' => is_scalar($response['remote_url'] ?? null)
+                                            ? (string) $response['remote_url']
+                                            : $sibling->remote_url,
+                                        'remote_meta' => $siblingMeta,
+                                    ])->save();
+                                });
+                        }
 
-                        return [
-                            'saved' => false,
-                            'identity_conflict' => true,
-                            'expected_post_id' => $knownWordPressPostId,
-                            'returned_post_id' => $returnedWordPressPostId,
-                        ];
+                        return ['saved' => true, 'response' => $response];
+                    });
+                } catch (Throwable $exception) {
+                    if ($exception instanceof DistributionAcknowledgedResponseException) {
+                        $acknowledgedResponse = $exception->response;
                     }
-                    if ($wordpressDeliveryFingerprint !== null) {
-                        $existingMeta['wordpress_delivery_fingerprint'] = $wordpressDeliveryFingerprint;
-                        $existingMeta['distribution_payload'] = $payload;
-                        unset($existingMeta['wordpress_remote_deleted_at']);
+                    if ($acknowledgedResponse !== null) {
+                        $this->preserveAcknowledgedResponse($distribution, $acknowledgedResponse);
                     }
-                    $locked->forceFill([
-                        'status' => 'synced',
-                        'remote_id' => is_scalar($response['remote_id'] ?? null) ? (string) $response['remote_id'] : $locked->remote_id,
-                        'remote_url' => $action === 'delete'
-                            ? null
-                            : (is_scalar($response['remote_url'] ?? null) ? (string) $response['remote_url'] : $locked->remote_url),
-                        'remote_meta' => array_replace($existingMeta, $responseMeta),
-                        'last_error_message' => null,
-                    ])->save();
-                    if ($action === 'delete' && $lockedChannel->isWordPressRest()) {
-                        ArticleDistribution::query()
-                            ->where('article_id', (int) $locked->article_id)
-                            ->where('distribution_channel_id', (int) $locked->distribution_channel_id)
-                            ->where('id', '!=', (int) $locked->id)
-                            ->where('action', '!=', 'delete')
-                            ->lockForUpdate()
-                            ->get()
-                            ->each(function (ArticleDistribution $sibling): void {
-                                $siblingMeta = is_array($sibling->remote_meta) ? $sibling->remote_meta : [];
-                                unset($siblingMeta['wordpress_delivery_fingerprint']);
-                                $siblingMeta['wordpress_remote_deleted_at'] = now()->toIso8601String();
-                                $sibling->forceFill([
-                                    'remote_url' => null,
-                                    'remote_meta' => $siblingMeta,
-                                ])->save();
-                            });
-                    }
-                    if ($wordpressDeliveryFingerprint !== null) {
-                        ArticleDistribution::query()
-                            ->where('article_id', (int) $locked->article_id)
-                            ->where('distribution_channel_id', (int) $locked->distribution_channel_id)
-                            ->where('id', '!=', (int) $locked->id)
-                            ->where('action', '!=', 'delete')
-                            ->lockForUpdate()
-                            ->get()
-                            ->each(function (ArticleDistribution $sibling) use ($payload, $response, $wordpressDeliveryFingerprint): void {
-                                $siblingMeta = is_array($sibling->remote_meta) ? $sibling->remote_meta : [];
-                                $siblingMeta['wordpress_delivery_fingerprint'] = $wordpressDeliveryFingerprint;
-                                $siblingMeta['distribution_payload'] = $payload;
-                                unset($siblingMeta['wordpress_remote_deleted_at']);
-                                $sibling->forceFill([
-                                    'remote_url' => is_scalar($response['remote_url'] ?? null)
-                                        ? (string) $response['remote_url']
-                                        : $sibling->remote_url,
-                                    'remote_meta' => $siblingMeta,
-                                ])->save();
-                            });
-                    }
-
-                    return ['saved' => true];
-                });
+                    throw $exception;
+                }
+                if ($result['superseded'] ?? false) {
+                    throw new \RuntimeException('distribution_workflow_superseded');
+                }
                 if ((bool) ($result['identity_conflict'] ?? false)) {
                     $this->log(
                         'error',
@@ -1454,7 +1676,7 @@ class DistributionOrchestrator
                     (int) $lockedChannel->id,
                     (int) $distribution->id,
                     (int) $article->id,
-                    ['event' => 'article.'.$action, 'remote_result' => $response]
+                    ['event' => 'article.'.$action, 'remote_result' => $result['response']]
                 );
             },
         );
@@ -1465,20 +1687,15 @@ class DistributionOrchestrator
     /**
      * @return array{ArticleDistribution,DistributionChannel,array<string,mixed>|null}
      */
-    private function claimImmediateAction(ArticleDistribution $candidate, string $action, ?string $payloadHash): array
+    private function claimImmediateAction(ArticleDistribution $candidate, string $action, ?string $payloadHash, array $payload): array
     {
-        return DB::transaction(function () use ($candidate, $action, $payloadHash): array {
+        return DB::transaction(function () use ($candidate, $action, $payloadHash, $payload): array {
             $channel = DistributionChannel::query()
                 ->whereKey((int) $candidate->distribution_channel_id)
                 ->lockForUpdate()
                 ->first();
-            $article = Article::query()
-                ->whereKey((int) $candidate->article_id)
-                ->lockForUpdate()
-                ->first(['id', 'task_id']);
-            $task = $article?->task_id
-                ? Task::query()->whereKey((int) $article->task_id)->lockForUpdate()->first(['id'])
-                : null;
+            $article = $this->lockWorkflowArticle((int) $candidate->article_id);
+            $task = $article?->task;
             $distributions = ArticleDistribution::query()
                 ->where('article_id', (int) $candidate->article_id)
                 ->where('distribution_channel_id', (int) $candidate->distribution_channel_id)
@@ -1501,17 +1718,13 @@ class DistributionOrchestrator
 
                 throw new \RuntimeException($message);
             }
+            $blockedDistribution = $distributions->first(
+                static fn (ArticleDistribution $item): bool => in_array((string) $item->status, ['sending', 'outcome_unknown'], true),
+            );
+            if ($blockedDistribution instanceof ArticleDistribution) {
+                throw new \RuntimeException(($channel->isWordPressRest() ? 'WordPress ' : '').'分发正在处理中或等待人工对账，当前操作已阻止。');
+            }
             if ($channel->isWordPressRest()) {
-                $blockedDistribution = $distributions->first(
-                    static fn (ArticleDistribution $item): bool => in_array(
-                        (string) $item->status,
-                        ['sending', 'outcome_unknown'],
-                        true,
-                    ),
-                );
-                if ($blockedDistribution instanceof ArticleDistribution) {
-                    throw new \RuntimeException('WordPress 分发正在处理中或等待人工对账，当前操作已阻止。');
-                }
                 $wordpressPostIds = $distributions
                     ->map(static fn (ArticleDistribution $distribution): ?int => $distribution->wordpressPostId())
                     ->filter(static fn (?int $postId): bool => is_int($postId) && $postId > 0)
@@ -1560,11 +1773,17 @@ class DistributionOrchestrator
                 'last_attempt_at' => now(),
                 'last_error_message' => null,
                 'payload_hash' => $payloadHash,
+                'remote_meta' => array_replace((array) $distribution->remote_meta, [
+                    'workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article, 'manual'),
+                    'distribution_payload' => $payload,
+                    'remote_copy_version' => (int) $distributions->max(fn (ArticleDistribution $item): int => (int) data_get($item->remote_meta, 'remote_copy_version', 0)),
+                ]),
                 'idempotency_key' => $this->idempotencyKey(
                     (int) $distribution->article_id,
                     (int) $channel->id,
                     $action,
                     $payloadHash,
+                    (int) $distributions->max(fn (ArticleDistribution $item): int => (int) data_get($item->remote_meta, 'remote_copy_version', 0)),
                 ),
             ])->save();
 
@@ -1608,15 +1827,11 @@ class DistributionOrchestrator
     private function buildVerifiedPayload(Article $article, string $trigger): array
     {
         $result = DB::transaction(function () use ($article, $trigger): Article {
-            $lockedArticle = Article::query()
-                ->whereKey($article->getKey())
-                ->lockForUpdate()
-                ->firstOrFail();
+            $lockedArticle = $this->lockWorkflowArticle((int) $article->id) ?? throw new \RuntimeException('article_unavailable');
 
             $lockedArticle->load([
                 'category:id,name,slug',
                 'author:id,name',
-                'task:id,name,publish_scope',
                 'articleImages.image',
             ]);
             if (! $this->isDistributableSnapshot($lockedArticle)) {
@@ -1633,12 +1848,15 @@ class DistributionOrchestrator
 
     private function isDistributableSnapshot(Article $article): bool
     {
-        if ($article->task === null) {
-            return in_array((string) $article->status, ['published', 'private'], true);
-        }
-
         if (! in_array((string) $article->review_status, ['approved', 'auto_approved'], true)) {
             return false;
+        }
+        $eligibility = app(ArticlePublicationEligibilityService::class);
+        if ($eligibility->manualReviewRequired($article) && ! $eligibility->hasCurrentApproval($article)) {
+            return false;
+        }
+        if ($article->task === null) {
+            return in_array((string) $article->status, ['published', 'private'], true);
         }
 
         $publishScope = (string) ($article->task->publish_scope ?? 'local_and_distribution');
@@ -1648,5 +1866,85 @@ class DistributionOrchestrator
 
         return $article->status === 'published'
             || ($publishScope === 'distribution_only' && $article->status === 'private');
+    }
+
+    /** Automatic task work follows the current channel selection; approved workspace targets have their own guard. */
+    private function currentChannelAllowsDelivery(Article $article, ArticleDistribution $delivery): bool
+    {
+        if (! $article->task_id || data_get($delivery->remote_meta, 'workflow_fence.origin') !== 'automatic'
+            || is_array(data_get($delivery->remote_meta, 'ai_workspace_guard'))) {
+            return true;
+        }
+
+        return $article->task_id && DB::table('task_distribution_channels')
+            ->where('task_id', $article->task_id)->where('distribution_channel_id', $delivery->distribution_channel_id)->exists();
+    }
+
+    public function dispatchDeliveryAfterCommit(int $distributionId): void
+    {
+        DB::afterCommit(static function () use ($distributionId): void {
+            $delivery = ArticleDistribution::query()->find($distributionId);
+            if (! $delivery || $delivery->status !== 'queued') {
+                return;
+            }
+            try {
+                Bus::dispatch((new ProcessArticleDistributionJob($distributionId))->onQueue('distribution')->delay($delivery->next_retry_at)->beforeCommit());
+            } catch (Throwable $exception) {
+                $attempts = (int) data_get($delivery->remote_meta, 'queue_submit_attempts', 0) + 1;
+                self::recordQueueSubmission($distributionId, [
+                    'queue_submit_attempts' => $attempts,
+                    'queue_submit_retry_at' => now()->addSeconds($attempts === 1 ? 60 : 300)->toIso8601String(),
+                ], $attempts >= 3 ? 'distribution_queue_retry_exhausted' : 'distribution_queue_submission_failed');
+
+                throw $exception;
+            }
+            self::recordQueueSubmission($distributionId, [
+                'queue_dispatched_at' => now()->toIso8601String(),
+                'queue_submit_attempts' => 0, 'queue_submit_retry_at' => null,
+            ]);
+        });
+    }
+
+    private static function recordQueueSubmission(int $id, array $submission, ?string $error = null): void
+    {
+        DB::transaction(static function () use ($id, $submission, $error): void {
+            $delivery = ArticleDistribution::query()->whereKey($id)->lockForUpdate()->first();
+            if (! $delivery || $delivery->status !== 'queued') {
+                return;
+            }
+            $delivery->update([
+                'remote_meta' => array_replace((array) $delivery->remote_meta, $submission),
+                'last_error_message' => $error,
+            ]);
+        });
+    }
+
+    private function lockWorkflowArticle(int $articleId): ?Article
+    {
+        $taskId = (int) Article::query()->whereKey($articleId)->value('task_id');
+        $task = $taskId ? Task::query()->whereKey($taskId)->lockForUpdate()->first() : null;
+        $article = Article::query()->whereKey($articleId)->lockForUpdate()->first();
+        if ($article && (int) $article->task_id !== $taskId) {
+            throw new \RuntimeException('workflow_version_conflict');
+        }
+        if ($article) {
+            $article->setRelation('task', $task);
+        }
+
+        return $article;
+    }
+
+    public function workflowFenceMatches(Article $article, mixed $fence): bool
+    {
+        if (! is_array($fence)
+            || (int) ($fence['workflow_version'] ?? 0) !== (int) $article->workflow_version
+            || (int) ($fence['task_id'] ?? 0) !== (int) $article->task_id
+            || (int) ($fence['automation_version'] ?? 0) !== (int) ($article->task?->automation_version ?? 0)
+            || $article->publication_intent === 'hold' || $article->review_status === 'rejected') {
+            return false;
+        }
+
+        return ($fence['origin'] ?? '') === 'manual' || ! $article->task
+            || ($article->task->status === 'active' && (bool) $article->task->schedule_enabled);
     }
 }

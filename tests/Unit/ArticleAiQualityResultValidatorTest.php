@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\GeoFlow\ArticleAiQualityResultValidator;
+use App\Services\GeoFlow\ArticleAiQualityScorer;
 use App\Services\GeoFlow\ArticleAiQualityScorerV2;
 use Tests\TestCase;
 use UnexpectedValueException;
@@ -240,7 +241,7 @@ class ArticleAiQualityResultValidatorTest extends TestCase
         $this->assertSame('合同金额为 100 万元', $validated['uncertainties'][0]['claim']);
     }
 
-    public function test_v2_moves_unverified_claims_to_uncertainties_without_a_score_deduction_issue(): void
+    public function test_v2_scores_explicitly_unverified_claims_without_an_independent_veto(): void
     {
         $validated = (new ArticleAiQualityResultValidator)->validate([
             'summary' => '缺少市场份额来源',
@@ -273,9 +274,9 @@ class ArticleAiQualityResultValidatorTest extends TestCase
         $this->assertSame('unverified_material_claim', $validated['uncertainties'][0]['gate_reason']);
 
         $scored = (new ArticleAiQualityScorerV2)->score($validated, 85, 70);
-        $this->assertSame(100, $scored['score']);
-        $this->assertSame('needs_review', $scored['decision']);
-        $this->assertContains('unverified_material_claim', $scored['gate_reasons']);
+        $this->assertSame(90, $scored['score']);
+        $this->assertSame('passed', $scored['decision']);
+        $this->assertSame([], $scored['gate_reasons']);
     }
 
     public function test_v2_derives_the_shared_seo_integrity_family_before_scoring(): void
@@ -317,7 +318,7 @@ class ArticleAiQualityResultValidatorTest extends TestCase
         $this->assertSame(7, $scored['dimension_scores']['content_integrity']);
     }
 
-    public function test_v2_routes_missing_high_materiality_claim_coverage_to_manual_review_without_deduction(): void
+    public function test_v2_keeps_missing_high_materiality_claim_inspection_as_an_explicit_blocker(): void
     {
         $validated = (new ArticleAiQualityResultValidator)->validate([
             'summary' => '未报告问题',
@@ -336,7 +337,7 @@ class ArticleAiQualityResultValidatorTest extends TestCase
         $this->assertSame('claim_coverage_incomplete', $validated['uncertainties'][0]['gate_reason']);
 
         $scored = (new ArticleAiQualityScorerV2)->score($validated, 85, 70);
-        $this->assertSame(100, $scored['score']);
+        $this->assertSame(90, $scored['score']);
         $this->assertSame('needs_review', $scored['decision']);
         $this->assertContains('claim_coverage_incomplete', $scored['gate_reasons']);
     }
@@ -362,7 +363,297 @@ class ArticleAiQualityResultValidatorTest extends TestCase
         ]], $this->rules());
 
         $this->assertSame([], $validated['reviewed_claim_hashes']);
-        $this->assertSame('claim_coverage_incomplete', $validated['uncertainties'][0]['gate_reason']);
+        $this->assertSame('unverified_material_claim', $validated['uncertainties'][0]['gate_reason']);
+        foreach ([new ArticleAiQualityScorer, new ArticleAiQualityScorerV2] as $scorer) {
+            $scored = $scorer->score($validated, 85, 70);
+            $this->assertSame(90, $scored['score']);
+            $this->assertSame('passed', $scored['decision']);
+            $this->assertSame([], $scored['gate_reasons']);
+        }
+    }
+
+    public function test_v2_omitting_a_claim_with_available_evidence_cannot_pass_either_scorer(): void
+    {
+        $validated = (new ArticleAiQualityResultValidator)->validate([
+            'summary' => '未报告问题',
+            'promotion_context' => 'informational',
+            'reviewed_claim_hashes' => [],
+            'issues' => [],
+            'uncertainties' => [],
+            'truncated_issue_count' => 0,
+        ], $this->article(), [[
+            'claim_hash' => 'price-claim',
+            'normalized_claim' => '标准价格为 1,980 元',
+            'materiality' => 'high',
+            'knowledge_refs' => ['K1'],
+        ]], [[
+            'id' => 'K1',
+            'stable_key' => '3:19:evidence-hash',
+            'content' => '标准价格为 980 元。',
+        ]], $this->rules());
+
+        foreach ([new ArticleAiQualityScorer, new ArticleAiQualityScorerV2] as $scorer) {
+            $scored = $scorer->score($validated, 85, 70);
+            $this->assertGreaterThanOrEqual(85, $scored['score']);
+            $this->assertSame('needs_review', $scored['decision']);
+            $this->assertContains('claim_coverage_incomplete', $scored['gate_reasons']);
+        }
+    }
+
+    public function test_v2_derives_coverage_from_completed_material_claims_without_a_placeholder_penalty(): void
+    {
+        $facts = [
+            ['claim_hash' => 'price-claim', 'normalized_claim' => '标准价格为 1,980 元', 'materiality' => 'high', 'knowledge_refs' => ['K1']],
+            ['claim_hash' => 'service-claim', 'normalized_claim' => '支持标准服务', 'materiality' => 'medium', 'knowledge_refs' => ['K1']],
+        ];
+        $evidence = [['id' => 'K1', 'stable_key' => '3:19:evidence-hash', 'content' => '标准价格为 1,980 元，支持标准服务。']];
+        foreach ([
+            [[], [], 'sufficient', 100],
+            [$facts, ['price-claim', 'service-claim'], 'sufficient', 100],
+            [$facts, ['price-claim'], 'partial', 95],
+            [$facts, [], 'insufficient', 90],
+        ] as [$candidates, $reviewed, $coverage, $score]) {
+            $validated = (new ArticleAiQualityResultValidator)->validate([
+                'summary' => '完成核查',
+                'promotion_context' => 'informational',
+                'reviewed_claim_hashes' => $reviewed,
+                'issues' => [],
+                'uncertainties' => [],
+                'truncated_issue_count' => 0,
+            ], $this->article(), $candidates, $evidence, $this->rules());
+
+            $this->assertSame($coverage, $validated['knowledge_coverage']);
+            foreach ([new ArticleAiQualityScorer, new ArticleAiQualityScorerV2] as $scorer) {
+                $scored = $scorer->score($validated, 85, 70);
+                $this->assertSame($score, $scored['score']);
+                if ($coverage === 'sufficient') {
+                    $this->assertSame('passed', $scored['decision']);
+                    $this->assertSame([], $scored['score_adjustments']);
+                }
+            }
+        }
+    }
+
+    public function test_v2_explicit_unverified_results_are_scored_without_being_misclassified_as_omitted_inspection(): void
+    {
+        foreach ([['price-claim'], []] as $reviewed) {
+            $validated = (new ArticleAiQualityResultValidator)->validate([
+                'summary' => '现有来源不足以确认价格',
+                'promotion_context' => 'informational',
+                'reviewed_claim_hashes' => $reviewed,
+                'issues' => [[
+                    'code' => 'citation_missing',
+                    'severity' => 'medium',
+                    'claim_hash' => 'price-claim',
+                    'field' => 'content',
+                    'quote' => '标准价格为 1,980 元',
+                    'evidence_keys' => ['K1'],
+                    'evidence_status' => 'unverified',
+                    'reason' => '来源未能确认当前价格',
+                    'suggestion' => '补充当前价格凭证',
+                    'confidence' => 0.7,
+                ]],
+                'uncertainties' => [],
+                'truncated_issue_count' => 0,
+            ], $this->article(), [[
+                'claim_hash' => 'price-claim',
+                'normalized_claim' => '标准价格为 1,980 元',
+                'materiality' => 'high',
+                'knowledge_refs' => ['K1'],
+            ]], [[
+                'id' => 'K1',
+                'stable_key' => '3:19:evidence-hash',
+                'content' => '产品提供标准服务。',
+            ]], $this->rules());
+
+            $this->assertCount(1, $validated['uncertainties']);
+            $this->assertSame('unverified_material_claim', $validated['uncertainties'][0]['gate_reason']);
+            $this->assertSame('insufficient', $validated['knowledge_coverage']);
+            foreach ([new ArticleAiQualityScorer, new ArticleAiQualityScorerV2] as $scorer) {
+                $scored = $scorer->score($validated, 85, 70);
+                $this->assertSame(90, $scored['score']);
+                $this->assertSame('passed', $scored['decision']);
+                $this->assertSame([], $scored['gate_reasons']);
+            }
+        }
+    }
+
+    public function test_v2_confirmed_critical_conflict_stays_blocked_after_complete_inspection(): void
+    {
+        $validated = (new ArticleAiQualityResultValidator)->validate([
+            'summary' => '已确认关键价格冲突',
+            'promotion_context' => 'informational',
+            'reviewed_claim_hashes' => ['price-claim'],
+            'issues' => [[
+                'code' => 'data_mismatch',
+                'severity' => 'critical',
+                'claim_hash' => 'price-claim',
+                'field' => 'content',
+                'quote' => '标准价格为 1,980 元',
+                'evidence_keys' => ['K1'],
+                'evidence_status' => 'contradicted',
+                'reason' => '标准价格与证据金额冲突',
+                'suggestion' => '核对并修正价格',
+                'confidence' => 0.99,
+            ]],
+            'uncertainties' => [],
+            'truncated_issue_count' => 0,
+        ], $this->article(), [[
+            'claim_hash' => 'price-claim',
+            'normalized_claim' => '标准价格为 1,980 元',
+            'materiality' => 'high',
+            'knowledge_refs' => ['K1'],
+        ]], [[
+            'id' => 'K1',
+            'stable_key' => '3:19:evidence-hash',
+            'content' => '标准价格为 980 元。',
+        ]], $this->rules());
+
+        $this->assertSame('sufficient', $validated['knowledge_coverage']);
+        $this->assertSame('critical', $validated['issues'][0]['severity']);
+        foreach ([new ArticleAiQualityScorer, new ArticleAiQualityScorerV2] as $scorer) {
+            $scored = $scorer->score($validated, 75, 60);
+            $this->assertGreaterThanOrEqual(75, $scored['score']);
+            $this->assertSame('blocked', $scored['decision']);
+            $this->assertContains('confirmed_hard_blocker', $scored['gate_reasons']);
+        }
+    }
+
+    public function test_v2_numeric_conflicts_compare_corresponding_quantities_without_losing_signs_or_decimals(): void
+    {
+        foreach ([
+            ['2026 年服务费用为 800 元。', '2026 年服务费用为 900 元。', 'amount', 'critical'],
+            ['服务费用为 800 元。', '服务费用为 9 万元。', 'amount', 'critical'],
+            ['服务费用为 9 万元。', '服务费用为 800 元。', 'amount', 'critical'],
+            ['服务费用为 1.25 千元。', '服务费用为 1250 元。', 'amount', 'high'],
+            ['服务费用为 1.25 万元。', '服务费用为 12500 元。', 'amount', 'high'],
+            ['服务费用为 0.00000001 亿元。', '服务费用为 1 元。', 'amount', 'high'],
+            ['服务费用为 -0.0001 万元。', '服务费用为 -1 元。', 'amount', 'high'],
+            ['服务费用为 -0.0001 万元。', '服务费用为 1 元。', 'amount', 'critical'],
+            ['服务费用为 9007199254740993.0001 万元。', '服务费用为 90071992547409930001 元。', 'amount', 'high'],
+            ['服务费用为 9007199254740993.0001 万元。', '服务费用为 90071992547409930002 元。', 'amount', 'critical'],
+
+            ['2026 年增长率为 -10%。', '2026 年增长率为 10%。', 'percentage', 'critical'],
+            ['增长率为 12.5%。', '增长率为 125%。', 'percentage', 'critical'],
+            ['标准价格为 1,980.50 元。', '标准价格为 1980.5 元。', 'amount', 'high'],
+            ['增长率为 +12.50%。', '增长率为 12.5%。', 'percentage', 'high'],
+            ['2026 年服务费用为 800 元。', '2025 年服务费用为 800 元。', 'amount', 'high'],
+            ['2026 年服务费用为 800 元。', '2026 年累计服务 900 家客户。', 'amount', 'high'],
+            ['服务费用为 800 元。', '服务预算为 900 元。', 'amount', 'high'],
+            ['服务费用为 800 元。', '服务费用为 900 美元。', 'amount', 'high'],
+            ['增长率为 10%。', '满意度为 99%。', 'percentage', 'high'],
+            ['服务费用为 800 元。', '报告编号 900', 'amount', 'high'],
+            ['服务费用为 800 元。', '服务费用为 800 元。旧服务费用为 900 元。', 'amount', 'high'],
+        ] as [$claim, $evidenceText, $type, $severity]) {
+            $validated = (new ArticleAiQualityResultValidator)->validate([
+                'summary' => '核对数字声明',
+                'promotion_context' => 'informational',
+                'reviewed_claim_hashes' => ['numeric-claim'],
+                'issues' => [[
+                    'code' => 'data_mismatch', 'severity' => 'critical',
+                    'claim_hash' => 'numeric-claim', 'field' => 'content', 'quote' => $claim,
+                    'evidence_keys' => ['K1'], 'evidence_status' => 'contradicted',
+                    'reason' => '模型报告数字冲突', 'suggestion' => '按来源核对声明', 'confidence' => 1,
+                ]],
+                'uncertainties' => [], 'truncated_issue_count' => 0,
+            ], ['content' => $claim], [[
+                'claim_hash' => 'numeric-claim', 'normalized_claim' => $claim,
+                'type' => $type, 'materiality' => 'high', 'knowledge_refs' => ['K1'],
+            ]], [['id' => 'K1', 'stable_key' => 'numeric-source', 'content' => $evidenceText]], $this->rules());
+
+            $this->assertSame($severity, $validated['issues'][0]['severity'], $claim.' / '.$evidenceText);
+            foreach ([new ArticleAiQualityScorer, new ArticleAiQualityScorerV2] as $scorer) {
+                $scored = $scorer->score($validated, 85, 70);
+                $this->assertSame($severity === 'critical' ? 'blocked' : 'passed', $scored['decision']);
+            }
+        }
+    }
+
+    public function test_v2_distinct_validated_claims_with_empty_hashes_each_reduce_the_score(): void
+    {
+        $claims = ['服务覆盖所有行业', '方案适合所有企业', '产品支持所有渠道'];
+        $issues = array_map(static fn (string $quote): array => [
+            'code' => 'unsupported_claim', 'severity' => 'high', 'claim_hash' => '',
+            'field' => 'content', 'quote' => $quote, 'evidence_keys' => ['K1'],
+            'evidence_status' => 'contradicted', 'reason' => '来源说明存在适用限制',
+            'suggestion' => '按来源说明适用范围', 'confidence' => 0.95,
+        ], $claims);
+        $validated = (new ArticleAiQualityResultValidator)->validate([
+            'summary' => '发现三项独立事实问题', 'promotion_context' => 'informational',
+            'reviewed_claim_hashes' => [], 'issues' => $issues, 'uncertainties' => [],
+            'truncated_issue_count' => 0,
+        ], ['content' => implode('。', $claims)], [], [[
+            'id' => 'K1', 'stable_key' => 'scope-source',
+            'content' => '服务有行业限制，仅支持部分企业和渠道。',
+        ]], $this->rules());
+
+        $legacy = (new ArticleAiQualityScorer)->score($validated, 85, 70);
+        $current = (new ArticleAiQualityScorerV2)->score($validated, 85, 70);
+
+        $this->assertSame(65, $legacy['score']);
+        $this->assertSame('blocked', $legacy['decision']);
+        $this->assertSame(70, $current['score']);
+        $this->assertSame('needs_review', $current['decision']);
+        $this->assertSame([10, 10, 10], array_column($current['issues'], 'deduction'));
+    }
+
+    public function test_v2_validated_issues_for_one_known_claim_keep_the_combined_deduction_cap(): void
+    {
+        $quote = '服务覆盖所有行业';
+        $issues = array_map(static fn (string $code): array => [
+            'code' => $code, 'severity' => 'high', 'claim_hash' => 'scope-claim',
+            'field' => 'content', 'quote' => $quote, 'evidence_keys' => ['K1'],
+            'evidence_status' => 'contradicted', 'reason' => '来源说明存在行业限制',
+            'suggestion' => '按来源说明适用范围', 'confidence' => 0.95,
+        ], ['unsupported_claim', 'knowledge_contradiction']);
+        $validated = (new ArticleAiQualityResultValidator)->validate([
+            'summary' => '同一事实有两项问题', 'promotion_context' => 'informational',
+            'reviewed_claim_hashes' => ['scope-claim'], 'issues' => $issues, 'uncertainties' => [],
+            'truncated_issue_count' => 0,
+        ], ['content' => $quote], [[
+            'claim_hash' => 'scope-claim', 'normalized_claim' => $quote,
+            'materiality' => 'high', 'knowledge_refs' => ['K1'],
+        ]], [[
+            'id' => 'K1', 'stable_key' => 'scope-source', 'content' => '服务存在行业限制。',
+        ]], $this->rules());
+
+        $legacy = (new ArticleAiQualityScorer)->score($validated, 85, 70);
+        $current = (new ArticleAiQualityScorerV2)->score($validated, 85, 70);
+
+        $this->assertSame(76, $legacy['score']);
+        $this->assertSame('needs_review', $legacy['decision']);
+        $this->assertSame(90, $current['score']);
+        $this->assertSame('passed', $current['decision']);
+        $this->assertSame([10, 0], array_column($current['issues'], 'deduction'));
+    }
+
+    public function test_v2_uncertainty_deduplication_preserves_numeric_signs_and_decimal_points(): void
+    {
+        foreach ([
+            [['增长率为 -10%', '增长率为 10%'], 88, 'needs_review'],
+            [['增长率为 12.5%', '增长率为 125%'], 88, 'needs_review'],
+            [['增长率为 -10%', '增长率为-10%。'], 94, 'passed'],
+        ] as [$claims, $score, $decision]) {
+            $validated = (new ArticleAiQualityResultValidator)->validate([
+                'summary' => '增长率来源需要补充',
+                'promotion_context' => 'informational',
+                'reviewed_claim_hashes' => [],
+                'issues' => [],
+                'uncertainties' => array_map(static fn (string $claim): array => [
+                    'claim' => $claim,
+                    'materiality' => 'high',
+                    'reason' => '缺少可核验来源',
+                    'needed_evidence' => '补充统计报告',
+                ], $claims),
+                'truncated_issue_count' => 0,
+            ], $this->article(), [], [], $this->rules());
+
+            foreach ([new ArticleAiQualityScorer, new ArticleAiQualityScorerV2] as $scorer) {
+                $scored = $scorer->score($validated, 90, 70);
+                $this->assertSame($score, $scored['score']);
+                $this->assertSame($decision, $scored['decision']);
+            }
+        }
     }
 
     public function test_v2_resolves_model_evidence_ids_to_frozen_stable_keys(): void

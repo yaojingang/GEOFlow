@@ -66,6 +66,8 @@
             @endif
         </section>
 
+        @include('site.partials.link-pool')
+
         <section class="as-feedback-panel" aria-labelledby="feedbackTitle">
             <h2 id="feedbackTitle">Helpful?</h2>
             <div class="as-feedback-actions" aria-label="feedback actions">
@@ -95,6 +97,7 @@
             </aside>
         @endif
     </div>
+@include('site.partials.related-topics')
 @endsection
 
 @if($stickyAd)

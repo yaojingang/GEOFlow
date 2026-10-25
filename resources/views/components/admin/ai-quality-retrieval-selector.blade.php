@@ -20,12 +20,16 @@
     $states = [];
     foreach ($modes as $mode) {
         $blockers = [];
+        $autoPassBlockers = [];
         if ($selectedIds->isEmpty()) {
             $blockers[] = __('ai_quality_retrieval.help');
         }
         foreach ($selectedIds as $knowledgeBaseId) {
             $row = $readinessByKnowledgeBase[$knowledgeBaseId] ?? null;
             $modeState = is_array($row) ? ($row['modes'][$mode] ?? null) : null;
+            foreach ((array) ($modeState['auto_pass_blockers'] ?? []) as $blocker) {
+                $autoPassBlockers[] = $blocker;
+            }
             if (is_array($modeState) && ($modeState['available'] ?? false)) {
                 continue;
             }
@@ -38,6 +42,7 @@
         $states[$mode] = [
             'available' => $blockers === [],
             'blockers' => array_values(array_unique($blockers)),
+            'auto_pass_blockers' => $autoPassBlockers,
         ];
     }
     $selectedValue = is_string($value) ? $value : '';
@@ -62,6 +67,7 @@
     data-empty-selection-label="{{ __('ai_quality_retrieval.select_knowledge_base') }}"
     data-unavailable-label="{{ __('ai_quality_retrieval.unavailable') }}"
     data-selection-unavailable-label="{{ __('ai_quality_retrieval.selection_unavailable') }}"
+    data-governance-label="{{ __('admin.task_create.ai_quality.manage_knowledge_review') }}"
 >
     <input type="hidden" name="{{ $name }}_touched" value="{{ $persisted ? '1' : '0' }}" data-retrieval-mode-touched>
     <legend class="px-1 text-sm font-semibold text-gray-900">{{ __('ai_quality_retrieval.title') }}</legend>
@@ -163,6 +169,16 @@
                         >{{ $available ? __('ai_quality_retrieval.available') : __('ai_quality_retrieval.unavailable') }}</span>
                     </span>
                 </label>
+                <div class="px-4 pb-3 text-xs leading-5 text-amber-800" data-retrieval-auto-pass @if(! $available || $states[$mode]['auto_pass_blockers'] === []) hidden @endif>
+                    @if ($available)
+                        @foreach ($states[$mode]['auto_pass_blockers'] as $blocker)
+                            <p>{{ $blocker['message'] }}</p>
+                            @if (! empty($blocker['manage_url']))
+                                <a class="underline" href="{{ $blocker['manage_url'] }}">{{ __('admin.task_create.ai_quality.manage_knowledge_review') }}</a>
+                            @endif
+                        @endforeach
+                    @endif
+                </div>
                 <div class="absolute right-3 top-3" data-retrieval-mode-help>
                     <button
                         type="button"

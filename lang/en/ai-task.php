@@ -1,6 +1,21 @@
 <?php
 
 return [
+    'topic_runtime' => [
+        'limit_reached' => 'Topic limit reached',
+        'completed_with_topic' => 'Task “:task” generated topic “:topic”',
+        'running_explanation' => 'The task is processing. Its generated topic will appear when complete.',
+        'failed_with_topic' => 'Topic “:topic” could not finish: :reason',
+        'failed_before_topic' => 'The task failed before generating a topic: :reason',
+    ],
+    'primary_site' => 'Primary site',
+    'all_categories' => 'All source categories',
+    'total_titles' => ':count titles in total',
+    'suggested_topic_name' => ':name topic task',
+    'view_topics' => 'View topic results',
+    'content_types' => ['article' => 'Article task', 'topic' => 'Topic task'],
+    'topic_generation_modes' => ['auto_publish' => 'Publish automatically', 'draft_only' => 'Generate drafts only', 'review_then_publish' => 'Publish after review'],
+    'topic_templates' => ['default' => 'Default layout', 'guide' => 'Guide layout', 'roundup' => 'Roundup layout'],
     'remaining' => ':count settings remaining: :fields',
     'suggested_name' => ':name article task',
     'use_name' => 'Use “:name”',
@@ -10,6 +25,9 @@ return [
     'no_ready_titles' => 'No library has :count available titles. Add titles or reduce the article count.',
     'invalid_value' => 'Please correct :field. The current value does not meet task requirements.',
     'limits' => [
+        'topic_limit' => 'Choose a topic count from 1 to 99999.',
+        'category_ids' => 'Choose up to 100 distinct source categories.',
+        'rules' => 'Source rules support up to 5000 characters.',
         'article_limit' => 'Choose an article count from 1 to 99999.',
         'image_count' => 'Choose 0 to 5 images per article.',
         'publish_interval_minutes' => 'Choose an interval from 1 to 525600 minutes.',
@@ -21,7 +39,7 @@ return [
     'choice_saved' => 'The selected option is saved. Continue with the remaining settings.',
     'created' => 'The task has been created and is paused. Review its settings before starting it.',
     'cancelled' => 'Task creation cancelled.',
-    'scope' => 'This assistant configures new-article tasks for this site, with human review or automatic approval and an initially paused state. Use task management to start tasks, distribute to other sites, or publish existing articles. Your settings are retained; continue editing or review the summary and confirm creation.',
+    'scope' => 'This assistant configures article or topic tasks. Articles support human review or automatic approval. Topics support automatic publishing, drafts only, or publishing after review. Tasks are initially paused. Use task management to start tasks, distribute to other sites, or publish existing articles. Your settings are retained; continue editing or review the summary and confirm creation.',
     'stale' => 'This summary has changed. Review the current settings before confirming again.',
     'changed' => 'Related configuration has changed. Please review the updated summary.',
     'invalid_option' => ':field is unavailable. Please choose again.',
@@ -41,12 +59,15 @@ return [
     'interrupted' => 'This operation was interrupted. Refresh to check the latest draft before continuing.',
     'failed' => 'This turn could not finish. Your saved settings are retained. Retry, or refresh to check the result if you were confirming creation.',
     'fields' => [
+        'content_type' => 'Task type', 'site_key' => 'Target site', 'topic_limit' => 'Topics',
+        'after' => 'Generation mode', 'template_key' => 'Topic layout', 'category_ids' => 'Source categories', 'rules' => 'Source rules',
         'name' => 'Task name', 'article_limit' => 'Articles', 'title_library_id' => 'Title library',
         'prompt_id' => 'Writing template', 'ai_model_id' => 'Writing model', 'fixed_category_id' => 'Category',
         'knowledge_base_ids' => 'Knowledge bases', 'author_id' => 'Author', 'image_library_id' => 'Image library',
         'image_count' => 'Images per article', 'publish_interval_minutes' => 'Publishing interval', 'need_review' => 'Review mode',
     ],
     'questions' => [
+        'topic_limit' => 'How many topics should this task generate?',
         'name' => 'Type a name for this task below, such as: Website articles.',
         'article_limit' => 'How many articles should this task generate?',
         'title_library_id' => 'Which title library should it use?',

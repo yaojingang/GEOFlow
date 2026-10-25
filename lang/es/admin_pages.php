@@ -1,6 +1,19 @@
 <?php
 
 return [
+    'topics' => 'Gestión de temas',
+    'topic_create' => 'Crear tema',
+    'topic_articles' => 'Seleccionar artículos del tema',
+    'topic_settings' => 'Configuración de temas',
+    'topic_batch_create' => 'Crear lote de temas',
+    'topic_batch_detail' => 'Detalles del lote de temas',
+    'topic_run_detail' => 'Generación del tema',
+    'topic_path' => 'URL del tema',
+    'topic_edit' => 'Editar tema',
+    'topic_preview' => 'Vista previa del tema',
+    'topic_history' => 'Historial de versiones del tema',
+    'topic_revision_preview' => 'Vista previa de la versión del tema',
+
     'theme_package_upload' => 'Importar tema',
     'theme_package_inspection' => 'Verificar paquete de tema',
     'theme_package_preview' => 'Vista previa del tema',
@@ -13,6 +26,7 @@ return [
     'ai_visibility' => 'Visibilidad en IA',
     'lead_analytics' => 'Análisis de leads',
     'distribution_analytics' => 'Análisis de distribución',
+    'link_pool' => 'Campañas de enlaces internos',
     'tasks' => 'Gestión de tareas',
     'task_workers' => 'Monitor de workers',
     'task_jobs' => 'Historial de tareas',

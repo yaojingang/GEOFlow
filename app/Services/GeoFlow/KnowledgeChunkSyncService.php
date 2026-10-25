@@ -1618,6 +1618,7 @@ class KnowledgeChunkSyncService
         Admin|AiExecutionContext|null $identity,
         ?string $requestId = null,
         int $queryOrdinal = 1,
+        ?\Closure $assertActive = null,
     ): KnowledgeQueryEmbeddingResult {
         $query = trim($query);
         if ($query === '') {
@@ -1668,6 +1669,7 @@ class KnowledgeChunkSyncService
         }
 
         foreach ($compatibleCandidates as $candidateIndex => $model) {
+            $assertActive?->__invoke();
             $currentModel = $this->assertQueryModelCurrent($identity, $admin, $accessVersion, $adminRole, $model);
             $metadata = $this->modelToEmbeddingMetadata($currentModel);
             if ($metadata === null) {

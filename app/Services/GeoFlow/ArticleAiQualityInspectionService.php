@@ -66,6 +66,7 @@ class ArticleAiQualityInspectionService
         private readonly AiModelFailoverDecider $aiModelFailoverDecider,
         private readonly ArticleAiQualityExecutionBoundaryHook $executionBoundaryHook,
         private readonly AiModelUsageAttemptFactory $usageAttempts,
+        private readonly ArticlePublicationEligibilityService $publicationEligibility,
     ) {}
 
     public function requestManualInspection(
@@ -81,10 +82,10 @@ class ArticleAiQualityInspectionService
         ?array $aiExecutionSnapshot = null,
     ): ArticleAiQualityCheck {
         return DB::transaction(function () use ($article, $trigger, $dispatch, $auditAdminId, $apiTokenId, $requestedWorkflowState, $allowSampling, $rejectWhenOptimizationActive, $expectedPolicyVersion, $aiExecutionSnapshot): ArticleAiQualityCheck {
-            $article = Article::query()
-                ->whereKey((int) $article->id)
-                ->lockForUpdate()
-                ->firstOrFail();
+            $article = $this->lockWorkflowArticle((int) $article->id);
+            if (! $article) {
+                throw new RuntimeException('article_unavailable');
+            }
             $currentPolicyVersion = max(1, (int) $article->ai_quality_policy_version);
             if ($expectedPolicyVersion !== null && $currentPolicyVersion !== $expectedPolicyVersion) {
                 throw new ApiException(
@@ -96,13 +97,6 @@ class ArticleAiQualityInspectionService
                         'current_config_version' => $currentPolicyVersion,
                     ],
                 );
-            }
-            if ($article->task_id) {
-                $task = Task::withTrashed()->whereKey((int) $article->task_id)->lockForUpdate()->first();
-                if ($task instanceof Task) {
-                    $task->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
-                    $article->setRelation('task', $task);
-                }
             }
             if ($rejectWhenOptimizationActive && ArticleAiOptimizationRun::query()
                 ->where('article_id', (int) $article->id)
@@ -119,16 +113,16 @@ class ArticleAiQualityInspectionService
                 $policy['timeout_sampling_enabled'] = false;
             }
             $this->policyResolver->assertExecutable($policy);
-            $article->forceFill([
-                'ai_quality_required_at_creation' => true,
-                'ai_quality_policy_snapshot' => $this->policyResolver->snapshot($policy),
-            ]);
-
-            if ((string) $article->status === 'draft' && (string) $article->review_status !== 'rejected') {
+            if (! $article->task) {
                 $article->forceFill([
-                    'status' => 'draft',
-                    'review_status' => 'pending',
-                    'published_at' => null,
+                    'ai_quality_required_at_creation' => true,
+                    'ai_quality_policy_snapshot' => $this->policyResolver->snapshot($policy),
+                ]);
+            }
+            if (($requestedWorkflowState['status'] ?? null) === 'published') {
+                $article->forceFill([
+                    'publication_intent' => 'immediate',
+                    'workflow_version' => (int) $article->workflow_version + 1,
                 ]);
             }
             if ($article->isDirty()) {
@@ -163,6 +157,7 @@ class ArticleAiQualityInspectionService
                 'execution_meta' => array_replace($executionMeta, [
                     'manual_requests' => array_slice($manualRequests, -50),
                     'requested_workflow_state' => $requestedWorkflowState,
+                    'workflow_fence' => $this->publicationEligibility->fence($article, 'manual'),
                 ]),
             ])->save();
             $this->auditService->record('article_quality_check_requested', [
@@ -207,21 +202,9 @@ class ArticleAiQualityInspectionService
         ?array $aiExecutionSnapshot = null,
     ): ?ArticleAiQualityCheck {
         return DB::transaction(function () use ($article, $taskRun, $trigger, $dispatch, $force, $resolvedPolicy, $aiExecutionSnapshot): ?ArticleAiQualityCheck {
-            $article = Article::query()
-                ->whereKey((int) $article->id)
-                ->lockForUpdate()
-                ->first();
+            $article = $this->lockWorkflowArticle((int) $article->id);
             if (! $article) {
                 return null;
-            }
-            if ($resolvedPolicy === null && $article->task_id) {
-                $task = Task::withTrashed()
-                    ->whereKey((int) $article->task_id)
-                    ->lockForUpdate()
-                    ->first();
-                if ($task) {
-                    $article->setRelation('task', $task);
-                }
             }
             $policy = $resolvedPolicy ?? $this->policyResolver->resolve($article);
             if (! ($policy['required'] ?? false)) {
@@ -348,7 +331,7 @@ class ArticleAiQualityInspectionService
                         'finished_at' => now(),
                         'updated_at' => now(),
                     ]);
-                $this->holdUnpublishedArticleForReview((int) $article->id);
+
             }
 
             try {
@@ -419,6 +402,7 @@ class ArticleAiQualityInspectionService
                         'scoring_version' => $versionSelection['scoring'],
                         'execution_meta' => [
                             'trigger' => $trigger,
+                            'workflow_fence' => $this->publicationEligibility->fence($article),
                             'policy_source' => $policy['source'] ?? 'unknown',
                             'knowledge_base_ids' => array_values(array_map('intval', $policy['knowledge_base_ids'] ?? [])),
                             'model_selection_mode' => (string) ($policy['model_selection_mode'] ?? 'fixed'),
@@ -511,7 +495,7 @@ class ArticleAiQualityInspectionService
         bool $dispatch = true,
     ): ArticleAiQualityCheck {
         $check = DB::transaction(function () use ($article, $candidateSnapshot, $baseline, $runId, $trigger): ArticleAiQualityCheck {
-            $article = Article::query()->whereKey((int) $article->id)->lockForUpdate()->firstOrFail();
+            $article = $this->lockWorkflowArticle((int) $article->id) ?? throw new RuntimeException('article_unavailable');
             if ($article->task_id) {
                 $task = Task::withTrashed()->whereKey((int) $article->task_id)->lockForUpdate()->first();
                 if ($task instanceof Task) {
@@ -891,7 +875,7 @@ class ArticleAiQualityInspectionService
                         $check->article?->generation_evidence_snapshot ?? [],
                         JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
                     )),
-                    'retrieval_version' => 4,
+                    'retrieval_version' => 5,
                     'retrieval_mode' => (string) ($check->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault()),
                     'retrieval_basis_hash' => (string) $check->retrieval_basis_hash,
                     'limits' => [
@@ -1225,7 +1209,7 @@ class ArticleAiQualityInspectionService
 
                 throw $lastException ?? new RuntimeException('ai_quality_model_unavailable');
             }
-            $validated['knowledge_coverage'] = $evidenceResult['knowledge_coverage'];
+            $validated['knowledge_coverage'] = $this->combinedCoverage([$validated], $evidenceResult['knowledge_coverage']);
             $runMeta = [
                 'attempts' => $attempts,
                 'usage' => $runUsage,
@@ -1279,6 +1263,7 @@ class ArticleAiQualityInspectionService
         $atomicFacts = $this->atomicFactsFromRetrievalResult($check, $evidenceResult, $articleSnapshot, $policy);
         if ((bool) ($atomicFacts['formal'] ?? false)) {
             $aggregate['issues'] = array_values(array_merge($aggregate['issues'], (array) data_get($atomicFacts, 'inspection.issues', [])));
+            $aggregate['uncertainties'] = array_values(array_merge($aggregate['uncertainties'], (array) data_get($atomicFacts, 'inspection.uncertainties', [])));
         }
         $executionMeta['atomic_facts'] = $atomicFacts;
         $usage = $this->withRetrievalUsageBreakdown($usage, $atomicFacts);
@@ -1368,6 +1353,7 @@ class ArticleAiQualityInspectionService
                             'completed_segments' => count($validatedResults),
                             'model_attempts' => $modelAttempts,
                             'segment_runs' => $segmentRuns,
+                            'score_policy' => ['version' => ArticleAiQualityScorePolicy::VERSION, 'adjustments' => $score['score_adjustments'] ?? []],
                             'current_phase' => 'finished',
                             'timings_ms' => $timings,
                             'raw_model_output_truncated' => $rawResultsTruncated,
@@ -1851,7 +1837,7 @@ class ArticleAiQualityInspectionService
 
         $raw = is_array($review['result'] ?? null) ? $review['result'] : [];
         $validated = $this->resultValidator->validate($raw, $articleSnapshot, $promptFacts, $promptEvidence, $rules);
-        $validated['knowledge_coverage'] = $knowledgeCoverage;
+        $validated['knowledge_coverage'] = $this->combinedCoverage([$validated], $knowledgeCoverage);
         $completedSegmentResults = $check->segments
             ->filter(static fn (ArticleAiQualitySegment $segment): bool => (string) $segment->status === 'completed'
                 && is_array($segment->validated_result))
@@ -1863,6 +1849,7 @@ class ArticleAiQualityInspectionService
         $atomicFacts = $this->atomicFactsFromRetrievalResult($check, $evidenceResult ?? [], $articleSnapshot, $policy);
         if ((bool) ($atomicFacts['formal'] ?? false)) {
             $aggregate['issues'] = array_values(array_merge($aggregate['issues'], (array) data_get($atomicFacts, 'inspection.issues', [])));
+            $aggregate['uncertainties'] = array_values(array_merge($aggregate['uncertainties'], (array) data_get($atomicFacts, 'inspection.uncertainties', [])));
         }
         $executionMeta['atomic_facts'] = $atomicFacts;
 
@@ -1891,21 +1878,10 @@ class ArticleAiQualityInspectionService
         $coverageSafe = ! (bool) ($coverage['mandatory_overflow'] ?? true)
             && (int) ($coverage['mandatory_claims_covered'] ?? -1) === (int) ($coverage['mandatory_claims_total'] ?? 0)
             && array_values($coverage['regions_covered'] ?? []) === ['front', 'middle', 'back'];
-        $hasHighUncertainty = collect($aggregate['uncertainties'] ?? [])->contains(
-            static fn (mixed $uncertainty): bool => is_array($uncertainty)
-                && (string) ($uncertainty['materiality'] ?? '') === 'high',
-        );
-        $hasHighIssue = collect($score['issues'] ?? [])->contains(
-            static fn (mixed $issue): bool => is_array($issue)
-                && in_array((string) ($issue['severity'] ?? ''), ['critical', 'high'], true),
-        );
         $rawOutputTruncated = (int) ($aggregate['truncated_issue_count'] ?? 0) > 0;
         foreach ([
             'sample_coverage_incomplete' => ! $coverageSafe,
-            'sample_knowledge_insufficient' => $knowledgeCoverage !== 'sufficient',
-            'sample_high_uncertainty' => $hasHighUncertainty,
             'sample_output_truncated' => $rawOutputTruncated,
-            'sample_high_risk_issue' => $hasHighIssue && ($score['decision'] ?? null) !== 'blocked',
         ] as $reason => $applies) {
             if ($applies) {
                 $gateReasons[] = $reason;
@@ -1942,7 +1918,6 @@ class ArticleAiQualityInspectionService
             $completedAt,
             $score,
             $aggregate,
-            $knowledgeCoverage,
             $coverage,
             $storedRaw,
             $usage,
@@ -1983,7 +1958,7 @@ class ArticleAiQualityInspectionService
                 'score' => $score['score'],
                 'summary' => $aggregate['summary'],
                 'promotion_context' => $aggregate['promotion_context'],
-                'knowledge_coverage' => $knowledgeCoverage,
+                'knowledge_coverage' => $aggregate['knowledge_coverage'],
                 'dimension_scores' => $score['dimension_scores'],
                 'issues' => $score['issues'],
                 'uncertainties' => $score['uncertainties'],
@@ -1994,6 +1969,7 @@ class ArticleAiQualityInspectionService
                 'raw_model_output' => $storedRaw,
                 'usage_meta' => $usage,
                 'execution_meta' => array_replace($executionMeta, [
+                    'score_policy' => ['version' => ArticleAiQualityScorePolicy::VERSION, 'adjustments' => $score['score_adjustments'] ?? []],
                     'atomic_facts' => $atomicFacts,
                     'current_phase' => 'finished',
                     'output_modes' => [(string) ($review['mode'] ?? '')],
@@ -2084,6 +2060,19 @@ class ArticleAiQualityInspectionService
             [$executionMeta, $usageMeta] = $this->terminalTelemetry($check);
             $executionMeta['retryable_failure'] = $retryable;
             $executionMeta['failure'] = $failureContext;
+            $executionMeta['failure']['check_id'] = (int) $check->id;
+            $executionMeta['failure']['stage'] = (string) ($executionMeta['current_phase'] ?? 'unknown');
+            $executionMeta['failure']['model_id'] = (int) $check->ai_model_id;
+            $executionMeta['failure']['attempt'] = (int) data_get($executionMeta, 'technical_retry.attempt', 0) + 1;
+            $attempt = (int) data_get($executionMeta, 'technical_retry.attempt', 0);
+            if ($retryable && $attempt < 2 && $check->inspection_scope === 'full'
+                && ArticleAiQualityReconciliationService::isTransientFailure($errorCode)) {
+                $executionMeta['technical_retry'] = array_replace($executionMeta['technical_retry'] ?? [], [
+                    'attempt' => $attempt,
+                    'root_check_id' => (int) data_get($executionMeta, 'technical_retry.root_check_id', $check->id),
+                    'next_at' => now()->addSeconds(max($attempt === 0 ? 60 : 300, (int) ($failureContext['retry_after_seconds'] ?? 0)))->toIso8601String(),
+                ]);
+            }
             $executionMeta['current_phase'] = 'finished';
             $check->forceFill([
                 'status' => 'failed',
@@ -2102,7 +2091,6 @@ class ArticleAiQualityInspectionService
                 'usage_meta' => $usageMeta,
                 'finished_at' => now(),
             ])->save();
-            $this->holdUnpublishedArticleForReview((int) $check->article_id);
 
             return true;
         });
@@ -2142,7 +2130,7 @@ class ArticleAiQualityInspectionService
                 'usage_meta' => $usageMeta,
                 'finished_at' => null,
             ])->save();
-            $this->holdUnpublishedArticleForReview((int) $check->article_id);
+
         });
     }
 
@@ -2430,7 +2418,6 @@ class ArticleAiQualityInspectionService
                 'finished_at' => now(),
                 'updated_at' => now(),
             ]);
-        $this->holdUnpublishedArticleForReview((int) $check->article_id);
 
         return $this->latestCheck((int) $check->id);
     }
@@ -2582,16 +2569,6 @@ class ArticleAiQualityInspectionService
         $reasons = array_values(is_array($score['gate_reasons'] ?? null) ? $score['gate_reasons'] : []);
         $mode = (string) ($check->requested_retrieval_mode ?: AiQualityRetrievalMode::legacyDefault());
         if ($mode === AiQualityRetrievalMode::KNOWLEDGE_BROAD) {
-            $hasUnreviewedEvidence = collect($retrievalResult['evidence'] ?? [])->contains(
-                static fn (array $item): bool => ! in_array(
-                    strtolower((string) data_get($item, 'metadata.review_status', 'unreviewed')),
-                    ['reviewed', 'approved', 'verified'],
-                    true,
-                ),
-            );
-            if ($hasUnreviewedEvidence) {
-                $reasons[] = 'knowledge_governance_review_required';
-            }
             if ((string) $check->inspection_scope === 'fallback_sampled') {
                 $reasons[] = 'knowledge_broad_sampled_review_required';
             }
@@ -2602,9 +2579,6 @@ class ArticleAiQualityInspectionService
         if ($mode === AiQualityRetrievalMode::ATOMIC_FIRST) {
             if ((int) data_get($atomicFacts, 'inspection.uninspected_claim_count', 0) !== 0) {
                 $reasons[] = 'ai_quality_retrieval_claim_coverage_incomplete';
-            }
-            if ((int) data_get($atomicFacts, 'inspection.conflict_count', 0) > 0) {
-                $reasons[] = 'ai_quality_retrieval_cross_kb_conflict';
             }
         }
         $reasons = array_values(array_unique($reasons));
@@ -2661,7 +2635,7 @@ class ArticleAiQualityInspectionService
                 $results,
             ))))),
             'promotion_context' => $promotion,
-            'knowledge_coverage' => $coverage,
+            'knowledge_coverage' => $this->combinedCoverage($results, $coverage),
             'issues' => array_values(array_merge(...array_map(static fn (array $result): array => $result['issues'] ?? [], $results))),
             'uncertainties' => array_values(array_merge(...array_map(static fn (array $result): array => $result['uncertainties'] ?? [], $results))),
             'truncated_issue_count' => array_sum(array_map(
@@ -2669,6 +2643,18 @@ class ArticleAiQualityInspectionService
                 $results,
             )),
         ];
+    }
+
+    /** @param list<array<string, mixed>> $results */
+    private function combinedCoverage(array $results, string $retrievalCoverage): string
+    {
+        $ranks = ['sufficient' => 0, 'partial' => 1, 'insufficient' => 2];
+        $rank = $ranks[$retrievalCoverage] ?? 2;
+        foreach ($results as $result) {
+            $rank = max($rank, $ranks[(string) ($result['knowledge_coverage'] ?? '')] ?? 2);
+        }
+
+        return array_search($rank, $ranks, true);
     }
 
     /** @param array<string,mixed> $articleSnapshot @param array<string,mixed> $policy @return array<string,mixed> */
@@ -2782,6 +2768,7 @@ class ArticleAiQualityInspectionService
             'segment_count' => 0,
             'completed_segment_count' => 0,
             'execution_meta' => array_replace($shadowMeta, [
+                'score_policy' => ['version' => ArticleAiQualityScorePolicy::VERSION, 'adjustments' => $score['score_adjustments'] ?? []],
                 'evaluation_mode' => 'shadow',
                 'baseline_check_id' => (int) $baseline->id,
             ]),
@@ -2835,7 +2822,7 @@ class ArticleAiQualityInspectionService
     }
 
     /**
-     * Keep each model call scoped to evidence referenced by the facts it receives.
+     * Prioritize referenced evidence and retain the bounded, filtered context for model assessment.
      *
      * @param  list<array<string, mixed>>  $evidence
      * @param  list<array<string, mixed>>  $facts
@@ -2853,14 +2840,31 @@ class ArticleAiQualityInspectionService
             }
         }
 
-        if ($references === []) {
-            return [];
-        }
-
-        return array_values(array_filter(
-            $evidence,
+        $referenced = array_values(array_filter($evidence,
             static fn (array $item): bool => isset($references[(string) ($item['id'] ?? '')]),
         ));
+        $context = array_values(array_filter($evidence,
+            static fn (array $item): bool => ! isset($references[(string) ($item['id'] ?? '')]),
+        ));
+
+        // Preserve exact referenced sources; supplementary context shares the retrieval budget.
+        $remainingItems = max(0, (int) config('geoflow.ai_quality_max_evidence', 12) - count($referenced));
+        $remainingCharacters = max(0, (int) config('geoflow.ai_quality_max_evidence_characters', 6000)
+            - array_sum(array_map(static fn (array $item): int => mb_strlen((string) ($item['content'] ?? ''), 'UTF-8'), $referenced)));
+        foreach ($context as $item) {
+            $characters = mb_strlen((string) ($item['content'] ?? ''), 'UTF-8');
+            if ($remainingItems <= 0 || $remainingCharacters <= 0) {
+                break;
+            }
+            if ($characters > $remainingCharacters) {
+                continue;
+            }
+            $referenced[] = $item;
+            $remainingItems--;
+            $remainingCharacters -= $characters;
+        }
+
+        return $referenced;
     }
 
     /**
@@ -2986,17 +2990,12 @@ class ArticleAiQualityInspectionService
             }
 
             if ($check->decision !== 'passed') {
-                $this->holdUnpublishedArticleForReview((int) $check->article_id);
+
                 $this->updateWorkflowApply($checkId, 'succeeded');
 
                 return;
             }
 
-            $manualReviewRequired = (bool) data_get(
-                $check->execution_meta,
-                'policy_snapshot.manual_review_required',
-                true,
-            );
             $sampledAutoReleaseAuthorized = (string) $check->inspection_scope !== 'fallback_sampled'
                 || (
                     (bool) data_get($check->execution_meta, 'policy_snapshot.timeout_sampling_enabled', false)
@@ -3009,10 +3008,7 @@ class ArticleAiQualityInspectionService
                     && $this->versionPolicy->sampledAutoReleaseEnabled()
                     && (bool) data_get($check->coverage_meta, 'safe_for_auto_release', false)
                 );
-            if (! ($check->task instanceof Task)
-                || $manualReviewRequired
-                || (bool) $check->task->need_review
-                || ! $sampledAutoReleaseAuthorized
+            if (! $sampledAutoReleaseAuthorized
                 || $check->article->review_status === 'rejected') {
                 $this->updateWorkflowApply($checkId, 'succeeded');
 
@@ -3033,16 +3029,15 @@ class ArticleAiQualityInspectionService
             return false;
         }
 
-        return DB::transaction(function () use ($checkId, $checkInfo): bool {
+        $delivery = null;
+        $applied = DB::transaction(function () use ($checkId, $checkInfo, &$delivery): bool {
             $rollout = ArticleAiQualityRollout::query()->whereKey(1)->lockForUpdate()->first();
             $committedEpoch = max(1, (int) ($rollout?->epoch ?? 1));
-            $article = Article::query()->whereKey((int) $checkInfo->article_id)->lockForUpdate()->first();
+            $article = $this->lockWorkflowArticle((int) $checkInfo->article_id);
             if (! $article) {
                 return false;
             }
-            $task = $checkInfo->task_id
-                ? Task::withTrashed()->whereKey((int) $checkInfo->task_id)->lockForUpdate()->first()
-                : null;
+            $task = $article->task;
             if ($task instanceof Task && ! $task->trashed()) {
                 $task->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
                 $article->setRelation('task', $task);
@@ -3058,13 +3053,38 @@ class ArticleAiQualityInspectionService
                 $check->setRelation('task', $task);
             }
 
+            $eligibility = app(ArticlePublicationEligibilityService::class);
+            $fence = data_get($check->execution_meta, 'workflow_fence');
+            $retryDelivery = (bool) data_get($check->execution_meta, 'publication_committed')
+                && $article->publication_intent === 'none' && in_array($article->status, ['published', 'private'], true)
+                && is_array($fence)
+                && (int) ($fence['workflow_version'] ?? 0) === (int) $article->workflow_version
+                && (int) ($fence['task_id'] ?? 0) === (int) $article->task_id
+                && (int) ($fence['automation_version'] ?? 0) === (int) ($task?->automation_version ?? 0)
+                && (($fence['origin'] ?? '') === 'manual' || ! $task || ($task->status === 'active' && $task->schedule_enabled));
+            if (! $retryDelivery && ! $eligibility->fenceAllows($article, $fence)) {
+                $this->setWorkflowApplyStatus($check, 'superseded', 'workflow_intent_changed');
+
+                return true;
+            }
+
             $requestedWorkflowState = is_array($check->execution_meta['requested_workflow_state'] ?? null)
                 ? $check->execution_meta['requested_workflow_state']
                 : null;
             $targetState = $requestedWorkflowState !== null
                 && in_array((string) ($requestedWorkflowState['status'] ?? ''), ['published', 'private'], true)
                 ? $requestedWorkflowState
-                : ['status' => 'draft', 'review_status' => 'approved', 'published_at' => null];
+                : ['status' => $article->status, 'review_status' => $eligibility->reviewStatus($article), 'published_at' => $article->published_at];
+            if ($article->publication_intent === 'immediate' && ($fence['origin'] ?? '') === 'manual'
+                && ($requestedWorkflowState['status'] ?? null) !== 'private') {
+                $targetState = ['status' => 'published', 'published_at' => null];
+            }
+            $targetState['review_status'] = $eligibility->reviewStatus($article);
+            if ($targetState['status'] === 'published' && $article->publication_intent !== 'immediate' && ! $retryDelivery) {
+                $this->setWorkflowApplyStatus($check, 'superseded', 'workflow_intent_changed');
+
+                return true;
+            }
             $distributionRequested = (string) $targetState['status'] === 'published';
             $targetState = ArticleWorkflow::normalizeForPublishScope(
                 $targetState,
@@ -3072,11 +3092,6 @@ class ArticleAiQualityInspectionService
             );
 
             $this->rolloutPolicy->forget();
-            $manualReviewRequired = (bool) data_get(
-                $check->execution_meta,
-                'policy_snapshot.manual_review_required',
-                true,
-            );
             $sampledAutoReleaseAuthorized = (string) $check->inspection_scope !== 'fallback_sampled'
                 || (
                     (bool) data_get($check->execution_meta, 'policy_snapshot.timeout_sampling_enabled', false)
@@ -3084,10 +3099,7 @@ class ArticleAiQualityInspectionService
                     && $this->versionPolicy->sampledAutoReleaseEnabled()
                     && (bool) data_get($check->coverage_meta, 'safe_for_auto_release', false)
                 );
-            if (! $task instanceof Task
-                || $task->trashed()
-                || $manualReviewRequired
-                || (bool) $task->need_review
+            if (($distributionRequested && $eligibility->manualReviewRequired($article) && ! $eligibility->hasCurrentApproval($article))
                 || ! $sampledAutoReleaseAuthorized
                 || (string) $article->review_status === 'rejected') {
                 $this->setWorkflowApplyStatus($check, 'succeeded');
@@ -3097,7 +3109,9 @@ class ArticleAiQualityInspectionService
 
             $basisIsCurrent = $this->rolloutEpochMatches($check, $committedEpoch);
             try {
-                $policy = $this->policyResolver->resolve($article);
+                $policy = data_get($check->execution_meta, 'manual_requests') && ! $article->task?->ai_quality_enabled
+                    ? $this->policyResolver->resolveForManualInspection($article)
+                    : $this->policyResolver->resolve($article);
                 $this->policyResolver->assertExecutable($policy);
                 $currentFingerprint = $this->currentFingerprint(
                     $article,
@@ -3134,8 +3148,8 @@ class ArticleAiQualityInspectionService
 
             $targetAlreadyApplied = (string) $article->status === (string) $targetState['status']
                 && (string) $article->review_status === (string) $targetState['review_status'];
-            if (! $targetAlreadyApplied) {
-                if ((string) $article->status !== 'draft') {
+            if (! $targetAlreadyApplied || ($distributionRequested && ! $retryDelivery)) {
+                if (! in_array((string) $article->status, ['draft', 'private'], true)) {
                     $this->setWorkflowApplyStatus($check, 'succeeded');
 
                     return true;
@@ -3146,16 +3160,22 @@ class ArticleAiQualityInspectionService
                     'ai_quality_passed',
                     null,
                     null,
-                    false,
+                    true,
                 );
             }
             if ($distributionRequested) {
-                app(DistributionOrchestrator::class)->enqueueForArticle($article, throwOnFailure: true);
+                $article->update(['publication_intent' => 'none']);
+                $meta = (array) $check->execution_meta;
+                $meta['publication_committed'] = true;
+                $check->update(['execution_meta' => $meta]);
+                app(ArticlePublicationDeliveryService::class)->request($article, $fence);
             }
             $this->setWorkflowApplyStatus($check, 'succeeded');
 
             return true;
         }, 3);
+
+        return $applied;
     }
 
     private function setWorkflowApplyStatus(
@@ -3188,7 +3208,9 @@ class ArticleAiQualityInspectionService
         }
 
         $article = $check->article;
-        $policy = $this->policyResolver->resolve($article);
+        $policy = data_get($check->execution_meta, 'manual_requests') && ! $article->task?->ai_quality_enabled
+            ? $this->policyResolver->resolveForManualInspection($article)
+            : $this->policyResolver->resolve($article);
         $basisChanged = ! (bool) ($policy['required'] ?? false);
         try {
             if (! $basisChanged) {
@@ -3237,7 +3259,6 @@ class ArticleAiQualityInspectionService
             return true;
         }
 
-        $this->holdUnpublishedArticleForReview((int) $article->id);
         if ((bool) ($policy['required'] ?? false)) {
             try {
                 $this->createOrReuse(
@@ -3405,18 +3426,19 @@ class ArticleAiQualityInspectionService
         ];
     }
 
-    private function holdUnpublishedArticleForReview(int $articleId): void
+    private function lockWorkflowArticle(int $articleId): ?Article
     {
-        Article::query()
-            ->whereKey($articleId)
-            ->where('status', 'draft')
-            ->where('review_status', '!=', 'rejected')
-            ->update([
-                'status' => 'draft',
-                'review_status' => 'pending',
-                'published_at' => null,
-                'updated_at' => now(),
-            ]);
+        $taskId = (int) Article::query()->whereKey($articleId)->value('task_id');
+        $task = $taskId > 0 ? Task::withTrashed()->whereKey($taskId)->lockForUpdate()->first() : null;
+        $article = Article::query()->whereKey($articleId)->lockForUpdate()->first();
+        if ($article && (int) $article->task_id !== $taskId) {
+            throw new RuntimeException('workflow_version_conflict');
+        }
+        if ($article) {
+            $article->setRelation('task', $task && ! $task->trashed() ? $task : null);
+        }
+
+        return $article;
     }
 
     private function dispatchCheck(int $checkId, int $delaySeconds = 0): void
@@ -3957,6 +3979,11 @@ class ArticleAiQualityInspectionService
         return [
             'code' => $errorCode,
             'retryable' => $retryable,
+            'exception_class' => $exception::class,
+            'source' => str_starts_with($exception->getFile(), base_path().DIRECTORY_SEPARATOR)
+                ? substr($exception->getFile(), strlen(base_path()) + 1).':'.$exception->getLine()
+                : null,
+            'retry_after_seconds' => $exception instanceof ArticleAiQualityRuntimeException ? $exception->retryAfterSeconds() : null,
             'http_status' => is_int($httpStatus) && $httpStatus >= 100 && $httpStatus <= 599
                 ? $httpStatus
                 : null,

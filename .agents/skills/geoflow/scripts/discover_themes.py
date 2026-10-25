@@ -58,6 +58,8 @@ def public_asset_record(workspace: Path, theme_id: str) -> dict:
     return {
         "theme_css": (public_root / "theme.css").is_file(),
         "theme_js": (public_root / "theme.js").is_file(),
+        "topics_css": (public_root / "topics.css").is_file(),
+        "topics_js": (public_root / "topics.js").is_file(),
         "root": str(public_root) if public_root.is_dir() else "",
     }
 
@@ -86,6 +88,8 @@ def home_template_signals(theme_dir: Path) -> dict:
         "uses_hot_articles": "hotArticles" in text,
         "uses_featured_articles": "featuredArticles" in text,
         "uses_latest_articles": "$articles" in text,
+        "uses_home_topics": "homeTopics" in text,
+        "includes_topic_home_partial": "topic-home" in text,
         "guards_default_home_state": "$search" in text and "$category" in text,
     }
 
@@ -107,7 +111,7 @@ def theme_record(workspace: Path, theme_dir: Path, framework: str) -> dict:
         editable_files = list(template_files)
         blade_files = []
 
-    for relative in ("assets/theme.css", "manifest.json", "tokens.json", "mapping.json"):
+    for relative in ("assets/theme.css", "assets/topics.css", "assets/topics.js", "manifest.json", "tokens.json", "mapping.json"):
         if (theme_dir / relative).is_file() and relative not in editable_files:
             editable_files.append(relative)
 
@@ -117,6 +121,11 @@ def theme_record(workspace: Path, theme_dir: Path, framework: str) -> dict:
 
     session_state = str(manifest.get("session_state", "")).strip()
     is_preview_session = session_state == "preview" or theme_id.startswith("preview-") or theme_id.endswith("-preview")
+    preview_routes = derive_preview_routes(theme_id, manifest, framework)
+    topic_contract = detect_topic_contract(workspace) if framework == "laravel" else {}
+    for route in topic_contract.get("public_route_samples", []):
+        if route not in preview_routes:
+            preview_routes.append(route)
 
     return {
         "id": theme_id,
@@ -127,11 +136,48 @@ def theme_record(workspace: Path, theme_dir: Path, framework: str) -> dict:
         "mode": manifest.get("mode", ""),
         "session_state": session_state,
         "is_preview_session": is_preview_session,
-        "preview_routes": derive_preview_routes(theme_id, manifest, framework),
+        "preview_routes": preview_routes,
         "templates": [view_name(item) for item in blade_files] if framework == "laravel" else [Path(item).stem for item in editable_files if item.startswith("templates/")],
         "editable_files": editable_files,
         "public_assets": public_asset_record(workspace, theme_id) if framework == "laravel" else {},
         "home_template_signals": home_template_signals(theme_dir) if framework == "laravel" else {},
+        "topic": {
+            "source": "theme_manifest" if "topic" in manifest else ("core_fallback" if topic_contract.get("available") else "unavailable"),
+            "declaration": manifest.get("topic"),
+            "runtime_validation_required": "topic" in manifest,
+            "page_overrides": [item for item in blade_files if item in ("topics/index.blade.php", "topics/show.blade.php")],
+            "layout_files": [item for item in blade_files if item.startswith("topics/templates/")],
+        } if framework == "laravel" else {},
+    }
+
+
+def detect_topic_contract(workspace: Path) -> dict:
+    """Source evidence only; runtime routes, settings and theme bindings remain authoritative."""
+    required = [
+        "app/Http/Controllers/Site/TopicController.php",
+        "app/Services/Topics/TopicTemplateCatalog.php",
+        "resources/views/site/topics/index.blade.php",
+        "resources/views/site/topics/show.blade.php",
+        "resources/views/site/topics/templates/default.blade.php",
+        "resources/views/site/topics/templates/guide.blade.php",
+        "resources/views/site/topics/templates/roundup.blade.php",
+    ]
+    evidence = [path for path in required if (workspace / path).is_file()]
+    routes = read_text(workspace / "routes/web.php")
+    samples = [path for name, path in (("site.topics.index", "/topics"), ("site.topics.show", "/topics/{slug}")) if name in routes]
+    builder = read_text(workspace / "app/Support/Site/HomepageModuleBuilder.php")
+    preview = read_text(workspace / "app/Services/Api/ThemeWorkspacePreview.php")
+    return {
+        "available": len(evidence) == len(required) and len(samples) == 2,
+        "evidence": evidence,
+        "public_route_samples": samples,
+        "page_paths": {"topics-index": "topics/index.blade.php", "topics-show": "topics/show.blade.php"},
+        "core_layout_files": sorted(path.relative_to(workspace).as_posix() for path in (workspace / "resources/views/site/topics/templates").glob("*.blade.php")),
+        "homepage_collection": "topic_collection" in php_const_array(builder, "TYPES"),
+        "homepage_partial": (workspace / "resources/views/site/partials/topic-home.blade.php").is_file(),
+        "signed_workspace_preview": all(page in preview for page in ("topics-index", "topics-show", "topics-empty")),
+        "admin_routes": (workspace / "routes/admin-topics.php").is_file(),
+        "notes": ["Source discovery does not prove the channel is enabled or identify the active immutable revision.", "Resolve installed themes and workspace preview URLs through the instance contract; sample paths are not isolated preview URLs."],
     }
 
 
@@ -230,6 +276,7 @@ def detect_homepage_contract(workspace: Path) -> dict:
         "hotArticles": "hotArticles" in controller,
         "articles": "'articles'" in controller or '"articles"' in controller,
         "cardSummaries": "cardSummaries" in controller,
+        "homeTopics": "homeTopics" in controller,
     }
     safe_modules = []
     if variables["homepageCarouselSlides"]:
@@ -242,8 +289,12 @@ def detect_homepage_contract(workspace: Path) -> dict:
         safe_modules.extend(["home.latest_resources", "home.metric_band", "home.chart_lite"])
     if variables["siteDescription"]:
         safe_modules.extend(["home.text_value_block", "home.cta_band"])
+    if variables["homeTopics"]:
+        safe_modules.append("home.topic_collection")
     if variables["homepageModules"] and variables["homepageStyle"]:
         safe_modules.extend(["home.builder.hero", "home.builder.rich_text", "home.builder.image_band", "home.builder.metric_band", "home.builder.chart_band", "home.builder.feature_grid", "home.builder.article_collection", "home.builder.cta_band", "home.builder.lead_form", "home.builder.custom_html"])
+        if "topic_collection" in detect_homepage_module_builder(workspace)["module_types"]:
+            safe_modules.append("home.builder.topic_collection")
 
     return {
         "home_controller_present": bool(controller),
@@ -339,6 +390,7 @@ def detect_workspace(workspace: Path) -> dict:
             "homepage_module_builder": detect_homepage_module_builder(workspace),
             "homepage_contract": detect_homepage_contract(workspace),
             "channel_frontend_contract": detect_channel_frontend_contract(workspace),
+            "topic_contract": detect_topic_contract(workspace),
         }
 
     return {
@@ -351,6 +403,7 @@ def detect_workspace(workspace: Path) -> dict:
         "homepage_module_builder": {},
         "homepage_contract": {},
         "channel_frontend_contract": {},
+        "topic_contract": {},
     }
 
 
@@ -380,6 +433,7 @@ def main() -> None:
         "homepage_module_builder": detected.get("homepage_module_builder", {}),
         "homepage_contract": detected.get("homepage_contract", {}),
         "channel_frontend_contract": detected.get("channel_frontend_contract", {}),
+        "topic_contract": detected.get("topic_contract", {}),
         "theme_count": len(themes),
         "themes": themes,
     }

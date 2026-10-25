@@ -93,7 +93,7 @@ final class UrlChangeInspector
     public function conflicts(UrlChangeRequest $change, array $site, array $items): array
     {
         $policy = ArticlePermalinkPolicy::fromRaw($site['next_policy']);
-        $compiled = array_map(fn (string $pattern) => ArticlePermalinkPattern::compile($pattern), $policy->patterns());
+        $compiled = array_map(fn (string $pattern) => ArticlePermalinkPattern::compileStored($pattern), $policy->patterns());
         $tokens = array_values(array_unique(array_merge(...array_map(fn ($pattern) => $pattern->tokens(), $compiled))));
         $possibleMatchers = array_map(fn ($rendering) => array_filter($compiled, fn ($matcher) => substr_count($matcher->pattern(), '/') === substr_count($rendering->pattern(), '/') && ! $matcher->preservesLocatorOf($rendering)), $compiled);
         $reusableValidation = array_map(fn ($pattern) => ! array_any(explode('/', $pattern->pattern()), fn ($segment) => substr_count($segment, '{') > 1), $compiled);

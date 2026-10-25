@@ -173,6 +173,9 @@ class ProcessArticleDistributionJob implements ShouldQueue
                         'last_error_message' => $safeMessage,
                         'last_attempt_at' => now(),
                         'next_retry_at' => $retryAt,
+                        'remote_meta' => json_encode(array_replace((array) $distribution->remote_meta, [
+                            'safe_retry_at' => $retryAt?->format(DATE_ATOM), 'queue_dispatched_at' => null,
+                        ]), JSON_THROW_ON_ERROR),
                         'updated_at' => now(),
                     ]);
             }
@@ -192,9 +195,7 @@ class ProcessArticleDistributionJob implements ShouldQueue
             );
 
             if ($shouldRetry && ! $committed) {
-                self::dispatch((int) $distribution->id)
-                    ->onQueue('distribution')
-                    ->delay($retryAt);
+                $orchestrator->dispatchDeliveryAfterCommit((int) $distribution->id);
             }
         }
     }

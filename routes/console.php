@@ -181,6 +181,11 @@ Schedule::command('geoflow:prune-article-exports')
     ->onOneServer()
     ->withoutOverlapping(10);
 
+Schedule::command('geoflow:prune-link-pool')
+    ->hourlyAt(17)
+    ->onOneServer()
+    ->withoutOverlapping(30);
+
 Schedule::command('geoflow:prune-ai-workspace')
     ->dailyAt('02:30')
     ->onOneServer()
@@ -202,3 +207,5 @@ Schedule::command('hosted-sites:reconcile', [
     ->everyFiveMinutes()
     ->onOneServer()
     ->withoutOverlapping(10);
+
+Schedule::command('geoflow:check-topic-temporal-state')->everyFiveMinutes()->onOneServer()->withoutOverlapping(5);

@@ -33,10 +33,11 @@ final class ArticleAiQualityVersionPolicy
             'shadow_v2' => $shadowV2,
             'gate_applied_v2' => $scoring === 'v2',
             'algorithm_version' => sprintf(
-                'exec=%s;ret=4;principles=%s;prompt=2;score=%s',
+                'exec=%s;ret=6;principles=%s;prompt=2;score=%s;decision=%s',
                 $execution === 'fast_v2' ? 'f2' : 'v1',
                 $principles === 'v2' ? '2' : '1',
                 $scoring === 'v2' ? '2' : '1',
+                ArticleAiQualityScorePolicy::VERSION,
             ),
             'buckets' => [
                 'principles_v2' => $principleBucket,

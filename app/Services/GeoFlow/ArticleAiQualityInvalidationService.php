@@ -126,10 +126,11 @@ class ArticleAiQualityInvalidationService
         int $taskId,
         string $reason,
         iterable $preserveWorkflowArticleIds = [],
+        array $recalculatedArticleIds = [],
     ): int {
         $articles = Article::withTrashed()->where('task_id', $taskId);
         [$updated, $affectedArticleIds] = $this->invalidateChecks(
-            ArticleAiQualityCheck::query()->where(function (Builder $query) use ($taskId, $articles): void {
+            ArticleAiQualityCheck::query()->whereNotIn('article_id', $recalculatedArticleIds)->where(function (Builder $query) use ($taskId, $articles): void {
                 $query->where('task_id', $taskId);
                 $query->orWhereIn('article_id', (clone $articles)->select('id'));
             }),
@@ -421,7 +422,6 @@ class ArticleAiQualityInvalidationService
             ->chunkById(500, function (Collection $checks) use (
                 $errorCode,
                 $reason,
-                $preservedArticleIds,
                 &$updated,
                 &$affectedArticleIds,
             ): void {
@@ -454,17 +454,7 @@ class ArticleAiQualityInvalidationService
                         'updated_at' => $timestamp,
                     ]);
                 if ($articleIds->isNotEmpty()) {
-                    $workflowArticleIds = $articleIds->diff($preservedArticleIds)->values();
-                    Article::query()
-                        ->whereIn('id', $workflowArticleIds->all())
-                        ->where('status', '!=', 'published')
-                        ->where('review_status', '!=', 'rejected')
-                        ->update([
-                            'status' => 'draft',
-                            'review_status' => 'pending',
-                            'published_at' => null,
-                            'updated_at' => $timestamp,
-                        ]);
+                    // Invalidate AI facts without overwriting human review or publication intent.
                     $articleIds->each(static function (int $articleId) use (&$affectedArticleIds): void {
                         $affectedArticleIds[$articleId] = true;
                     });

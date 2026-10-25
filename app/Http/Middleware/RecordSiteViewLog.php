@@ -29,7 +29,7 @@ class RecordSiteViewLog
     {
         $response = $next($request);
 
-        if (strtoupper((string) $request->method()) !== 'GET') {
+        if ($request->attributes->get('link_pool.theme_readback') === true || strtoupper((string) $request->method()) !== 'GET') {
             return $response;
         }
 

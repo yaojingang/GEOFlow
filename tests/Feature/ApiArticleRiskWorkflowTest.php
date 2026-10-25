@@ -23,6 +23,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\TestWith;
 use Tests\TestCase;
 
 class ApiArticleRiskWorkflowTest extends TestCase
@@ -91,6 +92,32 @@ class ApiArticleRiskWorkflowTest extends TestCase
         $this->assertSame('clean', $scan->status);
     }
 
+    #[TestWith([null, false])]
+    #[TestWith(['pending', true])]
+    #[TestWith(['rejected', false])]
+    public function test_requested_publish_without_human_approval_returns_409_and_rolls_back_creation(?string $reviewStatus, bool $idempotent): void
+    {
+        app()->setLocale('zh_CN');
+        $payload = $this->articlePayload(['status' => 'published']);
+        if ($reviewStatus === null) {
+            unset($payload['review_status']);
+        } else {
+            $payload['review_status'] = $reviewStatus;
+        }
+        if ($idempotent) {
+            $this->withHeader('X-Idempotency-Key', 'unreviewed-create-publish');
+        }
+
+        $this->postArticle($payload)
+            ->assertConflict()
+            ->assertJsonPath('error.code', 'article_not_publishable')
+            ->assertJsonPath('error.message', '当前审核结果不允许发布，请先完成审核。');
+
+        $this->assertDatabaseEmpty('articles');
+        $this->assertDatabaseEmpty('article_reviews');
+        Queue::assertNothingPushed();
+    }
+
     public function test_write_only_token_cannot_publish_or_override_during_article_creation(): void
     {
         $writeOnlyToken = $this->admin
@@ -157,7 +184,7 @@ class ApiArticleRiskWorkflowTest extends TestCase
 
         $article->refresh();
         $this->assertSame('draft', $article->status);
-        $this->assertSame('pending', $article->review_status);
+        $this->assertSame('approved', $article->review_status);
         $this->assertNull($article->published_at);
         $this->assertSame('api_save', $article->latestRiskScan->trigger);
     }
@@ -221,8 +248,8 @@ class ApiArticleRiskWorkflowTest extends TestCase
         $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
         $orchestrator->shouldReceive('enqueueForArticle')
             ->once()
-            ->with(\Mockery::on(fn (mixed $candidate): bool => $candidate instanceof Article
-                && (int) $candidate->task_id === (int) $task->id))
+            ->with(\Mockery::on(fn (mixed $candidate): bool => is_int($candidate)
+                && (int) Article::query()->find($candidate)?->task_id === (int) $task->id), 'publish', [], true, \Mockery::on(fn (array $fence): bool => (int) $fence['task_id'] === (int) $task->id && $fence['origin'] === 'manual' && $fence['workflow_version'] > 0))
             ->andReturn([]);
         $this->app->instance(DistributionOrchestrator::class, $orchestrator);
 
@@ -256,7 +283,7 @@ class ApiArticleRiskWorkflowTest extends TestCase
             ->assertJsonPath('data.published_at', null);
     }
 
-    public function test_warning_auto_approved_create_returns_409_as_an_unoverridden_draft(): void
+    public function test_legacy_auto_approved_create_records_human_approval_without_overriding_risk(): void
     {
         SensitiveWord::query()->create(['word' => 'review me']);
 
@@ -266,18 +293,114 @@ class ApiArticleRiskWorkflowTest extends TestCase
             'risk_override_reason' => 'Automatic approval must ignore this.',
         ]));
 
-        $response->assertStatus(409)
-            ->assertJsonPath('error.code', 'article_risk_blocked')
-            ->assertJsonPath('error.details.risk_status', 'warning');
+        $response->assertCreated()
+            ->assertJsonPath('data.review_status', 'approved')
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.compatibility_notice', 'auto_approved 已作为人工审核通过处理；发布安排保持不变。');
 
         $article = Article::query()->where('title', 'API risk article')->firstOrFail();
         $this->assertSame('draft', $article->status);
-        $this->assertSame('pending', $article->review_status);
+        $this->assertSame('approved', $article->review_status);
         $this->assertNull($article->published_at);
         $this->assertFalse($article->latestRiskScan->is_overridden);
     }
 
-    public function test_patch_risk_content_on_a_published_article_unpublishes_and_scans_it(): void
+    #[TestWith(['content'])]
+    #[TestWith(['title'])]
+    #[TestWith(['excerpt'])]
+    #[TestWith(['keywords'])]
+    #[TestWith(['meta_description'])]
+    #[TestWith(['author_id'])]
+    #[TestWith(['category_id'])]
+    public function test_write_only_token_cannot_change_published_article_fields(string $field): void
+    {
+        $task = Task::query()->create(['name' => 'Published scope task', 'need_review' => false, 'ai_quality_enabled' => false]);
+        $article = $this->createArticle([
+            'task_id' => $task->id, 'status' => 'published', 'review_status' => 'auto_approved', 'published_at' => now(),
+        ]);
+        $before = $article->fresh()->getAttributes();
+        $value = match ($field) {
+            'author_id' => Author::query()->create(['name' => 'Replacement author'])->id,
+            'category_id' => Category::query()->create(['name' => 'Replacement category', 'slug' => 'replacement-category'])->id,
+            default => 'Changed public information.',
+        };
+        $token = $this->admin->createToken('write-only-published-edit', ['articles:write'])->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->patchJson("/api/v1/articles/{$article->id}", [$field => $value])
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'forbidden')
+            ->assertJsonPath('error.details.required_scope', 'articles:publish');
+
+        $this->assertSame($before, $article->fresh()->getAttributes());
+        $this->assertSame(0, $article->riskScans()->count());
+        $this->assertSame(0, $article->reviews()->count());
+    }
+
+    public function test_write_only_token_can_send_unchanged_published_content(): void
+    {
+        $article = $this->createArticle(['status' => 'published', 'review_status' => 'approved', 'published_at' => now()]);
+        $before = $article->fresh()->getAttributes();
+        $token = $this->admin->createToken('write-only-published-noop', ['articles:write'])->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->patchJson("/api/v1/articles/{$article->id}", ['content' => $article->content])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'published');
+
+        $this->assertSame($before, $article->fresh()->getAttributes());
+        $this->assertSame(0, $article->riskScans()->count());
+    }
+
+    public function test_write_only_token_can_edit_a_draft(): void
+    {
+        $article = $this->createArticle();
+        $token = $this->admin->createToken('write-only-draft-edit', ['articles:write'])->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->patchJson("/api/v1/articles/{$article->id}", ['content' => 'Updated draft content.'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.content', 'Updated draft content.');
+
+        $this->assertSame('Updated draft content.', $article->fresh()->content);
+    }
+
+    public function test_publish_scope_can_update_published_content_after_current_gates_pass(): void
+    {
+        $task = Task::query()->create(['name' => 'Allowed published edit', 'need_review' => false, 'ai_quality_enabled' => false]);
+        $article = $this->createArticle([
+            'task_id' => $task->id, 'status' => 'published', 'review_status' => 'auto_approved', 'published_at' => now(),
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$this->token)
+            ->patchJson("/api/v1/articles/{$article->id}", ['content' => 'Updated verified content.'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'published')
+            ->assertJsonPath('data.content', 'Updated verified content.');
+
+        $this->assertSame('Updated verified content.', $article->fresh()->content);
+        $this->assertSame('clean', $article->fresh()->latestRiskScan->status);
+    }
+
+    public function test_publish_scope_does_not_bypass_manual_review_for_changed_published_content(): void
+    {
+        $task = Task::query()->create(['name' => 'Reviewed published edit', 'need_review' => true, 'ai_quality_enabled' => false]);
+        $article = $this->createArticle([
+            'task_id' => $task->id, 'status' => 'published', 'review_status' => 'approved', 'published_at' => now(),
+        ]);
+        $before = $article->fresh()->getAttributes();
+
+        $this->withHeader('Authorization', 'Bearer '.$this->token)
+            ->patchJson("/api/v1/articles/{$article->id}", ['content' => 'Updated content still needing human review.'])
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'article_review_required');
+
+        $this->assertSame($before, $article->fresh()->getAttributes());
+        $this->assertSame(0, $article->riskScans()->count());
+    }
+
+    public function test_patch_rejects_risky_new_content_and_preserves_the_existing_published_article(): void
     {
         SensitiveWord::query()->create(['word' => 'review me']);
         $article = $this->createArticle([
@@ -291,16 +414,14 @@ class ApiArticleRiskWorkflowTest extends TestCase
                 'content' => 'Updated content that says review me.',
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('data.status', 'draft')
-            ->assertJsonPath('data.review_status', 'pending')
-            ->assertJsonPath('data.published_at', null);
+        $response->assertConflict()->assertJsonPath('error.code', 'article_risk_blocked');
 
         $article->refresh();
-        $scan = $article->latestRiskScan()->firstOrFail();
-        $this->assertSame('warning', $scan->status);
-        $this->assertSame('api_save', $scan->trigger);
-        $this->assertSame($this->admin->id, $scan->admin_id);
+        $this->assertSame('Existing safe content.', $article->content);
+        $this->assertSame('published', $article->status);
+        $this->assertSame('approved', $article->review_status);
+        $this->assertNotNull($article->published_at);
+        $this->assertSame(0, $article->riskScans()->count());
     }
 
     public function test_update_rolls_back_content_and_workflow_when_the_api_save_scan_fails(): void
@@ -357,7 +478,7 @@ class ApiArticleRiskWorkflowTest extends TestCase
         $this->assertSame(0, $article->riskScans()->count());
     }
 
-    public function test_warning_approved_with_explicit_risk_override_reason_then_publish_succeeds(): void
+    public function test_approval_records_review_and_publish_explicitly_applies_the_risk_override(): void
     {
         SensitiveWord::query()->create(['word' => 'review me']);
         $create = $this->postArticle($this->articlePayload([
@@ -377,8 +498,8 @@ class ApiArticleRiskWorkflowTest extends TestCase
             ->assertJsonPath('data.review_status', 'approved');
 
         $article = Article::query()->findOrFail($articleId);
-        $this->assertTrue($article->latestRiskScan->is_overridden);
-        $this->assertSame('A human editor confirmed this warning.', $article->latestRiskScan->override_reason);
+        $this->assertFalse($article->latestRiskScan->is_overridden);
+        $this->assertNull($article->latestRiskScan->override_reason);
         $this->assertDatabaseHas('article_reviews', [
             'article_id' => $articleId,
             'admin_id' => $this->admin->id,
@@ -386,10 +507,14 @@ class ApiArticleRiskWorkflowTest extends TestCase
         ]);
 
         $this->withHeader('Authorization', 'Bearer '.$this->token)
-            ->postJson("/api/v1/articles/{$articleId}/publish")
+            ->postJson("/api/v1/articles/{$articleId}/publish", [
+                'risk_override_reason' => 'A human editor confirmed this warning.',
+            ])
             ->assertOk()
             ->assertJsonPath('data.status', 'published')
             ->assertJsonPath('data.review_status', 'approved');
+        $this->assertTrue($article->fresh()->latestRiskScan->is_overridden);
+        $this->assertSame('A human editor confirmed this warning.', $article->fresh()->latestRiskScan->override_reason);
     }
 
     public function test_review_note_alone_does_not_override_a_warning(): void
@@ -399,14 +524,15 @@ class ApiArticleRiskWorkflowTest extends TestCase
             'content' => 'Please review me before publishing.',
         ]);
 
+        $scan = app(ArticleRiskScanner::class)->record($article, 'fixture');
         $response = $this->withHeader('Authorization', 'Bearer '.$this->token)
             ->postJson("/api/v1/articles/{$article->id}/review", [
                 'review_status' => 'approved',
                 'review_note' => 'Ordinary editorial note.',
             ]);
 
-        $response->assertStatus(409)
-            ->assertJsonPath('error.code', 'article_risk_blocked');
+        $response->assertOk()->assertJsonPath('data.review_status', 'approved')->assertJsonPath('data.status', 'draft');
+        $this->assertTrue($article->fresh()->latestRiskScan->is($scan));
         $this->assertFalse($article->refresh()->latestRiskScan->is_overridden);
     }
 
@@ -438,7 +564,7 @@ class ApiArticleRiskWorkflowTest extends TestCase
         $this->assertNull($scan->override_reason);
     }
 
-    public function test_auto_approved_warning_publish_rejects_even_a_prior_manual_override(): void
+    public function test_manual_review_requirement_cannot_be_satisfied_by_auto_approval_or_risk_override(): void
     {
         SensitiveWord::query()->create(['word' => 'review me']);
         $article = $this->createArticle([
@@ -456,31 +582,23 @@ class ApiArticleRiskWorkflowTest extends TestCase
             ->postJson("/api/v1/articles/{$article->id}/publish");
 
         $response->assertStatus(409)
-            ->assertJsonPath('error.code', 'article_risk_blocked')
-            ->assertJsonPath('error.details.article_id', $article->id)
-            ->assertJsonPath('error.details.risk_status', 'warning');
+            ->assertJsonPath('error.code', 'article_not_publishable');
 
         $article->refresh();
         $this->assertSame('draft', $article->status);
-        $this->assertSame('pending', $article->review_status);
+        $this->assertSame('auto_approved', $article->review_status);
         $this->assertNull($article->published_at);
         $this->assertTrue($article->latestRiskScan->is($confirmedScan));
         $this->assertTrue($article->latestRiskScan->is_overridden);
     }
 
-    public function test_risky_publish_replays_the_cached_409_after_the_fallback_changes_workflow(): void
+    public function test_risky_publish_replays_cached_409_without_revoking_human_approval(): void
     {
         SensitiveWord::query()->create(['word' => 'review me']);
         $article = $this->createArticle([
             'content' => 'Please review me before publishing.',
-            'review_status' => 'auto_approved',
+            'review_status' => 'approved',
         ]);
-        app(ArticleRiskGate::class)->check(
-            $article,
-            'manual_review',
-            $this->admin->id,
-            'Previously confirmed by a human.',
-        );
         $headers = [
             'Authorization' => 'Bearer '.$this->token,
             'X-Idempotency-Key' => 'risky-publish-retry',
@@ -538,9 +656,9 @@ class ApiArticleRiskWorkflowTest extends TestCase
         $first = $this->withHeaders($headers)->postJson("/api/v1/articles/{$article->id}/publish");
         $second = $this->withHeaders($headers)->postJson("/api/v1/articles/{$article->id}/publish");
 
-        $first->assertStatus(409)
-            ->assertJsonPath('error.code', 'article_ai_quality_pending');
-        $second->assertStatus(409)->assertExactJson($first->json());
+        $first->assertOk()->assertJsonPath('data.status', 'draft')->assertJsonPath('data.publication_intent', 'immediate');
+        $second->assertOk()->assertExactJson($first->json());
+        $this->assertNotNull(data_get(ArticleAiQualityCheck::query()->where('article_id', $article->id)->firstOrFail()->execution_meta, 'workflow_fence'));
         $this->assertSame(1, ArticleAiQualityCheck::query()->where('article_id', $article->id)->count());
         Queue::assertPushed(ProcessArticleAiQualityJob::class, 1);
     }
@@ -555,7 +673,7 @@ class ApiArticleRiskWorkflowTest extends TestCase
             ->assertJsonPath('data.status', 'published');
 
         $scan = $article->refresh()->latestRiskScan()->firstOrFail();
-        $this->assertSame('api_publish', $scan->trigger);
+        $this->assertSame('manual_publish', $scan->trigger);
         $this->assertSame($this->admin->id, $scan->admin_id);
     }
 
@@ -569,8 +687,8 @@ class ApiArticleRiskWorkflowTest extends TestCase
         $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
         $orchestrator->shouldReceive('enqueueForArticle')
             ->once()
-            ->with(\Mockery::on(fn (mixed $candidate): bool => $candidate instanceof Article
-                && (int) $candidate->task_id === (int) $task->id))
+            ->with(\Mockery::on(fn (mixed $candidate): bool => is_int($candidate)
+                && (int) Article::query()->find($candidate)?->task_id === (int) $task->id), 'publish', [], true, \Mockery::on(fn (array $fence): bool => (int) $fence['task_id'] === (int) $task->id && $fence['origin'] === 'manual' && $fence['workflow_version'] > 0))
             ->andReturn([]);
         $this->app->instance(DistributionOrchestrator::class, $orchestrator);
 
@@ -582,16 +700,12 @@ class ApiArticleRiskWorkflowTest extends TestCase
             ->assertJsonPath('data.published_at', null);
     }
 
-    public function test_distribution_only_approved_review_stays_private_and_enters_distribution(): void
+    public function test_distribution_only_review_records_approval_without_publishing(): void
     {
         $task = $this->createDistributionOnlyTask(['need_review' => 0]);
         $article = $this->createArticle(['task_id' => $task->id]);
         $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
-        $orchestrator->shouldReceive('enqueueForArticle')
-            ->once()
-            ->with(\Mockery::on(fn (mixed $candidate): bool => $candidate instanceof Article
-                && (int) $candidate->task_id === (int) $task->id))
-            ->andReturn([]);
+        $orchestrator->shouldNotReceive('enqueueForArticle');
         $this->app->instance(DistributionOrchestrator::class, $orchestrator);
 
         $this->withHeader('Authorization', 'Bearer '.$this->token)
@@ -600,7 +714,7 @@ class ApiArticleRiskWorkflowTest extends TestCase
                 'review_note' => 'Ready for channel publication.',
             ])
             ->assertOk()
-            ->assertJsonPath('data.status', 'private')
+            ->assertJsonPath('data.status', 'draft')
             ->assertJsonPath('data.review_status', 'approved')
             ->assertJsonPath('data.published_at', null);
     }
@@ -645,24 +759,15 @@ class ApiArticleRiskWorkflowTest extends TestCase
     public function test_publish_rechecks_approval_after_the_article_is_locked(): void
     {
         $article = $this->createArticle(['review_status' => 'approved']);
+        $realService = app(ArticleWorkflowTransitionService::class);
         $transitionService = \Mockery::mock(ArticleWorkflowTransitionService::class);
-        $transitionService->shouldReceive('transition')
-            ->once()
-            ->andReturnUsing(function (
-                Article $transitionArticle,
-                array $workflowState,
-                string $trigger,
-                ?int $adminId,
-                ?string $overrideReason,
-                bool $allowExistingOverride,
-                ?array $rejectedWorkflowState,
-                callable $lockedGuard,
-            ): Article {
-                $transitionArticle->update(['review_status' => 'pending']);
-                $lockedGuard($transitionArticle->fresh());
+        $transitionService->shouldReceive('humanAction')->once()->andReturnUsing(
+            function (Article $candidate, string $action, ?int $adminId, ?string $note, ?int $expectedVersion) use ($realService): Article {
+                Article::query()->whereKey($candidate->id)->update(['review_status' => 'pending']);
 
-                return $transitionArticle;
-            });
+                return $realService->humanAction($candidate, $action, $adminId, $note, $expectedVersion);
+            },
+        );
         $this->app->instance(ArticleWorkflowTransitionService::class, $transitionService);
 
         $this->withHeader('Authorization', 'Bearer '.$this->token)
@@ -696,11 +801,11 @@ class ApiArticleRiskWorkflowTest extends TestCase
 
         $article = Article::query()->where('title', 'API risk article')->firstOrFail();
         $this->assertSame('draft', $article->status);
-        $this->assertSame('pending', $article->review_status);
+        $this->assertSame('approved', $article->review_status);
         $this->assertFalse($article->latestRiskScan->is_overridden);
     }
 
-    public function test_auto_approved_review_rejects_a_prior_override_without_recording_a_review(): void
+    public function test_legacy_auto_approved_review_records_human_approval_and_preserves_prior_risk_override(): void
     {
         SensitiveWord::query()->create(['word' => 'review me']);
         $article = $this->createArticle([
@@ -719,14 +824,13 @@ class ApiArticleRiskWorkflowTest extends TestCase
                 'review_note' => 'Automatic approval cannot use this.',
             ]);
 
-        $response->assertStatus(409)
-            ->assertJsonPath('error.code', 'article_risk_blocked')
-            ->assertJsonPath('error.details.risk_status', 'warning');
+        $response->assertOk()->assertJsonPath('data.review_status', 'approved')->assertJsonPath('data.status', 'draft');
 
         $article->refresh();
         $this->assertSame('draft', $article->status);
-        $this->assertSame('pending', $article->review_status);
-        $this->assertDatabaseMissing('article_reviews', ['article_id' => $article->id]);
+        $this->assertSame('approved', $article->review_status);
+        $this->assertDatabaseHas('article_reviews', ['article_id' => $article->id, 'review_status' => 'approved', 'admin_id' => $this->admin->id]);
+        $this->assertTrue($article->latestRiskScan->is_overridden);
     }
 
     public function test_pending_review_remains_draft_and_records_the_audit_row(): void

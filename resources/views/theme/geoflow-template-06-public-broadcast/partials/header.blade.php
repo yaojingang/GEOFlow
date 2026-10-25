@@ -24,6 +24,7 @@
                 @foreach($navCategories->take(5) as $categoryItem)
                     <a href="{{ route('site.category', $categoryItem->slug) }}" class="{{ request()->is('category/'.$categoryItem->slug) ? 'is-active' : '' }}">{{ $categoryItem->name }}</a>
                 @endforeach
+            @include('site.partials.topic-navigation')
             </nav>
 
             <form method="get" action="{{ route('site.home') }}" class="ne-search" role="search">
@@ -41,6 +42,7 @@
                 @foreach($navCategories as $categoryItem)
                     <a href="{{ route('site.category', $categoryItem->slug) }}" class="ne-channel {{ request()->is('category/'.$categoryItem->slug) ? 'is-active' : '' }}">{{ $categoryItem->name }}</a>
                 @endforeach
+                @include('site.partials.topic-navigation',['topicNavigationClass'=>'ne-channel'])
             </div>
         </div>
     </div>

@@ -103,6 +103,7 @@ return array_replace_recursive($base, [
         'system_settings' => 'Настройки системы',
         'admin_management' => 'Управление пользователями',
         'activity_logs' => 'Журнал действий',
+        'link_pool' => 'Кампании внутренних ссылок',
     ],
     'ai_models' => [
         'section_my_models' => 'Моя конфигурация ИИ',

@@ -23,6 +23,17 @@ final class RecoveryPreparation
         'hosted_site_allocation_requests', 'hosted_site_article_assignments',
     ];
 
+    public const SCHEMA_OPTIONAL_INTENTS = ['topic_build_runs', 'topic_import_batches'];
+
+    /** Include topic work when its execution schema exists; older recovery points retain the core catalog. */
+    public static function intentTables(): array
+    {
+        return array_merge(self::INTENTS, array_values(array_filter(
+            self::SCHEMA_OPTIONAL_INTENTS,
+            fn (string $table): bool => Schema::hasTable($table),
+        )));
+    }
+
     public function __construct(private readonly RecoveryState $state, private readonly ThemeRevisionStorage $themes) {}
 
     public function inspect(): array
@@ -119,7 +130,7 @@ final class RecoveryPreparation
     private function quarantine(string $epoch): int
     {
         $count = 0;
-        foreach (self::INTENTS as $table) {
+        foreach (self::intentTables() as $table) {
             if (! Schema::hasTable($table)) {
                 throw new RuntimeException('recovery_intent_schema_missing');
             }
@@ -151,15 +162,16 @@ final class RecoveryPreparation
     private function quarantineDigest(string $epoch, bool $verifySources): string
     {
         $hash = hash_init('sha256');
+        $tables = self::intentTables();
         if ($verifySources) {
-            foreach (self::INTENTS as $table) {
+            foreach ($tables as $table) {
                 if (DB::table($table)->count() !== DB::table('recovery_quarantines')->where('epoch', $epoch)->where('source_table', $table)->count()) {
                     throw new RuntimeException('recovery_quarantine_changed');
                 }
             }
         }
         foreach (DB::table('recovery_quarantines')->where('epoch', $epoch)->orderBy('source_table')->orderBy('source_id')->cursor() as $entry) {
-            if (! in_array($entry->source_table, self::INTENTS, true)) {
+            if (! in_array($entry->source_table, $tables, true)) {
                 throw new RuntimeException('recovery_quarantine_changed');
             }
             if ($verifySources) {

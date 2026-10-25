@@ -14,15 +14,21 @@ use App\Models\HostedSiteAllocationRequest;
 use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
 use App\Models\Task;
+use App\Models\Title;
+use App\Models\TitleLibrary;
+use App\Services\GeoFlow\ArticlePublicationEligibilityService;
+use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\DistributionChannelDeletionConfirmation;
 use App\Services\GeoFlow\DistributionChannelDeletionService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionPublisherManager;
+use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\HostedSites\HostedSiteAllocationRequestService;
 use App\Services\HostedSites\HostedSiteAllocator;
 use App\Services\HostedSites\HostedSiteLifecycleService;
 use App\Services\HostedSites\HostedSiteReconciler;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -35,6 +41,24 @@ class HostedSiteDistributionFlowTest extends TestCase
         parent::setUp();
         config()->set('geoflow.hosted_sites.enabled', true);
         config()->set('geoflow.hosted_sites.root_domains', ['sites.test']);
+    }
+
+    public function test_late_allocation_failure_does_not_cancel_a_newer_request(): void
+    {
+        Queue::fake();
+        [$article] = $this->fixtures();
+        $request = app(HostedSiteAllocationRequestService::class)->request($article);
+        $oldCandidate = $request->fresh();
+        $fence = $request->workflow_fence;
+        $fence['workflow_version']++;
+        $request->update(['workflow_fence' => $fence]);
+
+        (new \ReflectionMethod(HostedSiteAllocator::class, 'recordFailure'))
+            ->invoke(app(HostedSiteAllocator::class), $oldCandidate, 'allocation_contract_changed', 'Old failure');
+
+        $this->assertSame('pending', $request->fresh()->status);
+        $this->assertNull($request->fresh()->last_error_code);
+        $this->assertDatabaseMissing('distribution_logs', ['article_id' => $article->id, 'event' => 'hosted_site.allocation_deferred']);
     }
 
     public function test_request_allocates_once_reserves_capacity_and_dispatches_after_commit(): void
@@ -532,6 +556,7 @@ class HostedSiteDistributionFlowTest extends TestCase
                 'category_id' => $secondArticle->category_id,
                 'author_id' => $secondArticle->author_id,
                 'status' => 'private',
+                'publication_intent' => 'none',
                 'review_status' => 'approved',
             ])
             ->assertRedirect(route('admin.articles.edit', ['articleId' => $secondArticle->id]))
@@ -547,11 +572,159 @@ class HostedSiteDistributionFlowTest extends TestCase
     }
 
     /** @return array{Article,HostedSiteProfile} */
+    public function test_orchestrator_publishes_a_hosted_article_with_the_requested_workflow_fence(): void
+    {
+        Queue::fake();
+        Http::preventStrayRequests();
+        [$article] = $this->fixtures();
+        $orchestrator = app(DistributionOrchestrator::class);
+
+        $orchestrator->enqueueForArticle($article, throwOnFailure: true);
+        $distribution = ArticleDistribution::query()->firstOrFail();
+        $request = HostedSiteAllocationRequest::query()->firstOrFail();
+        $this->assertSame('automatic', data_get($distribution->remote_meta, 'workflow_fence.origin'));
+        $this->assertSame($request->workflow_fence, data_get($distribution->remote_meta, 'workflow_fence'));
+        $this->assertTrue($orchestrator->process($distribution));
+        $this->assertSame(HostedSiteArticleAssignment::STATUS_PUBLISHED, $request->assignment?->fresh()->status);
+        $this->assertSame('synced', $distribution->fresh()->status);
+        Queue::assertPushed(ProcessArticleDistributionJob::class, 1);
+        Http::assertNothingSent();
+    }
+
+    public function test_explicit_manual_hosted_publish_keeps_its_origin_while_the_task_is_paused(): void
+    {
+        Queue::fake();
+        [$article] = $this->fixtures();
+        $article->task->update(['status' => 'paused', 'schedule_enabled' => false]);
+
+        app(ArticleWorkflowTransitionService::class)->humanAction($article, 'publish');
+        $distribution = ArticleDistribution::query()->firstOrFail();
+        $this->assertSame('manual', data_get($distribution->remote_meta, 'workflow_fence.origin'));
+        $this->assertSame('manual', HostedSiteAllocationRequest::query()->firstOrFail()->workflow_fence['origin']);
+        $this->assertTrue(app(DistributionOrchestrator::class)->process($distribution));
+        $this->assertSame('synced', $distribution->fresh()->status);
+        $this->assertSame('paused', $article->task->fresh()->status);
+        Queue::assertPushed(ProcessArticleDistributionJob::class, 1);
+    }
+
+    public function test_delayed_hosted_allocation_rejects_an_old_task_cycle_and_new_request_can_continue(): void
+    {
+        Queue::fake();
+        [$article] = $this->fixtures();
+        $requests = app(HostedSiteAllocationRequestService::class);
+        $allocator = app(HostedSiteAllocator::class);
+        $oldRequest = $requests->request($article);
+        app(TaskLifecycleService::class)->stopTask($article->task_id, canManageHostedTask: true);
+
+        $this->assertNull($allocator->allocate($oldRequest));
+        $this->assertSame(HostedSiteAllocationRequest::STATUS_CANCELLED, $oldRequest->fresh()->status);
+        $this->assertDatabaseCount('hosted_site_article_assignments', 0);
+        $this->assertDatabaseCount('article_distributions', 0);
+        Queue::assertNothingPushed();
+
+        $article->task->fresh()->update(['status' => 'active', 'schedule_enabled' => true, 'automation_version' => 3]);
+        $newRequest = $requests->request($article->fresh());
+        $this->assertNull($allocator->allocate($oldRequest));
+        $this->assertSame(HostedSiteAllocationRequest::STATUS_PENDING, $newRequest->fresh()->status);
+        $this->assertNotNull($allocator->allocate($newRequest));
+        $this->assertSame(3, (int) data_get(ArticleDistribution::query()->firstOrFail()->remote_meta, 'workflow_fence.automation_version'));
+        Queue::assertPushed(ProcessArticleDistributionJob::class, 1);
+    }
+
+    public function test_legacy_hosted_allocation_without_a_fence_cannot_gain_current_authority(): void
+    {
+        Queue::fake();
+        [$article] = $this->fixtures();
+        $request = app(HostedSiteAllocationRequestService::class)->request($article);
+        $request->update(['workflow_fence' => null]);
+
+        $this->assertNull(app(HostedSiteAllocator::class)->allocate($request));
+        $this->assertSame(HostedSiteAllocationRequest::STATUS_CANCELLED, $request->fresh()->status);
+        $this->assertSame('distribution_workflow_superseded', $request->fresh()->last_error_code);
+        $this->assertDatabaseCount('hosted_site_article_assignments', 0);
+        $this->assertDatabaseCount('article_distributions', 0);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_reserved_hosted_delivery_without_a_queue_receipt_is_resubmitted_once(): void
+    {
+        Queue::fake();
+        [$article] = $this->fixtures();
+        $request = app(HostedSiteAllocationRequestService::class)->request($article);
+        $allocator = app(HostedSiteAllocator::class);
+        $allocator->allocate($request);
+        $distribution = ArticleDistribution::query()->firstOrFail();
+        $meta = $distribution->remote_meta;
+        unset($meta['queue_dispatched_at']);
+        $distribution->update(['remote_meta' => $meta]);
+
+        $allocator->allocate($request->fresh());
+        $allocator->allocate($request->fresh());
+
+        $this->assertNotNull(data_get($distribution->fresh()->remote_meta, 'queue_dispatched_at'));
+        $this->assertDatabaseCount('article_distributions', 1);
+        Queue::assertPushed(ProcessArticleDistributionJob::class, 2);
+    }
+
+    public function test_task_resume_reauthorizes_a_capacity_deferred_automatic_hosted_request(): void
+    {
+        Queue::fake();
+        [$article, $profile] = $this->fixtures();
+        $task = $article->task;
+        $library = TitleLibrary::query()->create(['name' => 'Hosted resume titles']);
+        Title::query()->create(['library_id' => $library->id, 'title' => 'A future hosted article', 'used_count' => 0]);
+        $task->update(['title_library_id' => $library->id, 'article_limit' => 1, 'created_count' => 0]);
+        $profile->update(['last_published_at' => now(), 'min_publish_interval_minutes' => 60]);
+        $requests = app(HostedSiteAllocationRequestService::class);
+        $allocator = app(HostedSiteAllocator::class);
+        $request = $requests->request($article);
+        $this->assertNull($allocator->allocate($request));
+        $this->assertSame('publish_interval', $request->fresh()->last_error_code);
+        $this->assertDatabaseCount('article_distributions', 0);
+
+        $lifecycle = app(TaskLifecycleService::class);
+        $lifecycle->stopTask($task->id, canManageHostedTask: true);
+        $this->assertNull($allocator->allocate($request->fresh()));
+        $profile->update(['last_published_at' => null]);
+        $lifecycle->startTask($task->id, canManageHostedTask: true);
+
+        $this->assertSame(HostedSiteAllocationRequest::STATUS_PENDING, $request->fresh()->status);
+        $this->assertSame(3, (int) $request->fresh()->workflow_fence['automation_version']);
+        $this->assertSame(0, $requests->resumeForTask($task->id));
+        $this->assertNotNull($allocator->allocate($request->fresh()));
+        $this->assertTrue(app(DistributionOrchestrator::class)->process(ArticleDistribution::query()->firstOrFail()));
+        Queue::assertPushed(ProcessArticleDistributionJob::class, 1);
+    }
+
+    public function test_task_resume_preserves_manual_held_and_legacy_hosted_requests(): void
+    {
+        Queue::fake();
+        [$article] = $this->fixtures();
+        $task = $article->task;
+        $requests = app(HostedSiteAllocationRequestService::class);
+        $manual = $requests->request($article, app(ArticlePublicationEligibilityService::class)->fence($article, 'manual'));
+        $heldArticle = $this->createArticle($task, 'held');
+        $held = $requests->request($heldArticle);
+        app(ArticleWorkflowTransitionService::class)->humanAction($heldArticle, 'private');
+        $legacyArticle = $this->createArticle($task, 'legacy');
+        $legacy = $requests->request($legacyArticle);
+        $legacy->update(['workflow_fence' => null]);
+        $task->update(['automation_version' => 3]);
+
+        $this->assertSame(0, $requests->resumeForTask($task->id));
+        $this->assertSame(1, (int) $manual->fresh()->workflow_fence['automation_version']);
+        $this->assertSame(1, (int) $held->fresh()->workflow_fence['automation_version']);
+        $this->assertNull($legacy->fresh()->workflow_fence);
+        $this->assertDatabaseCount('article_distributions', 0);
+        Queue::assertNothingPushed();
+    }
+
     private function fixtures(int $dailyLimit = 3): array
     {
         $task = Task::query()->create([
             'name' => 'Hosted task',
             'status' => 'active',
+            'schedule_enabled' => true,
             'publish_scope' => 'distribution_only',
             'distribution_strategy' => 'broadcast',
         ]);
@@ -601,6 +774,7 @@ class HostedSiteDistributionFlowTest extends TestCase
             'author_id' => $author->id,
             'task_id' => $task->id,
             'status' => 'private',
+            'publication_intent' => 'none',
             'review_status' => 'approved',
         ]);
     }

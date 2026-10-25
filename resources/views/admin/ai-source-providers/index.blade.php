@@ -81,7 +81,7 @@
                     <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
                         <div class="sm:col-span-1">
                             <label for="deepseek_api_key" class="block text-sm font-medium text-gray-700">{{ __('admin.ai_source_providers.field_api_key') }}</label>
-                            <input type="password" name="api_key" id="deepseek_api_key" @if ((int) ($deepSeekApiConfig['id'] ?? 0) <= 0) required @endif class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500" placeholder="{{ (int) ($deepSeekApiConfig['id'] ?? 0) > 0 ? __('admin.ai_source_providers.placeholder_api_key_keep') : __('admin.ai_source_providers.placeholder_api_key') }}">
+                            <input type="password" name="api_key" id="deepseek_api_key" @if ((int) ($deepSeekApiConfig['id'] ?? 0) <= 0) required @endif class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500" placeholder="{{ (int) ($deepSeekApiConfig['id'] ?? 0) > 0 ? __('admin.ai_source_providers.placeholder_api_key_keep') : __('admin.ai_source_providers.placeholder_deepseek_api_key') }}">
                             <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_source_providers.configured_key') }}: {{ $deepSeekApiConfig['masked_api_key'] }}</p>
                         </div>
                         <div>

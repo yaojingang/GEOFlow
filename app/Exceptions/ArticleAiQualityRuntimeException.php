@@ -13,6 +13,7 @@ final class ArticleAiQualityRuntimeException extends RuntimeException
         ?Throwable $previous = null,
         private readonly ?int $httpStatus = null,
         private readonly ?string $providerCode = null,
+        private readonly ?int $retryAfterSeconds = null,
     ) {
         $safePrevious = $previous instanceof ArticleAiQualityCauseException
             ? $previous
@@ -39,5 +40,10 @@ final class ArticleAiQualityRuntimeException extends RuntimeException
     public function providerCode(): ?string
     {
         return $this->providerCode;
+    }
+
+    public function retryAfterSeconds(): ?int
+    {
+        return $this->retryAfterSeconds;
     }
 }

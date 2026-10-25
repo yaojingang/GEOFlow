@@ -19,6 +19,7 @@ const loadPageModule = (selector, loader) => {
 };
 
 loadPageModule('#article-create-assistant', () => import('./admin/article-create-assistant'));
+loadPageModule('[data-prompt-test]', () => import('./admin/ai-prompt-test'));
 loadPageModule('[data-url-change-report], [data-url-category-guard], [data-url-separate-editor]', () => import('./admin/url-change'));
 loadPageModule('[data-copy-target]', () => import('./admin/manual-publications'));
 loadPageModule('[data-analytics-log-chart], [data-analytics-trend], [data-analytics-filter-form]', () => import('./admin/analytics'));

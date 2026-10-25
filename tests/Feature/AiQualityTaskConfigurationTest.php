@@ -9,6 +9,7 @@ use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\KnowledgeBase;
+use App\Models\KnowledgeChunk;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TitleLibrary;
@@ -24,6 +25,7 @@ class AiQualityTaskConfigurationTest extends TestCase
 
     public function test_task_lifecycle_persists_and_returns_ai_quality_configuration(): void
     {
+        $this->enableProductionOptimization();
         $contentPrompt = Prompt::query()->create([
             'name' => '正文提示词',
             'type' => 'content',
@@ -284,6 +286,18 @@ class AiQualityTaskConfigurationTest extends TestCase
         $knowledgeBase = KnowledgeBase::query()->create([
             'name' => '运行参数知识库',
             'content' => '服务期为一年。',
+            'chunk_sync_status' => 'ready',
+            'chunk_source_hash' => hash('sha256', '服务期为一年。'),
+            'chunk_serving_generation' => 'configuration-generation',
+            'chunk_serving_source_hash' => hash('sha256', '服务期为一年。'),
+        ]);
+        KnowledgeChunk::query()->create([
+            'knowledge_base_id' => $knowledgeBase->id,
+            'chunk_index' => 0,
+            'content' => '服务期为一年。',
+            'content_hash' => hash('sha256', '服务期为一年。'),
+            'source_hash' => hash('sha256', '服务期为一年。'),
+            'generation_key' => 'configuration-generation',
         ]);
         $model = AiModel::query()->create([
             'name' => '运行参数模型',
@@ -297,7 +311,7 @@ class AiQualityTaskConfigurationTest extends TestCase
             'name' => '运行参数 CAS 任务',
             'status' => 'paused',
             'ai_quality_enabled' => true,
-            'ai_quality_retrieval_mode' => AiQualityRetrievalMode::KNOWLEDGE_BROAD,
+            'ai_quality_retrieval_mode' => AiQualityRetrievalMode::CHUNK,
             'ai_quality_policy_version' => 5,
             'ai_quality_config_version' => 5,
             'ai_model_id' => $model->id,
@@ -330,5 +344,112 @@ class AiQualityTaskConfigurationTest extends TestCase
             $this->assertSame('task_ai_quality_config_version_conflict', $exception->getErrorCode());
             $this->assertSame(6, $exception->getDetails()['current_config_version'] ?? null);
         }
+    }
+
+    public function test_production_optimization_requires_both_full_rollouts_and_exposes_legacy_blockers(): void
+    {
+        $task = $this->qualityTask();
+        $service = app(TaskLifecycleService::class);
+
+        foreach ([
+            ['geoflow.ai_quality_optimization_enabled' => false],
+            ['geoflow.ai_quality_optimization_percent' => 30],
+            ['geoflow.ai_quality_optimization_auto_apply_enabled' => false],
+            ['geoflow.ai_quality_optimization_auto_apply_percent' => 30],
+        ] as $blockedSetting) {
+            $this->enableProductionOptimization();
+            config($blockedSetting);
+            try {
+                $service->updateTask($task->id, ['ai_quality_auto_optimize_enabled' => true]);
+                $this->fail('A partial rollout must not enable production auto optimization.');
+            } catch (ApiException $exception) {
+                $this->assertSame(422, $exception->getHttpStatus());
+                $this->assertArrayHasKey('ai_quality_auto_optimize_enabled', $exception->getDetails()['field_errors']);
+            }
+            $task->forceFill(['ai_quality_auto_optimize_enabled' => true])->save();
+            $effective = $service->getTask($task->id)['effective_configuration'];
+            $this->assertTrue($effective['optimization_requested']);
+            $this->assertFalse($effective['optimization_enabled']);
+            $this->assertNotEmpty($effective['optimization_blockers']);
+            $task->forceFill(['ai_quality_auto_optimize_enabled' => false])->save();
+        }
+        $this->enableProductionOptimization();
+        $updated = $service->updateTask($task->id, ['ai_quality_auto_optimize_enabled' => true]);
+        $this->assertTrue($updated['effective_configuration']['optimization_enabled']);
+    }
+
+    public function test_broad_sampling_and_optimization_sampling_are_rejected(): void
+    {
+        $task = $this->qualityTask();
+        $this->enableProductionOptimization();
+        foreach ([false, true] as $optimize) {
+            try {
+                app(TaskLifecycleService::class)->updateTask($task->id, [
+                    'ai_quality_timeout_sampling_enabled' => true,
+                    'ai_quality_auto_optimize_enabled' => $optimize,
+                ]);
+                $this->fail('Unsupported timeout sampling must be rejected.');
+            } catch (ApiException $exception) {
+                $this->assertSame(422, $exception->getHttpStatus());
+                $this->assertArrayHasKey('ai_quality_timeout_sampling_enabled', $exception->getDetails()['field_errors']);
+            }
+        }
+    }
+
+    public function test_ai_off_preserves_preferences_and_interval_with_effective_optional_checks_disabled(): void
+    {
+        $task = $this->qualityTask();
+        $task->forceFill([
+            'need_review' => false,
+            'publish_interval' => 900,
+            'ai_quality_pass_score' => 91,
+            'ai_quality_manual_override_min_score' => 0,
+            'ai_quality_optimization_level' => 'excellent_90',
+            'ai_quality_auto_optimize_enabled' => true,
+            'ai_quality_timeout_sampling_enabled' => true,
+        ])->save();
+
+        $updated = app(TaskLifecycleService::class)->updateTask($task->id, [
+            'ai_quality_enabled' => false,
+            'category_mode' => 'random',
+        ]);
+
+        $this->assertSame(900, $updated['publish_interval']);
+        $this->assertSame(91, $updated['ai_quality_pass_score']);
+        $this->assertSame(0, $updated['ai_quality_manual_override_min_score']);
+        $this->assertSame($task->ai_quality_prompt_id, $updated['ai_quality_prompt_id']);
+        $this->assertSame('excellent_90', $updated['ai_quality_optimization_level']);
+        $this->assertSame('random', $updated['category_mode']);
+        $this->assertFalse($updated['effective_configuration']['optimization_enabled']);
+        $this->assertFalse($updated['effective_configuration']['sampling_enabled']);
+        $this->assertFalse($updated['effective_configuration']['manual_review_required']);
+        $this->assertTrue($updated['effective_configuration']['base_risk_check_enabled']);
+    }
+
+    private function enableProductionOptimization(): void
+    {
+        config([
+            'geoflow.ai_quality_optimization_enabled' => true,
+            'geoflow.ai_quality_optimization_percent' => 100,
+            'geoflow.ai_quality_optimization_auto_apply_enabled' => true,
+            'geoflow.ai_quality_optimization_auto_apply_percent' => 100,
+        ]);
+    }
+
+    private function qualityTask(): Task
+    {
+        Queue::fake();
+        $knowledgeBase = KnowledgeBase::query()->create(['name' => '配置验证知识库', 'content' => '服务期限为一年。']);
+        $task = Task::query()->create([
+            'name' => '配置真实性任务',
+            'status' => 'paused',
+            'ai_quality_enabled' => true,
+            'ai_quality_prompt_id' => Prompt::query()->where('system_key', 'article_quality.cn_ads_knowledge.v1')->value('id'),
+            'ai_quality_retrieval_mode' => AiQualityRetrievalMode::KNOWLEDGE_BROAD,
+            'knowledge_base_id' => $knowledgeBase->id,
+        ]);
+        $task->knowledgeBases()->sync([$knowledgeBase->id => ['sort_order' => 0]]);
+
+        return $task;
     }
 }

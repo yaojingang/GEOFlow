@@ -209,7 +209,7 @@ geoflow task jobs TASK_ID [--status STATUS] [--limit N]
 geoflow job get JOB_ID
 ```
 
-创建任务至少需要 `name`、`title_library_id`、`prompt_id` 和 `ai_model_id`：
+创建任务至少需要 `name`、`title_library_id`、`prompt_id`、`ai_model_id` 和显式的 `need_review`。`true`/`1` 表示每篇都要人工审核；`false`/`0` 表示通过基础风险检查及已启用的 AI 质检后，按任务间隔自动发布。CLI 会在请求前拒绝缺少审核策略的输入。外部 API 继续兼容省略时需要人工审核的默认值，并在响应中返回 `compatibility` 与 `effective_configuration`：
 
 ```json
 {
@@ -291,6 +291,8 @@ geoflow article update ARTICLE_ID (--json FILE | direct fields) [--idempotency-k
 geoflow article review ARTICLE_ID --status STATUS [--note TEXT]
   [--risk-override-reason TEXT] [--idempotency-key KEY]
 geoflow article publish ARTICLE_ID [--idempotency-key KEY]
+geoflow article schedule ARTICLE_ID [--workflow-version N] [--idempotency-key KEY]
+geoflow article hold ARTICLE_ID --status draft|private [--workflow-version N] [--idempotency-key KEY]
 geoflow article ai-quality-status ARTICLE_ID
 geoflow article ai-quality-recheck ARTICLE_ID [--idempotency-key KEY]
 geoflow article ai-quality-override ARTICLE_ID --reason TEXT [--idempotency-key KEY]
@@ -301,6 +303,10 @@ geoflow article ai-optimization-apply ARTICLE_ID --run-id RUN_ID --candidate-has
 geoflow article ai-optimization-cancel ARTICLE_ID --run-id RUN_ID --idempotency-key KEY
 geoflow article trash ARTICLE_ID [--idempotency-key KEY]
 ```
+
+`article review` 记录人工审核并保留当前发布安排；已有的明确立即发布请求会在其他条件满足后继续执行。`article schedule` 按任务间隔排队，`article publish` 明确立即发布并等待必要检查，`article hold --status draft|private` 保留人工发布意图。四个动作都支持 `--workflow-version N`；版本冲突返回 409，需刷新文章后重试。对应 API 为 `POST /articles/{id}/review|schedule|publish|hold`，body 使用 `workflow_version`，hold 另传 `status`；均需 `articles:publish` 权限。
+
+`article update` 修改已发布文章时，Token 还需具备 `articles:publish`；缺少权限返回 403 且不保存改动。正文更新仍需满足当前风险、人工审核与 AI 质检条件。
 
 `ai-quality-status` 返回当前阶段、已用时间、业务截止时间和安全错误码。AI 质检复查会让旧结果失效并按当前文章与任务策略重新排队。人工放行仅适用于达到最低人工分数且没有严重问题的结果，`--reason` 必须填写可审计的核查依据。
 

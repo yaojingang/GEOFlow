@@ -206,7 +206,7 @@ final readonly class AiIntentResolver
             'url_import.preview' => ['url 导入', '网址导入', '链接导入', 'import url', '导入预览'],
             'knowledge.draft' => ['知识草稿', '企业知识', '知识库草稿', 'knowledge draft'],
             'article.draft' => ['文章草稿', '写一篇', '创建文章', '起草文章', '起草一篇', 'article draft'],
-            'task.draft' => ['任务草稿', '创建任务', '新建任务', 'create task'],
+            'task.draft' => ['任务草稿', '创建任务', '新建任务', '专题任务', '创建专题', '新建专题', 'create task', 'topic task'],
             'analytics.weekly_report' => ['周报', '本周运营', 'weekly report'],
             'analytics.daily_report' => [
                 '日报', '今日运营', '今天数据', 'daily report',
@@ -369,6 +369,14 @@ final readonly class AiIntentResolver
     private function extractTaskDraftParameters(string $prompt, ?string $quoted): array
     {
         $parameters = $quoted ? ['name' => Str::limit($quoted, 100, '')] : [];
+
+        if (preg_match('/专题|topic/iu', $prompt) === 1) {
+            $parameters['content_type'] = 'topic';
+            if (preg_match('/(?:专题数量|专题数|专题上限|topic\s*(?:count|limit))\s*(?:为|是|[:：=])?\s*(\d+)/iu', $prompt, $matches) === 1
+                || preg_match('/(?:生成|创建|需要)\s*(\d+)\s*(?:个)?专题/iu', $prompt, $matches) === 1) {
+                $parameters['topic_limit'] = (int) $matches[1];
+            }
+        }
 
         if (preg_match('/(?:文章数量|文章数|文章上限|article\s*(?:count|limit))\s*(?:为|是|[:：=])?\s*(\d+)/iu', $prompt, $matches) === 1
             || preg_match('/(?:生成|创建|需要)\s*(\d+)\s*篇(?:文章)?/iu', $prompt, $matches) === 1) {

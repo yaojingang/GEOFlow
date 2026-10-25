@@ -158,7 +158,7 @@ final class UrlChangeService
                 $query->whereIn('id', $this->inspector->articles($site)->select('articles.category_id'));
             }
             $categories = $query->get(['id', 'slug']);
-            $root = collect(ArticlePermalinkPolicy::fromRaw($site['next_policy'])->patterns())->contains(fn ($pattern) => ArticlePermalinkPattern::compile($pattern)->usesRootCategorySegment());
+            $root = collect(ArticlePermalinkPolicy::fromRaw($site['next_policy'])->patterns())->contains(fn ($pattern) => ArticlePermalinkPattern::compileStored($pattern)->usesRootCategorySegment());
             foreach ($categories as $category) {
                 if ($root && ArticlePermalinkPattern::isReservedFirstSegment($category->slug)) {
                     $this->finish($change, 'failed', __('article_permalink.errors.category_reserved_path', ['slug' => $category->slug, 'path' => mb_strtolower($category->slug)]));
@@ -386,8 +386,13 @@ final class UrlChangeService
                 throw ValidationException::withMessages(['confirmation' => __('url_change.errors.stale')]);
             }
             foreach ($locked->sites as $site) {
-                foreach (array_merge([$site['next_policy']['current_pattern']], array_column($site['next_policy']['history'], 'pattern')) as $pattern) {
-                    ArticlePermalinkPattern::compile($pattern);
+                if (in_array($locked->operation, ['primary', 'hosted'], true)) {
+                    ArticlePermalinkPattern::compile($site['next_policy']['current_pattern']);
+                } else {
+                    ArticlePermalinkPattern::compileStored($site['next_policy']['current_pattern']);
+                }
+                foreach (array_column($site['next_policy']['history'], 'pattern') as $pattern) {
+                    ArticlePermalinkPattern::compileStored($pattern);
                 }
             }
             if ($target !== null) {

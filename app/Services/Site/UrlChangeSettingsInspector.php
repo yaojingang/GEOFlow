@@ -64,7 +64,7 @@ final class UrlChangeSettingsInspector
                 }
             }
             foreach ($oldPolicy->patterns() as $pattern) {
-                $values = ArticlePermalinkPattern::compile($pattern)->match($path);
+                $values = ArticlePermalinkPattern::compileStored($pattern)->match($path);
                 if ($values === null) {
                     continue;
                 }

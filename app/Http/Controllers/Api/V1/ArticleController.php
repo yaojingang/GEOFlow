@@ -11,6 +11,7 @@ use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleAiOptimizationRun;
+use App\Models\Task;
 use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Services\Api\ApiTokenService;
 use App\Services\Api\IdempotencyService;
@@ -126,6 +127,7 @@ class ArticleController extends BaseApiController
         ApiTokenService $tokens,
         AiQualityAuditService $audit,
     ): JsonResponse {
+        $this->requestedWorkflowVersion($request);
         $qualityConfigurationFields = [
             'ai_quality_retrieval_mode_override',
             'ai_quality_knowledge_base_ids',
@@ -134,7 +136,8 @@ class ArticleController extends BaseApiController
             ->contains(static fn (string $field): bool => $request->exists($field));
         $hasProtectedQualityPolicyChange = $hasQualityConfiguration || $request->exists('task_id');
         $auth = $this->auth($request);
-        if ($hasProtectedQualityPolicyChange && ! $tokens->tokenHasScope($auth->token, 'articles:publish')) {
+        $canUpdatePublished = $tokens->tokenHasScope($auth->token, 'articles:publish');
+        if ($hasProtectedQualityPolicyChange && ! $canUpdatePublished) {
             $audit->record('article_quality_configuration_authorization_denied', [
                 'article_id' => $article,
                 'admin_id' => $auth->auditAdminId,
@@ -154,6 +157,7 @@ class ArticleController extends BaseApiController
                 $article,
                 $articles,
                 $auth,
+                $canUpdatePublished,
                 $hasQualityConfiguration,
                 $hasProtectedQualityPolicyChange,
                 $qualityConfigurationFields,
@@ -163,13 +167,25 @@ class ArticleController extends BaseApiController
                     $article,
                     $articles,
                     $auth,
+                    $canUpdatePublished,
                     $hasQualityConfiguration,
                     $hasProtectedQualityPolicyChange,
                     $qualityConfigurationFields,
                 ): array {
+                    $expectedWorkflowVersion = $this->requestedWorkflowVersion($request);
+                    if ($expectedWorkflowVersion !== null) {
+                        $taskId = Article::query()->whereKey($article)->value('task_id');
+                        Task::withTrashed()->whereKey(array_filter([$taskId, $request->input('task_id')]))->orderBy('id')->lockForUpdate()->get(['id']);
+                        $currentArticle = Article::query()->whereKey($article)->lockForUpdate()->firstOrFail();
+                        if ((int) $currentArticle->workflow_version !== $expectedWorkflowVersion) {
+                            throw new ApiException('workflow_version_conflict', __('article_workflow.reason.workflow_version_conflict'), 409);
+                        }
+                    }
                     $configurationVersion = null;
                     if ($hasProtectedQualityPolicyChange) {
                         $expectedVersion = $this->requestedConfigurationVersion($request);
+                        Task::withTrashed()->whereKey(array_filter([Article::query()->whereKey($article)->value('task_id'), $request->input('task_id')]))
+                            ->orderBy('id')->lockForUpdate()->get(['id']);
                         $lockedArticle = Article::query()
                             ->whereKey($article)
                             ->lockForUpdate()
@@ -184,9 +200,14 @@ class ArticleController extends BaseApiController
                         $configurationVersion = $expectedVersion;
                     }
 
-                    $articleFields = Arr::except($request->all(), [...$qualityConfigurationFields, 'config_version']);
+                    $articleFields = Arr::except($request->all(), [...$qualityConfigurationFields, 'config_version', 'workflow_version']);
                     if ($articleFields !== []) {
-                        $articles->updateArticle($article, $articleFields, $auth->auditAdminId);
+                        $articles->updateArticle(
+                            $article,
+                            $articleFields + ($expectedWorkflowVersion !== null ? ['workflow_version' => $expectedWorkflowVersion] : []),
+                            $auth->auditAdminId,
+                            canUpdatePublished: $canUpdatePublished,
+                        );
                     }
 
                     if ($hasQualityConfiguration) {
@@ -234,22 +255,25 @@ class ArticleController extends BaseApiController
     }
 
     /**
-     * 提交审核结果。请求体：review_status、review_note，风险放行时显式传 risk_override_reason。
+     * 记录人工审核结果并保留发布安排；已有立即发布请求在其余门禁通过后继续执行。
+     * 请求体：review_status、review_note、workflow_version。
      *
      * audit 管理员 ID 来自 Token 解析的 auditAdminId。幂等键：POST /articles/{id}/review。
      */
     public function review(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
     {
         $body = $request->all();
+        $expectedVersion = $this->requestedWorkflowVersion($request);
 
-        return IdempotencyService::executeJson($request, 'POST /articles/{id}/review', function () use ($request, $article, $articles, $body): JsonResponse {
+        return IdempotencyService::executeJson($request, 'POST /articles/{id}/review', function () use ($request, $article, $articles, $body, $expectedVersion): JsonResponse {
             try {
                 return $this->success($request, $articles->reviewArticle(
                     $article,
                     trim((string) ($body['review_status'] ?? '')),
                     trim((string) ($body['review_note'] ?? '')),
                     trim((string) ($body['risk_override_reason'] ?? '')),
-                    $this->auth($request)->auditAdminId
+                    $this->auth($request)->auditAdminId,
+                    $expectedVersion,
                 ));
             } catch (ApiException $exception) {
                 return $this->riskBlockedResponse($request, $exception);
@@ -262,16 +286,48 @@ class ArticleController extends BaseApiController
      */
     public function publish(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
     {
-        return IdempotencyService::executeJson($request, 'POST /articles/{id}/publish', function () use ($request, $article, $articles): JsonResponse {
+        $expectedVersion = $this->requestedWorkflowVersion($request);
+        $validated = $request->validate(['risk_override_reason' => ['nullable', 'string', 'max:1000']]);
+        $riskOverrideReason = $validated['risk_override_reason'] ?? null;
+
+        return IdempotencyService::executeJson($request, 'POST /articles/{id}/publish', function () use ($request, $article, $articles, $expectedVersion, $riskOverrideReason): JsonResponse {
             try {
                 return $this->success($request, $articles->publishArticle(
                     $article,
-                    $this->auth($request)->auditAdminId
+                    $this->auth($request)->auditAdminId,
+                    $expectedVersion,
+                    $riskOverrideReason,
                 ));
             } catch (ApiException $exception) {
                 return $this->riskBlockedResponse($request, $exception);
             }
         });
+    }
+
+    public function schedule(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
+    {
+        $expectedVersion = $this->requestedWorkflowVersion($request);
+
+        return IdempotencyService::executeJson($request, 'POST /articles/{id}/schedule', fn (): JsonResponse => $this->success(
+            $request, $articles->scheduleArticle($article, $this->auth($request)->auditAdminId, $expectedVersion),
+        ));
+    }
+
+    public function hold(Request $request, int $article, ArticleGeoFlowService $articles): JsonResponse
+    {
+        $validated = $request->validate(['status' => ['required', 'in:draft,private']]);
+        $expectedVersion = $this->requestedWorkflowVersion($request);
+
+        return IdempotencyService::executeJson($request, 'POST /articles/{id}/hold', fn (): JsonResponse => $this->success(
+            $request, $articles->holdArticle($article, $validated['status'], $this->auth($request)->auditAdminId, $expectedVersion),
+        ));
+    }
+
+    private function requestedWorkflowVersion(Request $request): ?int
+    {
+        $validated = $request->validate(['workflow_version' => ['sometimes', 'integer', 'min:0']]);
+
+        return isset($validated['workflow_version']) ? (int) $validated['workflow_version'] : null;
     }
 
     /**

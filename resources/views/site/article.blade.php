@@ -118,6 +118,8 @@
             </div>
         @endif
 
+        @include('site.partials.link-pool')
+
         @if($stickyAd)
             <aside id="articleStickyAd" class="article-sticky-ad" data-ad-id="{{ $stickyAd['id'] }}">
                 <div class="article-sticky-ad__inner">
@@ -141,6 +143,7 @@
             </aside>
         @endif
     </div>
+@include('site.partials.related-topics')
 @endsection
 
 @if($stickyAd)

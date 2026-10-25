@@ -70,24 +70,30 @@ class EnforceCurrentSiteSurface
         $method = strtoupper($request->method());
 
         if ($method === 'POST') {
-            return preg_match('#^/forms/[a-zA-Z0-9_-]+/submissions$#', $path) === 1;
+            return $path === '/link-pool/events'
+                || preg_match('#^/forms/[a-zA-Z0-9_-]+/submissions$#', $path) === 1;
         }
 
         if (! in_array($method, ['GET', 'HEAD'], true)) {
             return false;
         }
 
-        if (in_array($path, ['/', '/about', '/archive', '/robots.txt', '/sitemap.xml'], true)) {
+        if (in_array($path, ['/', '/about', '/archive', '/robots.txt', '/llms.txt', '/sitemap.txt', '/sitemap.xml', '/topics'], true)) {
             return true;
         }
 
         if ($path === '/favicon.ico'
             || preg_match('#^/(?:assets|js|storage|themes)/[a-zA-Z0-9._/-]+$#', $path) === 1
+            || preg_match('#^/theme-assets/[0-9a-fA-F-]{36}/[a-zA-Z0-9._/-]+$#', $path) === 1
             || preg_match('#^/build/assets/[a-zA-Z0-9._-]+$#', $path) === 1) {
             return true;
         }
 
-        return preg_match('#^/(?:category|article|forms)/[a-zA-Z0-9_.-]+$#', $path) === 1
+        if (preg_match('#^/(?:topics/page/[0-9]+|sitemaps/topics-[0-9]+\.xml)$#', $path)) {
+            return true;
+        }
+
+        return preg_match('#^/(?:category|article|forms|topics)/[a-zA-Z0-9_.-]+$#', $path) === 1
             || preg_match('#^/archive/[0-9]{4}/[0-9]{2}$#', $path) === 1
             || preg_match('#^/sitemaps/[a-zA-Z0-9._-]+$#', $path) === 1
             || $this->articlePermalinks->matchesKnownPattern($path);

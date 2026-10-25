@@ -351,7 +351,8 @@ final class SiteThemePackageService
                     $this->storage->fail('too_many_files');
                 }
                 $this->storage->directory(dirname($snapshot.'/'.$path));
-                $record = $this->copyFile($sourcePath, $this->storage->path($snapshot.'/'.$path), min($this->guard->limit('max_file_bytes'), $this->guard->limit('max_total_bytes') - $total), 'file_too_large');
+                $record = $this->copyFile($sourcePath, $this->storage->path($snapshot.'/'.$path), min($this->guard->fileLimit($path), $this->guard->limit('max_total_bytes') - $total), 'file_too_large');
+                $this->guard->validateVideo($path, $this->storage->path($snapshot.'/'.$path));
                 $total += $record['bytes'];
                 $files[] = ['path' => $path] + $record;
             }
