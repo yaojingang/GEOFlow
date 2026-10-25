@@ -19,6 +19,7 @@ use App\Models\ManualPublication;
 use App\Models\Task;
 use App\Services\AiWorkspace\AiWorkspaceDispatchGuard;
 use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformCatalog;
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebWorkOrderGuard;
 use App\Services\HostedSites\HostedSiteAllocationRequestService;
 use App\Services\HostedSites\HostedSiteAllocator;
 use App\Services\HostedSites\HostedSiteLifecycleService;
@@ -480,7 +481,18 @@ class DistributionOrchestrator
                     // 失败后的重新入队）时跳过该渠道。
                     if ($lockedChannel->isPlatformWeb()) {
                         $platform = (string) $lockedChannel->resolvedPlatformWebConfig()['platform'];
-                        $syncedExists = ArticleDistribution::query()
+                        $refreshableId = null;
+                        $priorWorkOrder = ManualPublication::query()->where('article_id', (int) $articleModel->id)
+                            ->whereHas('sourceDistribution', fn ($query) => $query->where('distribution_channel_id', $lockedChannel->id))->first();
+                        if ($priorWorkOrder && PlatformWebWorkOrderGuard::canRefresh($priorWorkOrder)) {
+                            $priorDelivery = $priorWorkOrder->sourceDistribution;
+                            if ($priorDelivery && (! $this->workflowFenceMatches($lockedArticle, data_get($priorDelivery->remote_meta, 'workflow_fence'))
+                                || ! hash_equals((string) $priorDelivery->payload_hash, $payloadHash))) {
+                                $refreshableId = (int) $priorDelivery->id;
+                            }
+                        }
+
+                        $syncedExists = ArticleDistribution::query()->when($refreshableId, fn ($query) => $query->where('id', '!=', $refreshableId))
                             ->where('article_id', (int) $articleModel->id)
                             ->where('action', $action)
                             ->whereIn('status', ['synced', 'awaiting_extension', 'sending', 'outcome_unknown'])
@@ -488,7 +500,7 @@ class DistributionOrchestrator
                                 ->where('channel_type', DistributionChannel::TYPE_PLATFORM_WEB)
                                 ->where('channel_config->platform', $platform))
                             ->exists();
-                        $knownWorkOrder = ManualPublication::query()->where('article_id', (int) $articleModel->id)
+                        $knownWorkOrder = ManualPublication::query()->when($refreshableId, fn ($query) => $query->where('source_distribution_id', '!=', $refreshableId))->where('article_id', (int) $articleModel->id)
                             ->where('platform', $platform)->whereNotNull('source_distribution_id')
                             ->whereIn('status', [ManualPublication::STATUS_READY, ManualPublication::STATUS_IN_PROGRESS, ManualPublication::STATUS_COMPLETED, ManualPublication::STATUS_OUTCOME_UNKNOWN])
                             ->exists();
@@ -1915,6 +1927,14 @@ class DistributionOrchestrator
         });
 
         return $this->payloadBuilder->build($result);
+    }
+
+    public function platformWorkOrderExecutable(ArticleDistribution $distribution, Article $article): bool
+    {
+        return in_array((string) $distribution->status, ['awaiting_extension', 'sending'], true)
+            && $this->workflowFenceMatches($article, data_get($distribution->remote_meta, 'workflow_fence'))
+            && $this->isDistributableSnapshot($article)
+            && $this->currentChannelAllowsDelivery($article, $distribution);
     }
 
     private function isDistributableSnapshot(Article $article): bool

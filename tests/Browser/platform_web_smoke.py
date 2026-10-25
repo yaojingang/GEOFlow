@@ -54,6 +54,16 @@ def run_browser(base_url, database, fixture, output):
             expect(page.locator('[data-platform-web-config]')).to_be_visible()
             page.locator('[name="name"]').fill("Browser assisted channel")
             page.locator('#manual_publication_account_id').select_option(str(account_id))
+            page.locator('#editor_url').fill('https://evil.test/editor')
+            with page.expect_navigation():
+                page.locator('form').filter(has=page.locator('#name')).locator('button[type="submit"]').click()
+            expect(page.locator('[name="channel_type"][value="platform_web"]')).to_be_checked()
+            assert not page.locator('#domain').evaluate('(el) => el.required')
+            assert not page.locator('#endpoint_url').evaluate('(el) => el.required')
+            expect(page.get_by_text('编辑器地址必须为对应平台的 HTTPS 编辑页面。', exact=True)).to_be_visible()
+            page.locator('#editor_url').fill('https://mp.toutiao.com/profile_v4/graph/articles/publish')
+            assert page.locator('form').filter(has=page.locator('#name')).evaluate('(el) => el.checkValidity()')
+            evidence['checks'].append('create validation round-trip keeps hidden endpoint fields optional and corrected form submits')
             with page.expect_navigation():
                 page.locator('form').filter(has=page.locator('#name')).locator('button[type="submit"]').click()
             expect(page).to_have_url(re.compile(r"/distribution/\d+/edit$"))

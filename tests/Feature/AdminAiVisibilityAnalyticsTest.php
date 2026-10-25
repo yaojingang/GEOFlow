@@ -919,6 +919,17 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         return $run;
     }
 
+    public function test_explicit_unchecked_search_options_override_provider_true_defaults(): void
+    {
+        $this->configureAiVisibilityApis();
+        $provider = AiSourceProvider::query()->firstOrFail();
+        $provider->update(['metadata_json' => array_replace((array) $provider->metadata_json, ['need_summary' => true, 'query_rewrite' => true])]);
+        Http::preventStrayRequests();
+        Http::fake(['https://open.feedcoopapi.com/search_api/web_search' => Http::response(['Result' => ['WebResults' => []]])]);
+        $this->actingAs($this->admin(), 'admin')->post(route('admin.analytics.ai-visibility.search'), ['query' => 'GEOFlow', 'mode' => 'custom', 'need_summary' => '0', 'query_rewrite' => '0'])->assertRedirect()->assertSessionHasNoErrors();
+        Http::assertSent(fn ($request) => $request->data()['NeedSummary'] === false && $request->data()['QueryControl']['QueryRewrite'] === false);
+    }
+
     private function configureAiVisibilityApis(): void
     {
         AiSourceProvider::query()->create([

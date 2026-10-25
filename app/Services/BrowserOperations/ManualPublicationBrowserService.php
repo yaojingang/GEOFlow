@@ -15,6 +15,7 @@ use App\Models\ManualPublicationTransition;
 use App\Models\Task;
 use App\Services\GeoFlow\ArticlePublicationQualityGate;
 use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebDistributionBridge;
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebWorkOrderGuard;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -74,6 +75,7 @@ final class ManualPublicationBrowserService
             if ($publication->status !== ManualPublication::STATUS_READY) {
                 throw new ApiException('publication_claimed', '工作单已被领取或不处于待执行状态', 409);
             }
+            app(PlatformWebWorkOrderGuard::class)->assertExecutable($publication);
             $this->assertSourceArticleQuality($publication);
             if (! is_array($publication->publication_payload)) {
                 throw new ApiException('browser_payload_unavailable', '该历史工作单没有浏览器执行载荷', 409);

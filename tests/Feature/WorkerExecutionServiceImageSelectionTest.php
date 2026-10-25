@@ -8,6 +8,7 @@ use App\Models\ImageLibrary;
 use App\Models\Task;
 use App\Services\GeoFlow\WorkerExecutionService;
 use App\Support\GeoFlow\ImageUrlNormalizer;
+use App\Support\Site\ArticleHtmlPresenter;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use ReflectionMethod;
 use Tests\TestCase;
@@ -114,6 +115,26 @@ class WorkerExecutionServiceImageSelectionTest extends TestCase
             ->assertSessionHas('message');
 
         $this->assertSame('门店外观实拍', (string) $image->fresh()->tags);
+    }
+
+    public function test_final_renderer_enforces_reference_image_zero_candidates_and_count(): void
+    {
+        $library = $this->imageLibrary();
+        $a = $this->image($library->id, 'storage/uploads/images/a.jpg', 'A');
+        $b = $this->image($library->id, 'storage/uploads/images/b.jpg', 'B');
+        $aUrl = ImageUrlNormalizer::toPublicUrl($a->file_path);
+        $bUrl = ImageUrlNormalizer::toPublicUrl($b->file_path);
+        $content = "Ordinary **text** and `![demo][a]`.\n\n![picture][a] ![b][] ![a] ![outside][x]\n\n> ![multi\n> line][a]\n\n[a]: $aUrl\n[b]: $bUrl\n[x]: https://outside.example/photo.jpg";
+        foreach ([0, 1] as $count) {
+            $result = $this->insertImagesIntoContent($this->task($library->id, $count), $content);
+            $html = ArticleHtmlPresenter::markdownToHtml($result['content']);
+            $dom = new \DOMDocument;
+            @$dom->loadHTML($html);
+            $this->assertSame($count, $dom->getElementsByTagName('img')->length);
+            $this->assertStringContainsString('<strong>text</strong>', $html);
+            $this->assertStringContainsString('<code>![demo][a]</code>', $html);
+            $this->assertStringNotContainsString('src="https://outside.example', $html);
+        }
     }
 
     private function insertImagesIntoContent(Task $task, string $content): array

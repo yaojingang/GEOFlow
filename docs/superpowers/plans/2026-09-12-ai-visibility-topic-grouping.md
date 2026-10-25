@@ -1,6 +1,9 @@
 # AI 可见性监测主题分组 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> 历史设计记录：下文的任务勾选与执行限制保留原始规划状态，不作为当前操作指令。当前实现保留搜索工作台、专题归类、来源分布和竞品证据，并采用超级管理员 POST 词云清洗及主线额度审计。运行说明见 [AI 可见性专题与词云](../../ai-visibility-operations.md)；开发修订使用 `think` 与 `check`，提交授权遵循项目规则。
+
+
+> 历史执行提示（已停用）：原规划使用的执行技能已迁移到 `think` / `check`，下列清单仅作设计留档。
 
 **Goal:** 在"自由问法采集"与"统计分析"之间引入监测主题（Topic）分组层，保证用户提问自由性的同时，信源分布与竞品证据只在同一主题内聚合，不再跨问题混合。
 

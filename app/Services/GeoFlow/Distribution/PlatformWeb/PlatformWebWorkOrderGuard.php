@@ -1,0 +1,54 @@
+<?php
+
+namespace App\Services\GeoFlow\Distribution\PlatformWeb;
+
+use App\Ai\Workspace\AiPayloadDigest;
+use App\Exceptions\ApiException;
+use App\Models\ArticleDistribution;
+use App\Models\ManualPublication;
+use App\Services\GeoFlow\DistributionOrchestrator;
+
+/** Claim authorization only. Receipt recording preserves already-observed external facts. */
+final class PlatformWebWorkOrderGuard
+{
+    public static function digest(ManualPublication $publication): string
+    {
+        return AiPayloadDigest::make($publication->only([
+            'article_id', 'source_distribution_id', 'platform', 'persona_id', 'account_id',
+            'target_url', 'content', 'source_snapshot', 'publication_payload',
+        ]));
+    }
+
+    public static function canRefresh(ManualPublication $publication): bool
+    {
+        return in_array((string) $publication->status, ['ready', 'failed', 'skipped', 'cancelled', 'draft'], true)
+            && $publication->browser_claimed_at === null && $publication->execution_receipt === null
+            && ! $publication->transitions()->where('to_status', ManualPublication::STATUS_IN_PROGRESS)->exists();
+    }
+
+    /** Caller holds channel, task, article, distribution, then publication locks. */
+    public function assertExecutable(ManualPublication $publication): void
+    {
+        if ($publication->source_distribution_id === null) {
+            return;
+        }
+        $publication->load(['account.persona', 'persona']);
+        $distribution = ArticleDistribution::query()->with(['channel', 'article.task'])->find($publication->source_distribution_id);
+        $article = $distribution?->article;
+        $channel = $distribution?->channel;
+        $payload = data_get($distribution?->remote_meta, 'distribution_payload');
+        $orchestrator = app(DistributionOrchestrator::class);
+        if (! $distribution || ! $article || ! $channel?->isPlatformWeb() || $channel->status !== 'active'
+            || (int) $publication->article_id !== (int) $article->id
+            || $publication->platform !== $channel->resolvedPlatformWebConfig()['platform']
+            || ! is_array($payload)
+            || ! hash_equals((string) $distribution->payload_hash, AiPayloadDigest::make($payload))
+            || ! hash_equals((string) data_get($distribution->remote_meta, 'platform_web_work_order_digest'), self::digest($publication))
+            || ! $orchestrator->platformWorkOrderExecutable($distribution, $article)
+            || ! $publication->account?->is_active || ! $publication->persona?->is_active
+            || $publication->account->platform !== $publication->platform
+            || (int) $publication->account->persona_id !== (int) $publication->persona_id) {
+            throw new ApiException('publication_source_superseded', '分发快照或发布授权已变化，请通过源分发重新入队。', 409);
+        }
+    }
+}

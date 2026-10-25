@@ -926,7 +926,7 @@ class WorkerExecutionService
         $libraryId = (int) ($task->image_library_id ?? 0);
         $imageCount = min(5, max(0, (int) ($task->image_count ?? 0)));
         if ($libraryId <= 0 || $imageCount === 0) {
-            $content = preg_replace('/!\[[^\]]*\]\([^)]*\)|<img\b[^>]*>/iu', '', $content) ?? $content;
+            $content = app(MarkdownImagePolicy::class)->filter($content, static fn (string $url): bool => false);
 
             return ['content' => $content, 'images' => []];
         }
@@ -939,7 +939,7 @@ class WorkerExecutionService
             ->limit(self::IMAGE_CONTEXT_LIMIT)
             ->get(['id', 'file_path', 'original_name', 'tags']);
         if ($libraryImages->isEmpty()) {
-            $content = preg_replace('/!\[[^\]]*\]\([^)]*\)|<img\b[^>]*>/iu', '', $content) ?? $content;
+            $content = app(MarkdownImagePolicy::class)->filter($content, static fn (string $url): bool => false);
 
             return ['content' => $content, 'images' => []];
         }
@@ -947,16 +947,15 @@ class WorkerExecutionService
         $imageCount = min(5, max(0, (int) ($task->image_count ?? 0)));
         $allowed = $libraryImages->keyBy(fn (Image $image): string => ImageUrlNormalizer::toPublicUrl((string) $image->file_path));
         $selectedImages = [];
-        $content = preg_replace_callback('/!\[[^\]]*\]\(([^)\s]+)(?:\s+["\'][^"\']*["\'])?\)/u', function (array $match) use ($allowed, $imageCount, &$selectedImages): string {
-            $image = $allowed->get($match[1]);
+        $content = app(MarkdownImagePolicy::class)->filter($content, function (string $url) use ($allowed, $imageCount, &$selectedImages): bool {
+            $image = $allowed->get($url);
             if (! $image || count($selectedImages) >= $imageCount || isset($selectedImages[$image->id])) {
-                return '';
+                return false;
             }
             $selectedImages[$image->id] = $image;
 
-            return $match[0];
-        }, $content) ?? $content;
-        $content = preg_replace('/<img\b[^>]*>/iu', '', $content) ?? $content;
+            return true;
+        });
         $selectedImages = array_values($selectedImages);
         if ($selectedImages !== []) {
             return ['content' => $content, 'images' => $selectedImages];

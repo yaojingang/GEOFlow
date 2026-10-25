@@ -60,6 +60,9 @@ class ManualPublicationService
     /** @param array<string, mixed> $data */
     public function update(ManualPublication $manualPublication, array $data, int $expectedRevision): ManualPublication
     {
+        if (ManualPublication::query()->whereKey($manualPublication->id)->whereNotNull('source_distribution_id')->exists()) {
+            throw new DomainException('该工单由分发快照管理，请通过源分发操作。');
+        }
         if (! in_array((string) $manualPublication->status, [ManualPublication::STATUS_DRAFT, ManualPublication::STATUS_READY], true)) {
             throw new DomainException((string) __('admin.manual_publications.error.claimed_immutable'));
         }
@@ -104,8 +107,13 @@ class ManualPublicationService
         Admin $actor,
         ?string $completionUrl = null,
         ?string $resultNote = null,
+        bool $fromDistribution = false,
     ): ManualPublication {
-        return DB::transaction(function () use ($manualPublication, $targetStatus, $expectedRevision, $actor, $completionUrl, $resultNote): ManualPublication {
+        if ($manualPublication->source_distribution_id !== null && in_array($targetStatus, [ManualPublication::STATUS_READY, ManualPublication::STATUS_IN_PROGRESS], true) && ! $fromDistribution) {
+            throw new DomainException('该工单由分发快照管理，请通过源分发重新入队。');
+        }
+
+        return DB::transaction(function () use ($manualPublication, $targetStatus, $expectedRevision, $actor, $completionUrl, $resultNote, $fromDistribution): ManualPublication {
             $current = ManualPublication::query()
                 ->whereKey($manualPublication->getKey())
                 ->lockForUpdate()
@@ -113,6 +121,9 @@ class ManualPublicationService
 
             if ((int) $current->revision !== $expectedRevision) {
                 throw new ManualPublicationConflictException;
+            }
+            if ($current->source_distribution_id !== null && in_array($targetStatus, [ManualPublication::STATUS_READY, ManualPublication::STATUS_IN_PROGRESS], true) && ! $fromDistribution) {
+                throw new DomainException('该工单由分发快照管理，请通过源分发重新入队。');
             }
             $ability = $current->isReopenTransition($targetStatus) ? 'reopen' : 'transition';
             Gate::forUser($actor)->authorize($ability, $current);

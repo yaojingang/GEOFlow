@@ -2,6 +2,7 @@
 
 namespace Tests\PostgreSQL;
 
+use App\Ai\Workspace\AiPayloadDigest;
 use App\Exceptions\ApiException;
 use App\Models\Admin;
 use App\Models\Article;
@@ -13,8 +14,12 @@ use App\Models\ManualPublicationAccount;
 use App\Models\ManualPublicationPersona;
 use App\Models\Task;
 use App\Services\BrowserOperations\ManualPublicationBrowserService;
+use App\Services\GeoFlow\ArticlePublicationEligibilityService;
+use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebDistributionBridge;
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebWorkOrderGuard;
 use App\Services\GeoFlow\DistributionChannelDeletionService;
+use App\Services\GeoFlow\DistributionPayloadBuilder;
 use App\Services\GeoFlow\ManualPublicationService;
 use App\Services\GeoFlow\TaskLifecycleService;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
@@ -107,6 +112,41 @@ class PlatformWebPublicationConcurrencyTest extends PostgreSqlTestCase
         $this->assertSame(0, $bridge->reconcile(1));
     }
 
+    public function test_human_hold_and_claim_share_the_source_workflow_lock(): void
+    {
+        [$admin, $task, , $publication, $tokenId, $distribution] = $this->fixtures();
+        $barrier = tempnam(sys_get_temp_dir(), 'platform-hold-lock-');
+        $peer = tempnam(sys_get_temp_dir(), 'platform-claim-peer-');
+        try {
+            $results = $this->concurrent([
+                fn () => DB::transaction(function () use ($admin, $task, $distribution, $barrier, $peer): string {
+                    Task::whereKey($task->id)->lockForUpdate()->firstOrFail();
+                    file_put_contents($barrier, 'locked');
+                    $this->waitForBlockedConnection($peer);
+                    app(ArticleWorkflowTransitionService::class)->humanAction(Article::findOrFail($distribution->article_id), 'hold', $admin->id);
+
+                    return 'held';
+                }),
+                function () use ($admin, $publication, $tokenId, $barrier, $peer): string {
+                    $this->waitForBarrier($barrier);
+                    file_put_contents($peer, (string) DB::selectOne('SELECT pg_backend_pid() AS pid')->pid);
+                    try {
+                        app(ManualPublicationBrowserService::class)->claim($admin, $tokenId, $publication->id, $publication->revision);
+                    } catch (ApiException $exception) {
+                        return $exception->getErrorCode();
+                    }
+
+                    return 'unexpected_claim';
+                },
+            ]);
+            $this->assertSame(['held', 'publication_source_superseded'], $results);
+            $this->assertSame('ready', $publication->fresh()->status);
+        } finally {
+            @unlink($barrier);
+            @unlink($peer);
+        }
+    }
+
     private function fixtures(): array
     {
         $admin = Admin::create(['username' => 'platform-concurrency', 'password' => 'test', 'role' => 'super_admin', 'status' => 'active']);
@@ -116,7 +156,7 @@ class PlatformWebPublicationConcurrencyTest extends PostgreSqlTestCase
         $task = Task::create(['title_library_id' => $library, 'prompt_id' => $prompt, 'ai_model_id' => $model, 'name' => 'Platform task', 'status' => 'active', 'need_review' => 0, 'publish_scope' => 'distribution_only']);
         $category = Category::create(['name' => 'Platform', 'slug' => 'platform']);
         $author = Author::create(['name' => 'Author']);
-        $article = Article::create(['title' => 'Platform verified facts', 'slug' => 'platform-facts', 'content' => 'Verified descriptive content.', 'task_id' => $task->id, 'category_id' => $category->id, 'author_id' => $author->id, 'status' => 'private', 'review_status' => 'approved']);
+        $article = Article::create(['title' => 'Platform verified facts', 'slug' => 'platform-facts', 'content' => 'Verified descriptive content.', 'task_id' => $task->id, 'category_id' => $category->id, 'author_id' => $author->id, 'status' => 'private', 'review_status' => 'approved', 'publication_intent' => 'none']);
         $persona = ManualPublicationPersona::create(['name' => 'Operator', 'is_active' => true]);
         $account = ManualPublicationAccount::create(['persona_id' => $persona->id, 'platform' => 'toutiao', 'account_name' => 'Test operator']);
         $channel = DistributionChannel::create(['name' => 'Platform channel', 'domain' => 'mp.toutiao.com', 'endpoint_url' => 'https://mp.toutiao.com', 'channel_type' => 'platform_web', 'status' => 'active', 'created_by_admin_id' => $admin->id, 'channel_config' => ['platform' => 'toutiao', 'manual_publication_account_id' => $account->id]]);
@@ -124,6 +164,14 @@ class PlatformWebPublicationConcurrencyTest extends PostgreSqlTestCase
         $distribution = ArticleDistribution::create(['article_id' => $article->id, 'distribution_channel_id' => $channel->id, 'action' => 'publish', 'status' => 'awaiting_extension', 'idempotency_key' => 'concurrent-platform']);
         $publication = app(ManualPublicationService::class)->create(['type' => 'post', 'platform' => 'toutiao', 'article_id' => $article->id, 'persona_id' => $persona->id, 'account_id' => $account->id, 'assigned_admin_id' => $admin->id, 'status' => 'ready', 'content' => 'Verified descriptive content.', 'target_url' => 'https://mp.toutiao.com/profile_v4/graph/articles/publish'], $admin);
         $publication->update(['source_distribution_id' => $distribution->id]);
+        $payload = app(DistributionPayloadBuilder::class)->build($article);
+        $article->load('task');
+        $distribution->forceFill([
+            'payload_hash' => AiPayloadDigest::make($payload),
+            'remote_meta' => ['distribution_payload' => $payload,
+                'workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article, 'manual'),
+                'platform_web_work_order_digest' => PlatformWebWorkOrderGuard::digest($publication->fresh())],
+        ])->save();
         $token = $admin->createToken('concurrent-browser', ['browser-operations:read', 'browser-operations:execute']);
 
         return [$admin, $task, $channel, $publication, $token->accessToken->id, $distribution];

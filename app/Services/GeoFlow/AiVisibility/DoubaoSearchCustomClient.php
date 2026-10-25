@@ -70,7 +70,7 @@ final class DoubaoSearchCustomClient
                 'Query' => $query,
                 'SearchType' => $options['search_type'] ?? 'web',
                 'Count' => max(1, min(20, (int) ($options['count'] ?? config('geoflow.ai_visibility.default_search_count', 10)))),
-                'NeedSummary' => $options['need_summary'] ?? true,
+                'NeedSummary' => (bool) ($options['need_summary'] ?? true),
                 'AuthInfoLevel' => $options['auth_info_level'] ?? null,
                 'Filter' => array_filter([
                     'NeedContent' => $options['need_content'] ?? true, 'NeedUrl' => $options['need_url'] ?? true,
@@ -97,7 +97,7 @@ final class DoubaoSearchCustomClient
             'Query' => $query,
             'SearchType' => $options['search_type'] ?? 'web',
             'Count' => max(1, min($mode === 'global' ? 20 : 50, (int) ($options['count'] ?? config('geoflow.ai_visibility.default_search_count', 10)))),
-            'NeedSummary' => $options['need_summary'] ?? true,
+            'NeedSummary' => (bool) ($options['need_summary'] ?? true),
             'Filter' => $filter,
             'QueryControl' => ['QueryRewrite' => (bool) ($options['query_rewrite'] ?? false)],
         ], static fn (mixed $value): bool => $value !== null && $value !== '' && $value !== []);

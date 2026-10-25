@@ -85,11 +85,11 @@
                     <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
                         <div>
                             <label for="domain" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.field.domain') }} *</label>
-                            <input id="domain" name="domain" type="text" required value="{{ old('domain') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="example.com">
+                            <input id="domain" name="domain" type="text" @required($channelType !== 'platform_web') value="{{ old('domain') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="example.com">
                         </div>
                         <div>
                             <label for="endpoint_url" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.field.endpoint_url') }} *</label>
-                            <input id="endpoint_url" name="endpoint_url" type="text" required value="{{ old('endpoint_url') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.distribution.placeholder.endpoint_url') }}">
+                            <input id="endpoint_url" name="endpoint_url" type="text" @required($channelType !== 'platform_web') value="{{ old('endpoint_url') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.distribution.placeholder.endpoint_url') }}">
                             <p class="mt-1 text-xs text-gray-500">{{ __('admin.distribution.help.endpoint_url') }}</p>
                         </div>
                     </div>

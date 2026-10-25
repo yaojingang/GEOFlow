@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\ApiException;
 use App\Exceptions\PlatformPublishBlockedException;
 use App\Models\Admin;
 use App\Models\Article;
@@ -15,10 +16,12 @@ use App\Models\ManualPublicationAccount;
 use App\Models\ManualPublicationPersona;
 use App\Models\Task;
 use App\Services\BrowserOperations\ManualPublicationBrowserService;
+use App\Services\GeoFlow\ArticleWorkflowTransitionService;
 use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebDistributionBridge;
 use App\Services\GeoFlow\DistributionChannelDeletionService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\DistributionPublisherManager;
+use App\Services\GeoFlow\ManualPublicationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
@@ -823,6 +826,67 @@ class PlatformWebDistributionFlowTest extends TestCase
      * @param  array<string, mixed>  $channelConfigOverrides
      * @return array{Article, DistributionChannel}
      */
+    private function guardedWorkOrder(string $suffix): array
+    {
+        [$article, $channel] = $this->fixtures($suffix);
+        $orchestrator = app(DistributionOrchestrator::class);
+        $ids = $orchestrator->enqueueForArticle($article);
+        $orchestrator->process(ArticleDistribution::findOrFail($ids[0]));
+        $publication = ManualPublication::where('source_distribution_id', $ids[0])->sole();
+        $admin = Admin::findOrFail($publication->assigned_admin_id);
+        $token = $admin->createToken('guarded', ['browser-operations:read', 'browser-operations:execute']);
+
+        return [$article, $channel, $publication, $admin, $token->accessToken->id, ArticleDistribution::findOrFail($ids[0])];
+    }
+
+    public function test_linked_work_order_rejects_generic_rebinding_and_reopen(): void
+    {
+        [$article, , $publication, $admin] = $this->guardedWorkOrder('immutable-admin');
+        $this->actingAs($admin, 'admin')->put(route('admin.manual-publications.update', ['manualPublicationId' => $publication->id]), [
+            'revision' => $publication->revision, 'type' => 'post', 'article_id' => $article->id,
+            'persona_id' => $publication->persona_id, 'account_id' => $publication->account_id,
+            'assigned_admin_id' => $admin->id, 'platform' => 'sohu', 'content' => 'Changed', 'target_url' => 'https://mp.sohu.com/suc-ce/article/publish',
+        ])->assertForbidden();
+        $this->assertSame('toutiao', $publication->fresh()->platform);
+        $publication->update(['status' => 'failed']);
+        $this->expectException(\DomainException::class);
+        app(ManualPublicationService::class)->transition($publication->fresh(), 'ready', $publication->revision, $admin);
+    }
+
+    public function test_linked_claim_rejects_hold_and_cancelled_distribution(): void
+    {
+        foreach (['hold', 'cancelled'] as $state) {
+            [$article, , $publication, $admin, $tokenId, $distribution] = $this->guardedWorkOrder('fenced-'.$state);
+            if ($state === 'hold') {
+                app(ArticleWorkflowTransitionService::class)->humanAction($article, 'hold', $admin->id, expectedVersion: $article->workflow_version);
+            } else {
+                $distribution->update(['status' => 'cancelled']);
+            }
+            try {
+                app(ManualPublicationBrowserService::class)->claim($admin, $tokenId, $publication->id, $publication->revision);
+                $this->fail('Superseded distribution must reject a fresh claim.');
+            } catch (ApiException $exception) {
+                $this->assertSame('publication_source_superseded', $exception->getErrorCode());
+            }
+            $this->assertSame('ready', $publication->fresh()->status);
+        }
+    }
+
+    public function test_controlled_reenqueue_refreshes_unclaimed_work_after_hold_is_released(): void
+    {
+        [$article, , $publication, $admin, $tokenId, $distribution] = $this->guardedWorkOrder('renew-fence');
+        $workflow = app(ArticleWorkflowTransitionService::class);
+        $article = $workflow->humanAction($article, 'private', $admin->id, expectedVersion: $article->workflow_version);
+        $article = $workflow->humanAction($article, 'publish', $admin->id, expectedVersion: $article->workflow_version);
+        $ids = app(DistributionOrchestrator::class)->enqueueForArticle($article->fresh());
+        $this->assertSame('queued', $distribution->fresh()->status);
+        app(DistributionOrchestrator::class)->process($distribution->fresh());
+        $publication->refresh();
+        $claimed = app(ManualPublicationBrowserService::class)->claim($admin, $tokenId, $publication->id, $publication->revision);
+        $this->assertSame('in_progress', $claimed->status);
+        $this->assertDatabaseCount('manual_publications', 1);
+    }
+
     private function fixtures(string $suffix, array $channelConfigOverrides = []): array
     {
         $admin = Admin::query()->create([

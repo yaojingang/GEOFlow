@@ -8,6 +8,7 @@ use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\ManualPublication;
 use App\Models\ManualPublicationAccount;
+use App\Services\BrowserOperations\PublicationPayloadBuilder;
 use App\Services\GeoFlow\DistributionPublisherInterface;
 use App\Services\GeoFlow\ManualPublicationService;
 use RuntimeException;
@@ -72,6 +73,24 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
             ->where('source_distribution_id', (int) $distribution->id)
             ->first();
         if ($publication instanceof ManualPublication) {
+            if (PlatformWebWorkOrderGuard::canRefresh($publication)) {
+                $snapshot = $payload['article'] ?? null;
+                if (! is_array($snapshot) || (int) $publication->article_id !== (int) $distribution->article_id || $publication->platform !== $platform) {
+                    throw new RuntimeException('platform_web_work_order_binding_changed');
+                }
+                $content = PlatformWebContentFormatter::plainText((string) ($snapshot['content'] ?? ''));
+                $publication->forceFill([
+                    'content' => $content,
+                    'source_snapshot' => $snapshot,
+                    'publication_payload' => app(PublicationPayloadBuilder::class)->build([
+                        'type' => 'post', 'platform' => $platform, 'content' => $content, 'source_snapshot' => $snapshot,
+                        'target_url' => $publication->target_url, 'disclosure_snapshot' => $publication->disclosure_snapshot,
+                        'publication_payload_extras' => $this->bridge->payloadExtras($distribution, $config, $payload),
+                    ]),
+                    'revision' => (int) $publication->revision + ($publication->status === ManualPublication::STATUS_READY ? 1 : 0),
+                ])->save();
+            }
+
             if ((string) $publication->status === ManualPublication::STATUS_COMPLETED) {
                 return [
                     'remote_id' => (string) $publication->getKey(),
@@ -97,11 +116,15 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
                 ManualPublication::STATUS_SKIPPED,
                 ManualPublication::STATUS_CANCELLED,
             ], true)) {
+                if (! PlatformWebWorkOrderGuard::canRefresh($publication)) {
+                    throw new RuntimeException('platform_web_claimed_work_order_requires_reconciliation');
+                }
                 $publication = $this->manualPublicationService->transition(
                     $publication,
                     ManualPublication::STATUS_READY,
                     (int) $publication->revision,
                     $this->actorFor($channel),
+                    fromDistribution: true,
                 );
 
                 return $this->pendingResponse($publication);
@@ -207,6 +230,7 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
             'remote_url' => null,
             'remote_meta' => [
                 'pending_extension' => true,
+                'platform_web_work_order_digest' => PlatformWebWorkOrderGuard::digest($publication),
                 'execution_mode' => 'draft',
                 'work_order_status' => (string) $publication->status,
             ],
