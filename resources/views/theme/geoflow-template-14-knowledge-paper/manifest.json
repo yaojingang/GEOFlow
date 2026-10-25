@@ -1,8 +1,8 @@
 {
     "id": "geoflow-template-14-knowledge-paper",
-    "name": "GEOFlow 14 Knowledge Paper",
+    "name": "GEOFlow 模板 14 · 知识文档",
     "version": "1.0.0",
-    "description": "A document-like knowledge variant with soft paper rhythm, calm cards, and low-noise navigation. Preserves GEOFlow frontend data contracts and derives from the NetEase News Inspired base theme.",
+    "description": "文档化的知识型风格，纸张节奏柔和、卡片安静、导航低噪。",
     "templates": [
         "layout",
         "home",

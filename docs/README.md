@@ -18,6 +18,9 @@
 - [AI 质检运行手册](ai-quality-inspection-runbook.md)。
 - [管理员 AI 模型隔离与共享](admin-ai-config-sharing-runbook.md)。
 - [AI 工作台与系统帮助](ai-workspace-runbook.md)。
+- [平台网页人工辅助发布](distribution/platform-web-assisted-publishing.md)。
+- [AI 可见性专题与词云](ai-visibility-operations.md)。
+- [图片备注与智能配图](image-library-remarks.md)。
 - [Chrome 运营助手](browser-operations-runbook.md)。
 - [GEOFlow CLI](GEOFLOW_CLI.md) · [CLI English guide](GEOFLOW_CLI_en.md)。
 

@@ -26,6 +26,8 @@ class AiVisibilityAnalyticsFilter
         ], true)) {
             $provider = 'all';
         }
+        $topicInput = $input['ai_topic'] ?? 'all';
+        $topicId = $topicInput === 'all' ? 0 : (int) $topicInput;
 
         return new self(
             preset: $preset,
@@ -33,6 +35,7 @@ class AiVisibilityAnalyticsFilter
             dateTo: $dateTo,
             keyword: mb_substr(trim((string) ($input['ai_keyword'] ?? '')), 0, 160),
             provider: $provider,
+            topicId: max(0, $topicId),
         );
     }
 
@@ -42,7 +45,7 @@ class AiVisibilityAnalyticsFilter
         $preset = in_array($days, [14, 30, 60, 90], true) ? $days.'d' : 'custom';
         $today = Carbon::today();
 
-        return new self($preset, $today->copy()->subDays($days - 1), $today->copy(), '', 'all');
+        return new self($preset, $today->copy()->subDays($days - 1), $today->copy(), '', 'all', 0);
     }
 
     public function __construct(
@@ -51,6 +54,7 @@ class AiVisibilityAnalyticsFilter
         public readonly Carbon $dateTo,
         public readonly string $keyword,
         public readonly string $provider,
+        public readonly int $topicId = 0,
     ) {}
 
     public function start(): Carbon
@@ -77,6 +81,7 @@ class AiVisibilityAnalyticsFilter
             'ai_date_to' => $this->dateTo->toDateString(),
             'ai_keyword' => $this->keyword,
             'ai_provider' => $this->provider,
+            'ai_topic' => $this->topicId === 0 ? 'all' : $this->topicId,
         ];
     }
 

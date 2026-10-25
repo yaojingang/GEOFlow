@@ -56,7 +56,10 @@ class AiSourceProvider extends Model
             'need_content' => (bool) ($metadata['need_content'] ?? true),
             'need_url' => (bool) ($metadata['need_url'] ?? true),
             'content_formats' => (string) ($metadata['content_formats'] ?? 'Markdown'),
-            'auth_info_level' => (string) ($metadata['auth_info_level'] ?? ''),
+            'auth_info_level' => $metadata['auth_info_level'] ?? '',
+            'query_rewrite' => (bool) ($metadata['query_rewrite'] ?? false),
+            'time_range' => (string) ($metadata['time_range'] ?? ''),
+            'industry' => (string) ($metadata['industry'] ?? ''),
             'sites' => $this->listOption($metadata['sites'] ?? []),
             'block_hosts' => $this->listOption($metadata['block_hosts'] ?? []),
         ];

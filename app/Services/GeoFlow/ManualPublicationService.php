@@ -47,7 +47,10 @@ class ManualPublicationService
             }
             $prepared['duplicate_warning_count'] = $this->duplicateDetector->find($prepared)->count();
 
-            $publication = ManualPublication::query()->create($prepared);
+            $publication = ManualPublication::query()->create(
+                // extras 仅用于构建 payload，不落库
+                Arr::except($prepared, ['publication_payload_extras'])
+            );
             $this->recordTransition($publication, null, $initialStatus, $creator);
 
             return $publication->refresh();
@@ -57,9 +60,16 @@ class ManualPublicationService
     /** @param array<string, mixed> $data */
     public function update(ManualPublication $manualPublication, array $data, int $expectedRevision): ManualPublication
     {
+        if (ManualPublication::query()->whereKey($manualPublication->id)->whereNotNull('source_distribution_id')->exists()) {
+            throw new DomainException('该工单由分发快照管理，请通过源分发操作。');
+        }
         if (! in_array((string) $manualPublication->status, [ManualPublication::STATUS_DRAFT, ManualPublication::STATUS_READY], true)) {
             throw new DomainException((string) __('admin.manual_publications.error.claimed_immutable'));
         }
+
+        // publication_payload_extras 是临时键（不落库）：传入值优先；缺省时从既有 payload 回填三个 extras 键，避免状态流转重建 payload 时丢失。持久化前经 Arr::except 剥离。
+        $data['publication_payload_extras'] = $data['publication_payload_extras']
+            ?? Arr::only((array) ($manualPublication->publication_payload ?? []), PublicationPayloadBuilder::EXTRA_KEYS);
 
         $prepared = $this->prepare($data, $manualPublication);
         $this->ensureReadyRequirements($prepared + ['status' => (string) $manualPublication->status]);
@@ -71,8 +81,11 @@ class ManualPublicationService
         }
         $prepared['updated_at'] = now();
         $prepared['revision'] = $expectedRevision + 1;
-        $casted = (new ManualPublication)->forceFill($prepared);
-        $databaseUpdates = Arr::only($casted->getAttributes(), array_keys($prepared));
+        $persisted =
+            // extras 仅用于构建 payload，不落库
+            Arr::except($prepared, ['publication_payload_extras']);
+        $casted = (new ManualPublication)->forceFill($persisted);
+        $databaseUpdates = Arr::only($casted->getAttributes(), array_keys($persisted));
 
         $updated = ManualPublication::query()
             ->whereKey($manualPublication->getKey())
@@ -94,8 +107,13 @@ class ManualPublicationService
         Admin $actor,
         ?string $completionUrl = null,
         ?string $resultNote = null,
+        bool $fromDistribution = false,
     ): ManualPublication {
-        return DB::transaction(function () use ($manualPublication, $targetStatus, $expectedRevision, $actor, $completionUrl, $resultNote): ManualPublication {
+        if ($manualPublication->source_distribution_id !== null && in_array($targetStatus, [ManualPublication::STATUS_READY, ManualPublication::STATUS_IN_PROGRESS], true) && ! $fromDistribution) {
+            throw new DomainException('该工单由分发快照管理，请通过源分发重新入队。');
+        }
+
+        return DB::transaction(function () use ($manualPublication, $targetStatus, $expectedRevision, $actor, $completionUrl, $resultNote, $fromDistribution): ManualPublication {
             $current = ManualPublication::query()
                 ->whereKey($manualPublication->getKey())
                 ->lockForUpdate()
@@ -103,6 +121,9 @@ class ManualPublicationService
 
             if ((int) $current->revision !== $expectedRevision) {
                 throw new ManualPublicationConflictException;
+            }
+            if ($current->source_distribution_id !== null && in_array($targetStatus, [ManualPublication::STATUS_READY, ManualPublication::STATUS_IN_PROGRESS], true) && ! $fromDistribution) {
+                throw new DomainException('该工单由分发快照管理，请通过源分发重新入队。');
             }
             $ability = $current->isReopenTransition($targetStatus) ? 'reopen' : 'transition';
             Gate::forUser($actor)->authorize($ability, $current);
@@ -145,9 +166,14 @@ class ManualPublicationService
                 $updates['browser_claimed_by_token_id'] = null;
                 $updates['browser_claimed_at'] = null;
                 $updates['browser_last_seen_at'] = null;
+                // publication_payload_extras 是临时键（不落库）：传入值优先；缺省时从既有 payload 回填三个 extras 键，避免状态流转重建 payload 时丢失。持久化前经 Arr::except 剥离。
                 $updates['publication_payload'] = $this->publicationPayloadBuilder->build(array_merge(
                     $current->getAttributes(),
                     $updates,
+                    ['source_snapshot' => $current->source_snapshot, 'publication_payload_extras' => Arr::only(
+                        (array) ($current->publication_payload ?? []),
+                        PublicationPayloadBuilder::EXTRA_KEYS,
+                    )],
                 ));
             }
 
@@ -318,6 +344,7 @@ class ManualPublicationService
             'risk_status' => (string) Arr::get($riskResult, 'status', 'clean'),
             'risk_result' => $riskResult,
             'scheduled_at' => $data['scheduled_at'] ?? null,
+            'publication_payload_extras' => is_array($data['publication_payload_extras'] ?? null) ? $data['publication_payload_extras'] : [],
         ];
     }
 

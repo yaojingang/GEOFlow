@@ -16,7 +16,7 @@ final class ArticleHtmlPresenter
      */
     public static function markdownToHtml(string $markdown): string
     {
-        $markdown = self::normalizeMarkdownImages(trim($markdown));
+        $markdown = self::prepareMarkdown($markdown);
         if ($markdown === '') {
             return '';
         }
@@ -27,6 +27,12 @@ final class ArticleHtmlPresenter
         ]);
 
         return self::decorateRenderedHtml($converter->convert($markdown)->getContent());
+    }
+
+    /** Shared input semantics for rendering and image selection. */
+    public static function prepareMarkdown(string $markdown): string
+    {
+        return self::normalizeMarkdownImages(trim($markdown));
     }
 
     /**
@@ -81,6 +87,7 @@ final class ArticleHtmlPresenter
 
     private static function toPlainLine(string $text): string
     {
+        $text = str_replace('&#32;', ' ', $text);
         $text = preg_replace('/[#*_`>\[\]()]/u', ' ', $text) ?? $text;
         $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
 

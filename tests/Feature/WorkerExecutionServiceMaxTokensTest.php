@@ -20,6 +20,7 @@ use App\Services\GeoFlow\ArticleContentGenerationService;
 use App\Services\GeoFlow\WorkerAiModelInvocationGateway;
 use App\Services\GeoFlow\WorkerExecutionService;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use App\Support\Site\ArticleHtmlPresenter;
 use Illuminate\Cache\Lock;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -265,6 +266,30 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
         $this->assertSame("## 示例产品 榜单\n\n中文正文。", $article->content);
         $this->assertSame('示例产品 榜单 中文正文。', $article->excerpt);
         $this->assertSame('示例产品 榜单 中文正文。', $article->meta_description);
+    }
+
+    public function test_filtered_image_separator_is_absent_from_persisted_excerpt_and_meta_description(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://ai.test/v1/chat/completions' => Http::response($this->completion(
+            'Intro text. ![unapproved](https://outside.example/image.jpg) Keep Omega paragraph.',
+        ))]);
+        $model = $this->createChatModel();
+        $context = $this->executionContextForModel($model, 'worker-image-excerpt');
+        $library = TitleLibrary::create(['name' => 'Image excerpt titles']);
+        Title::create(['library_id' => $library->id, 'title' => 'Image excerpt article', 'keyword' => 'image']);
+        Category::create(['name' => 'Image excerpt category', 'slug' => 'image-excerpt-category']);
+        Task::findOrFail($context->sourceId)->update([
+            'title_library_id' => $library->id, 'draft_limit' => 10, 'article_limit' => 10,
+            'image_count' => 0, 'auto_description' => true,
+        ]);
+
+        $result = app(WorkerExecutionService::class)->executeTask($context->sourceId, $context);
+        $article = Article::findOrFail($result['article_id']);
+        $this->assertStringContainsString('&#32;', $article->content);
+        $this->assertSame('Intro text. Keep Omega paragraph.', $article->excerpt);
+        $this->assertSame('Intro text. Keep Omega paragraph.', $article->meta_description);
+        $this->assertSame('Intro text. Keep Omega paragraph.', ArticleHtmlPresenter::cardSummary($article));
     }
 
     #[DataProvider('reasoningOnlyResponses')]

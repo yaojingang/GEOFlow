@@ -1,7 +1,7 @@
 {
     "schema_version": 1,
     "support_stage": "remote-management-preview",
-    "admin_route_count": 418,
+    "admin_route_count": 422,
     "legacy_cli_operations": [
         {
             "name": "article.ai-optimization-apply",
@@ -1290,6 +1290,15 @@
             "methods": [
                 "POST"
             ],
+            "uri": "geo_admin/analytics/ai-visibility/assign-topic",
+            "name": "admin.analytics.ai-visibility.assign-topic",
+            "action": "App\\Http\\Controllers\\Admin\\AiVisibilityAnalyticsController@assignTopic",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
             "uri": "geo_admin/analytics/ai-visibility/collect",
             "name": "admin.analytics.ai-visibility.collect",
             "action": "App\\Http\\Controllers\\Admin\\AiVisibilityAnalyticsController@collect",
@@ -1320,6 +1329,24 @@
             "uri": "geo_admin/analytics/ai-visibility/competitors",
             "name": "admin.analytics.ai-visibility.competitors.store",
             "action": "App\\Http\\Controllers\\Admin\\AiVisibilityAnalyticsController@storeCompetitor",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/analytics/ai-visibility/refresh-terms",
+            "name": "admin.analytics.ai-visibility.refresh-terms",
+            "action": "App\\Http\\Controllers\\Admin\\AiVisibilityAnalyticsController@refreshTerms",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "POST"
+            ],
+            "uri": "geo_admin/analytics/ai-visibility/search",
+            "name": "admin.analytics.ai-visibility.search",
+            "action": "App\\Http\\Controllers\\Admin\\AiVisibilityAnalyticsController@search",
             "remote_coverage": "pending_domain_mapping"
         },
         {
@@ -2364,6 +2391,15 @@
             "uri": "geo_admin/image-libraries/{libraryId}/images/upload",
             "name": "admin.image-libraries.images.upload",
             "action": "App\\Http\\Controllers\\Admin\\ImageLibraryController@uploadImages",
+            "remote_coverage": "pending_domain_mapping"
+        },
+        {
+            "methods": [
+                "PUT"
+            ],
+            "uri": "geo_admin/image-libraries/{libraryId}/images/{imageId}/tags",
+            "name": "admin.image-libraries.images.tags",
+            "action": "App\\Http\\Controllers\\Admin\\ImageLibraryController@updateImageTags",
             "remote_coverage": "pending_domain_mapping"
         },
         {

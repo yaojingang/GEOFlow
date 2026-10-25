@@ -7,17 +7,32 @@ use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
 use App\Models\AiVisibilitySource;
+use App\Models\AiVisibilityTopic;
+use App\Models\AiVisibilityTopicKeyword;
 use App\Models\SiteSetting;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsFilter;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsService;
+use App\Services\GeoFlow\AiVisibility\AiVisibilityKeywordNormalizer;
+use App\Services\GeoFlow\AiVisibility\AiVisibilityTermCleaner;
+use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class AdminAiVisibilityAnalyticsTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // 词云 AI 清洗默认关闭，避免无关测试解析出真实模型绑定后发起网络调用；清洗用例内显式开启。
+        config()->set('geoflow.ai_visibility.term_cleanup_enabled', false);
+    }
 
     public function test_growth_center_renders_ai_visibility_dashboard_from_collected_runs(): void
     {
@@ -63,6 +78,9 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             ->get(route('admin.analytics.ai-visibility'))
             ->assertOk()
             ->assertSee(__('admin.growth_center.ai_visibility.title'))
+            ->assertSee(__('admin.growth_center.ai_visibility.status_title'))
+            ->assertSee(__('admin.growth_center.ai_visibility.valid_samples'))
+            ->assertSee(__('admin.growth_center.ai_visibility.last_updated'))
             ->assertSee(__('admin.growth_center.ai_visibility.kpi.visibility'))
             ->assertSee(__('admin.growth_center.ai_visibility.trend_title'))
             ->assertSee(__('admin.growth_center.ai_visibility.term_cloud_title'))
@@ -87,9 +105,206 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             ->assertSee('GEOFlow 内容工程')
             ->assertSee('AI 信源投放')
             ->assertSee('ranking.example.com')
-            ->assertSee(__('admin.growth_center.ai_visibility.action.content_gap'));
+            ->assertSee(__('admin.growth_center.ai_visibility.action.content_gap'))
+            ->assertSee('data-ai-visibility-section="keywords"', false)
+            ->assertSee('data-ai-visibility-section="sources"', false)
+            ->assertSee('data-ai-visibility-section="samples"', false)
+            ->assertSee(__('admin.growth_center.ai_visibility.sample_basis', ['count' => 3]))
+            ->assertDontSee('data-analytics-series="samples"', false);
 
         Carbon::setTestNow();
+    }
+
+    public function test_ai_visibility_page_exposes_search_workspace_and_evidence_contract(): void
+    {
+        $this->configureAiVisibilityApis();
+        $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.analytics.ai-visibility'))
+            ->assertOk()
+            ->assertSee('data-ai-visibility-search-workspace', false)
+            ->assertSee(route('admin.analytics.ai-visibility.search'), false)
+            ->assertSee('data-doubao-mode', false)
+            ->assertSee('开始搜索');
+    }
+
+    public function test_ai_visibility_page_renders_topic_selector_and_assignment_ui(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        $this->configureAiVisibilityApis();
+        $topic = AiVisibilityTopic::query()->create([
+            'name' => '渲染主题 Alpha',
+            'description' => '主题 A',
+        ]);
+        $run = $this->completedRun(
+            keyword: 'GEOFlow 渲染归类',
+            providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+            answer: 'GEOFlow 可见。',
+            sentiment: 'neutral',
+            completedAt: '2026-07-10 09:00:00',
+            sources: [
+                ['title' => '示例站点', 'domain' => 'example.com', 'rank' => 1, 'snippet' => '示例信源。'],
+            ],
+        );
+        $admin = $this->admin();
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.analytics.ai-visibility', ['ai_run' => $run->id]))
+            ->assertOk()
+            ->assertSee('<select id="ai-topic" name="ai_topic"', false)
+            ->assertSee(__('admin.analytics.ai_visibility.topic_all'))
+            ->assertSee('<select id="doubao-topic" name="topic_id"', false)
+            ->assertSee(__('admin.analytics.ai_visibility.topic_uncategorized'))
+            ->assertSee('<th class="px-3 py-2">'.__('admin.analytics.ai_visibility.topic').'</th>', false)
+            ->assertSee('渲染主题 Alpha')
+            ->assertSee(route('admin.analytics.ai-visibility.assign-topic'), false)
+            ->assertSee(__('admin.analytics.ai_visibility.assign_topic'));
+
+        $run->update(['ai_visibility_topic_id' => (int) $topic->id]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.analytics.ai-visibility', ['ai_run' => $run->id]))
+            ->assertOk()
+            ->assertSee('渲染主题 Alpha')
+            ->assertDontSee(route('admin.analytics.ai-visibility.assign-topic'), false);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_search_creates_a_run_attached_to_the_selected_topic(): void
+    {
+        $this->configureAiVisibilityApis();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'LogId' => 'log_admin_topic_search',
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+        $topic = AiVisibilityTopic::query()->create([
+            'name' => '采集主题',
+            'description' => '搜索采集时选择的主题',
+        ]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.analytics.ai-visibility.search'), [
+                'query' => 'GEOFlow AI 可见性',
+                'topic_id' => (int) $topic->id,
+            ])
+            ->assertStatus(302)
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('admin.analytics.ai-visibility', ['ai_run' => AiVisibilityRun::query()->firstOrFail()->id]));
+
+        $this->assertDatabaseHas('ai_visibility_runs', [
+            'keyword' => 'GEOFlow AI 可见性',
+            'ai_visibility_topic_id' => (int) $topic->id,
+            'keyword_hash' => AiVisibilityKeywordNormalizer::hash('GEOFlow AI 可见性'),
+        ]);
+    }
+
+    public function test_assign_topic_attaches_run_and_registers_keyword_variant(): void
+    {
+        $topic = AiVisibilityTopic::query()->create([
+            'name' => '归类主题 A',
+            'description' => '未归类问题归类目标',
+        ]);
+        $run = $this->completedRun(
+            keyword: 'GEOFlow 未归类问题',
+            providerType: AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            answer: 'GEOFlow 可见。',
+            sentiment: 'neutral',
+            completedAt: '2026-07-10 09:00:00',
+            sources: [],
+        );
+        $run->update(['keyword_hash' => AiVisibilityKeywordNormalizer::hash('GEOFlow 未归类问题')]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.analytics.ai-visibility.assign-topic'), [
+                'run_id' => (int) $run->id,
+                'topic_id' => (int) $topic->id,
+            ])
+            ->assertRedirect(route('admin.analytics.ai-visibility', ['ai_run' => $run->id]));
+
+        $this->assertDatabaseHas('ai_visibility_runs', [
+            'id' => (int) $run->id,
+            'ai_visibility_topic_id' => (int) $topic->id,
+        ]);
+        $this->assertDatabaseHas('ai_visibility_topic_keywords', [
+            'keyword_hash' => AiVisibilityKeywordNormalizer::hash('GEOFlow 未归类问题'),
+            'keyword' => 'GEOFlow 未归类问题',
+            'ai_visibility_topic_id' => (int) $topic->id,
+        ]);
+    }
+
+    public function test_assign_topic_is_idempotent_and_rebinds_variant_to_new_topic(): void
+    {
+        $topicA = AiVisibilityTopic::query()->create([
+            'name' => '归类主题 A',
+            'description' => '初始归类',
+        ]);
+        $topicB = AiVisibilityTopic::query()->create([
+            'name' => '归类主题 B',
+            'description' => '重新归类',
+        ]);
+        $run = $this->completedRun(
+            keyword: 'GEOFlow 重复归类',
+            providerType: AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            answer: 'GEOFlow 可见。',
+            sentiment: 'neutral',
+            completedAt: '2026-07-10 09:00:00',
+            sources: [],
+        );
+        $run->update(['keyword_hash' => AiVisibilityKeywordNormalizer::hash('GEOFlow 重复归类')]);
+        $admin = $this->admin();
+        $assign = fn (int $topicId) => $this->actingAs($admin, 'admin')
+            ->post(route('admin.analytics.ai-visibility.assign-topic'), [
+                'run_id' => (int) $run->id,
+                'topic_id' => $topicId,
+            ]);
+
+        $assign((int) $topicA->id)->assertRedirect();
+        $assign((int) $topicA->id)->assertRedirect();
+        $assign((int) $topicB->id)->assertRedirect(route('admin.analytics.ai-visibility', ['ai_run' => $run->id]));
+
+        $this->assertDatabaseHas('ai_visibility_runs', [
+            'id' => (int) $run->id,
+            'ai_visibility_topic_id' => (int) $topicB->id,
+        ]);
+        $this->assertSame(1, AiVisibilityTopicKeyword::query()->count());
+        $this->assertDatabaseHas('ai_visibility_topic_keywords', [
+            'keyword_hash' => AiVisibilityKeywordNormalizer::hash('GEOFlow 重复归类'),
+            'ai_visibility_topic_id' => (int) $topicB->id,
+        ]);
+    }
+
+    public function test_assign_topic_skips_binding_for_punctuation_only_keywords(): void
+    {
+        $topic = AiVisibilityTopic::query()->create([
+            'name' => '归类主题 C',
+            'description' => '标点关键词不落绑定',
+        ]);
+        $run = $this->completedRun(
+            keyword: '!!!',
+            providerType: AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            answer: 'GEOFlow 可见。',
+            sentiment: 'neutral',
+            completedAt: '2026-07-10 09:00:00',
+            sources: [],
+        );
+        $run->update(['keyword_hash' => AiVisibilityKeywordNormalizer::hash('!!!')]);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->post(route('admin.analytics.ai-visibility.assign-topic'), [
+                'run_id' => (int) $run->id,
+                'topic_id' => (int) $topic->id,
+            ])
+            ->assertRedirect(route('admin.analytics.ai-visibility', ['ai_run' => $run->id]));
+
+        $this->assertDatabaseHas('ai_visibility_runs', [
+            'id' => (int) $run->id,
+            'ai_visibility_topic_id' => (int) $topic->id,
+        ]);
+        $this->assertDatabaseMissing('ai_visibility_topic_keywords', [
+            'keyword_hash' => AiVisibilityKeywordNormalizer::hash('!!!'),
+        ]);
     }
 
     public function test_growth_center_collapses_ai_visibility_module_until_search_api_is_configured(): void
@@ -268,6 +483,40 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_latest_update_time_stays_within_the_selected_visibility_period(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        config()->set('geoflow.site_name', 'GEOFlow');
+        config()->set('geoflow.site_url', 'https://geoflow.example.com');
+
+        $this->completedRun(
+            keyword: '范围内关键词',
+            providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+            answer: 'GEOFlow 可见。',
+            sentiment: 'positive',
+            completedAt: '2026-07-10 09:00:00',
+            sources: [],
+        );
+        $this->completedRun(
+            keyword: '范围外关键词',
+            providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+            answer: 'GEOFlow 可见。',
+            sentiment: 'positive',
+            completedAt: '2026-07-11 09:00:00',
+            sources: [],
+        );
+
+        $overview = app(AiVisibilityAnalyticsService::class)->overview(AiVisibilityAnalyticsFilter::fromRequest([
+            'ai_preset' => 'custom',
+            'ai_date_from' => '2026-07-10',
+            'ai_date_to' => '2026-07-10',
+        ]));
+
+        $this->assertSame('2026-07-10 09:00:00', (string) $overview['polling']['latest_completed_at']);
+
+        Carbon::setTestNow();
+    }
+
     public function test_ai_visibility_kpis_average_daily_keyword_metrics_not_raw_sample_volume(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
@@ -365,8 +614,267 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_ai_visibility_term_cloud_skips_url_and_markup_noise_in_source_content(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        config()->set('geoflow.site_name', 'GEOFlow');
+        config()->set('geoflow.site_url', 'https://geoflow.example.com');
+
+        $this->completedRun(
+            keyword: '高考升学规划',
+            providerType: AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            answer: '高考志愿填报要结合升学规划，雅思成绩也是留学路径的一部分。',
+            sentiment: 'positive',
+            completedAt: '2026-07-10 10:00:00',
+            sources: [
+                [
+                    'title' => '高考志愿填报指南',
+                    'domain' => 'eol.cn',
+                    'rank' => 1,
+                    'snippet' => '详见 https://www.winielts.com/vip/faqpage.html?id=10&hits=3 <script>{"@type":"FAQPage"}</script> s10 咨询。eol.cn 提供雅思备考资料。',
+                ],
+            ],
+        );
+
+        $terms = collect(app(AiVisibilityAnalyticsService::class)->overview()['terms'])
+            ->pluck('term')
+            ->all();
+
+        $this->assertContains('高考', $terms);
+        $this->assertNotContains('winielts', $terms);
+        $this->assertNotContains('faqpage', $terms);
+        $this->assertNotContains('hits', $terms);
+        $this->assertNotContains('eol', $terms);
+        $this->assertNotContains('vip', $terms);
+        $this->assertNotContains('s10', $terms);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_paid_cleanup_post_uses_candidate_cache_without_repeating_model_work(): void
+    {
+        $this->configureAiVisibilityApis();
+        config()->set('geoflow.ai_visibility.term_cleanup_enabled', true);
+        $this->completedRun('GEOFlow', AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM, 'education education education', 'positive', now()->toDateTimeString(), []);
+        $this->mock(AiVisibilityTermCleaner::class, fn ($mock) => $mock->shouldReceive('clean')->once()->andReturn([['name' => '教育', 'terms' => ['education']]]));
+        $this->actingAs($this->admin(), 'admin');
+        $this->from(route('admin.analytics.ai-visibility'))->post(route('admin.analytics.ai-visibility.refresh-terms'))->assertRedirect()->assertSessionHas('message');
+        $this->post(route('admin.analytics.ai-visibility.refresh-terms'))->assertRedirect();
+        $this->get(route('admin.analytics.ai-visibility'))->assertOk()->assertSee('刷新词云清洗')->assertSee('教育');
+    }
+
+    public function test_ordinary_admin_cannot_start_paid_cleanup_or_search_or_assign_topics(): void
+    {
+        $admin = $this->admin();
+        $admin->update(['role' => 'admin']);
+        $this->actingAs($admin->fresh(), 'admin');
+        foreach (['refresh-terms', 'search', 'assign-topic'] as $action) {
+            $this->post(route('admin.analytics.ai-visibility.'.$action))->assertForbidden();
+        }
+    }
+
+    public function test_get_overview_never_dispatches_or_calls_paid_cleanup(): void
+    {
+        $this->configureAiVisibilityApis();
+        config()->set('geoflow.ai_visibility.term_cleanup_enabled', true);
+        Queue::fake();
+        $this->completedRun('GEOFlow', AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM, 'ielts winielts education', 'positive', now()->toDateTimeString(), []);
+        $this->mock(AiVisibilityTermCleaner::class, fn ($mock) => $mock->shouldNotReceive('clean'));
+        $this->actingAs($this->admin(), 'admin')->get(route('admin.analytics.ai-visibility'))->assertOk();
+        Queue::assertNothingPushed();
+    }
+
+    public function test_ai_visibility_term_cloud_cleans_candidates_with_system_ai(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        config()->set('geoflow.site_name', 'GEOFlow');
+        config()->set('geoflow.site_url', 'https://geoflow.example.com');
+        config()->set('geoflow.ai_visibility.term_cleanup_enabled', true);
+
+        $this->completedRun(
+            keyword: '雅思备考',
+            providerType: AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            answer: '雅思备考需要关注 ielts 与 winielts 的资料差异。',
+            sentiment: 'positive',
+            completedAt: '2026-07-10 10:00:00',
+            sources: [
+                ['title' => 'ielts 备考指南', 'domain' => 'eol.cn', 'rank' => 1, 'snippet' => 'ielts 与 winielts 的备考资料对比。'],
+            ],
+        );
+
+        $this->mock(AiVisibilityTermCleaner::class, function ($mock): void {
+            $mock->shouldReceive('clean')->once()->andReturn([
+                ['name' => '雅思考试', 'terms' => ['ielts', 'winielts']],
+            ]);
+        });
+
+        $overview = app(AiVisibilityAnalyticsService::class)->overview(refreshTermCleanup: true);
+
+        $this->assertSame('雅思考试', $overview['terms'][0]['term'] ?? null);
+        $this->assertSame(5.0, $overview['terms'][0]['weight'] ?? null);
+
+        // 候选词未变化时走缓存，不再触发第二次 AI 清洗。
+        $cached = app(AiVisibilityAnalyticsService::class)->overview(refreshTermCleanup: true);
+        $this->assertSame('雅思考试', $cached['terms'][0]['term'] ?? null);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_ai_visibility_term_cloud_falls_back_to_heuristics_when_ai_cleanup_fails(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        config()->set('geoflow.site_name', 'GEOFlow');
+        config()->set('geoflow.site_url', 'https://geoflow.example.com');
+        config()->set('geoflow.ai_visibility.term_cleanup_enabled', true);
+
+        $this->completedRun(
+            keyword: '雅思备考',
+            providerType: AiVisibilityRun::PROVIDER_DOUBAO_SEARCH_CUSTOM,
+            answer: '雅思备考需要关注 ielts 与 winielts 的资料差异。',
+            sentiment: 'positive',
+            completedAt: '2026-07-10 10:00:00',
+            sources: [
+                ['title' => 'ielts 备考指南', 'domain' => 'eol.cn', 'rank' => 1, 'snippet' => 'ielts 与 winielts 的备考资料对比。'],
+            ],
+        );
+
+        $this->mock(AiVisibilityTermCleaner::class, function ($mock): void {
+            $mock->shouldReceive('clean')->andReturn(null);
+        });
+
+        $overview = app(AiVisibilityAnalyticsService::class)->overview(refreshTermCleanup: true);
+        $terms = collect($overview['terms'])->pluck('term')->all();
+
+        $this->assertContains('ielts', $terms);
+        $this->assertContains('winielts', $terms);
+        $this->assertNotContains('雅思考试', $terms);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_source_distribution_and_competitor_evidence_do_not_merge_rows_across_topics(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        $topicA = AiVisibilityTopic::query()->create([
+            'name' => '主题 Alpha',
+            'description' => '主题 A',
+        ]);
+        $topicB = AiVisibilityTopic::query()->create([
+            'name' => '主题 Beta',
+            'description' => '主题 B',
+        ]);
+        $cases = [
+            ['keyword' => 'Alpha 关键词', 'topicId' => (int) $topicA->id],
+            ['keyword' => 'Beta 关键词', 'topicId' => (int) $topicB->id],
+            ['keyword' => '未归类关键词', 'topicId' => null],
+        ];
+        foreach ($cases as $index => $case) {
+            $this->completedRun(
+                keyword: $case['keyword'],
+                providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+                answer: '竞品甲在该主题下被提及。',
+                sentiment: 'neutral',
+                completedAt: sprintf('2026-07-10 09:%02d:00', $index),
+                sources: [
+                    ['title' => '示例站点', 'domain' => 'example.com', 'rank' => 1, 'snippet' => '示例信源。'],
+                ],
+                topicId: $case['topicId'],
+                competitors: [
+                    ['name' => '竞品甲', 'evidence' => [
+                        ['url' => 'https://competitor.example.com/evidence-'.$index],
+                    ]],
+                ],
+            );
+        }
+
+        $overview = app(AiVisibilityAnalyticsService::class)->overview(AiVisibilityAnalyticsFilter::fromRequest([
+            'ai_preset' => 'custom',
+            'ai_date_from' => '2026-07-10',
+            'ai_date_to' => '2026-07-10',
+        ]));
+
+        $sourceRows = collect($overview['source_distribution'])->where('name', 'example.com')->values();
+        $this->assertCount(3, $sourceRows);
+        $this->assertSame(
+            ['主题 Alpha', '主题 Beta', '未归类'],
+            $sourceRows->pluck('topic')->sort()->values()->all(),
+        );
+        $this->assertSame(3, (int) $sourceRows->sum('count'));
+
+        $competitorRows = collect($overview['competitors'])->where('name', '竞品甲')->values();
+        $this->assertCount(3, $competitorRows);
+        $this->assertSame(
+            ['主题 Alpha', '主题 Beta', '未归类'],
+            $competitorRows->pluck('topic')->sort()->values()->all(),
+        );
+        $this->assertSame(3, (int) $competitorRows->sum('mention_count'));
+
+        Carbon::setTestNow();
+    }
+
+    public function test_ai_topic_filter_narrows_analytics_runs_and_panels(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-10 12:00:00'));
+        $topicA = AiVisibilityTopic::query()->create([
+            'name' => '主题 Alpha',
+            'description' => '主题 A',
+        ]);
+        $topicB = AiVisibilityTopic::query()->create([
+            'name' => '主题 Beta',
+            'description' => '主题 B',
+        ]);
+        foreach ([
+            ['keyword' => 'Alpha 关键词', 'topicId' => (int) $topicA->id],
+            ['keyword' => 'Beta 关键词', 'topicId' => (int) $topicB->id],
+        ] as $index => $case) {
+            $this->completedRun(
+                keyword: $case['keyword'],
+                providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+                answer: '竞品甲在该主题下被提及。',
+                sentiment: 'neutral',
+                completedAt: sprintf('2026-07-10 09:%02d:00', $index),
+                sources: [
+                    ['title' => '示例站点', 'domain' => 'example.com', 'rank' => 1, 'snippet' => '示例信源。'],
+                ],
+                topicId: $case['topicId'],
+                competitors: [
+                    ['name' => '竞品甲', 'evidence' => [
+                        ['url' => 'https://competitor.example.com/evidence-'.$index],
+                    ]],
+                ],
+            );
+        }
+
+        $this->assertSame(0, AiVisibilityAnalyticsFilter::fromRequest([])->topicId);
+        $this->assertSame(0, AiVisibilityAnalyticsFilter::fromRequest(['ai_topic' => 'all'])->topicId);
+        $this->assertSame(0, AiVisibilityAnalyticsFilter::fromRequest(['ai_topic' => 'abc'])->topicId);
+        $this->assertSame((int) $topicA->id, AiVisibilityAnalyticsFilter::fromRequest(['ai_topic' => (string) $topicA->id])->topicId);
+
+        $overview = app(AiVisibilityAnalyticsService::class)->overview(AiVisibilityAnalyticsFilter::fromRequest([
+            'ai_preset' => 'custom',
+            'ai_date_from' => '2026-07-10',
+            'ai_date_to' => '2026-07-10',
+            'ai_topic' => (string) $topicA->id,
+        ]));
+
+        $this->assertSame(1, $overview['polling']['runs']);
+        $this->assertSame(1, $overview['polling']['sampled_runs']);
+        $this->assertSame(
+            ['主题 Alpha'],
+            collect($overview['source_distribution'])->pluck('topic')->unique()->values()->all(),
+        );
+        $this->assertSame(
+            ['主题 Alpha'],
+            collect($overview['competitors'])->pluck('topic')->unique()->values()->all(),
+        );
+        $this->assertSame('Alpha 关键词', $overview['keywords'][0]['keyword']);
+
+        Carbon::setTestNow();
+    }
+
     /**
      * @param  list<array{title: string, domain: string, rank: int, snippet: string}>  $sources
+     * @param  list<array<string, mixed>>  $competitors
      */
     private function completedRun(
         string $keyword,
@@ -375,6 +883,8 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         string $sentiment,
         string $completedAt,
         array $sources,
+        ?int $topicId = null,
+        array $competitors = [],
     ): AiVisibilityRun {
         $run = AiVisibilityRun::query()->create([
             'keyword' => $keyword,
@@ -384,7 +894,10 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
             'model_id' => 'test-model',
             'status' => AiVisibilityRun::STATUS_COMPLETED,
             'answer_text' => $answer,
-            'analysis_json' => ['sentiment' => $sentiment],
+            'ai_visibility_topic_id' => $topicId,
+            'analysis_json' => $competitors === []
+                ? ['sentiment' => $sentiment]
+                : ['sentiment' => $sentiment, 'competitors' => $competitors],
             'started_at' => Carbon::parse($completedAt)->subSeconds(20),
             'completed_at' => Carbon::parse($completedAt),
             'created_at' => Carbon::parse($completedAt),
@@ -406,13 +919,24 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         return $run;
     }
 
+    public function test_explicit_unchecked_search_options_override_provider_true_defaults(): void
+    {
+        $this->configureAiVisibilityApis();
+        $provider = AiSourceProvider::query()->firstOrFail();
+        $provider->update(['metadata_json' => array_replace((array) $provider->metadata_json, ['need_summary' => true, 'query_rewrite' => true])]);
+        Http::preventStrayRequests();
+        Http::fake(['https://open.feedcoopapi.com/search_api/web_search' => Http::response(['Result' => ['WebResults' => []]])]);
+        $this->actingAs($this->admin(), 'admin')->post(route('admin.analytics.ai-visibility.search'), ['query' => 'GEOFlow', 'mode' => 'custom', 'need_summary' => '0', 'query_rewrite' => '0'])->assertRedirect()->assertSessionHasNoErrors();
+        Http::assertSent(fn ($request) => $request->data()['NeedSummary'] === false && $request->data()['QueryControl']['QueryRewrite'] === false);
+    }
+
     private function configureAiVisibilityApis(): void
     {
         AiSourceProvider::query()->create([
             'name' => 'Doubao Search Custom',
             'provider_key' => AiSourceProvider::PROVIDER_DOUBAO_SEARCH_CUSTOM,
             'endpoint_url' => 'https://open.feedcoopapi.com/search_api/web_search',
-            'api_key' => 'encrypted-doubao-key',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-search-key'),
             'status' => 'active',
             'daily_limit' => 0,
             'used_today' => 0,

@@ -209,3 +209,5 @@ Schedule::command('hosted-sites:reconcile', [
     ->withoutOverlapping(10);
 
 Schedule::command('geoflow:check-topic-temporal-state')->everyFiveMinutes()->onOneServer()->withoutOverlapping(5);
+
+Schedule::command('geoflow:reconcile-platform-web')->everyMinute()->onOneServer()->withoutOverlapping(2);

@@ -1,8 +1,8 @@
 {
     "id": "geoflow-template-02-market-briefing",
-    "name": "GEOFlow 02 Market Briefing",
+    "name": "GEOFlow 模板 02 · 市场快报",
     "version": "1.0.0",
-    "description": "A dense market-briefing variant with sharp contrast, compact cards, and data-news rhythm. Preserves GEOFlow frontend data contracts and derives from the NetEase News Inspired base theme.",
+    "description": "高密度市场简报风格，对比强烈、卡片紧凑，富有数据新闻节奏。",
     "templates": [
         "layout",
         "home",

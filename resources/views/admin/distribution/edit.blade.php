@@ -71,6 +71,7 @@
             </div>
         </div>
 
+        @unless ($channel->isPlatformWeb())
         <div class="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-5 py-4">
             <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -94,6 +95,8 @@
                 </div>
             </div>
         </div>
+
+        @endunless
 
         <div class="rounded-lg bg-white shadow">
             <div class="px-6 py-6">
@@ -137,6 +140,9 @@
                         </div>
                     </div>
 
+                    @if ($channel->isPlatformWeb())
+                        @include('admin.distribution._platform-web')
+                    @endif
                     @if ($channel->isWordPressRest())
                         <div class="rounded-lg border border-blue-100 bg-blue-50 p-5">
                             <div class="mb-5">
@@ -307,6 +313,7 @@
                         @include('admin.distribution._rewrite-rules', ['channel' => $channel])
                     @endif
 
+                    @unless ($channel->isPlatformWeb())
                     <div class="rounded-lg border border-gray-200 bg-gray-50 p-5">
                         <div class="mb-5">
                             <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.remote_site.section_title') }}</h2>
@@ -764,6 +771,8 @@
                             {{ __('admin.distribution.article_text_ads.package_hint') }}
                         </div>
                     </div>
+
+                    @endunless
 
                     <div>
                         <label for="description" class="block text-sm font-medium text-gray-700">{{ __('admin.common.description') }}</label>

@@ -26,6 +26,7 @@ class ManualPublicationPolicy
     public function update(Admin $admin, ManualPublication $manualPublication): bool
     {
         return $admin->isSuperAdmin()
+            && $manualPublication->source_distribution_id === null
             && in_array((string) $manualPublication->status, [
                 ManualPublication::STATUS_DRAFT,
                 ManualPublication::STATUS_READY,

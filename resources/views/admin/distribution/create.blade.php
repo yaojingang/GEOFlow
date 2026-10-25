@@ -73,16 +73,23 @@
                                 </span>
                             </label>
                         </div>
+                        <label class="mt-3 flex items-center gap-3 rounded-md border border-gray-200 bg-white p-4">
+                            <input type="radio" name="channel_type" value="platform_web" @checked($channelType === 'platform_web')>
+                            <span class="text-sm font-semibold">平台网页（人工辅助发布）</span>
+                        </label>
                     </fieldset>
+                    <div data-channel-type-panel="platform_web" @class(['hidden' => $channelType !== 'platform_web'])>
+                        @include('admin.distribution._platform-web')
+                    </div>
 
                     <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
                         <div>
                             <label for="domain" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.field.domain') }} *</label>
-                            <input id="domain" name="domain" type="text" required value="{{ old('domain') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="example.com">
+                            <input id="domain" name="domain" type="text" @required($channelType !== 'platform_web') value="{{ old('domain') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="example.com">
                         </div>
                         <div>
                             <label for="endpoint_url" class="block text-sm font-medium text-gray-700">{{ __('admin.distribution.field.endpoint_url') }} *</label>
-                            <input id="endpoint_url" name="endpoint_url" type="text" required value="{{ old('endpoint_url') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.distribution.placeholder.endpoint_url') }}">
+                            <input id="endpoint_url" name="endpoint_url" type="text" @required($channelType !== 'platform_web') value="{{ old('endpoint_url') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.distribution.placeholder.endpoint_url') }}">
                             <p class="mt-1 text-xs text-gray-500">{{ __('admin.distribution.help.endpoint_url') }}</p>
                         </div>
                     </div>
@@ -319,7 +326,7 @@
                         <a href="{{ route('admin.distribution.index') }}" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('admin.button.cancel') }}</a>
                         <button type="submit" class="inline-flex items-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
                             <i data-lucide="key-round" class="mr-2 h-4 w-4"></i>
-                            {{ __('admin.distribution.button.save_and_generate_secret') }}
+                            {{ __('admin.button.save') }}
                         </button>
                     </div>
                 </form>
@@ -329,6 +336,8 @@
     <script>
         document.addEventListener('change', function (event) {
             if (event.target.matches('[name="channel_type"]')) {
+                document.querySelector('#domain').required = event.target.value !== 'platform_web';
+                document.querySelector('#endpoint_url').required = event.target.value !== 'platform_web';
                 document.querySelectorAll('[data-channel-type-panel]').forEach(function (panel) {
                     panel.classList.toggle('hidden', panel.dataset.channelTypePanel !== event.target.value);
                 });

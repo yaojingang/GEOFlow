@@ -8,8 +8,11 @@ use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiSourceProvider;
 use App\Models\AiVisibilityRun;
+use App\Models\AiVisibilityTopic;
+use App\Models\AiVisibilityTopicKeyword;
 use App\Models\SiteSetting;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityConfigurationResolver;
+use App\Services\GeoFlow\AiVisibility\AiVisibilityKeywordNormalizer;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -414,5 +417,156 @@ class AiVisibilityServiceTest extends TestCase
             ['setting_key' => $settingKey],
             ['setting_value' => (string) $model->id],
         );
+    }
+
+    public function test_custom_search_builds_the_documented_filter_and_query_control_payload(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://open.feedcoopapi.com/search_api/web_search' => Http::response(['Result' => ['WebResults' => []]])]);
+
+        $provider = $this->createSearchProvider();
+        app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, 'GEOFlow', [
+            'mode' => 'custom',
+            'count' => 50,
+            'query_rewrite' => true,
+            'time_range' => 'OneMonth',
+            'industry' => 'finance',
+            'sites' => ['toutiao.com', 'zhonghua.com'],
+            'block_hosts' => ['spam.example'],
+            'auth_info_level' => 1,
+            'content_formats' => 'markdown',
+            'summary_length' => 1200,
+            'image_count' => 4,
+        ]);
+
+        Http::assertSent(fn ($request): bool => $request['Count'] === 50
+            && ($request['QueryControl']['QueryRewrite'] ?? null) === true
+            && ($request['Filter']['TimeRange'] ?? null) === 'OneMonth'
+            && ($request['Filter']['Industry'] ?? null) === 'finance'
+            && ($request['Filter']['Sites'] ?? null) === 'toutiao.com|zhonghua.com'
+            && ($request['Filter']['BlockHosts'] ?? null) === 'spam.example'
+            && ($request['Filter']['AuthInfoLevel'] ?? null) === 1
+            && ($request['Filter']['ContentFormats'] ?? null) === 'markdown');
+        $request = Http::recorded()[0][0];
+        $this->assertSame(1200, $request['Filter']['SummaryLength']);
+        $this->assertSame(4, $request['Filter']['ImageCount']);
+    }
+
+    public function test_global_search_caps_the_result_count_at_twenty(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://open.feedcoopapi.com/search_api/web_search' => Http::response(['Result' => ['WebResults' => []]])]);
+
+        app(AiVisibilityService::class)->runDoubaoSearchCustom($this->createSearchProvider(), 'GEOFlow', [
+            'mode' => 'global',
+            'count' => 50,
+        ]);
+
+        Http::assertSent(fn ($request): bool => $request['Count'] === 20);
+    }
+
+    public function test_it_attaches_the_selected_topic_to_a_search_run(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'LogId' => 'log_topic_search',
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+
+        $provider = $this->createSearchProvider();
+        $topic = AiVisibilityTopic::query()->create([
+            'name' => 'AI 可见性主题',
+            'description' => '用于采集归类的主题',
+        ]);
+
+        $run = app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, 'GEOFlow AI 可见性', [], $topic);
+
+        $this->assertSame(AiVisibilityRun::STATUS_COMPLETED, $run->status);
+        $this->assertSame((int) $topic->id, (int) $run->ai_visibility_topic_id);
+        $this->assertSame(AiVisibilityKeywordNormalizer::hash('GEOFlow AI 可见性'), $run->keyword_hash);
+    }
+
+    public function test_it_auto_classifies_runs_by_registered_keyword_hash(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'LogId' => 'log_auto_classify',
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+
+        $provider = $this->createSearchProvider();
+        $topic = AiVisibilityTopic::query()->create([
+            'name' => '自动归类主题',
+        ]);
+        AiVisibilityTopicKeyword::query()->create([
+            'ai_visibility_topic_id' => (int) $topic->id,
+            'keyword' => 'GEOFlow 定价',
+            'keyword_hash' => AiVisibilityKeywordNormalizer::hash('GEOFlow 定价'),
+        ]);
+
+        $run = app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, 'GEOFlow 定价');
+
+        $this->assertSame(AiVisibilityRun::STATUS_COMPLETED, $run->status);
+        $this->assertSame((int) $topic->id, (int) $run->fresh()->ai_visibility_topic_id);
+        $this->assertSame(AiVisibilityKeywordNormalizer::hash('GEOFlow 定价'), $run->keyword_hash);
+    }
+
+    public function test_it_keeps_unregistered_keywords_without_topic_but_records_hash(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'LogId' => 'log_unclassified',
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+
+        $provider = $this->createSearchProvider();
+
+        $run = app(AiVisibilityService::class)->runDoubaoSearchCustom($provider, '全新关键词');
+
+        $this->assertSame(AiVisibilityRun::STATUS_COMPLETED, $run->status);
+        $this->assertNull($run->ai_visibility_topic_id);
+        $this->assertSame(AiVisibilityKeywordNormalizer::hash('全新关键词'), $run->keyword_hash);
+    }
+
+    public function test_it_keeps_search_and_analysis_runs_in_the_same_topic(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://open.feedcoopapi.com/search_api/web_search' => Http::response([
+                'LogId' => 'log_combined_topic',
+                'Result' => ['WebResults' => []],
+            ]),
+        ]);
+        MarkdownContentWriterAgent::fake(['分析完成'])->preventStrayPrompts();
+
+        $provider = $this->createSearchProvider();
+        $model = $this->createAiModel();
+        $this->bindModel(AiVisibilityConfigurationResolver::DEEPSEEK_MODEL_SETTING_KEY, $model);
+        $topic = AiVisibilityTopic::query()->create([
+            'name' => '组合流程主题',
+        ]);
+
+        ['search_run' => $searchRun, 'analysis_run' => $analysisRun] = app(AiVisibilityService::class)
+            ->runDoubaoSearchThenDeepSeekAnalysis(
+                SystemAiIdentity::visibilityCollection(),
+                $provider,
+                $model,
+                'GEOFlow AI 可见性',
+                searchOptions: [],
+                analysisOptions: [],
+                topic: $topic,
+            );
+
+        $this->assertSame(AiVisibilityRun::STATUS_COMPLETED, $searchRun->status);
+        $this->assertSame(AiVisibilityRun::STATUS_COMPLETED, $analysisRun->status);
+        $this->assertNotNull($searchRun->ai_visibility_topic_id);
+        $this->assertSame((int) $topic->id, (int) $searchRun->ai_visibility_topic_id);
+        $this->assertSame($searchRun->ai_visibility_topic_id, $analysisRun->ai_visibility_topic_id);
     }
 }

@@ -67,6 +67,7 @@ class ManualPublication extends Model
     protected $fillable = [
         'type',
         'article_id',
+        'source_distribution_id',
         'persona_id',
         'account_id',
         'assigned_admin_id',
@@ -102,6 +103,7 @@ class ManualPublication extends Model
     {
         return [
             'article_id' => 'integer',
+            'source_distribution_id' => 'integer',
             'persona_id' => 'integer',
             'account_id' => 'integer',
             'assigned_admin_id' => 'integer',
@@ -125,6 +127,11 @@ class ManualPublication extends Model
     public function article(): BelongsTo
     {
         return $this->belongsTo(Article::class, 'article_id')->withTrashed();
+    }
+
+    public function sourceDistribution(): BelongsTo
+    {
+        return $this->belongsTo(ArticleDistribution::class, 'source_distribution_id');
     }
 
     public function persona(): BelongsTo

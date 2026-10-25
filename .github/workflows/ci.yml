@@ -117,6 +117,18 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Test assisted platform publishing through isolated browser forms
+        run: '"$RUNNER_TEMP/geoflow-browser-venv/bin/python" tests/Browser/platform_web_smoke.py --output-dir "$RUNNER_TEMP/geoflow-platform-browser-proof"'
+
+      - name: Upload assisted platform browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: platform-browser-proof
+          path: ${{ runner.temp }}/geoflow-platform-browser-proof
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Audit PHP dependencies
         run: composer audit --locked --no-interaction
 

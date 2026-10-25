@@ -217,6 +217,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::prefix('analytics')->name('analytics.')->group(function (): void {
             Route::get('content', ContentAnalyticsController::class)->name('content');
             Route::get('traffic', TrafficAnalyticsController::class)->name('traffic');
+            Route::post('ai-visibility/refresh-terms', [AiVisibilityAnalyticsController::class, 'refreshTerms'])->middleware(['admin.super', 'throttle:admin-sensitive'])->name('ai-visibility.refresh-terms');
             Route::get('ai-visibility', AiVisibilityAnalyticsController::class)->name('ai-visibility');
             Route::post('ai-visibility/collect', [AiVisibilityAnalyticsController::class, 'collect'])
                 ->middleware(['admin.super', 'throttle:admin-sensitive'])
@@ -231,6 +232,8 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 ->whereNumber('competitor')
                 ->middleware(['admin.super', 'throttle:admin-sensitive'])
                 ->name('ai-visibility.competitors.destroy');
+            Route::post('ai-visibility/search', [AiVisibilityAnalyticsController::class, 'search'])->middleware(['admin.super', 'throttle:admin-sensitive'])->name('ai-visibility.search');
+            Route::post('ai-visibility/assign-topic', [AiVisibilityAnalyticsController::class, 'assignTopic'])->middleware(['admin.super', 'throttle:admin-sensitive'])->name('ai-visibility.assign-topic');
             Route::get('leads', LeadAnalyticsController::class)->name('leads');
             Route::get('distribution', DistributionAnalyticsController::class)
                 ->middleware('admin.super')
@@ -544,6 +547,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::get('{libraryId}/images/upload', [ImageLibraryController::class, 'createImageUpload'])->name('images.create');
                 Route::post('{libraryId}/images/upload', [ImageLibraryController::class, 'uploadImages'])->name('images.upload');
                 Route::post('{libraryId}/images/delete', [ImageLibraryController::class, 'destroyImages'])->name('images.delete');
+                Route::put('{libraryId}/images/{imageId}/tags', [ImageLibraryController::class, 'updateImageTags'])
+                    ->name('images.tags')
+                    ->whereNumber('imageId');
                 Route::put('{libraryId}/detail', [ImageLibraryController::class, 'updateFromDetail'])->name('detail.update');
                 Route::put('{libraryId}', [ImageLibraryController::class, 'update'])->name('update');
                 Route::post('{libraryId}/delete', [ImageLibraryController::class, 'destroy'])->name('delete');

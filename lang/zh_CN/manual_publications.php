@@ -38,7 +38,8 @@ return [
     ],
     'platform' => [
         'zhihu' => '知乎', 'xiaohongshu' => '小红书', 'weibo' => '微博', 'wechat' => '微信公众号',
-        'douyin' => '抖音', 'bilibili' => 'Bilibili', 'reddit' => 'Reddit', 'x' => 'X', 'linkedin' => 'LinkedIn', 'custom' => '自定义平台',
+        'douyin' => '抖音', 'bilibili' => 'Bilibili', 'reddit' => 'Reddit', 'x' => 'X', 'linkedin' => 'LinkedIn',
+        'toutiao' => '头条号', 'sohu' => '搜狐号', 'netease' => '网易号', 'custom' => '自定义平台',
     ],
     'filter' => [
         'all' => '全部', 'status' => '状态', 'type' => '类型', 'platform' => '平台', 'assignee' => '执行人',

@@ -27,6 +27,7 @@ use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\GeoFlow\ImageUrlNormalizer;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Closure;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -39,6 +40,11 @@ use Throwable;
  */
 class WorkerExecutionService
 {
+    /**
+     * 注入提示词的候选配图上限，避免图片过多撑爆上下文。
+     */
+    private const IMAGE_CONTEXT_LIMIT = 40;
+
     /**
      * 复用正文提示词和模型调用服务，确保任务生成与单篇生成规则一致。
      */
@@ -60,6 +66,7 @@ class WorkerExecutionService
         private readonly UrlChangeInspector $urlChangeInspector,
         private readonly ArticlePublicationEligibilityService $publicationEligibility,
         private readonly TopicTaskRunner $topicTaskRunner,
+        private readonly MarkdownImagePolicy $markdownImagePolicy,
     ) {}
 
     /**
@@ -122,7 +129,8 @@ class WorkerExecutionService
         );
         $knowledgeContext = $knowledgeBundle['context'];
         $generationEvidenceSnapshot = $this->generationEvidenceSnapshot($knowledgeBundle['evidence']);
-        $contentPrompt = $this->buildContentPrompt((string) $titleRow->title, $keyword, $prompt?->content, $knowledgeContext);
+        $imageContext = $this->buildImageContext($task);
+        $contentPrompt = $this->buildContentPrompt((string) $titleRow->title, $keyword, $prompt?->content, $knowledgeContext, $imageContext);
 
         return $this->generateContentWithModelSelection(
             $task,
@@ -724,9 +732,44 @@ class WorkerExecutionService
     /**
      * 构造正文提示词：优先精确替换变量；无变量的自定义提示词自动补齐任务上下文。
      */
-    private function buildContentPrompt(string $title, string $keyword, ?string $promptContent, string $knowledgeContext): string
+    private function buildContentPrompt(string $title, string $keyword, ?string $promptContent, string $knowledgeContext, string $imageContext = ''): string
     {
-        return $this->articleContentPromptRenderer->renderForWorker($title, $keyword, $promptContent, $knowledgeContext);
+        return $this->articleContentPromptRenderer->renderForWorker($title, $keyword, $promptContent, $knowledgeContext, $imageContext);
+    }
+
+    /**
+     * 将任务图片库中的候选图片（含备注）整理为提示词上下文，供模型自主选图配图。
+     */
+    private function buildImageContext(Task $task): string
+    {
+        $libraryId = (int) ($task->image_library_id ?? 0);
+        if ($libraryId <= 0 || (int) $task->image_count <= 0) {
+            return '';
+        }
+
+        /** @var list<Image> $images */
+        $images = Image::query()
+            ->where('library_id', $libraryId)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(self::IMAGE_CONTEXT_LIMIT)
+            ->get(['id', 'file_path', 'original_name', 'tags'])
+            ->all();
+
+        $lines = [];
+        foreach ($images as $image) {
+            $url = ImageUrlNormalizer::toPublicUrl(trim((string) ($image->file_path ?? '')));
+            if ($url === '') {
+                continue;
+            }
+            $remark = preg_replace('/[\r\n\t|]+/u', ' ', trim((string) ($image->tags ?? ''))) ?? '';
+            if ($remark === '') {
+                $remark = ImageUrlNormalizer::readableAlt((string) ($image->original_name ?? ''));
+            }
+            $lines[] = '- '.($remark !== '' ? $remark.' | ' : '').$url;
+        }
+
+        return $lines === [] ? '' : 'Maximum images / 配图数量上限：'.min(5, (int) $task->image_count)."\n".implode("\n", $lines);
     }
 
     /**
@@ -872,28 +915,61 @@ class WorkerExecutionService
     }
 
     /**
-     * 按任务图片配置插入 Markdown 配图并返回被选中的图片列表。
+     * 按任务图片配置处理正文配图并返回被选中的图片列表。
+     *
+     * 优先识别模型在正文中实际插入的图片库图片；模型一张都未插入时，
+     * 回退为按 image_count 随机抽图、等间隔插入，保证配置了配图的任务仍有图。
      *
      * @return array{content:string,images:list<Image>}
      */
     private function insertTaskImagesIntoContent(Task $task, string $content): array
     {
         $libraryId = (int) ($task->image_library_id ?? 0);
-        $imageCount = max(0, (int) ($task->image_count ?? 0));
-        if ($libraryId <= 0 || $imageCount <= 0) {
+        $imageCount = min(5, max(0, (int) ($task->image_count ?? 0)));
+        if ($libraryId <= 0 || $imageCount === 0) {
+            $content = $this->markdownImagePolicy->filter($content, static fn (string $url): bool => false);
+
+            return ['content' => $content, 'images' => []];
+        }
+
+        /** @var Collection<int, Image> $libraryImages */
+        $libraryImages = Image::query()
+            ->where('library_id', $libraryId)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(self::IMAGE_CONTEXT_LIMIT)
+            ->get(['id', 'file_path', 'original_name', 'tags']);
+        if ($libraryImages->isEmpty()) {
+            $content = $this->markdownImagePolicy->filter($content, static fn (string $url): bool => false);
+
+            return ['content' => $content, 'images' => []];
+        }
+
+        $imageCount = min(5, max(0, (int) ($task->image_count ?? 0)));
+        $allowed = $libraryImages->keyBy(fn (Image $image): string => ImageUrlNormalizer::toPublicUrl((string) $image->file_path));
+        $selectedImages = [];
+        $selectImage = function (string $url) use ($allowed, $imageCount, &$selectedImages): bool {
+            $image = $allowed->get($url);
+            if (! $image || count($selectedImages) >= $imageCount || isset($selectedImages[$image->id])) {
+                return false;
+            }
+            $selectedImages[$image->id] = $image;
+
+            return true;
+        };
+        $content = $this->markdownImagePolicy->filter($content, $selectImage);
+        $selectedImages = array_values($selectedImages);
+        if ($selectedImages !== []) {
+            return ['content' => $content, 'images' => $selectedImages];
+        }
+
+        $imageCount = min(5, max(0, (int) ($task->image_count ?? 0)));
+        if ($imageCount <= 0) {
             return ['content' => $content, 'images' => []];
         }
 
         /** @var list<Image> $images */
-        $images = Image::query()
-            ->where('library_id', $libraryId)
-            ->inRandomOrder()
-            ->limit($imageCount)
-            ->get(['id', 'file_path', 'original_name'])
-            ->all();
-        if ($images === []) {
-            return ['content' => $content, 'images' => []];
-        }
+        $images = $libraryImages->shuffle()->take($imageCount)->values()->all();
 
         $markdownBlocks = [];
         foreach ($images as $image) {
@@ -910,7 +986,10 @@ class WorkerExecutionService
             $content = $this->insertImagesByParagraphInterval($content, $markdownBlocks);
         }
 
-        return ['content' => $content, 'images' => $images];
+        $selectedImages = [];
+        $content = $this->markdownImagePolicy->filter($content, $selectImage);
+
+        return ['content' => $content, 'images' => array_values($selectedImages)];
     }
 
     /**
@@ -937,7 +1016,7 @@ class WorkerExecutionService
         $parts = [];
         $imageIndex = 0;
         foreach ($paragraphs as $index => $paragraph) {
-            $parts[] = trim((string) $paragraph);
+            $parts[] = rtrim((string) $paragraph, "\r\n");
             $nextParagraphPosition = $index + 1;
 
             if (
@@ -1065,6 +1144,7 @@ class WorkerExecutionService
      */
     private function buildExcerpt(string $content): string
     {
+        $content = str_replace('&#32;', ' ', $content);
         $plain = preg_replace('/[`#>*_\-\[\]\(\)]/u', ' ', $content) ?: $content;
         $plain = preg_replace('/\s+/u', ' ', $plain) ?: $plain;
         $plain = trim($plain);

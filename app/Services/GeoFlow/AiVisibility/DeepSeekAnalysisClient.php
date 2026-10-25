@@ -72,7 +72,7 @@ final class DeepSeekAnalysisClient
 
         $startedAt = hrtime(true);
         try {
-            $response = $agent->prompt($fullPrompt, [], $providerName, $modelId);
+            $response = $agent->prompt($fullPrompt, [], $providerName, $modelId, isset($options['timeout']) ? (int) $options['timeout'] : null);
         } catch (Throwable $exception) {
             throw new RuntimeException('DeepSeek 分析失败: '.OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl), 0, $exception);
         }

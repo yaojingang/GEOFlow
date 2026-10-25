@@ -391,6 +391,62 @@ class ManualPublicationServiceTest extends TestCase
         $this->assertSame(3, $recovered->revision);
     }
 
+    public function test_publication_payload_extras_flow_into_payload_without_being_persisted(): void
+    {
+        $admin = $this->admin('super_admin');
+        [$persona, $account] = $this->identity($admin);
+        $article = $this->article('approved');
+        $service = app(ManualPublicationService::class);
+        $extras = [
+            'append_source_link' => true,
+            'source_url' => 'https://example.com/a',
+            'images' => [['url' => 'https://example.com/1.jpg', 'alt' => '']],
+        ];
+
+        $publication = $service->create($this->payload($persona, $account, $admin, [
+            'article_id' => $article->getKey(),
+            'status' => ManualPublication::STATUS_READY,
+            'publication_payload_extras' => $extras,
+        ]), $admin);
+
+        $this->assertSame('zhihu_answer', $publication->publication_payload['target_action']);
+        $this->assertTrue($publication->publication_payload['append_source_link']);
+        $this->assertSame('https://example.com/a', $publication->publication_payload['source_url']);
+        $this->assertCount(1, $publication->publication_payload['images']);
+        $this->assertSame('https://example.com/1.jpg', $publication->publication_payload['images'][0]['url']);
+        $this->assertArrayNotHasKey('publication_payload_extras', $publication->getAttributes());
+
+        $extras['source_url'] = 'https://example.com/b';
+        $updated = $service->update($publication, $this->payload($persona, $account, $admin, [
+            'article_id' => $article->getKey(),
+            'status' => ManualPublication::STATUS_READY,
+            'publication_payload_extras' => $extras,
+        ]), 1);
+
+        $this->assertSame('https://example.com/b', $updated->publication_payload['source_url']);
+        $this->assertArrayNotHasKey('publication_payload_extras', $updated->getAttributes());
+
+        $token = $admin->createToken('Retry browser', [
+            'browser-operations:read', 'browser-operations:execute',
+        ])->accessToken;
+        $inProgress = $service->transition($updated, ManualPublication::STATUS_IN_PROGRESS, 2, $admin);
+        $inProgress->forceFill([
+            'browser_claimed_by_token_id' => $token->id,
+            'browser_claimed_at' => now(),
+            'browser_last_seen_at' => now(),
+        ])->save();
+
+        $this->travel(11)->minutes();
+        $reopened = $service->transition($inProgress, ManualPublication::STATUS_READY, 3, $admin);
+
+        $this->assertSame('zhihu_answer', $reopened->publication_payload['target_action']);
+        $this->assertTrue($reopened->publication_payload['append_source_link']);
+        $this->assertSame('https://example.com/b', $reopened->publication_payload['source_url']);
+        $this->assertCount(1, $reopened->publication_payload['images']);
+        $this->assertSame('https://example.com/1.jpg', $reopened->publication_payload['images'][0]['url']);
+        $this->assertArrayNotHasKey('publication_payload_extras', $reopened->getAttributes());
+    }
+
     private function admin(string $role = 'admin'): Admin
     {
         return Admin::query()->create([

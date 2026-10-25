@@ -990,7 +990,7 @@ class AdminDistributionPageTest extends TestCase
             ->assertSee('静态文件模式')
             ->assertSee('伪静态模式')
             ->assertSee('默认前台模板')
-            ->assertSee('Toutiao News Inspired')
+            ->assertSee('头条新闻风格')
             ->assertSee('查看同步预览')
             ->assertSee('覆盖新版站点包后')
             ->assertSee(route('admin.distribution.sync-settings.preview', ['channelId' => (int) $channel->id]), false);

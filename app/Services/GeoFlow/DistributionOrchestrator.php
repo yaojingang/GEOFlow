@@ -15,8 +15,11 @@ use App\Models\DistributionChannel;
 use App\Models\DistributionLog;
 use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
+use App\Models\ManualPublication;
 use App\Models\Task;
 use App\Services\AiWorkspace\AiWorkspaceDispatchGuard;
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformCatalog;
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebWorkOrderGuard;
 use App\Services\HostedSites\HostedSiteAllocationRequestService;
 use App\Services\HostedSites\HostedSiteAllocator;
 use App\Services\HostedSites\HostedSiteLifecycleService;
@@ -471,6 +474,51 @@ class DistributionOrchestrator
                             ->where('distribution_channel_id', (int) $lockedChannel->id)
                             ->exists()) {
                         return null;
+                    }
+
+                    // platform_web 严禁重发第一层：同平台（任意 platform_web 渠道）存在未落定的分发行
+                    // （synced/awaiting_extension/sending/outcome_unknown，不含 queued，以免阻断同渠道
+                    // 失败后的重新入队）时跳过该渠道。
+                    if ($lockedChannel->isPlatformWeb()) {
+                        $platform = (string) $lockedChannel->resolvedPlatformWebConfig()['platform'];
+                        $refreshableId = null;
+                        $priorWorkOrder = ManualPublication::query()->where('article_id', (int) $articleModel->id)
+                            ->whereHas('sourceDistribution', fn ($query) => $query->where('distribution_channel_id', $lockedChannel->id))->first();
+                        if ($priorWorkOrder && PlatformWebWorkOrderGuard::canRefresh($priorWorkOrder)) {
+                            $priorDelivery = $priorWorkOrder->sourceDistribution;
+                            if ($priorDelivery && (! $this->workflowFenceMatches($lockedArticle, data_get($priorDelivery->remote_meta, 'workflow_fence'))
+                                || ! hash_equals((string) $priorDelivery->payload_hash, $payloadHash))) {
+                                $refreshableId = (int) $priorDelivery->id;
+                            }
+                        }
+
+                        $syncedExists = ArticleDistribution::query()->when($refreshableId, fn ($query) => $query->where('id', '!=', $refreshableId))
+                            ->where('article_id', (int) $articleModel->id)
+                            ->where('action', $action)
+                            ->whereIn('status', ['synced', 'awaiting_extension', 'sending', 'outcome_unknown'])
+                            ->whereHas('channel', fn ($query) => $query
+                                ->where('channel_type', DistributionChannel::TYPE_PLATFORM_WEB)
+                                ->where('channel_config->platform', $platform))
+                            ->exists();
+                        $knownWorkOrder = ManualPublication::query()->when($refreshableId, fn ($query) => $query->where('source_distribution_id', '!=', $refreshableId))->where('article_id', (int) $articleModel->id)
+                            ->where('platform', $platform)->whereNotNull('source_distribution_id')
+                            ->tap(fn ($query) => PlatformWebWorkOrderGuard::protectingWorkOrders($query, $priorWorkOrder?->source_distribution_id))
+                            ->exists();
+                        if ($syncedExists || $knownWorkOrder) {
+                            $this->log(
+                                'warning',
+                                '该文章在平台已有工单或执行记录「'.PlatformCatalog::label($platform).'」，同平台严禁重发，已跳过。',
+                                (int) $lockedChannel->id,
+                                null,
+                                (int) $articleModel->id,
+                                [
+                                    'event' => 'platform_publish_blocked_duplicate',
+                                    'platform' => $platform,
+                                ],
+                            );
+
+                            return null;
+                        }
                     }
 
                     $distributions = ArticleDistribution::query()
@@ -935,7 +983,9 @@ class DistributionOrchestrator
                                 'delete' => $publisher->delete($locked),
                                 default => $publisher->publish($locked, $payload),
                             };
-                            $acknowledgedResponse = $response;
+                            if (empty($response['remote_meta']['pending_extension'])) {
+                                $acknowledgedResponse = $response;
+                            }
                         } catch (Throwable $exception) {
                             if ($exception instanceof DistributionAcknowledgedResponseException) {
                                 throw $exception;
@@ -954,6 +1004,30 @@ class DistributionOrchestrator
                         $responseMeta = is_array($response['remote_meta'] ?? null) ? $response['remote_meta'] : [];
 
                         $existingMeta = is_array($locked->remote_meta) ? $locked->remote_meta : [];
+                        if (! empty($responseMeta['pending_extension'])) {
+                            // platform_web: 工单已创建，等待 Chrome 扩展执行回执
+                            $locked->forceFill([
+                                'status' => 'awaiting_extension',
+                                'remote_id' => is_scalar($response['remote_id'] ?? null) ? (string) $response['remote_id'] : $locked->remote_id,
+                                'remote_meta' => array_replace($existingMeta, $responseMeta),
+                                'last_attempt_at' => now(),
+                                'last_error_message' => null,
+                            ])->save();
+                            $this->log(
+                                'info',
+                                '已创建扩展发布工单，等待 Chrome 扩展执行。',
+                                (int) $lockedChannel->id,
+                                (int) $distribution->id,
+                                (int) $distribution->article_id,
+                                [
+                                    'event' => 'platform_web_pending',
+                                    'work_order_status' => $responseMeta['work_order_status'] ?? null,
+                                ],
+                            );
+
+                            return ['saved' => true, 'response' => $response];
+                        }
+
                         $knownWordPressPostId = $lockedChannel->isWordPressRest()
                             && (string) $locked->action !== 'delete'
                             ? $locked->wordpressPostId()
@@ -1274,6 +1348,9 @@ class DistributionOrchestrator
 
     public function enqueueChannelContentRefresh(DistributionChannel $channel): int
     {
+        if ($channel->isPlatformWeb()) {
+            return 0;
+        }
         $channelId = (int) $channel->id;
         $count = 0;
         ArticleDistribution::query()
@@ -1475,6 +1552,12 @@ class DistributionOrchestrator
         $channel = $distribution->channel;
         if (! $article || ! $channel) {
             throw new \RuntimeException('分发记录缺少文章或渠道');
+        }
+
+        if ($channel->isPlatformWeb()) {
+            $this->log('warning', '平台网页渠道请在目标平台人工更新或删除。', (int) $channel->id, (int) $distribution->id, (int) $article->id, ['event' => 'platform_web_action_unsupported', 'action' => $action]);
+
+            return $distribution;
         }
 
         $payload = $action === 'delete' ? [] : $this->buildVerifiedPayload($article, 'distribution_send');
@@ -1844,6 +1927,14 @@ class DistributionOrchestrator
         });
 
         return $this->payloadBuilder->build($result);
+    }
+
+    public function platformWorkOrderExecutable(ArticleDistribution $distribution, Article $article): bool
+    {
+        return in_array((string) $distribution->status, ['awaiting_extension', 'sending'], true)
+            && $this->workflowFenceMatches($article, data_get($distribution->remote_meta, 'workflow_fence'))
+            && $this->isDistributableSnapshot($article)
+            && $this->currentChannelAllowsDelivery($article, $distribution);
     }
 
     private function isDistributableSnapshot(Article $article): bool

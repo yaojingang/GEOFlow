@@ -55,5 +55,7 @@
   "account_mismatch": { "message": "La cuenta de Zhihu actual no coincide con la orden." },
   "editor_not_found": { "message": "No se encontró el editor de respuestas. La página puede haber cambiado." },
   "editor_not_empty": { "message": "El editor ya contiene un borrador." },
-  "empty_content": { "message": "El contenido de la orden está vacío." }
+  "empty_content": { "message": "El contenido de la orden está vacío." },
+  "copyTitle": { "message": "Copy title" },
+  "manualPlatformNote": { "message": "Assisted manual publishing: open the editor, copy the title and body, review and publish yourself, then submit the publication receipt." }
 }

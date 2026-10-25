@@ -91,7 +91,7 @@ class AdminSiteSettingsPageTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.site-settings.index', ['theme_tab' => 'archived', 'theme_search' => 'apple_support_clone']))
             ->assertOk()
-            ->assertSee('Apple Support Inspired')
+            ->assertSee('Apple 支持页风格')
             ->assertSee('value="apple_support_clone"', false)
             ->assertViewHas('themeLibrary', fn (array $library): bool => $library['current']['id'] !== 'apple_support_clone');
     }
@@ -109,7 +109,7 @@ class AdminSiteSettingsPageTest extends TestCase
 
         $expectedThemes = [
             'geoflow-template-01-ink-editorial' => 'GEOFlow 01 Ink Editorial',
-            'geoflow-template-02-market-briefing' => 'GEOFlow 02 Market Briefing',
+            'geoflow-template-02-market-briefing' => 'GEOFlow 模板 02 · 市场快报',
             'geoflow-template-03-salmon-insight' => 'GEOFlow 03 Salmon Insight',
             'geoflow-template-04-red-opinion' => 'GEOFlow 04 Red Opinion',
             'geoflow-template-05-wire-clean' => 'GEOFlow 05 Wire Clean',
@@ -128,7 +128,7 @@ class AdminSiteSettingsPageTest extends TestCase
             'geoflow-template-18-consulting-insight' => 'GEOFlow 18 Consulting Insight',
             'geoflow-template-19-tech-review' => 'GEOFlow 19 Tech Review',
             'geoflow-template-20-research-journal' => 'GEOFlow 20 Research Journal',
-            'geoflow-template-21-enterprise-signature' => 'GEOFlow 21 Enterprise Signature',
+            'geoflow-template-21-enterprise-signature' => 'GEOFlow 模板 21 · 企业官网',
         ];
 
         $catalogIds = collect(app(SiteThemeCatalog::class)->all())
@@ -147,9 +147,9 @@ class AdminSiteSettingsPageTest extends TestCase
 
         $response->assertSee(__('theme_library.selections.enterprise.name'))
             ->assertSee('value="geoflow-template-21-enterprise-signature"', false)
-            ->assertDontSee('GEOFlow 02 Market Briefing');
+            ->assertDontSee('GEOFlow 模板 02 · 市场快报');
         $this->get(route('admin.site-settings.index', ['theme_tab' => 'archived', 'theme_search' => 'geoflow-template-02-market-briefing']))
-            ->assertOk()->assertSee('GEOFlow 02 Market Briefing')
+            ->assertOk()->assertSee('GEOFlow 模板 02 · 市场快报')
             ->assertSee('value="geoflow-template-02-market-briefing"', false);
     }
 

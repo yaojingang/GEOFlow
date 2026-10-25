@@ -24,7 +24,7 @@ class EnterpriseSignatureThemeTest extends TestCase
             ->firstWhere('id', self::THEME_ID);
 
         $this->assertIsArray($theme);
-        $this->assertSame('GEOFlow 21 Enterprise Signature', $theme['name']);
+        $this->assertSame('GEOFlow 模板 21 · 企业官网', $theme['name']);
         $this->assertFileExists(resource_path('views/theme/'.self::THEME_ID.'/layout.blade.php'));
         $this->assertFileExists(public_path('themes/'.self::THEME_ID.'/theme.css'));
 

@@ -1,8 +1,8 @@
 {
   "id": "netease-news-20260507",
-  "name": "NetEase News Inspired",
+  "name": "网易新闻风格",
   "version": "1.0.0",
-  "description": "A NetEase-inspired GEOFlow frontend theme mapping portal home, health-style category lists, and article detail pages while preserving GEOFlow data contracts.",
+  "description": "参考网易新闻的 GEOFlow 前端主题，覆盖门户首页、健康式分类列表与文章详情页，保留 GEOFlow 数据结构。",
   "templates": [
     "layout",
     "home",

@@ -132,6 +132,12 @@ final class AiVisibilityResultNormalizer
                 rankScore: $this->nullableFloat($item['RankScore'] ?? null),
                 authorityLevel: $this->nullableString($item['AuthInfoLevel'] ?? null),
                 metadata: array_filter([
+                    'result_id' => $this->nullableString($item['Id'] ?? null),
+                    'sort_id' => is_numeric($item['SortId'] ?? null) ? (int) $item['SortId'] : null,
+                    'authority_label' => $this->nullableString($item['AuthInfoDes'] ?? null) ?? $this->authorityLabel($item['AuthInfoLevel'] ?? null),
+                    'logo_url' => $this->nullableString($item['LogoUrl'] ?? null),
+                    'inline_images' => $this->normalizeInlineImages($item['InlineImages'] ?? []),
+                    'content_formats' => $this->nullableString($item['ContentFormats'] ?? null),
                     'raw_rank_score' => $item['RankScore'] ?? null,
                     'source_type' => $this->nullableString($item['SourceType'] ?? null),
                     'host' => $this->nullableString($item['Host'] ?? null),
@@ -158,6 +164,29 @@ final class AiVisibilityResultNormalizer
         );
     }
 
+    private function authorityLabel(mixed $level): ?string
+    {
+        return match ((string) $level) {
+            '1' => '非常权威', '2' => '正常权威', '3' => '一般权威', '4' => '一般不权威', default => null,
+        };
+    }
+
+    private function normalizeInlineImages(mixed $images): array
+    {
+        if (! is_array($images)) {
+            return [];
+        }
+
+        return collect($images)->map(function (mixed $image): ?array {
+            if (! is_array($image)) {
+                return null;
+            }
+            $url = $this->nullableString($image['ImageUrl'] ?? $image['image_url'] ?? null);
+
+            return $url === null ? null : array_filter(['url' => $url, 'alt' => $this->nullableString($image['Alt'] ?? $image['alt'] ?? null), 'width' => is_numeric($image['Width'] ?? null) ? (int) $image['Width'] : null, 'height' => is_numeric($image['Height'] ?? null) ? (int) $image['Height'] : null]);
+        })->filter()->values()->all();
+    }
+
     /**
      * @param  array<string,mixed>  $request
      * @param  array<string,mixed>  $rawResponse
@@ -175,6 +204,8 @@ final class AiVisibilityResultNormalizer
         array $rawResponse,
         int $latencyMs,
     ): AiVisibilityResult {
+        $competitorMetadata = app(DeepSeekCompetitorParser::class)->parse($answerText, $sources);
+
         return new AiVisibilityResult(
             providerType: $providerType,
             providerKey: $providerKey,
@@ -184,6 +215,8 @@ final class AiVisibilityResultNormalizer
             usage: $usage,
             metadata: [
                 'source_count' => count($sources),
+                'analysis_status' => $competitorMetadata['status'],
+                'competitors' => $competitorMetadata['competitors'],
             ],
             rawRequest: $request,
             rawResponse: $rawResponse,

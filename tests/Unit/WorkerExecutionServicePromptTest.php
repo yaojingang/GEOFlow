@@ -137,12 +137,26 @@ class WorkerExecutionServicePromptTest extends TestCase
         $this->assertStringContainsString('标题：AI CRM 到底是什么？', $prompt);
     }
 
-    private function renderContentPrompt(string $title, string $keyword, ?string $promptContent, string $knowledgeContext): string
+    public function test_worker_prompt_forwards_image_context_to_renderer(): void
+    {
+        $prompt = $this->renderContentPrompt(
+            'AI CRM 到底是什么？',
+            'AI CRM',
+            '请写一篇文章。',
+            '',
+            '- 门店实拍 | /storage/uploads/storefront.jpg'
+        );
+
+        $this->assertStringContainsString('配图使用规则', $prompt);
+        $this->assertStringContainsString('- 门店实拍 | /storage/uploads/storefront.jpg', $prompt);
+    }
+
+    private function renderContentPrompt(string $title, string $keyword, ?string $promptContent, string $knowledgeContext, string $imageContext = ''): string
     {
         $service = app(WorkerExecutionService::class);
         $method = new ReflectionMethod($service, 'buildContentPrompt');
         $method->setAccessible(true);
 
-        return (string) $method->invoke($service, $title, $keyword, $promptContent, $knowledgeContext);
+        return (string) $method->invoke($service, $title, $keyword, $promptContent, $knowledgeContext, $imageContext);
     }
 }

@@ -1,8 +1,8 @@
 {
     "id": "geoflow-template-09-tech-spectrum",
-    "name": "GEOFlow 09 Tech Spectrum",
+    "name": "GEOFlow 模板 09 · 科技光谱",
     "version": "1.0.0",
-    "description": "A tech-magazine variant using vivid accents, angular cards, and stronger visual blocks. Preserves GEOFlow frontend data contracts and derives from the NetEase News Inspired base theme.",
+    "description": "科技杂志风格，色彩活泼、卡片棱角分明、视觉块面更强。",
     "templates": [
         "layout",
         "home",

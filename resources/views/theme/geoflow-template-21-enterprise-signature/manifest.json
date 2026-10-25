@@ -1,6 +1,6 @@
 {
     "id": "geoflow-template-21-enterprise-signature",
-    "name": "GEOFlow 21 Enterprise Signature",
+    "name": "GEOFlow 模板 21 · 企业官网",
     "version": "1.0.0",
     "description": "面向全球企业官网的纯白高质感主题，覆盖品牌、产品、开源生态、行业方案、案例、项目介绍与线索转化。",
     "framework": "laravel",

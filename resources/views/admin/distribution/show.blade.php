@@ -125,10 +125,12 @@
                                     </button>
                                 </form>
                             @endif
+                            @unless ($channel->isPlatformWeb())
                             <a href="{{ route('admin.distribution.sync-settings.preview', ['channelId' => (int) $channel->id]) }}" class="inline-flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-medium text-gray-700 transition-[background-color,transform] duration-150 [@media(hover:hover)]:hover:bg-gray-50 active:scale-[0.98]">
                                 <i data-lucide="scan-search" class="h-4 w-4"></i>
                                 同步预览
                             </a>
+                            @endunless
                             @if ($channel->isGeoFlowAgent())
                                 <form method="POST" action="{{ route('admin.distribution.rotate-secret', ['channelId' => (int) $channel->id]) }}" data-admin-confirm-form data-admin-confirm-tone="warning" data-admin-confirm-title="{{ __('admin.distribution.confirm.rotate_secret') }}" data-admin-confirm-message="{{ __('admin.action_dialog.target', ['name' => $channel->name]) }}" data-admin-confirm-guidance="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.distribution.button.rotate_secret') }}">
                                     @csrf
@@ -232,6 +234,10 @@
             </div>
 
             <div class="rounded-lg bg-white p-6 shadow">
+                @if ($channel->isPlatformWeb())
+                    <h2 class="text-lg font-medium text-gray-900">人工辅助发布</h2>
+                    <p class="mt-3 text-sm text-gray-600">在 Chrome 运营助手领取工单，打开目标页，复制标题与正文，人工发布后回传结果。更新和删除请在目标平台操作。</p>
+                @else
                 <h2 class="text-lg font-medium text-gray-900">{{ __('admin.distribution.detail.secret') }}</h2>
                 <dl class="mt-5 space-y-4 text-sm">
                     <div>
@@ -268,9 +274,11 @@
                         </div>
                     @endif
                 @endif
+                @endif
             </div>
         </div>
 
+        @unless ($channel->isPlatformWeb())
         <div class="rounded-lg bg-white p-6 shadow">
             <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div>
@@ -335,6 +343,8 @@
                 {{ __('admin.distribution.article_text_ads.package_hint') }}
             </div>
         </div>
+
+        @endunless
 
         @if ($channel->isGeoFlowAgent())
             <div class="rounded-lg bg-white p-6 shadow">

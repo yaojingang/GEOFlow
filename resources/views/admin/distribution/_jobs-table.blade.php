@@ -52,14 +52,16 @@
                                 <span class="text-purple-700">{{ __('admin.distribution.job_state.manual_reconciliation_required') }}</span>
                             @elseif ($isDeletedRemoteCopy)
                                 <span class="text-gray-400">{{ __('admin.distribution.job_state.remote_copy_deleted') }}</span>
-                            @elseif ($job->article)
+                            @elseif ($job->article && ! $job->channel?->isPlatformWeb())
                                 <a href="{{ route('admin.distribution.article.edit', ['distributionId' => (int) $job->id]) }}" class="text-blue-600 hover:text-blue-800">{{ __('admin.distribution.button.edit_remote_article') }}</a>
                                 <form method="POST" action="{{ route('admin.distribution.article.delete', ['distributionId' => (int) $job->id], false) }}" data-distribution-delete-form data-confirm-message="{{ __('admin.articles.confirm.delete_title') }}" data-deleting-label="{{ __('admin.distribution.job_state.remote_copy_deleting') }}" data-deleted-label="{{ __('admin.distribution.job_state.remote_copy_deleted') }}" data-failed-template="{{ __('admin.distribution.message.remote_article_delete_failed', ['message' => '__MESSAGE__']) }}">
                                     @csrf
                                     <button type="submit" class="text-red-600 hover:text-red-800">{{ __('admin.distribution.button.delete_remote_article') }}</button>
                                 </form>
                             @endif
-                            @if ($job->status === 'failed')
+                            @if ($job->channel?->isPlatformWeb() && $job->remote_id && in_array($job->status, ['failed', 'outcome_unknown'], true))
+                                <a href="{{ route('admin.manual-publications.show', ['manualPublicationId' => (int) $job->remote_id]) }}" class="text-blue-600 hover:text-blue-800">人工核实与重试</a>
+                            @elseif ($job->status === 'failed')
                                 <form method="POST" action="{{ route('admin.distribution.retry', ['distributionId' => (int) $job->id]) }}">
                                     @csrf
                                     <button type="submit" class="text-blue-600 hover:text-blue-800">{{ __('admin.distribution.button.retry') }}</button>

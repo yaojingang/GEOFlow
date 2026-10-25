@@ -7,19 +7,31 @@ use App\Exceptions\ArticleAiQualityGateException;
 use App\Exceptions\ArticleRiskGateException;
 use App\Models\Admin;
 use App\Models\Article;
+use App\Models\ArticleDistribution;
+use App\Models\DistributionChannel;
 use App\Models\ManualPublication;
 use App\Models\ManualPublicationAccount;
 use App\Models\ManualPublicationTransition;
+use App\Models\Task;
 use App\Services\GeoFlow\ArticlePublicationQualityGate;
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebContentFormatter;
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebDistributionBridge;
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebWorkOrderGuard;
+use App\Services\GeoFlow\DistributionChannelOperationLeaseService;
+use App\Services\GeoFlow\DistributionOrchestrator;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 final class ManualPublicationBrowserService
 {
     public const STALE_AFTER_MINUTES = 10;
 
-    public function __construct(private readonly ArticlePublicationQualityGate $publicationQualityGate) {}
+    public function __construct(
+        private readonly ArticlePublicationQualityGate $publicationQualityGate,
+        private readonly PlatformWebDistributionBridge $platformWebBridge,
+    ) {}
 
     public function queue(Admin $admin, int $tokenId, int $perPage): LengthAwarePaginator
     {
@@ -66,6 +78,7 @@ final class ManualPublicationBrowserService
             if ($publication->status !== ManualPublication::STATUS_READY) {
                 throw new ApiException('publication_claimed', '工作单已被领取或不处于待执行状态', 409);
             }
+            app(PlatformWebWorkOrderGuard::class)->assertExecutable($publication);
             $this->assertSourceArticleQuality($publication);
             if (! is_array($publication->publication_payload)) {
                 throw new ApiException('browser_payload_unavailable', '该历史工作单没有浏览器执行载荷', 409);
@@ -91,6 +104,72 @@ final class ManualPublicationBrowserService
             $this->recordTransition($publication, $admin, $fromStatus, ManualPublication::STATUS_IN_PROGRESS, createdAt: $transitionedAt);
 
             return $publication->refresh()->load(['account:id,account_name,platform,profile_url', 'persona:id,name']);
+        });
+    }
+
+    /** Explicit human authorization; automatic retries must never infer that a prior attempt was unpublished. */
+    public function confirmUnpublishedRetry(Admin $actor, int $publicationId, int $revision): ManualPublication
+    {
+        return DB::transaction(function () use ($actor, $publicationId, $revision): ManualPublication {
+            $actor = Admin::query()->findOrFail($actor->id);
+            if ($actor->status !== 'active' || ! $actor->isSuperAdmin()) {
+                throw new ApiException('forbidden', '仅有效的超级管理员可以确认未发布并重试。', 403);
+            }
+            $publication = $this->lockVisible($actor, $publicationId);
+            $this->assertRevision($publication, $revision);
+            $distribution = app(PlatformWebWorkOrderGuard::class)->assertBoundSnapshot($publication);
+            app(DistributionChannelOperationLeaseService::class)->assertNoActiveLease($distribution->channel);
+            if (! Admin::query()->active()->whereKey($publication->assigned_admin_id)->exists()) {
+                throw new ApiException('publication_unavailable', '渠道创建管理员或工单执行管理员已停用。', 409);
+            }
+            $history = (array) data_get($publication->execution_receipt, 'previous_attempts', []);
+            if (! in_array($publication->status, ['failed', 'outcome_unknown'], true)
+                || ! in_array($distribution->status, ['failed', 'outcome_unknown', 'queued'], true)
+                || $publication->completion_url || $distribution->remote_url
+                || data_get($publication->execution_receipt, 'outcome') === 'completed'
+                || collect($history)->contains(fn ($attempt) => data_get($attempt, 'receipt.outcome') === 'completed')
+                || $publication->transitions()->where('to_status', 'completed')->exists()
+                || data_get($distribution->remote_meta, 'work_order_status') === 'completed') {
+                throw new ApiException('publication_retry_blocked', '当前结果不可重新授权；已完成的发布事实须保留。', 409);
+            }
+            $fromStatus = (string) $publication->status;
+            // Keep claim transitions and receipts. The explicit confirmation permits one new revision only.
+            $receipt = (array) $publication->execution_receipt;
+            unset($receipt['previous_attempts']);
+            $history[] = ['revision' => $revision, 'status' => $fromStatus, 'receipt' => $receipt,
+                'publication_payload' => $publication->publication_payload, 'source_snapshot' => $publication->source_snapshot,
+                'confirmed_unpublished_by_admin_id' => (int) $actor->id, 'confirmed_at' => now()->toIso8601String()];
+            $publication->forceFill(['status' => 'failed'])->save();
+            $distribution->forceFill(['status' => 'failed'])->save();
+            $orchestrator = app(DistributionOrchestrator::class);
+            $ids = $orchestrator->enqueueForArticleTargets($distribution->article, [(int) $distribution->distribution_channel_id], []);
+            if (! in_array((int) $distribution->id, $ids, true)) {
+                throw new ApiException('publication_source_superseded', '源文章、任务或发布授权当前不可重新入队。', 409);
+            }
+            $distribution->refresh();
+            $snapshot = data_get($distribution->remote_meta, 'distribution_payload.article');
+            $content = PlatformWebContentFormatter::fromSnapshot($snapshot);
+            $config = $distribution->channel->resolvedPlatformWebConfig();
+            $publication->forceFill([
+                'status' => 'ready', 'status_changed_at' => now(), 'revision' => $revision + 1,
+                'execution_receipt' => ['previous_attempts' => $history],
+                'browser_claimed_by_token_id' => null, 'browser_claimed_at' => null, 'browser_last_seen_at' => null,
+                'content' => $content, 'source_snapshot' => $snapshot, 'result_note' => '管理员已核实未发布并重新授权。',
+                'publication_payload' => app(PublicationPayloadBuilder::class)->build([
+                    'type' => 'post', 'platform' => $publication->platform, 'content' => $content,
+                    'source_snapshot' => $snapshot, 'target_url' => $publication->target_url,
+                    'disclosure_snapshot' => $publication->disclosure_snapshot,
+                    'publication_payload_extras' => $this->platformWebBridge->payloadExtras($distribution, $config, data_get($distribution->remote_meta, 'distribution_payload')),
+                ]),
+            ])->save();
+            $meta = $distribution->remote_meta;
+            $meta['platform_web_work_order_digest'] = PlatformWebWorkOrderGuard::digest($publication);
+            $meta['work_order_status'] = 'ready';
+            $distribution->forceFill(['status' => 'awaiting_extension', 'next_retry_at' => null, 'remote_meta' => $meta])->save();
+            app(PlatformWebWorkOrderGuard::class)->assertExecutable($publication);
+            $this->recordTransition($publication, $actor, $fromStatus, 'ready', resultNote: '已人工确认未发布，重新授权修订 '.($revision + 1).'。');
+
+            return $publication->refresh();
         });
     }
 
@@ -136,8 +215,8 @@ final class ManualPublicationBrowserService
         array $receipt,
         string $clientVersion,
     ): ManualPublication {
-        return DB::transaction(function () use ($admin, $tokenId, $publicationId, $revision, $receipt, $clientVersion): ManualPublication {
-            $publication = $this->lockVisible($admin, $publicationId);
+        [$publication, $hasSourceDistribution] = DB::transaction(function () use ($admin, $tokenId, $publicationId, $revision, $receipt, $clientVersion): array {
+            $publication = $this->lockVisible($admin, $publicationId, allowUnavailable: true);
             $this->assertRevision($publication, $revision);
             $this->assertClaimOwner($publication, $tokenId);
 
@@ -179,6 +258,10 @@ final class ManualPublicationBrowserService
                 'error_code' => $receipt['error_code'] ?? null,
             ];
 
+            $history = data_get($publication->execution_receipt, 'previous_attempts');
+            if (is_array($history) && $history !== []) {
+                $storedReceipt['previous_attempts'] = $history;
+            }
             $fromStatus = (string) $publication->status;
             $transitionedAt = now();
             $resultNote = trim((string) ($receipt['result_note'] ?? '')) ?: null;
@@ -204,12 +287,50 @@ final class ManualPublicationBrowserService
                 $transitionedAt,
             );
 
-            return $publication->refresh()->load(['account:id,account_name,platform,profile_url', 'persona:id,name']);
+            $publication = $publication->refresh()->load(['account:id,account_name,platform,profile_url', 'persona:id,name']);
+
+            return [$publication, $publication->source_distribution_id !== null];
         });
+
+        // platform_web 桥接：扩展回执落定工单终态后写回分发行。必须在事务提交之后执行——
+        // 桥接若在事务内失败（死锁/序列化失败等会中止顶层事务），回执整体会被回滚，
+        // 扩展将收到 5xx。桥接自身会加锁重读工单最新状态，非终态自动跳过；
+        // 提交与桥接之间的崩溃由对账命令（Task 7）兜底重推。
+        if ($hasSourceDistribution) {
+            DB::afterCommit(function () use ($publication): void {
+                try {
+                    $this->platformWebBridge->handleReceipt($publication);
+                } catch (\Throwable $e) {
+                    Log::warning('platform_web 回执桥接失败，将由对账命令兜底。', [
+                        'manual_publication_id' => (int) $publication->getKey(),
+                        'error' => $e::class.': '.$e->getMessage(),
+                    ]);
+                }
+            });
+        }
+
+        return $publication;
     }
 
-    private function lockVisible(Admin $admin, int $publicationId): ManualPublication
+    private function lockVisible(Admin $admin, int $publicationId, bool $allowUnavailable = false): ManualPublication
     {
+        $sourceId = ManualPublication::query()->whereKey($publicationId)->value('source_distribution_id');
+        if ($sourceId !== null) {
+            $candidate = ArticleDistribution::query()->find((int) $sourceId);
+            $channel = $candidate ? DistributionChannel::query()->whereKey($candidate->distribution_channel_id)->lockForUpdate()->first() : null;
+            if (! $allowUnavailable && (! $channel || $channel->status !== DistributionChannel::STATUS_ACTIVE)) {
+                throw new ApiException('publication_unavailable', '渠道不可用，无法领取工作单', 409);
+            }
+            if ($candidate) {
+                $taskId = Article::withTrashed()->whereKey($candidate->article_id)->value('task_id');
+                $task = $taskId ? Task::query()->whereKey($taskId)->lockForUpdate()->first() : null;
+                Article::withTrashed()->whereKey($candidate->article_id)->lockForUpdate()->first();
+                ArticleDistribution::query()->whereKey($candidate->id)->lockForUpdate()->first();
+                if (! $allowUnavailable && $taskId && ! $task) {
+                    throw new ApiException('publication_unavailable', '任务不可用，无法领取工作单', 409);
+                }
+            }
+        }
         $publication = ManualPublication::query()
             ->visibleTo($admin)
             ->with('account:id,account_name,platform,profile_url')

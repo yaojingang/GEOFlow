@@ -5,10 +5,13 @@ namespace App\Services\Admin\Analytics;
 use App\Data\Ai\SystemAiIdentity;
 use App\Models\AiVisibilityRun;
 use App\Models\AiVisibilitySource;
+use App\Models\AiVisibilityTopic;
 use App\Services\GeoFlow\AiVisibility\AiVisibilityConfigurationResolver;
+use App\Services\GeoFlow\AiVisibility\AiVisibilityTermCleaner;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -19,6 +22,7 @@ class AiVisibilityAnalyticsService
 
     public function __construct(
         private readonly AiVisibilityConfigurationResolver $configuration,
+        private readonly AiVisibilityTermCleaner $termCleanup,
     ) {}
 
     /**
@@ -56,7 +60,7 @@ class AiVisibilityAnalyticsService
                 ->orderByRaw('COALESCE(rank, 999999) asc')
                 ->orderBy('id')])
             ->whereIn('id', $sampledRunIds)
-            ->select('id', 'keyword', 'provider_type', 'answer_text', 'analysis_json', 'completed_at', 'created_at')
+            ->select('id', 'keyword', 'provider_type', 'ai_visibility_topic_id', 'answer_text', 'analysis_json', 'completed_at', 'created_at')
             ->get()
             ->map(fn (AiVisibilityRun $run): array => $this->analyzeRunForKpis($run, $brandAliases, $ownedHosts));
 
@@ -70,7 +74,7 @@ class AiVisibilityAnalyticsService
     /**
      * @return array<string, mixed>
      */
-    public function overview(int|AiVisibilityAnalyticsFilter $filter = 14): array
+    public function overview(int|AiVisibilityAnalyticsFilter $filter = 14, bool $refreshTermCleanup = false): array
     {
         $filter = is_int($filter) ? AiVisibilityAnalyticsFilter::forDays($filter) : $filter;
         $days = $filter->days();
@@ -98,7 +102,7 @@ class AiVisibilityAnalyticsService
                 ->orderByRaw('COALESCE(rank, 999999) asc')
                 ->orderBy('id')])
             ->whereIn('id', $sampledRunIds)
-            ->select('id', 'keyword', 'provider_type', 'provider_key', 'model_id', 'answer_text', 'analysis_json', 'completed_at', 'created_at')
+            ->select('id', 'keyword', 'provider_type', 'provider_key', 'model_id', 'ai_visibility_topic_id', 'answer_text', 'analysis_json', 'completed_at', 'created_at')
             ->orderBy('created_at')
             ->orderBy('id')
             ->get();
@@ -112,6 +116,7 @@ class AiVisibilityAnalyticsService
         $dailyKeywordMetrics = $this->dailyKeywordMetrics($analyzedRuns);
         $kpis = $this->kpis($dailyKeywordMetrics);
         $sourcePreferences = $this->sourcePreferences($analyzedRuns);
+        $topicNames = $this->topicNames();
         $todayRuns = $this->periodRunsQuery(now()->copy()->startOfDay(), now()->copy()->endOfDay(), $filter);
         $todayRunCount = (int) (clone $todayRuns)->count();
         $todayCompletedRunCount = (int) (clone $todayRuns)
@@ -122,6 +127,10 @@ class AiVisibilityAnalyticsService
             ->selectRaw('COUNT(DISTINCT LOWER(TRIM(keyword))) as aggregate')
             ->toBase()
             ->value('aggregate') ?? 0);
+        $latestCompletedAt = $sampledRuns
+            ->pluck('completed_at')
+            ->filter()
+            ->max();
 
         return [
             'ready' => true,
@@ -148,12 +157,15 @@ class AiVisibilityAnalyticsService
                 'today_completed_runs' => $todayCompletedRunCount,
                 'today_keyword_count' => $todayKeywordCount,
                 'today_target_samples' => $todayKeywordCount * self::DAILY_SAMPLE_TARGET,
+                'latest_completed_at' => $latestCompletedAt,
             ],
             'trend' => $this->trend($dailyKeywordMetrics, $start, $days),
             'keywords' => $this->keywordMetrics($dailyKeywordMetrics),
-            'terms' => $this->termCloud($analyzedRuns),
+            'terms' => $this->termCloud($analyzedRuns, $refreshTermCleanup),
             'sources' => $sourcePreferences,
+            'source_distribution' => $this->sourceDistribution($analyzedRuns, $topicNames),
             'attention_sources' => $this->attentionSources($sourcePreferences),
+            'competitors' => $this->competitorEvidence($analyzedRuns, $topicNames),
             'latest_runs' => $this->latestRuns($analyzedRuns),
         ];
     }
@@ -172,6 +184,7 @@ class AiVisibilityAnalyticsService
                     });
             })
             ->when($filter !== null && $filter->keyword !== '', fn (Builder $query) => $query->where('keyword', $filter->keyword))
+            ->when($filter !== null && $filter->topicId > 0, fn (Builder $query) => $query->where('ai_visibility_topic_id', $filter->topicId))
             ->when($filter !== null && $filter->provider !== 'all', fn (Builder $query) => $query->where('provider_type', $filter->provider));
     }
 
@@ -189,6 +202,7 @@ class AiVisibilityAnalyticsService
             'summary',
             'content_excerpt',
             'rank',
+            'authority_level',
         ];
     }
 
@@ -248,12 +262,15 @@ class AiVisibilityAnalyticsService
                 'today_completed_runs' => 0,
                 'today_keyword_count' => 0,
                 'today_target_samples' => 0,
+                'latest_completed_at' => null,
             ],
             'trend' => $this->trend(collect(), $start, $days),
             'keywords' => [],
             'terms' => [],
             'sources' => [],
+            'source_distribution' => [],
             'attention_sources' => [],
+            'competitors' => [],
             'latest_runs' => [],
         ];
     }
@@ -325,9 +342,11 @@ class AiVisibilityAnalyticsService
                 return [
                     'id' => (int) $source->id,
                     'title' => trim((string) $source->title),
-                    'url' => trim((string) $source->url),
+                    'url' => $this->safeSourceUrl((string) $source->url),
                     'domain' => $domain,
                     'site_name' => trim((string) $source->site_name),
+                    'authority_level' => trim((string) $source->authority_level),
+                    'authority_label' => $this->authorityLabel($source->authority_level),
                     'rank' => $rank,
                     'brand_mentioned' => $brandMentioned,
                     'text' => $brandText,
@@ -351,6 +370,7 @@ class AiVisibilityAnalyticsService
             'provider_type' => (string) $run->provider_type,
             'provider_key' => (string) $run->provider_key,
             'model_id' => (string) $run->model_id,
+            'topic_id' => $run->ai_visibility_topic_id === null ? 0 : (int) $run->ai_visibility_topic_id,
             'answer_text' => $answerText,
             'answer_mentions_brand' => $answerMentionsBrand,
             'brand_visible' => $answerMentionsBrand || $brandSourceRanks->contains(fn (int $rank): bool => $rank <= 3),
@@ -366,6 +386,7 @@ class AiVisibilityAnalyticsService
                 'rank' => $source['rank'],
                 'terms' => $this->extractTerms($source['term_text'], $brandAliases),
             ])->all(),
+            'analysis' => is_array($run->analysis_json) ? $run->analysis_json : [],
             'created_at' => $run->created_at?->toDateTimeString(),
         ];
     }
@@ -548,7 +569,7 @@ class AiVisibilityAnalyticsService
      * @param  Collection<int, array<string, mixed>>  $runs
      * @return list<array<string, mixed>>
      */
-    private function termCloud(Collection $runs): array
+    private function termCloud(Collection $runs, bool $refresh = false): array
     {
         $terms = [];
 
@@ -559,6 +580,16 @@ class AiVisibilityAnalyticsService
         }
 
         arsort($terms);
+
+        if ($terms === []) {
+            return [];
+        }
+
+        $cleaned = $this->cleanedTopics($terms, $refresh);
+        if ($cleaned !== null) {
+            return $cleaned;
+        }
+
         $max = max((float) reset($terms), 1.0);
 
         return collect($terms)
@@ -567,6 +598,109 @@ class AiVisibilityAnalyticsService
                 'term' => $term,
                 'weight' => round($weight, 2),
                 'size' => (int) round(12 + (($weight / $max) * 8)),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * 用系统 AI 清洗词云候选主题，结果按候选词签名缓存；
+     * 未启用、模型不可用、清洗失败或清洗结果为空时返回 null，走启发式兜底。
+     *
+     * @param  array<string, float>  $terms
+     * @return list<array<string, mixed>>|null
+     */
+    private function cleanedTopics(array $terms, bool $refresh): ?array
+    {
+        if (! filter_var(config('geoflow.ai_visibility.term_cleanup_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
+            return null;
+        }
+
+        $candidates = collect($terms)
+            ->take(max(10, min(200, (int) config('geoflow.ai_visibility.term_cleanup_candidates', 60))))
+            ->all();
+        if ($candidates === []) {
+            return null;
+        }
+
+        $model = $this->configuration->deepSeekModel(SystemAiIdentity::forVisibilityAnalytics());
+        $version = $model === null ? null : [
+            $model->id, $model->model_id, $model->api_url, $model->status, $model->access_scope,
+            $model->owner_admin_id, $model->max_tokens, config('geoflow.ai_visibility.term_cleanup_max_tokens', 2048), hash('sha256', (string) $model->getRawOriginal('api_key')),
+        ];
+        $cacheKey = 'geoflow:ai_visibility:term_cloud:v2:'.hash('sha256', json_encode([$candidates, $version], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return ($cached['ok'] ?? false) === true ? $cached['topics'] : null;
+        }
+        if (! $refresh) {
+            return null;
+        }
+
+        $lock = Cache::lock($cacheKey.':lock', 180);
+        if (! $lock->get()) {
+            return null;
+        }
+        try {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached)) {
+                return ($cached['ok'] ?? false) === true ? $cached['topics'] : null;
+            }
+            $topics = $this->termCleanup->clean($candidates);
+            $shaped = $topics === null ? [] : $this->shapeTopics($topics, $terms);
+            $ttl = max(60, (int) config('geoflow.ai_visibility.term_cleanup_cache_ttl', 43200));
+            Cache::put($cacheKey, ['ok' => $shaped !== [], 'topics' => $shaped], $shaped === [] ? min($ttl, 600) : $ttl);
+
+            return $shaped === [] ? null : $shaped;
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * 主题权重取其归属的原始候选词权重之和，每个候选词只计入一次。
+     *
+     * @param  list<array{name: string, terms: list<string>}>  $topics
+     * @param  array<string, float>  $terms
+     * @return list<array<string, mixed>>
+     */
+    private function shapeTopics(array $topics, array $terms): array
+    {
+        $shaped = [];
+
+        foreach ($topics as $topic) {
+            $name = trim((string) ($topic['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+
+            $weight = 0.0;
+            foreach ((array) ($topic['terms'] ?? []) as $source) {
+                $source = (string) $source;
+                if (isset($terms[$source])) {
+                    $weight += (float) $terms[$source];
+                    unset($terms[$source]);
+                }
+            }
+
+            if ($weight <= 0.0) {
+                continue;
+            }
+
+            $shaped[] = ['term' => $name, 'weight' => $weight];
+        }
+
+        usort($shaped, fn (array $left, array $right): int => $right['weight'] <=> $left['weight']);
+
+        $max = (float) ($shaped[0]['weight'] ?? 0.0);
+        $max = max($max, 1.0);
+
+        return collect($shaped)
+            ->take(24)
+            ->map(fn (array $topic): array => [
+                'term' => $topic['term'],
+                'weight' => round((float) $topic['weight'], 2),
+                'size' => (int) round(12 + (((float) $topic['weight'] / $max) * 8)),
             ])
             ->values()
             ->all();
@@ -673,6 +807,81 @@ class AiVisibilityAnalyticsService
 
     /**
      * @param  Collection<int, array<string, mixed>>  $runs
+     * @param  array<int, string>  $topicNames
+     * @return list<array<string, mixed>>
+     */
+    private function sourceDistribution(Collection $runs, array $topicNames = []): array
+    {
+        $rows = [];
+        foreach ($runs as $run) {
+            $topicName = (string) ($topicNames[(int) ($run['topic_id'] ?? 0)] ?? '未归类');
+            foreach ($run['sources'] as $source) {
+                $name = (string) ($source['site_name'] ?: $source['domain'] ?: __('admin.growth_center.ai_visibility.unknown_source'));
+                $key = $topicName.'|'.$name;
+                $rows[$key] ??= ['name' => $name, 'topic' => $topicName, 'count' => 0, 'domains' => [], 'authority' => []];
+                $rows[$key]['count']++;
+                if ($source['domain'] !== '') {
+                    $rows[$key]['domains'][$source['domain']] = true;
+                }
+                $label = (string) ($source['authority_label'] ?? '');
+                if ($label !== '') {
+                    $rows[$key]['authority'][$label] = ($rows[$key]['authority'][$label] ?? 0) + 1;
+                }
+            }
+        }
+
+        return collect($rows)->map(function (array $row): array {
+            $row['domains'] = array_keys($row['domains']);
+            arsort($row['authority']);
+            $row['top_authority'] = (string) (array_key_first($row['authority']) ?? '');
+
+            return $row;
+        })->sortByDesc('count')->values()->take(20)->all();
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $runs
+     * @param  array<int, string>  $topicNames
+     * @return list<array<string, mixed>>
+     */
+    private function competitorEvidence(Collection $runs, array $topicNames = []): array
+    {
+        $rows = [];
+        foreach ($runs as $run) {
+            $topicName = (string) ($topicNames[(int) ($run['topic_id'] ?? 0)] ?? '未归类');
+            foreach (($run['analysis']['competitors'] ?? []) as $competitor) {
+                if (! is_array($competitor) || trim((string) ($competitor['name'] ?? '')) === '') {
+                    continue;
+                }
+                $name = trim((string) $competitor['name']);
+                $key = $topicName.'|'.$name;
+                $rows[$key] ??= ['name' => $name, 'topic' => $topicName, 'mention_count' => 0, 'evidence' => []];
+                foreach (($competitor['evidence'] ?? []) as $evidence) {
+                    if (is_array($evidence) && $this->safeSourceUrl((string) ($evidence['url'] ?? '')) !== '') {
+                        $rows[$key]['evidence'][(string) $evidence['url']] = $evidence;
+                    }
+                }
+                $rows[$key]['mention_count'] = count($rows[$key]['evidence']);
+            }
+        }
+
+        return collect($rows)->map(fn (array $row): array => [...$row, 'evidence' => array_values($row['evidence'])])->sortByDesc('mention_count')->values()->take(20)->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function topicNames(): array
+    {
+        if (! Schema::hasTable('ai_visibility_topics')) {
+            return [];
+        }
+
+        return AiVisibilityTopic::query()->pluck('name', 'id')->all();
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $runs
      * @return list<array<string, mixed>>
      */
     private function latestRuns(Collection $runs): array
@@ -681,6 +890,7 @@ class AiVisibilityAnalyticsService
             ->sortByDesc('created_at')
             ->take(5)
             ->map(fn (array $run): array => [
+                'id' => $run['id'],
                 'keyword' => $run['keyword'],
                 'provider_type' => $run['provider_type'],
                 'date' => $run['date'],
@@ -688,6 +898,9 @@ class AiVisibilityAnalyticsService
                 'top1' => $run['top1'],
                 'top3' => $run['top3'],
                 'sentiment' => $run['sentiment'],
+                'best_brand_rank' => $run['best_brand_rank'],
+                'answer_excerpt' => Str::limit(preg_replace('/\s+/u', ' ', $run['answer_text']) ?: '', 180),
+                'source_count' => count($run['sources']),
             ])
             ->values()
             ->all();
@@ -725,10 +938,20 @@ class AiVisibilityAnalyticsService
      */
     private function extractTerms(string $text, array $brandAliases): array
     {
+        $text = $this->sanitizeTermText($text);
+
         $stopWords = [
             'the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'you', 'are', 'was', 'were', 'api', 'http', 'https', 'top',
-            'www', 'com', 'cn', 'demo', 'example', 'html', 'juejin', 'infoq', 'sspai', 'deepseek', 'doubao', 'tencent', 'cloud',
+            'www', 'com', 'cn', 'net', 'org', 'demo', 'example', 'html', 'htm', 'php', 'asp', 'aspx', 'jsp', 'index', 'default',
+            'juejin', 'infoq', 'sspai', 'deepseek', 'doubao', 'tencent', 'cloud',
+            'will', 'your', 'can', 'has', 'have', 'how', 'what', 'when', 'which', 'who', 'why', 'not', 'but', 'all', 'any', 'also',
+            'more', 'most', 'other', 'some', 'such', 'than', 'then', 'they', 'them', 'their', 'there', 'these', 'those', 'about',
+            'after', 'before', 'between', 'both', 'each', 'only', 'over', 'under', 'very', 'well', 'best', 'get', 'use', 'used',
+            'using', 'new', 'one', 'two', 'three', 'may', 'should', 'would', 'could', 'its', 'our', 'out', 'per', 'via', 'see',
             '以及', '对应', '这个', '相关', '可以', '进行', '通过', '一个', '一些', '包括', '结果', '信息', '数据', '内容', '分析', '信源',
+            '我们', '你们', '他们', '它们', '自己', '什么', '怎么', '为什么', '因为', '所以', '如果', '虽然', '但是', '然后', '于是',
+            '其中', '关于', '对于', '除了', '还有', '这些', '那些', '那个', '可能', '应该', '需要', '能够', '目前', '现在', '时候',
+            '方面', '情况', '并且', '或者', '以及', '不仅', '而且', '不过', '以上', '下面', '如下', '例如', '比如', '一般', '非常',
         ];
         $domainTerms = [
             'AI 搜索', 'AI 可见度', 'AI 营销', 'GEO 运营', 'Top 1', 'Top 3',
@@ -751,8 +974,9 @@ class AiVisibilityAnalyticsService
             }
         }
 
-        preg_match_all('/[A-Za-z][A-Za-z0-9_-]{2,}/u', $text, $matches);
+        preg_match_all('/[A-Za-z][A-Za-z]{2,}/u', $text, $matches);
         $terms = array_merge($terms, $matches[0] ?? []);
+        $terms = array_merge($terms, $this->chineseTerms($text));
 
         return collect($terms)
             ->map(fn (string $term): string => $this->normalizeTerm($term, $domainTerms))
@@ -777,6 +1001,78 @@ class AiVisibilityAnalyticsService
             ->sortDesc()
             ->keys()
             ->take(20)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * 清洗用于主题提取的文本：抓取摘要里常混有 URL、HTML 和 JSON-LD，
+     * 直接分词会把域名片段、标签属性当成主题。
+     */
+    private function sanitizeTermText(string $text): string
+    {
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = preg_replace('#<(script|style)\b[^>]*>.*?</\1\s*>#is', ' ', $text) ?? $text;
+        $text = preg_replace('~(?:https?://|www\.)\S+~iu', ' ', $text) ?? $text;
+        $text = preg_replace('~[\w.+-]+@[\w.-]+~u', ' ', $text) ?? $text;
+        $text = preg_replace('/\b[\w-]+(?:\.[\w-]+)+\b/u', ' ', $text) ?? $text;
+        $text = strip_tags($text);
+        $text = preg_replace('/[^\p{L}\p{N}\s]+/u', ' ', $text) ?? $text;
+
+        return preg_replace('/\s+/u', ' ', $text) ?? $text;
+    }
+
+    /**
+     * 无分词库时的中文候选词提取：保留 2-6 字的连续汉字串；长句则取 2 字
+     * 片段（汉语双字词为主），3-4 字片段仅保留文中重复出现过的，过滤常用虚词。
+     *
+     * @return list<string>
+     */
+    private function chineseTerms(string $text): array
+    {
+        static $stopWords = [
+            '的了', '是在', '和与', '及或', '有无', '不为', '对的', '从被', '把让', '向于', '至到', '由以', '而且', '但也',
+            '都还', '就又', '再很', '更最', '太挺', '非常', '十分', '比较', '这些', '那些', '这个', '那个', '我们', '你们',
+            '他们', '它们', '自己', '什么', '怎么', '如何', '为什么', '因为', '所以', '如果', '虽然', '但是', '然后', '于是',
+            '其中', '之一', '关于', '对于', '除了', '以及', '还有', '可以', '可能', '应该', '需要', '能够', '进行', '通过',
+            '一个', '一些', '每次', '目前', '现在', '时候', '方面', '情况', '并且', '或者', '不仅', '不过', '以上',
+            '下面', '如下', '例如', '比如', '一般', '没有', '就是', '还是', '也是', '都是', '的话', '来说', '而言',
+            '相关', '包括', '结果', '信息', '数据', '内容', '分析', '选择', '建议', '问题', '使用', '提供', '支持', '发展',
+        ];
+
+        preg_match_all('/\p{Han}{2,}/u', $text, $matches);
+        $candidates = [];
+
+        foreach ($matches[0] ?? [] as $run) {
+            $length = mb_strlen($run, 'UTF-8');
+            if ($length <= 6) {
+                $candidates[] = $run;
+
+                continue;
+            }
+
+            for ($offset = 0; $offset + 2 <= $length; $offset++) {
+                $candidates[] = mb_substr($run, $offset, 2, 'UTF-8');
+            }
+
+            $counts = [];
+            for ($size = 3; $size <= 4; $size++) {
+                for ($offset = 0; $offset + $size <= $length; $offset++) {
+                    $gram = mb_substr($run, $offset, $size, 'UTF-8');
+                    $counts[$gram] = ($counts[$gram] ?? 0) + 1;
+                }
+            }
+
+            foreach ($counts as $gram => $count) {
+                if ($count >= 2) {
+                    $candidates[] = $gram;
+                }
+            }
+        }
+
+        return collect($candidates)
+            ->filter(fn (string $term): bool => ! in_array($term, $stopWords, true))
+            ->unique()
             ->values()
             ->all();
     }
@@ -924,6 +1220,13 @@ class AiVisibilityAnalyticsService
         return $this->normalizeHost($domain);
     }
 
+    private function authorityLabel(mixed $level): string
+    {
+        return match ((string) $level) {
+            '1' => '非常权威', '2' => '正常权威', '3' => '一般权威', '4' => '一般不权威', default => ''
+        };
+    }
+
     private function normalizeHost(string $host): string
     {
         $host = Str::lower(trim($host));
@@ -1018,5 +1321,11 @@ class AiVisibilityAnalyticsService
         }
 
         return round(((float) $numerator / (float) $denominator) * 100, 1);
+    }
+
+    private function safeSourceUrl(string $url): string
+    {
+        return filter_var($url, FILTER_VALIDATE_URL) !== false
+            && in_array(strtolower((string) parse_url($url, PHP_URL_SCHEME)), ['http', 'https'], true) ? $url : '';
     }
 }
