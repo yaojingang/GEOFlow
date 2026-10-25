@@ -502,12 +502,12 @@ class DistributionOrchestrator
                             ->exists();
                         $knownWorkOrder = ManualPublication::query()->when($refreshableId, fn ($query) => $query->where('source_distribution_id', '!=', $refreshableId))->where('article_id', (int) $articleModel->id)
                             ->where('platform', $platform)->whereNotNull('source_distribution_id')
-                            ->whereIn('status', [ManualPublication::STATUS_READY, ManualPublication::STATUS_IN_PROGRESS, ManualPublication::STATUS_COMPLETED, ManualPublication::STATUS_OUTCOME_UNKNOWN])
+                            ->tap(fn ($query) => PlatformWebWorkOrderGuard::protectingWorkOrders($query, $priorWorkOrder?->source_distribution_id))
                             ->exists();
                         if ($syncedExists || $knownWorkOrder) {
                             $this->log(
                                 'warning',
-                                '该文章已成功发布到平台「'.PlatformCatalog::label($platform).'」，同平台严禁重发，已跳过。',
+                                '该文章在平台已有工单或执行记录「'.PlatformCatalog::label($platform).'」，同平台严禁重发，已跳过。',
                                 (int) $lockedChannel->id,
                                 null,
                                 (int) $articleModel->id,

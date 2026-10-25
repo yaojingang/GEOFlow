@@ -148,7 +148,7 @@ final class ManualPublicationBrowserService
             }
             $distribution->refresh();
             $snapshot = data_get($distribution->remote_meta, 'distribution_payload.article');
-            $content = PlatformWebContentFormatter::plainText((string) ($snapshot['content'] ?? ''));
+            $content = PlatformWebContentFormatter::fromSnapshot($snapshot);
             $config = $distribution->channel->resolvedPlatformWebConfig();
             $publication->forceFill([
                 'status' => 'ready', 'status_changed_at' => now(), 'revision' => $revision + 1,

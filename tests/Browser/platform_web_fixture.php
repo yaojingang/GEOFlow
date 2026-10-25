@@ -24,7 +24,7 @@ $retryTask->distributionChannels()->attach($channel->id);
 $orders = [];
 foreach (['failed', 'outcome_unknown'] as $outcome) {
     $article = Article::create(['title' => 'Retry browser '.$outcome, 'slug' => 'retry-browser-'.$outcome,
-        'content' => 'Verified descriptive browser fixture content.', 'category_id' => $category->id,
+        'content' => "## Browser heading\n\n**Verified** [reference](https://example.test/reference).\n\n&#32;Keep this paragraph.\n\n`**literal code**`", 'category_id' => $category->id,
         'author_id' => $author->id, 'task_id' => $retryTask->id, 'status' => 'private',
         'review_status' => 'approved', 'publication_intent' => 'immediate']);
     $orchestrator = app(DistributionOrchestrator::class);

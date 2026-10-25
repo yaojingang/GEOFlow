@@ -9,6 +9,7 @@ use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\ManualPublication;
 use App\Services\GeoFlow\DistributionOrchestrator;
+use Illuminate\Database\Eloquent\Builder;
 
 /** Immutable source binding and claim authorization. Receipts preserve already-observed external facts. */
 final class PlatformWebWorkOrderGuard
@@ -30,6 +31,24 @@ final class PlatformWebWorkOrderGuard
             'article_id', 'source_distribution_id', 'platform', 'persona_id', 'account_id',
             'target_url', 'content', 'source_snapshot', 'publication_payload',
         ]));
+    }
+
+    /** Same-source failed attempts may queue, but the publisher still requires explicit confirmation to reopen. */
+    public static function protectingWorkOrders(Builder $query, ?int $sameSourceId = null): Builder
+    {
+        return $query->where(function (Builder $protected) use ($sameSourceId): void {
+            $protected->whereIn('status', ['ready', 'in_progress', 'completed', 'outcome_unknown'])
+                ->orWhere('execution_receipt->outcome', 'completed')
+                ->orWhereHas('transitions', fn (Builder $transitions) => $transitions->where('to_status', 'completed'))
+                ->orWhere(function (Builder $attempted) use ($sameSourceId): void {
+                    if ($sameSourceId !== null) {
+                        $attempted->where('source_distribution_id', '!=', $sameSourceId);
+                    }
+                    $attempted->where(fn (Builder $history) => $history->whereNotNull('execution_receipt')
+                        ->orWhereNotNull('browser_claimed_at')
+                        ->orWhereHas('transitions', fn (Builder $transitions) => $transitions->where('to_status', 'in_progress')));
+                });
+        });
     }
 
     public static function canRefresh(ManualPublication $publication): bool
@@ -65,6 +84,8 @@ final class PlatformWebWorkOrderGuard
             || ! is_array($payload)
             || ! hash_equals((string) $distribution->payload_hash, AiPayloadDigest::make($payload))
             || ! hash_equals((string) data_get($distribution->remote_meta, 'platform_web_work_order_digest'), self::digest($publication))
+            || $publication->content !== PlatformWebContentFormatter::fromSnapshot((array) $publication->source_snapshot)
+            || data_get($publication->publication_payload, 'body_plain') !== $publication->content
             || ! $publication->account?->is_active || ! $publication->persona?->is_active
             || $publication->account->platform !== $publication->platform
             || (int) $publication->account->persona_id !== (int) $publication->persona_id) {

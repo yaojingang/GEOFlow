@@ -104,6 +104,9 @@ class PlatformWebDistributionBridge
         $integerCast = DB::getDriverName() === 'mysql' ? 'UNSIGNED' : 'INTEGER';
         $publications = ManualPublication::query()->select('manual_publications.*')
             ->join('article_distributions', 'article_distributions.id', '=', 'manual_publications.source_distribution_id')
+            ->join('distribution_channels', 'distribution_channels.id', '=', 'article_distributions.distribution_channel_id')
+            ->where(fn ($query) => $query->where('distribution_channels.status', '!=', DistributionChannel::STATUS_DELETING)
+                ->orWhere('manual_publications.status', ManualPublication::STATUS_COMPLETED))
             ->where(fn ($query) => $query->whereIn('article_distributions.status', ['awaiting_extension', 'sending', 'outcome_unknown'])
                 ->orWhere(fn ($stopped) => $stopped->whereIn('article_distributions.status', ['failed', 'cancelled'])->where('manual_publications.status', ManualPublication::STATUS_COMPLETED)))
             ->whereIn('manual_publications.status', [ManualPublication::STATUS_COMPLETED, ManualPublication::STATUS_FAILED,

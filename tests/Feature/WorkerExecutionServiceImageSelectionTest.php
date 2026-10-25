@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\Article;
 use App\Models\Image;
 use App\Models\ImageLibrary;
 use App\Models\Task;
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebContentFormatter;
 use App\Services\GeoFlow\WorkerExecutionService;
 use App\Support\GeoFlow\ImageUrlNormalizer;
 use App\Support\Site\ArticleHtmlPresenter;
@@ -165,6 +167,56 @@ class WorkerExecutionServiceImageSelectionTest extends TestCase
                 $this->assertStringContainsString('转义 | 管道', $html);
                 $this->assertStringContainsString('<code>![same](https://outside.example/same.jpg)</code>', $html);
                 $this->assertStringNotContainsString('src="https://outside.example', $html);
+            }
+        }
+    }
+
+    public function test_filtering_images_preserves_final_rendering_and_selected_metadata(): void
+    {
+        $library = $this->imageLibrary();
+        $a = $this->image($library->id, 'storage/uploads/images/outer.jpg', 'Outer');
+        $b = $this->image($library->id, 'storage/uploads/images/inner.jpg', 'Inner');
+        $aUrl = ImageUrlNormalizer::toPublicUrl($a->file_path);
+        $bUrl = ImageUrlNormalizer::toPublicUrl($b->file_path);
+        $cases = [
+            "!![first](https://outside.example/first.jpg)[second](https://outside.example/second.jpg)\n\nKeep Omega paragraph.",
+            "![first](https://outside.example/first.jpg)\n\n    ![example](https://outside.example/example.jpg)\n\nKeep Omega paragraph.",
+            'Intro text. ![outer ![inner](https://outside.example/inner.jpg)](https://outside.example/outer.jpg) Keep Omega paragraph.',
+            "head | b\n--- | ---\n1. ![p](https://outside.example/a.jpg) | text\n\nKeep Omega paragraph.",
+            "head | b\n--- | ---\n- ![p](https://outside.example/a.jpg) | text\n\nKeep Omega paragraph.",
+            "Intro text. ![outer ![inner]($bUrl)]($aUrl) Keep Omega paragraph.",
+            "Intro text. ![outer ![inner]($bUrl)](https://outside.example/outer.jpg) Keep Omega paragraph.",
+        ];
+        foreach ($cases as $case) {
+            foreach ([0, 1] as $count) {
+                $result = $this->insertImagesIntoContent($this->task($library->id, $count), $case);
+                $html = ArticleHtmlPresenter::markdownToHtml($result['content']);
+                $dom = new \DOMDocument;
+                @$dom->loadHTML($html);
+                $urls = [];
+                foreach ($dom->getElementsByTagName('img') as $image) {
+                    $urls[] = $image->getAttribute('src');
+                }
+                $selected = array_map(fn (Image $image) => ImageUrlNormalizer::toPublicUrl($image->file_path), $result['images']);
+                $this->assertSame($selected, $urls, $case);
+                $this->assertCount($count, $urls, $case);
+                $this->assertSame($urls, array_values(array_unique($urls)));
+                $this->assertStringContainsString('Keep Omega paragraph.', $html);
+                $this->assertStringNotContainsString('src="https://outside.example', $html);
+                $this->assertStringNotContainsString('&#32;', $html);
+                $plain = PlatformWebContentFormatter::fromSnapshot([
+                    'content' => $result['content'], 'content_html' => $html,
+                ]);
+                $this->assertStringNotContainsString('&#32;', $plain);
+                $this->assertStringContainsString('Keep Omega paragraph.', $plain);
+                $summary = ArticleHtmlPresenter::cardSummary(new Article(['content' => $result['content']]), 2000);
+                $this->assertStringNotContainsString('&#32;', $summary);
+                if (str_contains($case, '    ![example]')) {
+                    $this->assertStringContainsString('<code>![example]', $html);
+                }
+                if ($count === 1 && str_contains($case, "]($aUrl)")) {
+                    $this->assertSame([$a->id], array_map(fn (Image $image) => $image->id, $result['images']));
+                }
             }
         }
     }

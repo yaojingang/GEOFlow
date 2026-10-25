@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { normalizeGeoflowBaseUrl, originPermissionPattern } from '../../browser-extension/src/lib/url-policy.js';
 import { configureTrustedStorage } from '../../browser-extension/src/lib/storage.js';
@@ -198,4 +199,17 @@ test('assisted manual publishing copies immutable title and body with optional s
     assert.equal(publicationClipboardText(payload), 'Saved body\n\nhttps://geo.example/article/1');
     assert.equal(publicationClipboardText({ ...payload, append_source_link: false }), 'Saved body');
     assert.equal(publicationClipboardText({ ...payload, source_url: 'javascript:alert(1)' }), 'Saved body');
+});
+
+
+test('assisted clipboard consumes the producer plain-text contract and retains literal code', () => {
+    const fixture = JSON.parse(readFileSync(new URL('../Fixtures/platform-web/clipboard.json', import.meta.url), 'utf8'));
+    const payload = { title: fixture.title, body_plain: fixture.plain, body_markdown: fixture.markdown,
+        append_source_link: true, source_url: fixture.source_url };
+    assert.equal(publicationClipboardText(payload), fixture.plain + '\n\n' + fixture.source_url);
+    assert.equal(publicationClipboardText(payload, true), fixture.title);
+    assert.equal(publicationClipboardText({ ...payload, append_source_link: false }), fixture.plain);
+    assert.ok(publicationClipboardText(payload).includes('**literal** [code](value)'));
+    assert.ok(!publicationClipboardText(payload).includes('## Heading'));
+    assert.ok(!publicationClipboardText(payload).includes('![photo]'));
 });

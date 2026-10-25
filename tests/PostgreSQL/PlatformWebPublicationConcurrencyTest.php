@@ -10,6 +10,7 @@ use App\Models\ArticleDistribution;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
+use App\Models\DistributionLog;
 use App\Models\ManualPublicationAccount;
 use App\Models\ManualPublicationPersona;
 use App\Models\Task;
@@ -233,21 +234,38 @@ class PlatformWebPublicationConcurrencyTest extends PostgreSqlTestCase
         }
     }
 
-    private function fixtures(): array
+    public function test_deleting_unknown_query_does_not_starve_a_newer_completion_on_postgresql(): void
     {
-        $admin = Admin::create(['username' => 'platform-concurrency', 'password' => 'test', 'role' => 'super_admin', 'status' => 'active']);
+        [$admin, , $channel, $old, $tokenId, $oldDistribution] = $this->fixtures();
+        app(ManualPublicationBrowserService::class)->claim($admin, $tokenId, $old->id, $old->revision);
+        app(DistributionChannelDeletionService::class)->prepare($channel);
+        $oldState = $oldDistribution->fresh()->getAttributes();
+        [, , , $new, , $newDistribution] = $this->fixtures('-new');
+        $new->update(['status' => 'completed', 'completion_url' => 'https://www.toutiao.com/article/123456789/']);
+        $bridge = app(PlatformWebDistributionBridge::class);
+        $this->assertSame(1, $bridge->reconcile(1));
+        $this->assertSame('synced', $newDistribution->fresh()->status);
+        $logs = DistributionLog::count();
+        $this->assertSame(0, $bridge->reconcile(1));
+        $this->assertSame($logs, DistributionLog::count());
+        $this->assertSame($oldState, $oldDistribution->fresh()->getAttributes());
+    }
+
+    private function fixtures(string $suffix = ''): array
+    {
+        $admin = Admin::create(['username' => 'platform-concurrency'.$suffix, 'password' => 'test', 'role' => 'super_admin', 'status' => 'active']);
         $library = DB::table('title_libraries')->insertGetId(['name' => 'Platform titles', 'created_at' => now(), 'updated_at' => now()]);
         $prompt = DB::table('prompts')->insertGetId(['name' => 'Platform prompt', 'type' => 'content', 'content' => 'Write.', 'created_at' => now(), 'updated_at' => now()]);
         $model = DB::table('ai_models')->insertGetId(['name' => 'No outbound model', 'api_key' => 'test', 'model_id' => 'test', 'created_at' => now(), 'updated_at' => now()]);
         $task = Task::create(['title_library_id' => $library, 'prompt_id' => $prompt, 'ai_model_id' => $model, 'name' => 'Platform task', 'status' => 'active', 'need_review' => 0, 'publish_scope' => 'distribution_only']);
-        $category = Category::create(['name' => 'Platform', 'slug' => 'platform']);
+        $category = Category::create(['name' => 'Platform', 'slug' => 'platform'.$suffix]);
         $author = Author::create(['name' => 'Author']);
-        $article = Article::create(['title' => 'Platform verified facts', 'slug' => 'platform-facts', 'content' => 'Verified descriptive content.', 'task_id' => $task->id, 'category_id' => $category->id, 'author_id' => $author->id, 'status' => 'private', 'review_status' => 'approved', 'publication_intent' => 'none']);
+        $article = Article::create(['title' => 'Platform verified facts', 'slug' => 'platform-facts'.$suffix, 'content' => 'Verified descriptive content.', 'task_id' => $task->id, 'category_id' => $category->id, 'author_id' => $author->id, 'status' => 'private', 'review_status' => 'approved', 'publication_intent' => 'none']);
         $persona = ManualPublicationPersona::create(['name' => 'Operator', 'is_active' => true]);
         $account = ManualPublicationAccount::create(['persona_id' => $persona->id, 'platform' => 'toutiao', 'account_name' => 'Test operator']);
         $channel = DistributionChannel::create(['name' => 'Platform channel', 'domain' => 'mp.toutiao.com', 'endpoint_url' => 'https://mp.toutiao.com', 'channel_type' => 'platform_web', 'status' => 'active', 'created_by_admin_id' => $admin->id, 'channel_config' => ['platform' => 'toutiao', 'manual_publication_account_id' => $account->id]]);
         $task->distributionChannels()->attach($channel->id);
-        $distribution = ArticleDistribution::create(['article_id' => $article->id, 'distribution_channel_id' => $channel->id, 'action' => 'publish', 'status' => 'awaiting_extension', 'idempotency_key' => 'concurrent-platform']);
+        $distribution = ArticleDistribution::create(['article_id' => $article->id, 'distribution_channel_id' => $channel->id, 'action' => 'publish', 'status' => 'awaiting_extension', 'idempotency_key' => 'concurrent-platform'.$suffix]);
         $publication = app(ManualPublicationService::class)->create(['type' => 'post', 'platform' => 'toutiao', 'article_id' => $article->id, 'persona_id' => $persona->id, 'account_id' => $account->id, 'assigned_admin_id' => $admin->id, 'status' => 'ready', 'content' => 'Verified descriptive content.', 'target_url' => 'https://mp.toutiao.com/profile_v4/graph/articles/publish'], $admin);
         $publication->update(['source_distribution_id' => $distribution->id]);
         $payload = app(DistributionPayloadBuilder::class)->build($article);

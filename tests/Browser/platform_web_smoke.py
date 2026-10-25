@@ -101,6 +101,11 @@ def run_browser(base_url, database, fixture, output):
                     assert response.ok, response.text()
                     return response.json()['data']['publication']
                 claimed = api_post('claim', {'revision': order['revision']}, f"retry-first-claim-{order['id']}")
+                plain = claimed['publication_payload']['body_plain']
+                assert 'Browser heading' in plain and 'Verified reference.' in plain and '**literal code**' in plain
+                assert '## Browser' not in plain and '**Verified**' not in plain and '&#32;' not in plain
+                assert 'https://example.test/reference' not in plain
+                assert claimed['publication_payload']['body_markdown'] == plain
                 finished = api_post('receipt', {'revision': claimed['revision'], 'outcome': order['outcome'],
                     'adapter_version': 'manual-test-only', 'target_origin': 'https://mp.toutiao.com',
                     'finished_at': '2026-10-25T12:00:00Z'}, f"retry-first-receipt-{order['id']}")

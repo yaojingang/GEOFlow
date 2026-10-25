@@ -1049,6 +1049,135 @@ class PlatformWebDistributionFlowTest extends TestCase
         $this->assertSame('synced', $distribution->fresh()->status);
     }
 
+    public function test_executed_failed_work_order_blocks_replacement_same_platform_channels(): void
+    {
+        foreach (['failed', 'outcome_unknown'] as $outcome) {
+            [$article, $channel, $publication, $admin, , $distribution] = $this->guardedWorkOrder('replacement-'.$outcome);
+            $token = $admin->createToken('Actual failed execution', ['browser-operations:read', 'browser-operations:execute']);
+            $this->withHeaders($this->extensionHeaders($token->plainTextToken) + ['X-Idempotency-Key' => 'replacement-claim-'.$outcome])
+                ->postJson('/api/v1/manual-publications/'.$publication->id.'/claim', ['revision' => $publication->revision])->assertOk();
+            $this->withHeaders($this->extensionHeaders($token->plainTextToken) + ['X-Idempotency-Key' => 'replacement-receipt-'.$outcome])
+                ->postJson('/api/v1/manual-publications/'.$publication->id.'/receipt', [
+                    'revision' => $publication->fresh()->revision, 'outcome' => $outcome,
+                    'target_origin' => 'https://mp.toutiao.com', 'adapter_version' => '0.1.0', 'finished_at' => now()->toIso8601String(),
+                ])->assertOk();
+            if ($outcome === 'outcome_unknown') {
+                $this->actingAs($admin, 'admin')->post(route('admin.manual-publications.transition', ['manualPublicationId' => $publication->id]), [
+                    'revision' => $publication->fresh()->revision, 'target_status' => 'failed', 'result_note' => 'Needs human verification',
+                ])->assertSessionHasNoErrors();
+            }
+            $second = $channel->replicate();
+            $second->name = 'Replacement same platform';
+            $second->save();
+            $orchestrator = app(DistributionOrchestrator::class);
+            $orchestrator->syncTaskChannels($article->task, [$second->id]);
+            $this->assertSame([], $orchestrator->enqueueForArticle($article->fresh()));
+            $this->assertSame(1, ManualPublication::where('article_id', $article->id)->count());
+            $this->assertNotSame('ready', $publication->fresh()->status);
+            $orchestrator->syncTaskChannels($article->task->fresh(), [$channel->id]);
+            $ready = app(ManualPublicationBrowserService::class)->confirmUnpublishedRetry($admin, $publication->id, $publication->fresh()->revision);
+            $this->assertSame($publication->id, $ready->id);
+            $this->assertSame($outcome, data_get($ready->execution_receipt, 'previous_attempts.0.receipt.outcome'));
+        }
+    }
+
+    public function test_deleting_unknown_receipts_do_not_starve_new_completions(): void
+    {
+        [, $oldChannel, $old, $oldAdmin, $oldToken, $oldDistribution] = $this->guardedWorkOrder('deleting-unknown-old');
+        $browser = app(ManualPublicationBrowserService::class);
+        $browser->claim($oldAdmin, $oldToken, $old->id, $old->revision);
+        app(DistributionChannelDeletionService::class)->prepare($oldChannel);
+        $oldState = $oldDistribution->fresh()->getAttributes();
+        [, , $new, $newAdmin, $newToken, $newDistribution] = $this->guardedWorkOrder('deleting-new-completion');
+        $claim = $browser->claim($newAdmin, $newToken, $new->id, $new->revision);
+        $browser->recordReceipt($newAdmin, $newToken, $new->id, $claim->revision, [
+            'outcome' => 'completed', 'completion_url' => 'https://www.toutiao.com/article/123456789/', 'target_origin' => 'https://mp.toutiao.com',
+        ], '0.1.0');
+        $newDistribution->refresh()->forceFill(['status' => 'awaiting_extension', 'remote_meta' => array_diff_key($newDistribution->remote_meta, ['platform_web_receipt_revision' => true])])->save();
+        $bridge = app(PlatformWebDistributionBridge::class);
+        $this->assertSame(1, $bridge->reconcile(1));
+        $this->assertSame('synced', $newDistribution->fresh()->status);
+        $logCount = DistributionLog::count();
+        $this->assertSame(0, $bridge->reconcile(1));
+        $this->assertSame($logCount, DistributionLog::count());
+        $this->assertSame($oldState, $oldDistribution->fresh()->getAttributes());
+    }
+
+    public function test_markdown_copy_is_plain_for_creation_safe_refresh_and_confirmed_retry(): void
+    {
+        [$article] = $this->fixtures('plain-copy');
+        $fixture = json_decode(file_get_contents(base_path('tests/Fixtures/platform-web/clipboard.json')), true, flags: JSON_THROW_ON_ERROR);
+        $article->update(['content' => $fixture['markdown']]);
+        $orchestrator = app(DistributionOrchestrator::class);
+        $ids = $orchestrator->enqueueForArticle($article->fresh());
+        $distribution = ArticleDistribution::findOrFail($ids[0]);
+        $orchestrator->process($distribution);
+        $publication = ManualPublication::where('source_distribution_id', $distribution->id)->sole();
+        $this->assertSame($fixture['plain'], $publication->publication_payload['body_plain']);
+        $this->assertSame($fixture['markdown'], $publication->source_snapshot['content']);
+        $article->update(['content' => str_replace('Heading', 'Refreshed heading', $fixture['markdown'])]);
+        $orchestrator->enqueueForArticle($article->fresh());
+        $orchestrator->process($distribution->fresh());
+        $publication->refresh();
+        $this->assertSame(str_replace('Heading', 'Refreshed heading', $fixture['plain']), $publication->publication_payload['body_plain']);
+        $admin = Admin::findOrFail($publication->assigned_admin_id);
+        $token = $admin->createToken('Plain text confirmed retry', ['browser-operations:read', 'browser-operations:execute']);
+        $browser = app(ManualPublicationBrowserService::class);
+        $claim = $browser->claim($admin, $token->accessToken->id, $publication->id, $publication->revision);
+        $failed = $browser->recordReceipt($admin, $token->accessToken->id, $publication->id, $claim->revision,
+            ['outcome' => 'failed', 'target_origin' => 'https://mp.toutiao.com'], '0.1.0');
+        $article->update(['content' => str_replace('Heading', 'Final heading', $fixture['markdown'])]);
+        $this->actingAs($admin, 'admin')->post(route('admin.distribution.retry', ['distributionId' => $distribution->id]), [
+            'confirm_unpublished' => '确认未发布', 'publication_revision' => $failed->revision,
+        ])->assertSessionHasNoErrors();
+        $publication->refresh();
+        $this->assertSame(str_replace('Heading', 'Final heading', $fixture['plain']), $publication->publication_payload['body_plain']);
+        $this->assertSame(str_replace('Heading', 'Final heading', $fixture['markdown']), $publication->source_snapshot['content']);
+    }
+
+    public function test_already_queued_replacement_publisher_keeps_the_original_execution_history(): void
+    {
+        [$article, $firstChannel] = $this->fixtures('queued-replacement');
+        $second = $firstChannel->replicate();
+        $second->name = 'Queued replacement';
+        $second->save();
+        $orchestrator = app(DistributionOrchestrator::class);
+        $orchestrator->syncTaskChannels($article->task, [$firstChannel->id, $second->id]);
+        $ids = $orchestrator->enqueueForArticle($article->fresh());
+        $this->assertCount(2, $ids);
+        $first = ArticleDistribution::whereIn('id', $ids)->where('distribution_channel_id', $firstChannel->id)->sole();
+        $orchestrator->process($first);
+        $publication = ManualPublication::where('source_distribution_id', $first->id)->sole();
+        $admin = Admin::findOrFail($publication->assigned_admin_id);
+        $token = $admin->createToken('Queued replacement guard', ['browser-operations:read', 'browser-operations:execute']);
+        $browser = app(ManualPublicationBrowserService::class);
+        $claim = $browser->claim($admin, $token->accessToken->id, $publication->id, $publication->revision);
+        $browser->recordReceipt($admin, $token->accessToken->id, $publication->id, $claim->revision,
+            ['outcome' => 'failed', 'target_origin' => 'https://mp.toutiao.com'], '0.1.0');
+        try {
+            $orchestrator->process(ArticleDistribution::whereIn('id', $ids)->where('distribution_channel_id', $second->id)->sole());
+            $this->fail('An already queued replacement must also preserve the first execution history.');
+        } catch (PlatformPublishBlockedException) {
+            $this->assertSame(1, ManualPublication::where('article_id', $article->id)->count());
+        }
+    }
+
+    public function test_never_claimed_cancelled_work_can_use_a_replacement_channel(): void
+    {
+        [$article, $channel, $publication, $admin] = $this->guardedWorkOrder('unclaimed-replacement');
+        $cancelled = app(ManualPublicationService::class)->transition($publication, 'cancelled', $publication->revision, $admin);
+        app(PlatformWebDistributionBridge::class)->handleReceipt($cancelled);
+        $second = $channel->replicate();
+        $second->name = 'Safe replacement';
+        $second->save();
+        $orchestrator = app(DistributionOrchestrator::class);
+        $orchestrator->syncTaskChannels($article->task, [$second->id]);
+        $ids = $orchestrator->enqueueForArticle($article->fresh());
+        $this->assertCount(1, $ids);
+        $orchestrator->process(ArticleDistribution::findOrFail($ids[0]));
+        $this->assertSame('ready', ManualPublication::where('source_distribution_id', $ids[0])->sole()->status);
+    }
+
     private function fixtures(string $suffix, array $channelConfigOverrides = []): array
     {
         $admin = Admin::query()->create([
@@ -1136,7 +1265,7 @@ class PlatformWebDistributionFlowTest extends TestCase
         return Article::query()->create([
             'title' => 'Platform web '.$suffix,
             'slug' => 'platform-web-flow-'.$suffix.'-'.uniqid(),
-            'content' => '<p>PLATFORMWEB-MARKER 正文第一段</p><div>第二段纯文本内容</div>',
+            'content' => "PLATFORMWEB-MARKER 正文第一段\n\n第二段纯文本内容",
             'category_id' => $category->id,
             'author_id' => $author->id,
             'task_id' => $task->id,

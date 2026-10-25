@@ -948,7 +948,7 @@ class WorkerExecutionService
         $imageCount = min(5, max(0, (int) ($task->image_count ?? 0)));
         $allowed = $libraryImages->keyBy(fn (Image $image): string => ImageUrlNormalizer::toPublicUrl((string) $image->file_path));
         $selectedImages = [];
-        $content = $this->markdownImagePolicy->filter($content, function (string $url) use ($allowed, $imageCount, &$selectedImages): bool {
+        $selectImage = function (string $url) use ($allowed, $imageCount, &$selectedImages): bool {
             $image = $allowed->get($url);
             if (! $image || count($selectedImages) >= $imageCount || isset($selectedImages[$image->id])) {
                 return false;
@@ -956,7 +956,8 @@ class WorkerExecutionService
             $selectedImages[$image->id] = $image;
 
             return true;
-        });
+        };
+        $content = $this->markdownImagePolicy->filter($content, $selectImage);
         $selectedImages = array_values($selectedImages);
         if ($selectedImages !== []) {
             return ['content' => $content, 'images' => $selectedImages];
@@ -985,7 +986,10 @@ class WorkerExecutionService
             $content = $this->insertImagesByParagraphInterval($content, $markdownBlocks);
         }
 
-        return ['content' => $content, 'images' => $images];
+        $selectedImages = [];
+        $content = $this->markdownImagePolicy->filter($content, $selectImage);
+
+        return ['content' => $content, 'images' => array_values($selectedImages)];
     }
 
     /**
@@ -1012,7 +1016,7 @@ class WorkerExecutionService
         $parts = [];
         $imageIndex = 0;
         foreach ($paragraphs as $index => $paragraph) {
-            $parts[] = trim((string) $paragraph);
+            $parts[] = rtrim((string) $paragraph, "\r\n");
             $nextParagraphPosition = $index + 1;
 
             if (

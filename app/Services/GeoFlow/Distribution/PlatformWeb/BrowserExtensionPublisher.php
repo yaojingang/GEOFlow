@@ -54,11 +54,11 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
         $knownWorkOrder = ManualPublication::query()->where('article_id', (int) $distribution->article_id)
             ->where('platform', $platform)->whereNotNull('source_distribution_id')
             ->where('source_distribution_id', '!=', (int) $distribution->id)
-            ->whereIn('status', [ManualPublication::STATUS_READY, ManualPublication::STATUS_IN_PROGRESS, ManualPublication::STATUS_COMPLETED, ManualPublication::STATUS_OUTCOME_UNKNOWN])
+            ->tap(fn ($query) => PlatformWebWorkOrderGuard::protectingWorkOrders($query))
             ->exists();
         if ($syncedExists || $knownWorkOrder) {
             throw new PlatformPublishBlockedException(
-                '该文章已成功发布到平台「'.PlatformCatalog::label($platform).'」，同平台严禁重发。'
+                '该文章在平台已有工单或执行记录「'.PlatformCatalog::label($platform).'」，同平台严禁重发。'
             );
         }
 
@@ -77,7 +77,7 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
                 if (! is_array($snapshot) || (int) $publication->article_id !== (int) $distribution->article_id || $publication->platform !== $platform) {
                     throw new RuntimeException('platform_web_work_order_binding_changed');
                 }
-                $content = PlatformWebContentFormatter::plainText((string) ($snapshot['content'] ?? ''));
+                $content = PlatformWebContentFormatter::fromSnapshot($snapshot);
                 $publication->forceFill([
                     'content' => $content,
                     'source_snapshot' => $snapshot,
@@ -153,7 +153,7 @@ class BrowserExtensionPublisher implements DistributionPublisherInterface
             // create() 对 status=ready 强制要求指派管理员，这里指派给渠道创建管理员。
             'assigned_admin_id' => (int) $actor->getKey(),
             'status' => ManualPublication::STATUS_READY,
-            'content' => PlatformWebContentFormatter::plainText((string) $snapshot['content']),
+            'content' => PlatformWebContentFormatter::fromSnapshot($snapshot),
             'target_url' => (string) $config['editor_url'],
             'publication_payload_extras' => $this->bridge->payloadExtras($distribution, $config, $payload),
         ], $actor);

@@ -2,13 +2,19 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Support\Site\ArticleHtmlPresenter;
 use Closure;
 use League\CommonMark\Environment\EnvironmentAwareInterface;
 use League\CommonMark\Environment\EnvironmentInterface;
+use League\CommonMark\Extension\CommonMark\Node\Block\BlockQuote;
+use League\CommonMark\Extension\CommonMark\Node\Block\ListItem;
+use League\CommonMark\Extension\CommonMark\Node\Inline\Image;
 use League\CommonMark\Extension\CommonMark\Parser\Inline\CloseBracketParser;
 use League\CommonMark\Extension\Table\TableCell;
 use League\CommonMark\Extension\Table\TableSection;
 use League\CommonMark\GithubFlavoredMarkdownConverter;
+use League\CommonMark\Node\Node;
+use League\CommonMark\Parser\Cursor;
 use League\CommonMark\Parser\Inline\InlineParserInterface;
 use League\CommonMark\Parser\Inline\InlineParserMatch;
 use League\CommonMark\Parser\InlineParserContext;
@@ -21,11 +27,12 @@ final class MarkdownImagePolicy
     /** @param Closure(string):bool $accept */
     public function filter(string $markdown, Closure $accept): string
     {
+        $markdown = ArticleHtmlPresenter::prepareMarkdown($markdown);
         $spans = [];
         $converter = new GithubFlavoredMarkdownConverter(['html_input' => 'strip', 'allow_unsafe_links' => false]);
         $environment = $converter->getEnvironment();
         $capture = static function (array $span) use (&$spans): void {
-            $spans[] = $span;
+            $spans[$span['node']] = $span;
         };
         $environment->addInlineParser(new class($capture) implements EnvironmentAwareInterface, InlineParserInterface
         {
@@ -58,7 +65,7 @@ final class MarkdownImagePolicy
                     $replacement = $previous ? $previous->next() : $context->getContainer()->firstChild();
                     $syntax = $context->getCursor()->getSubstring($start, $context->getCursor()->getPosition() - $start);
                     ($this->capture)([
-                        'syntax' => $syntax, 'url' => $replacement->getUrl(),
+                        'syntax' => $syntax, 'url' => $replacement->getUrl(), 'node' => spl_object_id($replacement),
                         'container' => $context->getContainer(),
                         'prefix' => $context->getCursor()->getSubstring(0, $start),
                         'line' => $context->getContainer()->getStartLine(), 'end_line' => $context->getContainer()->getEndLine(),
@@ -69,15 +76,19 @@ final class MarkdownImagePolicy
                 return $parsed;
             }
         }, 100);
-        (new MarkdownParser($environment))->parse($markdown);
+        $document = (new MarkdownParser($environment))->parse($markdown);
         $lines = preg_split('/(?<=\n)/', $markdown);
         $offsets = [0];
         foreach ($lines as $line) {
             $offsets[] = end($offsets) + strlen($line);
         }
         $edits = [];
-        foreach ($spans as $span) {
+        $acceptedUrls = [];
+        foreach ($this->renderedImages($document) as $image) {
+            $span = $spans[spl_object_id($image)];
             if ($accept($span['url'])) {
+                $acceptedUrls[] = $span['url'];
+
                 continue;
             }
             if ($span['container'] instanceof TableCell) {
@@ -112,10 +123,37 @@ final class MarkdownImagePolicy
         }
         krsort($edits);
         foreach ($edits as $position => $length) {
-            $markdown = substr_replace($markdown, '', $position, $length);
+            // A text entity keeps adjacent syntax and leading code indentation isolated through re-rendering.
+            $markdown = substr_replace($markdown, '&#32;', $position, $length);
+        }
+
+        $final = (new MarkdownParser($environment))->parse(ArticleHtmlPresenter::prepareMarkdown($markdown));
+        if (array_map(static fn (Image $image): string => $image->getUrl(), $this->renderedImages($final)) !== $acceptedUrls) {
+            throw new RuntimeException('generated_image_render_mismatch');
         }
 
         return $markdown;
+    }
+
+    /** Alt text can contain Image nodes; only the outer image produces a rendered img element. */
+    private function renderedImages(Node $document): array
+    {
+        $images = [];
+        $walker = $document->walker();
+        while ($event = $walker->next()) {
+            $node = $event->getNode();
+            if (! $event->isEntering() || ! $node instanceof Image) {
+                continue;
+            }
+            for ($ancestor = $node->parent(); $ancestor !== null; $ancestor = $ancestor->parent()) {
+                if ($ancestor instanceof Image) {
+                    continue 2;
+                }
+            }
+            $images[] = $node;
+        }
+
+        return $images;
     }
 
     /** TableParser attaches cells after inline parsing and removes escaped pipe backslashes. */
@@ -136,9 +174,28 @@ final class MarkdownImagePolicy
         $lineIndex = (int) $table?->getStartLine() - 1 + $rowIndex
             + ($section?->getType() === TableSection::TYPE_HEAD ? 0 : 2);
         $raw = rtrim($lines[$lineIndex] ?? '', "\r\n");
-        // Remove the enclosing block's source prefix before locating table delimiters.
-        preg_match('/^[ \t]*(?:>[ \t]*|(?:[-+*]|[0-9]+[.)])[ \t]+)*/u', $raw, $prefix);
-        $start = strlen($prefix[0]);
+        // Consume only actual AST containers. A cell's literal "1. " or "- " is table text.
+        $ancestors = [];
+        for ($ancestor = $table->parent(); $ancestor !== null; $ancestor = $ancestor->parent()) {
+            $ancestors[] = $ancestor;
+        }
+        $cursor = new Cursor($raw);
+        foreach (array_reverse($ancestors) as $ancestor) {
+            if ($ancestor instanceof ListItem) {
+                $data = $ancestor->getListData();
+                $cursor->advanceBy($data->markerOffset + $data->padding, true);
+            } elseif ($ancestor instanceof BlockQuote) {
+                $cursor->advanceToNextNonSpaceOrTab();
+                if ($cursor->getCharacter() === '>') {
+                    $cursor->advanceBy(1);
+                    if (in_array($cursor->getCharacter(), [' ', "\t"], true)) {
+                        $cursor->advanceBy(1, true);
+                    }
+                }
+            }
+        }
+        $cursor->advanceToNextNonSpaceOrTab();
+        $start = strlen($cursor->getSubstring(0, $cursor->getPosition()));
         $length = strlen($raw);
         if (($raw[$start] ?? '') === '|') {
             $start++;
