@@ -1,6 +1,16 @@
-# GEOFlow 3.1
+# GEOFlow 3.2 Beta
 
 > Languages: [简体中文](README.md) | [English](docs/readme/README_en.md) | [日本語](docs/readme/README_ja.md) | [Español](docs/readme/README_es.md) | [Русский](docs/readme/README_ru.md) | [Português (BR)](docs/readme/README_pt_BR.md)
+
+## 60 秒了解 GEOFlow
+
+从可信知识到 AI 内容生产、质量门禁、人工审核与多站点分发，60 秒看懂企业官网的 GEO 运营流程。
+
+https://github.com/user-attachments/assets/8dbbf34e-e9c1-4139-977a-8e78394e34d9
+
+*中文介绍 · 60 秒*
+
+---
 
 > 面向企业官网的开源 GEO 智能运营系统
 
@@ -8,14 +18,14 @@ GEOFlow 把可信知识、AI 内容生产、质量门禁、人工审核、多站
 
 [快速开始](#快速开始) · [界面预览](#界面预览) · [核心能力](#geoflow-30-核心能力) · [文档中心](docs/README.md) · [3.0 升级教程](docs/deployment/GEOFLOW_V3_UPGRADE.md) · [蓝绿部署与自动迁移](docs/blue-green-deployment-usage.md) · [更新日志](docs/CHANGELOG.md) · [官方网站](https://www.geoflow.me)
 
-[![Source version](https://img.shields.io/badge/source-3.1.0-2563eb)](version.json)
+[![Source version](https://img.shields.io/badge/source-3.2.0--beta.1-2563eb)](version.json)
 [![Latest release](https://img.shields.io/github/v/release/yaojingang/GEOFlow?display_name=tag)](https://github.com/yaojingang/GEOFlow/releases/latest)
 [![PHP](https://img.shields.io/badge/PHP-8.3%2B-777bb4)](https://www.php.net/)
 [![CI](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 
-> **版本说明：** 当前为 `3.1.x` 系列，`main` 分支持续迭代，可能包含尚未发布的更新。精确源码版本见 [`version.json`](version.json)，正式发布版本与升级说明见 [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases)。生产部署建议使用正式 Release，或固定到经过审核的提交。
+> **版本说明：** 当前源码为 `3.2.0-beta.2` 预览版，最新稳定版为 `3.1.0`。精确源码版本见 [`version.json`](version.json)，正式发布版本与升级说明见 [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases)。生产部署建议使用正式 Release，或固定到经过审核的提交。
 
 ---
 
@@ -71,9 +81,13 @@ flowchart LR
 | 可信知识与内容生产 | 集中管理知识库、标题库、关键词库、图片库、作者、提示词和 AI 模型；知识库支持结构化切片、可选语义规划、向量召回和稳定回退 |
 | AI 质量门禁 | 按知识证据、数据与引文、广告规则和发布语境检查文章，记录分项评分、原文定位、法规依据、修改建议和历史结果；待复核、阻断、异常或过期的文章停留在草稿阶段 |
 | 审核与运营协作 | 统一管理草稿、审核、发布、回收站和批量 Markdown 导出；人工发布工作台保存身份、账号、执行人、计划时间、风险提示、回执和审计记录 |
-| 企业官网与多站点交付 | 本地前台提供 SEO 元信息、Open Graph、Schema、sitemap 和 `llms.txt`；渠道支持托管站点、GEOFlow Agent、WordPress REST 和通用 HTTP API |
+| 企业官网与多站点交付 | 本地前台提供 SEO 元信息、Open Graph、Schema、`robots.txt`、sitemap 和 `llms.txt`；渠道支持托管站点、GEOFlow Agent、WordPress REST 和通用 HTTP API |
 | 数据反馈与日常运维 | 数据中心汇总内容、分发、访问、Top 内容、AI 爬虫和趋势；独立 Updater 负责签名更新、完整备份、环境验收和恢复点回滚 |
 | 团队与开发者入口 | Admin UI V3 支持六种语言、响应式布局、PWA 和图文帮助；API v1、GEOFlow CLI 与内置 Agent Skill 覆盖自动化与二次开发 |
+
+部署并完成基础站点设置后，主站和托管站会自动提供 `/robots.txt`、`/sitemap.xml`、`/sitemap.txt` 和 `/llms.txt`。这些地址按当前站点、发布状态、索引开关、规范化文章链接和站点设置实时生成；GEOFlow Agent 目标站点包在安装时提供这四个地址，并在文章发布、删除和站点设置同步时自动刷新 XML 与文本地图及 `llms.txt`。页面的标题、描述、规范链接、Open Graph 和 JSON-LD 继续由公共前台层统一输出。
+
+`robots.txt` 会自动限制后台、API、运行时调试、上传存储、搜索参数和图片文件的抓取，并拒绝 Facebook 分享抓取器；这些规则只管理爬虫访问意向，敏感数据仍须使用认证、授权和服务器访问控制保护。
 
 ### 3.0 的主要升级
 
@@ -123,8 +137,8 @@ GEOFlow 适合拥有真实业务资料、明确审核责任和持续运营计划
 
 | 组件 | 当前源码版本或状态 | 说明 |
 |------|-------------------|------|
-| GEOFlow Core | `3.1.0` | Laravel 应用、管理后台、前台、API、队列和分发系统 |
-| GEOFlow CLI | `0.2.0` | 仓库内置 `bin/geoflow`，支持 macOS、Linux 和 WSL |
+| GEOFlow Core | `3.2.0-beta.2` | Laravel 应用、管理后台、前台、API、队列和分发系统 |
+| GEOFlow CLI | `0.4.0-preview.2` | 内置命令与独立 PHAR 预览版；远程草稿可用，主题发布尚未开放 |
 | Chrome 运营助手 | `0.1.0` | 源码和打包产物位于 `browser-extension/` 与 `dist/browser-extension/` |
 | GEOFlow Updater | 独立组件 | 使用与目标 Release 明确兼容的签名版本，参见 [geoflow-updater](https://github.com/yaojingang/geoflow-updater) |
 | 目标站点 Agent | 按渠道生成 | 每个渠道可生成预配置 PHP 包，提供首页、详情页、静态资源、Schema、sitemap 和 `llms.txt` |

@@ -144,6 +144,29 @@ class ArticleRiskScannerTest extends TestCase
         $this->assertSame(['warning', 'blocked'], array_column($result['matches'], 'severity'));
     }
 
+    public function test_explicit_non_publication_verdict_is_a_generic_blocker(): void
+    {
+        $result = $this->scanner()->scan([
+            'content' => "【待人工复核，禁止发布】\n原因：现有资料不足。",
+        ]);
+
+        $this->assertSame('blocked', $result['status']);
+        $this->assertSame(1, $result['match_count']);
+        $this->assertSame('publication_verdict', $result['matches'][0]['category']);
+        $this->assertSame('blocked', $result['matches'][0]['severity']);
+        $this->assertSame('content', $result['matches'][0]['field']);
+    }
+
+    public function test_a_normal_sentence_about_publication_is_not_treated_as_a_verdict(): void
+    {
+        $result = $this->scanner()->scan([
+            'content' => '本指南禁止发布虚假广告，但不影响正常内容发布。',
+        ]);
+
+        $this->assertSame('clean', $result['status']);
+        $this->assertSame([], $result['matches']);
+    }
+
     public function test_it_scans_the_visible_text_rendered_from_markdown_and_html_entities(): void
     {
         SensitiveWord::query()->create([

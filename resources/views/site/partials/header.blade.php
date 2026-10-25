@@ -43,6 +43,7 @@
                     </div>
                 </div>
 
+                @include('site.partials.topic-navigation')
                 <a href="{{ route('site.about') }}" class="flex items-center text-sm font-medium {{ request()->routeIs('site.about') ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900' }}">
                     <i data-lucide="info" class="w-4 h-4 mr-1"></i>
                     关于
@@ -76,6 +77,7 @@
                         </a>
                     @endforeach
                 </div>
+                @include('site.partials.topic-navigation')
                 <a href="{{ route('site.about') }}" class="mobile-nav-link flex items-center text-sm font-medium {{ request()->routeIs('site.about') ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900' }}">
                     <i data-lucide="info" class="w-4 h-4 mr-3"></i>
                     关于

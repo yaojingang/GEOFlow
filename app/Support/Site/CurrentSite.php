@@ -31,6 +31,13 @@ final class CurrentSite
         $this->profile = $profile;
     }
 
+    public function clear(): void
+    {
+        $this->type = null;
+        $this->hostname = null;
+        $this->profile = null;
+    }
+
     public function isResolved(): bool
     {
         return $this->type !== null;

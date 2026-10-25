@@ -14,6 +14,7 @@ use App\Models\Prompt;
 use App\Models\Task;
 use App\Services\GeoFlow\ArticleAiQualityInspectionService;
 use App\Services\GeoFlow\ArticleGeoFlowService;
+use App\Services\GeoFlow\TaskLifecycleService;
 use App\Support\GeoFlow\AiQualityRetrievalMode;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -22,6 +23,30 @@ use Tests\TestCase;
 class AdminArticleAiQualityTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_quality_score_threshold_decision_and_blockers_are_visible(): void
+    {
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'completed', 'decision' => 'needs_review', 'score' => 90, 'pass_score' => 91,
+            'knowledge_coverage' => 'insufficient', 'gate_reasons' => ['score_below_threshold'],
+            'execution_meta' => array_replace((array) $check->execution_meta, ['score_policy' => [
+                'version' => 'score-release-1',
+                'adjustments' => [['reason' => 'evidence_coverage_insufficient', 'dimension' => 'data_traceability', 'deduction' => 10]],
+            ]]),
+            'active_dedupe_key' => null, 'finished_at' => now(),
+        ])->save();
+        $this->actingAs($admin, 'admin')->get(route('admin.articles.index'))->assertOk()
+            ->assertSee(__('admin.articles.ai_quality.pass_score', ['score' => 91]))
+            ->assertSee(__('admin.articles.ai_quality.needs_review'));
+        $this->get(route('admin.articles.edit', ['articleId' => $article->id]))->assertOk()
+            ->assertSee(__('article_workflow.quality_reasons.score_below_threshold'))
+            ->assertSee(__('article_workflow.quality_adjustment', ['reason' => __('article_workflow.quality_reasons.evidence_coverage_insufficient'), 'points' => 10]));
+        $quality = app(ArticleGeoFlowService::class)->getArticle((int) $article->id)['ai_quality'];
+        $this->assertSame('score-release-1', $quality['decision_policy_version']);
+        $this->assertSame(10, $quality['score_adjustments'][0]['deduction']);
+    }
 
     public function test_admin_can_poll_the_latest_ai_quality_progress_for_an_article(): void
     {
@@ -491,7 +516,7 @@ class AdminArticleAiQualityTest extends TestCase
         $article->task()->update(['ai_quality_enabled' => false]);
 
         $listResponse = $this->actingAs($admin, 'admin')
-            ->get(route('admin.articles.index', ['ai_quality_status' => 'needs_review']))
+            ->get(route('admin.articles.index', ['ai_quality_status' => 'disabled']))
             ->assertOk()
             ->assertSee(__('admin.articles.column.ai_quality'))
             ->assertSee(__('admin.articles.ai_quality.needs_review'))
@@ -503,12 +528,13 @@ class AdminArticleAiQualityTest extends TestCase
         $scoreBadge = $listXPath->query('//a[@data-ai-quality-score-badge="78"]')?->item(0);
 
         $this->assertNotNull($scoreBadge);
-        $this->assertSame('78', trim((string) $scoreBadge->textContent));
+        $this->assertStringContainsString('78', $scoreBadge->textContent);
+        $this->assertStringContainsString(__('admin.articles.ai_quality.disabled_short'), $scoreBadge->textContent);
         $this->assertSame(
-            __('admin.articles.ai_quality.needs_review').' · '.__('admin.articles.ai_quality.score').' 78',
+            __('admin.articles.ai_quality.disabled_short').' · '.__('admin.articles.ai_quality.score').' 78',
             $scoreBadge->getAttribute('aria-label'),
         );
-        $this->assertSame(1, $listXPath->query('./i[@data-lucide="user-round-check"]', $scoreBadge)?->length);
+        $this->assertSame(1, $listXPath->query('./i[@data-lucide="shield-off"]', $scoreBadge)?->length);
 
         $editResponse = $this->actingAs($admin, 'admin')
             ->get(route('admin.articles.edit', ['articleId' => $article->id]))
@@ -620,11 +646,11 @@ class AdminArticleAiQualityTest extends TestCase
         $this->assertSame('published', $article->status);
         $this->assertSame($originalContent, $article->content);
 
-        $token = $admin->createToken('quality-published-update', ['articles:write'])->plainTextToken;
+        $token = $admin->createToken('quality-published-update', ['articles:write', 'articles:publish'])->plainTextToken;
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->patchJson("/api/v1/articles/{$article->id}", ['content' => 'API 尝试修改后的正文。'])
             ->assertStatus(409)
-            ->assertJsonPath('error.code', 'article_ai_quality_blocked');
+            ->assertJsonPath('error.code', 'article_ai_quality_stale');
 
         $article->refresh();
         $this->assertSame('published', $article->status);
@@ -817,9 +843,9 @@ class AdminArticleAiQualityTest extends TestCase
             ->assertRedirect(route('admin.articles.edit', ['articleId' => $article->id]));
 
         $article->refresh();
-        $this->assertTrue($article->ai_quality_required_at_creation);
-        $this->assertTrue((bool) data_get($article->ai_quality_policy_snapshot, 'required'));
-        $this->assertSame('manual_article', data_get($article->ai_quality_policy_snapshot, 'source'));
+        $this->assertFalse($article->ai_quality_required_at_creation);
+        $this->assertFalse((bool) data_get($article->ai_quality_policy_snapshot, 'required'));
+        $this->assertSame('manual_article', data_get($article->aiQualityChecks()->latest('id')->firstOrFail()->execution_meta, 'policy_snapshot.source'));
         $this->assertFalse((bool) $article->task()->value('ai_quality_enabled'));
         $this->assertDatabaseHas('article_ai_quality_checks', [
             'article_id' => $article->id,
@@ -943,11 +969,11 @@ class AdminArticleAiQualityTest extends TestCase
 
         $article->refresh();
         $check = $article->aiQualityChecks()->latest('id')->firstOrFail();
-        $this->assertSame('draft', $article->status);
-        $this->assertSame('pending', $article->review_status);
+        $this->assertSame('private', $article->status);
+        $this->assertSame('approved', $article->review_status);
         $this->assertSame('queued', $check->status);
-        $this->assertSame('private', data_get($check->execution_meta, 'requested_workflow_state.status'));
-        $this->assertSame('approved', data_get($check->execution_meta, 'requested_workflow_state.review_status'));
+        $this->assertNull(data_get($check->execution_meta, 'requested_workflow_state'));
+        $this->assertSame('hold', $article->publication_intent);
         Queue::assertPushed(ProcessArticleAiQualityJob::class, 1);
     }
 
@@ -1103,6 +1129,37 @@ class AdminArticleAiQualityTest extends TestCase
         $this->assertSame((int) $admin->id, (int) $manualRequest['admin_id']);
         $this->assertSame((int) $issuedToken->accessToken->id, (int) $manualRequest['api_token_id']);
         Queue::assertPushed(ProcessArticleAiQualityJob::class);
+    }
+
+    public function test_old_quality_override_returns_a_business_conflict_after_task_disables_ai(): void
+    {
+        Queue::fake();
+        [$admin, $article] = $this->qualityArticle();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'completed', 'decision' => 'needs_review', 'score' => 78,
+            'active_dedupe_key' => null, 'finished_at' => now(),
+        ])->save();
+        app(TaskLifecycleService::class)->updateTask((int) $article->task_id, ['ai_quality_enabled' => false, 'status' => 'paused'], auditAdminId: (int) $admin->id);
+        $token = $admin->createToken('disabled-quality-override', ['articles:publish'])->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson("/api/v1/articles/{$article->id}/ai-quality/override", [
+                'reason' => '历史页面提交人工放行',
+            ])
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'article_ai_quality_not_required');
+
+        $this->assertFalse((bool) $check->fresh()->is_overridden);
+        $this->assertDatabaseMissing('ai_quality_audit_events', [
+            'event_type' => 'article_quality_decision_overridden', 'article_id' => $article->id,
+        ]);
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.articles.ai-quality.override', ['articleId' => $article->id]), [
+                'ai_quality_override_reason' => '历史页面提交人工放行',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors();
     }
 
     public function test_api_quality_configuration_requires_publish_scope_and_matching_policy_version(): void
@@ -1385,6 +1442,109 @@ class AdminArticleAiQualityTest extends TestCase
         $this->assertTrue($article->ai_quality_required_at_creation);
         $this->assertTrue((bool) data_get($article->ai_quality_policy_snapshot, 'required'));
         $this->assertSame($taskId, $article->task_id);
+    }
+
+    public function test_api_task_rebinding_keeps_a_published_article_private_for_distribution_only_scope(): void
+    {
+        Queue::fake();
+        [$admin, $article] = $this->qualityArticle();
+        $task = $article->task()->firstOrFail();
+        $task->forceFill(['publish_scope' => 'distribution_only'])->save();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 96,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+        $article->forceFill([
+            'task_id' => null,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+            'ai_quality_required_at_creation' => false,
+            'ai_quality_policy_snapshot' => null,
+        ])->save();
+
+        app(ArticleGeoFlowService::class)->updateArticle($article->id, [
+            'task_id' => $task->id,
+        ], $admin->id);
+
+        $article->refresh();
+        $this->assertSame($task->id, $article->task_id);
+        $this->assertSame('private', $article->status);
+        $this->assertSame('approved', $article->review_status);
+        $this->assertNull($article->published_at);
+        $this->assertSame('stale', $check->fresh()->status);
+    }
+
+    public function test_task_scope_narrowing_preserves_approved_private_workflow_without_invalidating_quality_checks(): void
+    {
+        Queue::fake();
+        [$admin, $article] = $this->qualityArticle();
+        $article->task()->update(['status' => 'paused']);
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 96,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+        $article->forceFill([
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ])->save();
+
+        app(TaskLifecycleService::class)->updateTask(
+            (int) $article->task_id,
+            ['publish_scope' => 'distribution_only'],
+            auditAdminId: $admin->id,
+        );
+
+        $article->refresh();
+        $this->assertSame('private', $article->status);
+        $this->assertSame('approved', $article->review_status);
+        $this->assertNull($article->published_at);
+        $this->assertSame('completed', $check->fresh()->status);
+    }
+
+    public function test_api_task_rebinding_with_content_changes_still_requires_a_fresh_approval(): void
+    {
+        Queue::fake();
+        [$admin, $article] = $this->qualityArticle();
+        $task = $article->task()->firstOrFail();
+        $task->forceFill(['publish_scope' => 'distribution_only'])->save();
+        $check = app(ArticleAiQualityInspectionService::class)->createOrReuse($article, dispatch: false);
+        $check->forceFill([
+            'status' => 'completed',
+            'decision' => 'passed',
+            'score' => 96,
+            'active_dedupe_key' => null,
+            'finished_at' => now(),
+        ])->save();
+        $article->forceFill([
+            'task_id' => null,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+            'ai_quality_required_at_creation' => false,
+            'ai_quality_policy_snapshot' => null,
+        ])->save();
+
+        app(ArticleGeoFlowService::class)->updateArticle($article->id, [
+            'task_id' => $task->id,
+            'content' => '服务客户为 800 家，正文已经更新。',
+        ], $admin->id);
+
+        $article->refresh();
+        $this->assertSame($task->id, $article->task_id);
+        $this->assertSame('private', $article->status);
+        $this->assertSame('pending', $article->review_status);
+        $this->assertNull($article->published_at);
+        $this->assertSame('stale', $check->fresh()->status);
     }
 
     public function test_api_task_rebinding_migrates_knowledge_sources_between_independent_and_task_policies(): void

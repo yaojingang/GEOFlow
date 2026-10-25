@@ -356,7 +356,7 @@ class AdminSystemUpdaterBridgeTest extends TestCase
         ];
     }
 
-    public function test_mutating_agent_operation_requires_password_and_one_time_authorization_code(): void
+    public function test_retired_direct_mutation_rejects_even_valid_credentials_and_redacts_them(): void
     {
         $this->ensureActivityLogTable();
         $client = new AgentClientStub;
@@ -367,9 +367,10 @@ class AdminSystemUpdaterBridgeTest extends TestCase
                 'current_admin_password' => 'secret-123',
                 'updater_authorization_code' => '123456',
             ])
-            ->assertRedirect(route('admin.system-updates.index'));
+            ->assertRedirect(route('admin.system-updates.updater.console'));
 
-        $this->assertSame(['123456'], $client->updates);
+        $response->assertSessionHasErrors('updater');
+        $this->assertSame([], $client->updates);
         $this->assertSame([], $response->getSession()->getOldInput());
         $activity = AdminActivityLog::query()->latest('id')->firstOrFail();
         $this->assertStringNotContainsString('secret-123', (string) $activity->details);
@@ -387,7 +388,7 @@ class AdminSystemUpdaterBridgeTest extends TestCase
                 'current_admin_password' => 'secret-123',
                 'updater_authorization_code' => "123456\r\nX-Injection: yes",
             ])
-            ->assertSessionHasErrors('updater_authorization_code');
+            ->assertSessionHasErrors('updater');
 
         $response->assertSessionMissing('_old_input.updater_authorization_code');
         $this->assertSame([], $client->updates);
@@ -415,7 +416,7 @@ class AdminSystemUpdaterBridgeTest extends TestCase
         $this->assertSame(1, $client->verifications);
     }
 
-    public function test_phase_b_retired_worker_failure_keeps_only_the_signed_update_handover_available(): void
+    public function test_retired_worker_handover_requires_new_plan_and_disables_all_old_mutation_forms(): void
     {
         $client = new AgentClientStub;
         $client->doctorStatus = 'fail';
@@ -436,7 +437,7 @@ class AdminSystemUpdaterBridgeTest extends TestCase
         preg_match('/<form[^>]+action="[^"]+\/updater\/backup".*?<\/form>/s', $html, $backupForm);
         $this->assertNotEmpty($updateForm);
         $this->assertNotEmpty($backupForm);
-        $this->assertDoesNotMatchRegularExpression('/\sdisabled(?:\s|>)/', $updateForm[0]);
+        $this->assertMatchesRegularExpression('/\sdisabled(?:\s|>)/', $updateForm[0]);
         $this->assertMatchesRegularExpression('/\sdisabled(?:\s|>)/', $backupForm[0]);
 
         $this->actingAs($this->createAdmin('phase_c_handover_submit_admin'), 'admin')
@@ -444,8 +445,8 @@ class AdminSystemUpdaterBridgeTest extends TestCase
                 'current_admin_password' => 'secret-123',
                 'updater_authorization_code' => '123456',
             ])
-            ->assertRedirect(route('admin.system-updates.index'));
-        $this->assertSame(['123456'], $client->updates);
+            ->assertRedirect(route('admin.system-updates.updater.console'))->assertSessionHasErrors('updater');
+        $this->assertSame([], $client->updates);
 
         $admin = $this->createAdmin('phase_c_handover_blocked_admin');
         $this->actingAs($admin, 'admin')->post(route('admin.system-updates.updater.backup'), [
@@ -461,7 +462,7 @@ class AdminSystemUpdaterBridgeTest extends TestCase
         $this->assertSame([], $client->rollbacks);
     }
 
-    public function test_backup_and_rollback_forward_distinct_authorization_codes_while_verify_remains_read_only(): void
+    public function test_retired_backup_and_rollback_do_not_forward_codes_while_verify_remains_read_only(): void
     {
         $client = new AgentClientStub;
         $this->app->instance(AgentClient::class, $client);
@@ -470,17 +471,17 @@ class AdminSystemUpdaterBridgeTest extends TestCase
         $this->actingAs($admin, 'admin')->post(route('admin.system-updates.updater.backup'), [
             'current_admin_password' => 'secret-123',
             'updater_authorization_code' => '234567',
-        ])->assertRedirect(route('admin.system-updates.index'))->assertSessionHasNoErrors();
+        ])->assertRedirect(route('admin.system-updates.updater.console'))->assertSessionHasErrors('updater');
         $this->actingAs($admin, 'admin')->post(route('admin.system-updates.updater.rollback'), [
             'current_admin_password' => 'secret-123',
             'updater_authorization_code' => '345678',
             'recovery_point_id' => '20260827T120000Z-1234abcd',
-        ])->assertRedirect(route('admin.system-updates.index'));
+        ])->assertRedirect(route('admin.system-updates.updater.console'))->assertSessionHasErrors('updater');
         $this->actingAs($admin, 'admin')->post(route('admin.system-updates.updater.verify'))
             ->assertRedirect(route('admin.system-updates.index'));
 
-        $this->assertSame(['234567'], $client->backups);
-        $this->assertSame([['20260827T120000Z-1234abcd', '345678']], $client->rollbacks);
+        $this->assertSame([], $client->backups);
+        $this->assertSame([], $client->rollbacks);
         $this->assertSame(1, $client->verifications);
     }
 
@@ -510,7 +511,7 @@ class AdminSystemUpdaterBridgeTest extends TestCase
         $this->assertSame(1, $client->verifications);
     }
 
-    public function test_orphaned_legacy_rows_are_retired_after_the_agent_confirms_the_worker_is_absent(): void
+    public function test_retired_route_does_not_modify_orphaned_legacy_rows(): void
     {
         $queued = SystemUpdateRun::query()->create([
             'run_uuid' => 'phase-c-stale-queued-legacy-run',
@@ -533,22 +534,22 @@ class AdminSystemUpdaterBridgeTest extends TestCase
             ->getContent();
         preg_match('/<form[^>]+action="[^"]+\/updater\/update".*?<\/form>/s', $html, $updateForm);
         $this->assertNotEmpty($updateForm);
-        $this->assertDoesNotMatchRegularExpression('/\sdisabled(?:\s|>)/', $updateForm[0]);
+        $this->assertMatchesRegularExpression('/\sdisabled(?:\s|>)/', $updateForm[0]);
 
         $this->actingAs($admin, 'admin')
             ->post(route('admin.system-updates.updater.update'), [
                 'current_admin_password' => 'secret-123',
                 'updater_authorization_code' => '567890',
             ])
-            ->assertRedirect(route('admin.system-updates.index'))
-            ->assertSessionHasNoErrors();
+            ->assertRedirect(route('admin.system-updates.updater.console'))
+            ->assertSessionHasErrors('updater');
 
-        $this->assertSame(['567890'], $client->updates);
+        $this->assertSame([], $client->updates);
         foreach ([$queued, $running] as $run) {
             $run->refresh();
-            $this->assertSame('failed', $run->status);
-            $this->assertSame('legacy_executor_retired', $run->error_message);
-            $this->assertNotNull($run->finished_at);
+            $this->assertContains($run->status, ['queued', 'running']);
+            $this->assertNull($run->error_message);
+            $this->assertNull($run->finished_at);
         }
     }
 
@@ -581,7 +582,7 @@ class AdminSystemUpdaterBridgeTest extends TestCase
             ->assertSee('data-system-updater-auto-reload="5000"', false);
     }
 
-    public function test_recovery_required_allows_authorized_data_restore_while_deployment_health_is_degraded(): void
+    public function test_degraded_recovery_requires_new_plan_instead_of_retired_restore_form(): void
     {
         $client = new PlannedAgentClientStub;
         $client->current = $client->operation('update', 'recovery_required');
@@ -594,7 +595,7 @@ class AdminSystemUpdaterBridgeTest extends TestCase
         $html = $this->get(route('admin.system-updates.index'))->assertOk()->getContent();
         preg_match('/<form[^>]+action="[^"]+\/updater\/rollback".*?<\/form>/s', $html, $restoreForm);
         $this->assertNotEmpty($restoreForm);
-        $this->assertDoesNotMatchRegularExpression('/\sdisabled(?:\s|>)/', $restoreForm[0]);
+        $this->assertMatchesRegularExpression('/\sdisabled(?:\s|>)/', $restoreForm[0]);
         foreach (['update', 'backup', 'switch-back'] as $kind) {
             preg_match('/<form[^>]+action="[^"]+\/updater\/'.$kind.'".*?<\/form>/s', $html, $form);
             $this->assertNotEmpty($form);
@@ -605,8 +606,8 @@ class AdminSystemUpdaterBridgeTest extends TestCase
             'recovery_point_id' => '20260827T120000Z-1234abcd',
         ];
         $this->post(route('admin.system-updates.updater.rollback'), $payload)
-            ->assertRedirect(route('admin.system-updates.index'))->assertSessionHasNoErrors();
-        $this->assertSame([['20260827T120000Z-1234abcd', '345678']], $client->rollbacks);
+            ->assertRedirect(route('admin.system-updates.updater.console'))->assertSessionHasErrors('updater');
+        $this->assertSame([], $client->rollbacks);
         $this->post(route('admin.system-updates.updater.backup'), $payload)->assertSessionHasErrors();
         $this->post(route('admin.system-updates.updater.switch-back'), $payload)->assertSessionHasErrors();
         $this->assertSame([], $client->backups);
@@ -752,33 +753,33 @@ class AdminSystemUpdaterBridgeTest extends TestCase
             ->assertSee('phase-c-paged-backup-0');
     }
 
-    public function test_planned_updates_require_matching_preview_and_explicit_maintenance_confirmation(): void
+    public function test_v1_plans_cannot_authorize_new_web_writes_even_with_matching_hash_and_confirmation(): void
     {
         config(['geoflow.update_require_admin_password' => false]);
         $agent = new PlannedAgentClientStub;
         $this->app->instance(AgentClient::class, $agent);
         $this->actingAs($this->createAdmin('planned_update'), 'admin');
-        $this->post(route('admin.system-updates.updater.plan'))->assertSessionHas('system_updater_plan');
+        $this->post(route('admin.system-updates.updater.plan'))->assertSessionMissing('system_updater_plan')->assertSessionHasErrors('updater');
         $this->get(route('admin.system-updates.index'))->assertOk()
             ->assertSee('name="expected_plan_sha256"', false)
             ->assertSee('name="allow_maintenance"', false)
             ->assertSee(__('admin.system_updates.updater.plan_title'))
             ->assertSee(route('admin.system-updates.updater.switch-back'), false);
         $payload = ['updater_authorization_code' => '123456', 'expected_plan_sha256' => str_repeat('b', 64), 'allow_maintenance' => true];
-        $this->post(route('admin.system-updates.updater.update'), $payload)->assertSessionHasErrors('expected_plan_sha256');
+        $this->post(route('admin.system-updates.updater.update'), $payload)->assertSessionHasErrors('updater');
         $payload['expected_plan_sha256'] = str_repeat('a', 64);
         $payload['allow_maintenance'] = false;
-        $this->post(route('admin.system-updates.updater.update'), $payload)->assertSessionHasErrors('allow_maintenance');
+        $this->post(route('admin.system-updates.updater.update'), $payload)->assertSessionHasErrors('updater');
         $payload['allow_maintenance'] = 'yes';
-        $this->post(route('admin.system-updates.updater.update'), $payload)->assertSessionHasErrors('allow_maintenance');
+        $this->post(route('admin.system-updates.updater.update'), $payload)->assertSessionHasErrors('updater');
         $this->assertSame([], $agent->plannedUpdates);
         $payload['allow_maintenance'] = true;
-        $this->post(route('admin.system-updates.updater.update'), $payload)->assertSessionHasNoErrors();
-        $this->assertSame([['123456', true, str_repeat('a', 64)]], $agent->plannedUpdates);
+        $this->post(route('admin.system-updates.updater.update'), $payload)->assertSessionHasErrors('updater');
+        $this->assertSame([], $agent->plannedUpdates);
         $this->assertSame([], $agent->updates);
     }
 
-    public function test_failed_preview_clears_prior_confirmation_and_never_falls_back_to_update(): void
+    public function test_retired_preview_clears_prior_confirmation_and_never_falls_back_to_update(): void
     {
         config(['geoflow.update_require_admin_password' => false]);
         $agent = new PlannedAgentClientStub;
@@ -789,23 +790,23 @@ class AdminSystemUpdaterBridgeTest extends TestCase
             ->post(route('admin.system-updates.updater.plan'))->assertSessionMissing('system_updater_plan')->assertSessionHasErrors();
         $this->post(route('admin.system-updates.updater.update'), [
             'updater_authorization_code' => '123456', 'expected_plan_sha256' => str_repeat('a', 64), 'allow_maintenance' => true,
-        ])->assertSessionHasErrors('expected_plan_sha256');
+        ])->assertSessionHasErrors('updater');
         $this->assertSame([], $agent->plannedUpdates);
         $this->assertSame([], $agent->updates);
     }
 
-    public function test_switch_back_is_separate_from_recovery_and_respects_mutation_policy(): void
+    public function test_retired_switch_back_never_reaches_the_v1_agent(): void
     {
         config(['geoflow.update_require_admin_password' => false]);
         $agent = new PlannedAgentClientStub;
         $this->app->instance(AgentClient::class, $agent);
         $this->actingAs($this->createAdmin('switch_back'), 'admin');
-        $this->post(route('admin.system-updates.updater.switch-back'), ['updater_authorization_code' => '123456'])->assertSessionHasNoErrors();
-        $this->assertSame(['123456'], $agent->switchBacks);
+        $this->post(route('admin.system-updates.updater.switch-back'), ['updater_authorization_code' => '123456'])->assertSessionHasErrors('updater');
+        $this->assertSame([], $agent->switchBacks);
         $this->assertSame([], $agent->rollbacks);
         $agent->mutationAuthorizationReady = false;
         $this->post(route('admin.system-updates.updater.switch-back'), ['updater_authorization_code' => '234567'])->assertSessionHasErrors();
-        $this->assertSame(['123456'], $agent->switchBacks);
+        $this->assertSame([], $agent->switchBacks);
     }
 
     private function createAdmin(string $username = 'system_updater_admin', string $role = 'super_admin'): Admin

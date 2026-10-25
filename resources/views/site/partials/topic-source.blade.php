@@ -1,0 +1,17 @@
+<article class="topic-source" id="source-{{ $source['article_id'] }}">
+    <div class="topic-source-number" aria-hidden="true">{{ str_pad((string)$sourceNumber,2,'0',STR_PAD_LEFT) }}</div>
+    <div class="topic-source-body">
+        <h3><a href="{{ $source['url'] }}">{{ $source['title'] }}</a></h3>
+        @if($source['reason'])
+            <p class="topic-source-reason">{{ $source['reason'] }}</p>
+        @elseif($source['excerpt'])
+            <p>{{ \Illuminate\Support\Str::limit($source['excerpt'],180) }}</p>
+        @endif
+        <div class="topic-source-meta">
+            @if($source['published_at'])
+                <time datetime="{{ $source['published_at'] }}">文章发布 {{ \Carbon\CarbonImmutable::parse($source['published_at'])->setTimezone($topic['timezone'] ?? 'Asia/Shanghai')->format('Y.m.d') }}</time>
+            @endif
+            <a href="{{ $source['url'] }}">阅读全文 <span aria-hidden="true">→</span></a>
+        </div>
+    </div>
+</article>

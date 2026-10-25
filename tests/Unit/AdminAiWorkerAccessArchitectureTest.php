@@ -116,7 +116,6 @@ class AdminAiWorkerAccessArchitectureTest extends TestCase
 
         $this->assertSame([
             'App\\Services\\GeoFlow\\KnowledgeRetrievalService',
-            'App\\Services\\GeoFlow\\DistributionOrchestrator',
             'App\\Services\\GeoFlow\\ArticleRiskScanner',
             'App\\Services\\GeoFlow\\ArticleWorkflowTransitionService',
             'App\\Services\\GeoFlow\\ArticleContentPromptRenderer',
@@ -130,6 +129,9 @@ class AdminAiWorkerAccessArchitectureTest extends TestCase
             'App\\Support\\GeoFlow\\AiExecutionErrorSanitizer',
             'App\\Support\\GeoFlow\\AiModelFailoverDecider',
             'App\\Services\\GeoFlow\\JobQueueService',
+            'App\\Services\\Site\\UrlChangeInspector',
+            'App\\Services\\GeoFlow\\ArticlePublicationEligibilityService',
+            'App\\Services\\Topics\\TopicTaskRunner',
         ], $dependencies);
 
         $modelBoundaryClasses = [
@@ -195,11 +197,13 @@ class AdminAiWorkerAccessArchitectureTest extends TestCase
             'articleCitationMarkerCleaner' => ['cleanContent'],
             'articleContentPromptRenderer' => ['renderForWorker'],
             'articleRiskScanner' => ['record'],
+            'publicationEligibility' => ['fence', 'reviewStatus'],
             'articleWorkflowTransitionService' => ['transition'],
-            'distributionOrchestrator' => ['enqueueForArticle'],
             'jobQueueService' => ['completeJob', 'lockRunningJobForWorker'],
             'knowledgeRetrievalService' => ['retrieveContextBundleFromMany'],
             'taskTitleReadinessService' => ['inspectTask'],
+            'topicTaskRunner' => ['execute'],
+            'urlChangeInspector' => ['assertArticleCompatible'],
         ];
         foreach ($expected as &$methods) {
             sort($methods);
@@ -244,7 +248,7 @@ class AdminAiWorkerAccessArchitectureTest extends TestCase
         $this->assertLessThan($runLock, $taskLock);
 
         $publish = $this->methodSource('publishDueDraftArticle');
-        $transactionStart = strpos($publish, 'return DB::transaction(');
+        $transactionStart = strpos($publish, '$result = DB::transaction(');
         $taskLock = strpos($publish, 'lockForUpdate()', $transactionStart);
         $runLock = strpos($publish, 'lockRunningJobForWorker(', $taskLock);
         $articleLock = strpos($publish, '$article = Article::query()', $runLock);

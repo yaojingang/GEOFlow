@@ -448,6 +448,7 @@ final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptA
             $previous ?? $exception,
             $status,
             $providerCode,
+            OutboundRequestFailedException::retryAfterSeconds($exception),
         );
     }
 

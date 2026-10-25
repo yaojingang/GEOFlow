@@ -153,3 +153,41 @@ test('Zhihu adapter fills an empty answer editor for the expected account', () =
     assert.equal(result.code, 'draft_filled');
     assert.deepEqual(commands.at(-1), ['insertText', '回答正文']);
 });
+
+test('browser client discovers recovery epoch before writes and preserves uncertain failures', async () => {
+    const { GeoFlowApiClient } = await import('../../browser-extension/src/lib/api-client.js');
+    const originalFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (url, options) => {
+        calls.push({ url, ...options });
+        if (url.endsWith('/session')) return { ok: true, json: async () => ({ success: true, data: { recovery: { supported: true, epoch: 'a'.repeat(32) } } }) };
+        throw new Error('response lost');
+    };
+    try {
+        const client = new GeoFlowApiClient({ baseUrl: 'https://geo.example', token: 'test-token' });
+        await assert.rejects(client.request('/api/v1/browser-operations/publications/1/claim', { method: 'POST', body: {}, idempotencyKey: 'original-key' }), /Could not reach/);
+        assert.equal(calls.length, 2);
+        assert.equal(calls[0].method, 'GET');
+        assert.equal(calls[1].headers['X-GEOFlow-Recovery-Epoch'], 'a'.repeat(32));
+        assert.equal(calls[1].headers['X-Idempotency-Key'], 'original-key');
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+test('browser client rejects malformed recovery discovery before sending any mutation', async () => {
+    const { GeoFlowApiClient } = await import('../../browser-extension/src/lib/api-client.js');
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => {
+        calls++;
+        return { ok: true, json: async () => ({ success: true, data: { recovery: { supported: true, epoch: 'bad' } } }) };
+    };
+    try {
+        const client = new GeoFlowApiClient({ baseUrl: 'https://geo.example', token: 'test-token' });
+        await assert.rejects(client.request('/api/v1/browser-operations/publications/1/claim', { method: 'POST' }), /recovery/);
+        assert.equal(calls, 1);
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});

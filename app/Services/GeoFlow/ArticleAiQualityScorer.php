@@ -44,42 +44,21 @@ class ArticleAiQualityScorer
         $issues = $this->uniqueIssues(is_array($modelResult['issues'] ?? null) ? $modelResult['issues'] : []);
         $uncertainties = array_values(is_array($modelResult['uncertainties'] ?? null) ? $modelResult['uncertainties'] : []);
         $dimensionScores = self::DIMENSION_MAXIMUMS;
-        $hasCriticalIssue = false;
-        $hasHighSeverityIssue = false;
 
-        foreach ($issues as $issue) {
+        foreach ($issues as &$issue) {
             $code = (string) ($issue['code'] ?? '');
             $severity = (string) ($issue['severity'] ?? 'medium');
             $dimension = self::CODE_DIMENSIONS[$code] ?? 'content_integrity';
             $deduction = self::SEVERITY_DEDUCTIONS[$severity] ?? self::SEVERITY_DEDUCTIONS['medium'];
             $dimensionScores[$dimension] = max(0, $dimensionScores[$dimension] - $deduction);
-            $hasCriticalIssue = $hasCriticalIssue || $severity === 'critical';
-            $hasHighSeverityIssue = $hasHighSeverityIssue || $severity === 'high';
+            $issue['deduction'] = $deduction;
         }
 
-        $score = array_sum($dimensionScores);
-        $requiresManualReview = in_array(
-            (string) ($modelResult['knowledge_coverage'] ?? 'insufficient'),
-            ['partial', 'insufficient'],
-            true,
-        ) || $this->hasMaterialUncertainty($uncertainties)
-            || $this->hasUnresolvedEvidence($issues)
-            || $hasHighSeverityIssue
-            || $this->hasUncertainPromotionContext($modelResult, $issues);
+        unset($issue);
 
-        $decision = match (true) {
-            $hasCriticalIssue, $score < $manualOverrideMinScore => 'blocked',
-            $requiresManualReview, $score < $passScore => 'needs_review',
-            default => 'passed',
-        };
-
-        return [
-            'score' => $score,
-            'dimension_scores' => $dimensionScores,
-            'decision' => $decision,
-            'issues' => $issues,
-            'uncertainties' => $uncertainties,
-        ];
+        return (new ArticleAiQualityScorePolicy)->finalize(
+            $modelResult, $issues, $uncertainties, $dimensionScores, $passScore, $manualOverrideMinScore,
+        );
     }
 
     /**
@@ -107,50 +86,19 @@ class ArticleAiQualityScorer
                 (string) ($issue['quote'] ?? ''),
                 $knowledgeRefs,
             ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
-            $unique[$key] ??= $issue;
+            if (! isset($unique[$key])) {
+                $unique[$key] = $issue;
+
+                continue;
+            }
+            $hardBlocker = ($unique[$key]['hard_blocker'] ?? false) === true || ($issue['hard_blocker'] ?? false) === true;
+            if ((self::SEVERITY_DEDUCTIONS[$issue['severity'] ?? 'medium'] ?? 6)
+                > (self::SEVERITY_DEDUCTIONS[$unique[$key]['severity'] ?? 'medium'] ?? 6)) {
+                $unique[$key] = $issue;
+            }
+            $unique[$key]['hard_blocker'] = $hardBlocker;
         }
 
         return array_values($unique);
-    }
-
-    /** @param list<array<string, mixed>> $uncertainties */
-    private function hasMaterialUncertainty(array $uncertainties): bool
-    {
-        foreach ($uncertainties as $uncertainty) {
-            if (($uncertainty['materiality'] ?? null) === 'high') {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /** @param list<array<string, mixed>> $issues */
-    private function hasUnresolvedEvidence(array $issues): bool
-    {
-        foreach ($issues as $issue) {
-            if (($issue['location_status'] ?? 'resolved') === 'unresolved'
-                || ($issue['references_valid'] ?? true) !== true) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /** @param list<array<string, mixed>> $issues */
-    private function hasUncertainPromotionContext(array $modelResult, array $issues): bool
-    {
-        if (($modelResult['promotion_context'] ?? null) !== 'uncertain') {
-            return false;
-        }
-
-        foreach ($issues as $issue) {
-            if (str_starts_with((string) ($issue['code'] ?? ''), 'ad_')) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

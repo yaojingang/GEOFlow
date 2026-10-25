@@ -103,6 +103,7 @@ return array_replace_recursive($base, [
         'system_settings' => 'システム設定',
         'admin_management' => 'ユーザー管理',
         'activity_logs' => '操作ログ',
+        'link_pool' => '内部リンク配信',
     ],
     'ai_models' => [
         'section_my_models' => '自分の AI 設定',
@@ -271,7 +272,9 @@ return array_replace_recursive($base, [
         'connection_retry' => '再確認',
         'connection_rate_limited' => '確認回数が多すぎます。しばらくしてから再試行してください。',
         'connection_settings' => 'モデル設定',
+        'connection_runtime_settings' => 'ワークスペース設定',
         'connection_runtime_disabled' => 'AI チャットは無効です。システム管理者にお問い合わせください。',
+        'connection_runtime_disabled_admin' => 'AI チャットは無効です。ワークスペース設定で有効にしてください。',
         'connection_no_model' => '会話モデルを追加または有効にしてください。',
         'connection_shared_model' => '共有モデルの所有者に接続確認を依頼してください。',
         'connection_needs_check' => '会話を始める前に :model の接続を確認してください。',

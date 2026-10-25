@@ -1,3 +1,5 @@
+> Historical baseline. The 2026-09-15 preview changes supersede this package hash and release verdict; see [remote-cli-review.md](remote-cli-review.md) for fresh scope and missing evidence.
+
 # Runtime Conformance Matrix
 
 - Skill: `geoflow`

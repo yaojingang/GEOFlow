@@ -1,0 +1,2194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#000000" />
+    <title>GEOFlow｜企业级 GEO 智能运营系统</title>
+
+    <style>
+      /* =========================================================
+         GEOFlow 商业演示稿
+         视觉语言：Apple Keynote Flat
+         纯黑英雄页、纯白内容页、石墨灰层级、单一蓝色强调
+         ========================================================= */
+      :root {
+        --night: #000000;
+        --night-2: #111113;
+        --paper: #f5f5f7;
+        --surface: #ffffff;
+        --ink: #1d1d1f;
+        --ink-soft: #424245;
+        --muted: #6e6e73;
+        --faint: #86868b;
+        --line: #d2d2d7;
+        --line-strong: #b9b9be;
+        --blue: #0071e3;
+        --blue-2: #2997ff;
+        --blue-soft: #e8f2ff;
+        --green: #248a3d;
+        --amber: #b85c00;
+        --white: #f5f5f7;
+
+        --font-display: -apple-system, "SF Pro Display", "PingFang SC", "Hiragino Sans GB", sans-serif;
+        --font-body: -apple-system, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", sans-serif;
+        --font-mono: "SFMono-Regular", "Menlo", "Monaco", monospace;
+
+        --hero-size: clamp(3.7rem, 9vw, 8.8rem);
+        --hero-sub-size: clamp(1rem, 1.75vw, 1.55rem);
+        --title-size: clamp(2rem, 3.35vw, 3.75rem);
+        --section-size: clamp(1.4rem, 2.35vw, 2.4rem);
+        --h3-size: clamp(0.98rem, 1.45vw, 1.3rem);
+        --body-size: clamp(0.78rem, 1.15vw, 1.04rem);
+        --small-size: clamp(0.61rem, 0.78vw, 0.76rem);
+        --micro-size: clamp(0.56rem, 0.68vw, 0.68rem);
+        --metric-size: clamp(4.8rem, 10vw, 10rem);
+
+        --page-x: clamp(2rem, 5vw, 5.5rem);
+        --chrome-top: clamp(1rem, 2.2vh, 1.5rem);
+        --title-top: clamp(4.6rem, 9vh, 6.35rem);
+        --body-top: clamp(10.4rem, 22.5vh, 13.2rem);
+        --body-bottom: clamp(3.5rem, 7.5vh, 4.8rem);
+        --footer-bottom: clamp(0.9rem, 2.25vh, 1.4rem);
+        --slide-padding: clamp(1rem, 4vw, 4rem);
+        --content-gap: clamp(0.65rem, 1.8vw, 1.7rem);
+        --major-gap: clamp(1rem, 2.7vw, 2.5rem);
+
+        --ease: cubic-bezier(0.16, 1, 0.3, 1);
+        --duration: 0.52s;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow-x: hidden;
+      }
+
+      html {
+        scroll-snap-type: y mandatory;
+        scroll-behavior: smooth;
+      }
+
+      body {
+        color: var(--ink);
+        background: var(--night);
+        font-family: var(--font-body);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+      }
+
+      main {
+        background: var(--night);
+      }
+
+      button,
+      a {
+        color: inherit;
+        font: inherit;
+      }
+
+      a {
+        text-decoration: none;
+      }
+
+      .slide {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        overflow: hidden;
+        scroll-snap-align: start;
+        display: flex;
+        flex-direction: column;
+        background: var(--surface);
+      }
+
+      .slide.dark {
+        color: var(--white);
+        background: var(--night);
+      }
+
+      .slide-content {
+        position: relative;
+        z-index: 2;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        max-height: 100%;
+        overflow: hidden;
+        padding: var(--slide-padding);
+      }
+
+      .business-chrome {
+        position: absolute;
+        z-index: 8;
+        top: var(--chrome-top);
+        left: var(--page-x);
+        right: var(--page-x);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--content-gap);
+        color: var(--faint);
+        font-family: var(--font-mono);
+        font-size: var(--micro-size);
+        letter-spacing: 0.055em;
+        line-height: 1.25;
+      }
+
+      .brand-lockup,
+      .deck-meta {
+        display: flex;
+        align-items: center;
+        gap: clamp(0.45rem, 1vw, 0.85rem);
+      }
+
+      .brand-lockup,
+      .brand-symbol {
+        flex: 0 0 auto;
+        white-space: nowrap;
+      }
+
+      .brand-symbol {
+        color: var(--ink);
+        font-family: var(--font-display);
+        font-size: var(--small-size);
+        font-weight: 700;
+        letter-spacing: -0.025em;
+      }
+
+      .dark .business-chrome,
+      .dark .deck-footer {
+        color: rgba(245, 245, 247, 0.48);
+      }
+
+      .dark .brand-symbol {
+        color: var(--white);
+      }
+
+      .title-zone {
+        position: absolute;
+        z-index: 4;
+        top: var(--title-top);
+        left: var(--page-x);
+        right: var(--page-x);
+      }
+
+      .title-zone h2 {
+        width: 100%;
+        max-width: min(94vw, 44ch);
+        color: inherit;
+        font-family: var(--font-display);
+        font-size: var(--title-size);
+        font-weight: 600;
+        line-height: 1.08;
+        letter-spacing: -0.035em;
+        text-wrap: balance;
+      }
+
+      .title-zone .lead {
+        width: 100%;
+        max-width: min(90vw, 80rem);
+        margin-top: clamp(0.55rem, 1.35vh, 0.9rem);
+        color: var(--muted);
+        font-size: var(--body-size);
+        line-height: 1.42;
+      }
+
+      .dark .title-zone .lead {
+        color: rgba(245, 245, 247, 0.62);
+      }
+
+      .body-stage {
+        position: absolute;
+        z-index: 3;
+        top: var(--body-top);
+        left: var(--page-x);
+        right: var(--page-x);
+        bottom: var(--body-bottom);
+        min-height: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+
+      .deck-footer {
+        position: absolute;
+        z-index: 8;
+        left: var(--page-x);
+        right: var(--page-x);
+        bottom: var(--footer-bottom);
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: var(--content-gap);
+        color: var(--faint);
+        font-family: var(--font-mono);
+        font-size: var(--micro-size);
+        line-height: 1.25;
+      }
+
+      .deck-footer span:first-child {
+        max-width: min(78vw, 72rem);
+      }
+
+      .page-number {
+        flex: 0 0 auto;
+        margin-left: auto;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+
+      h1,
+      h2,
+      h3,
+      strong {
+        font-family: var(--font-display);
+      }
+
+      p,
+      li {
+        font-size: var(--body-size);
+        line-height: 1.5;
+      }
+
+      .accent {
+        color: var(--blue);
+      }
+
+      .dark .accent {
+        color: var(--blue-2);
+      }
+
+      .mono {
+        font-family: var(--font-mono);
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        width: fit-content;
+        min-height: clamp(1.3rem, 2.2vw, 1.8rem);
+        padding: 0 0 clamp(0.18rem, 0.42vh, 0.3rem);
+        border-bottom: 1px solid currentColor;
+        color: var(--blue);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+      }
+
+      .dark .tag {
+        color: var(--blue-2);
+      }
+
+      .reveal,
+      .reveal-left,
+      .reveal-scale {
+        opacity: 0;
+        transition:
+          opacity var(--duration) var(--ease),
+          transform var(--duration) var(--ease);
+      }
+
+      .reveal {
+        transform: translateY(clamp(0.75rem, 1.8vh, 1.25rem));
+      }
+
+      .reveal-left {
+        transform: translateX(calc(-1 * clamp(0.9rem, 2vw, 1.8rem)));
+      }
+
+      .reveal-scale {
+        transform: scale(0.975);
+      }
+
+      .slide.visible .reveal,
+      .slide.visible .reveal-left,
+      .slide.visible .reveal-scale {
+        opacity: 1;
+        transform: none;
+      }
+
+      .delay-1 { transition-delay: 0.05s; }
+      .delay-2 { transition-delay: 0.11s; }
+      .delay-3 { transition-delay: 0.17s; }
+      .delay-4 { transition-delay: 0.23s; }
+      .delay-5 { transition-delay: 0.29s; }
+      .delay-6 { transition-delay: 0.35s; }
+
+      /* =========================================================
+         01 / 封面
+         ========================================================= */
+      .cover .slide-content {
+        padding-inline: var(--page-x);
+      }
+
+      .cover-lockup {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+
+      .cover-mark {
+        font-family: var(--font-display);
+        font-size: var(--hero-size);
+        font-weight: 650;
+        line-height: 0.92;
+        letter-spacing: -0.075em;
+      }
+
+      .cover-mark span {
+        color: var(--blue-2);
+      }
+
+      .cover-subtitle {
+        max-width: min(85vw, 68rem);
+        margin-top: clamp(1.5rem, 3.8vh, 2.6rem);
+        color: rgba(245, 245, 247, 0.72);
+        font-size: var(--hero-sub-size);
+        letter-spacing: -0.015em;
+        line-height: 1.45;
+      }
+
+      .cover-capabilities {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: clamp(0.55rem, 1.25vw, 1.1rem);
+        margin-top: clamp(1.4rem, 3.2vh, 2.25rem);
+        color: rgba(245, 245, 247, 0.42);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+      }
+
+      .cover-capabilities span + span::before {
+        content: "·";
+        margin-right: clamp(0.55rem, 1.25vw, 1.1rem);
+        color: var(--blue-2);
+      }
+
+      .cover-offer {
+        margin-top: clamp(1.2rem, 2.8vh, 2rem);
+        color: var(--blue-2);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+        letter-spacing: 0.08em;
+      }
+
+      /* =========================================================
+         02 / 摘要
+         ========================================================= */
+      .summary-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+        gap: clamp(2rem, 6vw, 6.5rem);
+        align-items: center;
+        width: 100%;
+      }
+
+      .summary-statement {
+        display: flex;
+        flex-direction: column;
+        gap: clamp(1rem, 2.5vh, 1.65rem);
+      }
+
+      .summary-statement strong {
+        width: 100%;
+        max-width: none;
+        font-size: clamp(1.75rem, 3.15vw, 3.35rem);
+        font-weight: 600;
+        line-height: 1.16;
+        letter-spacing: -0.035em;
+        text-wrap: pretty;
+      }
+
+      .summary-statement p {
+        max-width: 40rem;
+        color: var(--muted);
+      }
+
+      .principle-stack {
+        display: grid;
+        width: 100%;
+        border-top: 1px solid var(--line-strong);
+      }
+
+      .principle-row {
+        display: grid;
+        grid-template-columns: clamp(2.3rem, 4vw, 3.8rem) minmax(0, 0.75fr) minmax(0, 1.25fr);
+        gap: clamp(0.8rem, 1.8vw, 1.55rem);
+        align-items: center;
+        min-height: clamp(4.6rem, 10.5vh, 6.8rem);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .principle-no {
+        color: var(--blue);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+      }
+
+      .principle-row strong {
+        font-size: var(--h3-size);
+        font-weight: 600;
+      }
+
+      .principle-row p {
+        color: var(--muted);
+      }
+
+      /* =========================================================
+         03 / 五段闭环
+         ========================================================= */
+      .workflow-shell {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        gap: clamp(1.7rem, 4vh, 3rem);
+      }
+
+      .workflow {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: stretch;
+        width: 100%;
+      }
+
+      .workflow-node {
+        display: flex;
+        min-width: 0;
+        min-height: clamp(9rem, 24vh, 14rem);
+        flex-direction: column;
+        justify-content: space-between;
+        padding: clamp(1rem, 2vw, 1.7rem);
+        border-top: 2px solid rgba(245, 245, 247, 0.22);
+        border-bottom: 1px solid rgba(245, 245, 247, 0.12);
+        background: var(--night-2);
+      }
+
+      .workflow-node.current {
+        border-top-color: var(--blue-2);
+        background: #071d33;
+      }
+
+      .workflow-no {
+        color: var(--blue-2);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+      }
+
+      .workflow-node strong {
+        margin-top: clamp(0.7rem, 1.8vh, 1.2rem);
+        font-size: clamp(1.05rem, 1.7vw, 1.55rem);
+        line-height: 1.15;
+      }
+
+      .workflow-node p {
+        margin-top: auto;
+        padding-top: clamp(0.8rem, 2.5vh, 1.4rem);
+        color: rgba(245, 245, 247, 0.58);
+        font-size: clamp(0.68rem, 0.92vw, 0.9rem);
+        line-height: 1.45;
+      }
+
+      .workflow-arrow {
+        display: grid;
+        place-items: center;
+        width: clamp(1.4rem, 2.2vw, 2.6rem);
+        color: var(--blue-2);
+        font-size: clamp(1rem, 1.55vw, 1.45rem);
+      }
+
+      .workflow-feedback {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        gap: clamp(0.8rem, 1.8vw, 1.5rem);
+        color: rgba(245, 245, 247, 0.56);
+        font-size: var(--small-size);
+      }
+
+      .workflow-feedback::before,
+      .workflow-feedback::after {
+        content: "";
+        height: 1px;
+        background: rgba(41, 151, 255, 0.42);
+      }
+
+      .workflow-feedback strong {
+        color: var(--blue-2);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+        font-weight: 500;
+        letter-spacing: 0.04em;
+      }
+
+      /* =========================================================
+         通用截图模块
+         ========================================================= */
+      .screen-page {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        gap: clamp(0.85rem, 2vh, 1.45rem);
+      }
+
+      .screen-grid {
+        display: grid;
+        width: 100%;
+        gap: clamp(0.75rem, 1.65vw, 1.4rem);
+        align-items: end;
+      }
+
+      .screen-grid.three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .screen-card {
+        min-width: 0;
+        border-top: 2px solid var(--ink);
+        background: var(--paper);
+      }
+
+      .screen-card.primary {
+        border-top-color: var(--blue);
+      }
+
+      .screen-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: clamp(0.5rem, 1vw, 0.9rem);
+        min-height: clamp(2.5rem, 5.4vh, 3.4rem);
+        padding: clamp(0.55rem, 1.15vw, 0.9rem) clamp(0.65rem, 1.25vw, 1rem);
+        border-bottom: 1px solid var(--line);
+        background: var(--surface);
+      }
+
+      .screen-head strong {
+        font-size: clamp(0.78rem, 1.06vw, 0.98rem);
+        font-weight: 600;
+      }
+
+      .screen-head span {
+        color: var(--faint);
+        font-family: var(--font-mono);
+        font-size: var(--micro-size);
+        white-space: nowrap;
+      }
+
+      .screen-frame {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 10;
+        overflow: hidden;
+        background: #f4f6f9;
+      }
+
+      .screen-frame img,
+      .quality-shot img,
+      .analytics-shot img {
+        width: 100%;
+        height: 100%;
+        max-width: 100%;
+        max-height: min(56vh, 520px);
+        display: block;
+        object-fit: contain;
+        object-position: top center;
+      }
+
+      .capability-tags {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: clamp(0.65rem, 1.5vw, 1.35rem);
+        color: var(--muted);
+        font-size: var(--small-size);
+      }
+
+      .capability-tags span {
+        position: relative;
+        padding-left: clamp(0.8rem, 1.1vw, 1rem);
+      }
+
+      .capability-tags span::before {
+        content: "";
+        position: absolute;
+        top: 0.55em;
+        left: 0;
+        width: clamp(0.26rem, 0.4vw, 0.36rem);
+        height: clamp(0.26rem, 0.4vw, 0.36rem);
+        border-radius: 50%;
+        background: var(--blue);
+      }
+
+      /* =========================================================
+         06 / AI 质检
+         ========================================================= */
+      .quality-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.62fr) minmax(18rem, 0.88fr);
+        gap: clamp(1.4rem, 3.5vw, 3.4rem);
+        align-items: center;
+        width: 100%;
+      }
+
+      .quality-shot {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 10;
+        overflow: hidden;
+        border-top: 2px solid var(--blue);
+        background: var(--paper);
+      }
+
+      .quality-stack {
+        display: grid;
+        border-top: 1px solid var(--line-strong);
+      }
+
+      .quality-row {
+        display: grid;
+        grid-template-columns: clamp(1.9rem, 3vw, 2.8rem) minmax(0, 1fr);
+        gap: clamp(0.65rem, 1.2vw, 1rem);
+        align-items: center;
+        min-height: clamp(3.55rem, 8vh, 5.1rem);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .quality-row span {
+        color: var(--blue);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+      }
+
+      .quality-row strong {
+        display: block;
+        font-size: clamp(0.82rem, 1.1vw, 1rem);
+        font-weight: 600;
+      }
+
+      .quality-row p {
+        margin-top: clamp(0.16rem, 0.38vh, 0.28rem);
+        color: var(--muted);
+        font-size: clamp(0.65rem, 0.86vw, 0.82rem);
+        line-height: 1.38;
+      }
+
+      /* =========================================================
+         08 / 数据
+         ========================================================= */
+      .analytics-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.18fr) minmax(0, 0.82fr);
+        gap: clamp(0.85rem, 2vw, 1.7rem);
+        width: 100%;
+      }
+
+      .analytics-shot {
+        position: relative;
+        min-width: 0;
+        aspect-ratio: 16 / 10;
+        overflow: hidden;
+        border-top: 2px solid var(--ink);
+        background: var(--paper);
+      }
+
+      .analytics-shot.primary {
+        border-top-color: var(--blue);
+      }
+
+      .data-takeaway {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--content-gap);
+        padding: clamp(0.7rem, 1.5vw, 1.05rem) clamp(0.85rem, 1.7vw, 1.25rem);
+        color: #ffffff;
+        background: var(--blue);
+      }
+
+      .data-takeaway strong {
+        font-size: clamp(0.78rem, 1.1vw, 1rem);
+        font-weight: 600;
+      }
+
+      .data-takeaway span {
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+        white-space: nowrap;
+      }
+
+      /* =========================================================
+         09 / 系统级亮点
+         ========================================================= */
+      .feature-matrix {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        width: 100%;
+        border-top: 1px solid rgba(245, 245, 247, 0.24);
+        border-left: 1px solid rgba(245, 245, 247, 0.16);
+      }
+
+      .feature-item {
+        min-height: clamp(8.2rem, 18vh, 11.5rem);
+        padding: clamp(1rem, 2.2vw, 1.75rem);
+        border-right: 1px solid rgba(245, 245, 247, 0.16);
+        border-bottom: 1px solid rgba(245, 245, 247, 0.16);
+        background: var(--night-2);
+      }
+
+      .feature-no {
+        color: var(--blue-2);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+      }
+
+      .feature-item strong {
+        display: block;
+        margin-top: clamp(0.65rem, 1.5vh, 1rem);
+        font-size: clamp(0.94rem, 1.35vw, 1.2rem);
+        line-height: 1.2;
+      }
+
+      .feature-item p {
+        margin-top: clamp(0.45rem, 1vh, 0.75rem);
+        color: rgba(245, 245, 247, 0.56);
+        font-size: clamp(0.67rem, 0.9vw, 0.86rem);
+        line-height: 1.44;
+      }
+
+      /* =========================================================
+         10 / 场景
+         ========================================================= */
+      .scenario-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.05fr) minmax(20rem, 0.95fr);
+        gap: clamp(2rem, 5vw, 5rem);
+        align-items: center;
+        width: 100%;
+      }
+
+      .scenario-list {
+        display: grid;
+        border-top: 1px solid var(--line-strong);
+      }
+
+      .scenario-row {
+        display: grid;
+        grid-template-columns: clamp(2.1rem, 3.5vw, 3.3rem) minmax(0, 0.8fr) minmax(0, 1.2fr);
+        gap: clamp(0.7rem, 1.6vw, 1.3rem);
+        align-items: center;
+        min-height: clamp(3.75rem, 8.3vh, 5.35rem);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .scenario-row span {
+        color: var(--blue);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+      }
+
+      .scenario-row strong {
+        font-size: clamp(0.82rem, 1.12vw, 1.02rem);
+        line-height: 1.25;
+      }
+
+      .scenario-row p {
+        color: var(--muted);
+        font-size: clamp(0.66rem, 0.88vw, 0.84rem);
+        line-height: 1.4;
+      }
+
+      .scenario-fit {
+        padding-left: clamp(1.1rem, 2.2vw, 1.8rem);
+        border-left: 3px solid var(--blue);
+      }
+
+      .scenario-fit .tag {
+        margin-bottom: clamp(0.85rem, 2vh, 1.35rem);
+      }
+
+      .scenario-fit h3 {
+        max-width: 16ch;
+        font-size: clamp(1.35rem, 2.4vw, 2.35rem);
+        font-weight: 600;
+        line-height: 1.2;
+        letter-spacing: -0.03em;
+      }
+
+      .fit-points {
+        display: grid;
+        gap: clamp(0.75rem, 1.7vh, 1.15rem);
+        margin-top: clamp(1.1rem, 2.8vh, 1.9rem);
+      }
+
+      .fit-point {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: clamp(0.65rem, 1.2vw, 0.95rem);
+        align-items: start;
+      }
+
+      .fit-point i {
+        width: clamp(0.45rem, 0.7vw, 0.62rem);
+        height: clamp(0.45rem, 0.7vw, 0.62rem);
+        margin-top: 0.38em;
+        border: 1px solid var(--blue);
+        border-radius: 50%;
+      }
+
+      .fit-point p {
+        color: var(--muted);
+      }
+
+      /* =========================================================
+         11 / 商业授权
+         ========================================================= */
+      .offer-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.05fr) minmax(20rem, 0.95fr);
+        gap: clamp(2.3rem, 6vw, 6.5rem);
+        align-items: center;
+        width: 100%;
+      }
+
+      .price-block {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .price-kicker {
+        color: var(--blue-2);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+        letter-spacing: 0.08em;
+      }
+
+      .price {
+        margin-top: clamp(0.45rem, 1.2vh, 0.8rem);
+        color: #ffffff;
+        font-family: var(--font-display);
+        font-size: var(--metric-size);
+        font-weight: 650;
+        line-height: 0.9;
+        letter-spacing: -0.075em;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .price small {
+        margin-left: clamp(0.35rem, 0.9vw, 0.7rem);
+        color: rgba(245, 245, 247, 0.64);
+        font-size: clamp(1rem, 1.8vw, 1.55rem);
+        letter-spacing: 0;
+      }
+
+      .price-title {
+        margin-top: clamp(1rem, 2.4vh, 1.65rem);
+        color: var(--blue-2);
+        font-size: clamp(1.4rem, 2.5vw, 2.4rem);
+        font-weight: 600;
+        letter-spacing: -0.03em;
+      }
+
+      .price-note {
+        max-width: 44rem;
+        margin-top: clamp(0.7rem, 1.65vh, 1rem);
+        color: rgba(245, 245, 247, 0.58);
+      }
+
+      .license-values {
+        display: flex;
+        flex-wrap: wrap;
+        gap: clamp(0.65rem, 1.5vw, 1.25rem);
+        margin-top: clamp(1rem, 2.4vh, 1.65rem);
+        color: rgba(245, 245, 247, 0.72);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+      }
+
+      .license-values span {
+        padding-bottom: clamp(0.25rem, 0.55vh, 0.4rem);
+        border-bottom: 1px solid rgba(41, 151, 255, 0.55);
+      }
+
+      .scope-panel {
+        padding-left: clamp(1.1rem, 2.4vw, 2rem);
+        border-left: 3px solid var(--blue-2);
+      }
+
+      .scope-panel .tag {
+        margin-bottom: clamp(0.9rem, 2vh, 1.4rem);
+      }
+
+      .scope-panel h3 {
+        font-size: clamp(1.2rem, 2vw, 1.9rem);
+        font-weight: 600;
+        line-height: 1.2;
+      }
+
+      .scope-list {
+        display: grid;
+        margin-top: clamp(1rem, 2.4vh, 1.65rem);
+        border-top: 1px solid rgba(245, 245, 247, 0.22);
+      }
+
+      .scope-list li {
+        display: grid;
+        grid-template-columns: clamp(1.6rem, 2.8vw, 2.5rem) minmax(0, 1fr);
+        gap: clamp(0.55rem, 1vw, 0.8rem);
+        align-items: center;
+        min-height: clamp(3.1rem, 6.8vh, 4.35rem);
+        border-bottom: 1px solid rgba(245, 245, 247, 0.16);
+        color: rgba(245, 245, 247, 0.72);
+        list-style: none;
+      }
+
+      .scope-list li span {
+        color: var(--blue-2);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+      }
+
+      /* =========================================================
+         12 / 收束
+         ========================================================= */
+      .closing-layout {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        gap: clamp(2rem, 5vh, 3.5rem);
+      }
+
+      .closing-statement {
+        max-width: 21ch;
+        font-family: var(--font-display);
+        font-size: clamp(2rem, 4.1vw, 4.6rem);
+        font-weight: 600;
+        line-height: 1.12;
+        letter-spacing: -0.045em;
+      }
+
+      .closing-path {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(11rem, 0.7fr);
+        align-items: stretch;
+        width: 100%;
+        border-top: 1px solid var(--line-strong);
+      }
+
+      .closing-path::before {
+        content: "";
+        position: absolute;
+        z-index: 0;
+        top: clamp(2.15rem, 4.8vh, 3rem);
+        left: clamp(2rem, 4vw, 3.4rem);
+        right: clamp(11rem, 18vw, 16rem);
+        height: 1px;
+        background: var(--line-strong);
+      }
+
+      .closing-step,
+      .closing-go {
+        position: relative;
+        z-index: 1;
+        min-height: clamp(8.5rem, 20vh, 12.5rem);
+        padding: clamp(1rem, 2vw, 1.6rem);
+        border-right: 1px solid var(--line);
+        background: var(--surface);
+      }
+
+      .closing-step span {
+        display: grid;
+        place-items: center;
+        width: clamp(2.2rem, 3.8vw, 3.2rem);
+        height: clamp(2.2rem, 3.8vw, 3.2rem);
+        color: #ffffff;
+        border-radius: 50%;
+        background: var(--ink);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+      }
+
+      .closing-step strong {
+        display: block;
+        margin-top: clamp(1rem, 2.6vh, 1.65rem);
+        font-size: clamp(0.92rem, 1.35vw, 1.18rem);
+      }
+
+      .closing-step p {
+        margin-top: clamp(0.4rem, 0.9vh, 0.65rem);
+        color: var(--muted);
+        font-size: clamp(0.67rem, 0.9vw, 0.86rem);
+      }
+
+      .closing-go {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        color: #ffffff;
+        border-right: 0;
+        background: var(--blue);
+      }
+
+      .closing-go strong {
+        font-size: clamp(1.05rem, 1.8vw, 1.55rem);
+        line-height: 1.2;
+      }
+
+      .closing-go span {
+        margin-top: clamp(0.5rem, 1vh, 0.75rem);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+      }
+
+      /* =========================================================
+         右侧隐藏 Dock、全屏热点与进度
+         ========================================================= */
+      .progress-bar {
+        position: fixed;
+        z-index: 50;
+        top: 0;
+        left: 0;
+        width: 0;
+        height: 2px;
+        background: var(--blue);
+        transition: width 0.28s var(--ease), background-color 0.28s var(--ease);
+      }
+
+      body.on-dark .progress-bar {
+        background: var(--blue-2);
+      }
+
+      .nav-zone {
+        position: fixed;
+        z-index: 60;
+        top: 50%;
+        right: 0;
+        width: 92px;
+        height: min(54vh, 330px);
+        transform: translateY(-50%);
+      }
+
+      .nav-dots {
+        position: absolute;
+        top: 50%;
+        right: clamp(0.85rem, 1.6vw, 1.35rem);
+        display: flex;
+        width: 42px;
+        height: 272px;
+        max-height: calc(100vh - 110px);
+        flex-direction: column;
+        gap: 4px;
+        padding: 8px 0;
+        overflow-y: auto;
+        overflow-x: visible;
+        opacity: 0;
+        transform: translate(12px, -50%);
+        scrollbar-width: none;
+        transition: opacity 0.2s ease, transform 0.3s var(--ease);
+        overscroll-behavior: contain;
+      }
+
+      .nav-dots::-webkit-scrollbar {
+        display: none;
+      }
+
+      .nav-zone:hover .nav-dots,
+      .nav-zone:focus-within .nav-dots,
+      body.nav-visible .nav-dots {
+        opacity: 1;
+        transform: translate(0, -50%);
+      }
+
+      .nav-dots button {
+        --dock-scale: 1;
+        --dock-shift: 0px;
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 38px;
+        min-height: 22px;
+        flex: 0 0 22px;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: var(--ink);
+        cursor: pointer;
+        transform: translateY(var(--dock-shift));
+      }
+
+      .nav-dots button::after {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border: 1px solid currentColor;
+        border-radius: 50%;
+        background: var(--surface);
+        transform: scale(var(--dock-scale));
+        transition: transform 0.12s ease, background-color 0.18s ease, color 0.18s ease;
+      }
+
+      .nav-dots button.active::after {
+        background: currentColor;
+      }
+
+      .nav-dots button:focus-visible::after {
+        box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.22);
+      }
+
+      body.on-dark .nav-dots button {
+        color: var(--white);
+      }
+
+      body.on-dark .nav-dots button::after {
+        background: var(--night);
+      }
+
+      body.on-dark .nav-dots button.active::after {
+        background: currentColor;
+      }
+
+      .fullscreen-zone {
+        position: fixed;
+        z-index: 70;
+        top: 0;
+        right: 0;
+        width: 104px;
+        height: 92px;
+      }
+
+      .fullscreen-button {
+        position: absolute;
+        top: clamp(0.85rem, 1.8vh, 1.25rem);
+        right: clamp(0.85rem, 1.6vw, 1.25rem);
+        display: grid;
+        place-items: center;
+        width: 38px;
+        height: 38px;
+        border: 1px solid rgba(29, 29, 31, 0.18);
+        border-radius: 50%;
+        color: var(--ink);
+        background: rgba(255, 255, 255, 0.88);
+        opacity: 0;
+        transform: translateY(calc(-1 * clamp(0.35rem, 0.8vh, 0.55rem)));
+        cursor: pointer;
+        backdrop-filter: blur(10px);
+        transition: opacity 0.2s ease, transform 0.25s var(--ease);
+      }
+
+      .fullscreen-zone:hover .fullscreen-button,
+      .fullscreen-zone:focus-within .fullscreen-button,
+      .fullscreen-button:focus-visible {
+        opacity: 1;
+        transform: none;
+      }
+
+      .fullscreen-button svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      /* =========================================================
+         响应式与短高度
+         ========================================================= */
+      @media (max-height: 700px) {
+        :root {
+          --slide-padding: clamp(0.75rem, 3vw, 2rem);
+          --content-gap: clamp(0.4rem, 1.5vw, 1rem);
+          --major-gap: clamp(0.75rem, 2.2vw, 1.5rem);
+          --title-size: clamp(1.55rem, 3vw, 2.5rem);
+          --section-size: clamp(1.2rem, 2vw, 1.8rem);
+          --body-size: clamp(0.7rem, 1.02vw, 0.9rem);
+          --title-top: clamp(2.85rem, 7vh, 3.8rem);
+          --body-top: clamp(7.2rem, 18.5vh, 8.4rem);
+          --body-bottom: clamp(2.55rem, 6.1vh, 3.2rem);
+        }
+
+        .screen-head {
+          min-height: clamp(2rem, 4.8vh, 2.65rem);
+        }
+
+        .workflow-node {
+          min-height: clamp(7rem, 22vh, 9.5rem);
+        }
+
+        .feature-item {
+          min-height: clamp(6.2rem, 17vh, 8.2rem);
+        }
+      }
+
+      @media (max-height: 600px) {
+        :root {
+          --slide-padding: clamp(0.5rem, 2.5vw, 1.5rem);
+          --content-gap: clamp(0.3rem, 1vw, 0.75rem);
+          --title-size: clamp(1.3rem, 2.65vw, 2rem);
+          --body-size: clamp(0.63rem, 0.92vw, 0.82rem);
+          --small-size: clamp(0.55rem, 0.68vw, 0.65rem);
+          --title-top: clamp(2.45rem, 6.4vh, 3.15rem);
+          --body-top: clamp(5.95rem, 16.8vh, 7rem);
+          --body-bottom: clamp(2.15rem, 5vh, 2.75rem);
+        }
+
+        .nav-dots,
+        .cover-capabilities,
+        .decorative {
+          display: none;
+        }
+
+        .workflow-feedback,
+        .capability-tags {
+          gap: clamp(0.4rem, 0.9vw, 0.7rem);
+        }
+
+        .feature-item p {
+          line-height: 1.33;
+        }
+      }
+
+      @media (max-height: 500px) {
+        :root {
+          --slide-padding: clamp(0.4rem, 2vw, 1rem);
+          --title-size: clamp(1.08rem, 2.25vw, 1.55rem);
+          --section-size: clamp(0.95rem, 1.75vw, 1.3rem);
+          --body-size: clamp(0.56rem, 0.8vw, 0.72rem);
+          --small-size: clamp(0.5rem, 0.6vw, 0.58rem);
+          --title-top: clamp(2rem, 5.6vh, 2.6rem);
+          --body-top: clamp(4.8rem, 15.5vh, 5.8rem);
+          --body-bottom: clamp(1.8rem, 4.4vh, 2.2rem);
+        }
+
+        .business-chrome .brand-name,
+        .deck-meta span:first-child,
+        .screen-head span,
+        .price-note {
+          display: none;
+        }
+      }
+
+      @media (max-width: 920px) {
+        :root {
+          --page-x: clamp(1.35rem, 4vw, 2.6rem);
+        }
+
+        .summary-layout,
+        .quality-layout,
+        .scenario-layout,
+        .offer-layout {
+          grid-template-columns: 1fr;
+          gap: clamp(1rem, 3vh, 1.8rem);
+        }
+
+        .summary-statement {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          align-items: end;
+        }
+
+        .quality-layout {
+          grid-template-columns: minmax(0, 1.25fr) minmax(14rem, 0.75fr);
+        }
+
+        .scenario-layout,
+        .offer-layout {
+          grid-template-columns: minmax(0, 1.15fr) minmax(15rem, 0.85fr);
+        }
+
+        .workflow-node p {
+          font-size: clamp(0.6rem, 1vw, 0.78rem);
+        }
+      }
+
+      @media (max-width: 720px) {
+        :root {
+          --page-x: clamp(1rem, 5vw, 1.4rem);
+          --title-size: clamp(1.45rem, 6vw, 2.2rem);
+          --title-top: clamp(3.8rem, 8vh, 4.8rem);
+          --body-top: clamp(8.7rem, 19vh, 10.5rem);
+          --body-bottom: clamp(3rem, 6.4vh, 3.7rem);
+        }
+
+        .deck-meta span:first-child,
+        .brand-name,
+        .deck-footer span:first-child {
+          display: none;
+        }
+
+        .summary-layout,
+        .quality-layout,
+        .scenario-layout,
+        .offer-layout,
+        .analytics-layout {
+          grid-template-columns: 1fr;
+        }
+
+        .summary-statement {
+          display: none;
+        }
+
+        .principle-row {
+          grid-template-columns: clamp(1.8rem, 8vw, 2.6rem) minmax(0, 0.75fr) minmax(0, 1.25fr);
+          min-height: clamp(3.6rem, 9vh, 4.6rem);
+        }
+
+        .workflow {
+          grid-template-columns: 1fr;
+          gap: clamp(0.28rem, 0.8vh, 0.45rem);
+        }
+
+        .workflow-arrow {
+          display: none;
+        }
+
+        .workflow-node {
+          display: grid;
+          grid-template-columns: clamp(1.7rem, 8vw, 2.4rem) minmax(5.2rem, 0.75fr) minmax(0, 1.25fr);
+          gap: clamp(0.35rem, 1.7vw, 0.65rem);
+          align-items: center;
+          min-height: clamp(4.2rem, 9.2vh, 5rem);
+          padding: clamp(0.55rem, 2vw, 0.8rem);
+        }
+
+        .workflow-node strong {
+          margin-top: 0;
+          font-size: clamp(0.74rem, 3.1vw, 0.95rem);
+        }
+
+        .workflow-node p {
+          margin-top: 0;
+          padding-top: 0;
+          font-size: clamp(0.56rem, 2.25vw, 0.68rem);
+        }
+
+        .workflow-feedback {
+          display: none;
+        }
+
+        .screen-grid.three {
+          grid-template-columns: 1fr;
+        }
+
+        .screen-card:not(.mobile-primary) {
+          display: none;
+        }
+
+        .screen-card.mobile-primary {
+          width: min(100%, 39rem);
+          margin-inline: auto;
+        }
+
+        .quality-stack {
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+        }
+
+        .quality-row {
+          grid-template-columns: 1fr;
+          align-content: center;
+          gap: clamp(0.15rem, 0.6vh, 0.3rem);
+          min-height: clamp(4.1rem, 10vh, 5.2rem);
+          padding: clamp(0.4rem, 1.5vw, 0.65rem);
+          border-right: 1px solid var(--line);
+        }
+
+        .quality-row p {
+          display: none;
+        }
+
+        .analytics-shot.secondary {
+          display: none;
+        }
+
+        .feature-matrix {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .feature-item {
+          min-height: clamp(7rem, 18vh, 9rem);
+        }
+
+        .feature-item p {
+          font-size: clamp(0.6rem, 2.5vw, 0.74rem);
+        }
+
+        .scenario-fit,
+        .scope-panel {
+          display: none;
+        }
+
+        .scenario-row {
+          grid-template-columns: clamp(1.8rem, 8vw, 2.5rem) minmax(0, 0.9fr) minmax(0, 1.1fr);
+        }
+
+        .price-block {
+          align-items: center;
+          text-align: center;
+        }
+
+        .license-values {
+          justify-content: center;
+        }
+
+        .closing-path {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .closing-go {
+          grid-column: 1 / -1;
+          min-height: clamp(4rem, 10vh, 5.5rem);
+          text-align: center;
+        }
+
+        .closing-path::before {
+          right: clamp(2rem, 4vw, 3.4rem);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.2s !important;
+        }
+
+        html {
+          scroll-behavior: auto;
+        }
+      }
+
+      @media print {
+        @page {
+          size: 16in 9in;
+          margin: 0;
+        }
+
+        html,
+        body {
+          height: auto;
+          overflow: visible;
+          background: #ffffff;
+          scroll-snap-type: none;
+        }
+
+        .slide {
+          break-after: page;
+          page-break-after: always;
+        }
+
+        .progress-bar,
+        .nav-zone,
+        .fullscreen-zone {
+          display: none !important;
+        }
+
+        .reveal,
+        .reveal-left,
+        .reveal-scale {
+          opacity: 1 !important;
+          transform: none !important;
+        }
+
+        .summary-slide .summary-statement {
+          display: block;
+          width: 100%;
+        }
+
+        .summary-slide .summary-statement strong {
+          display: none;
+        }
+
+        .summary-slide .summary-statement p {
+          width: 100%;
+          max-width: none;
+          font-size: 1.25rem;
+          line-height: 1.48;
+          text-align: left;
+          text-wrap: pretty;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="progress-bar" aria-hidden="true"></div>
+    <div class="nav-zone">
+      <nav class="nav-dots" aria-label="幻灯片导航"></nav>
+    </div>
+    <div class="fullscreen-zone">
+      <button class="fullscreen-button" type="button" aria-label="进入全屏" title="全屏 · F">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </button>
+    </div>
+
+    <main>
+      <!-- 01 / 封面 -->
+      <section class="slide dark cover" aria-label="GEOFlow 企业级 GEO 智能运营系统">
+        <div class="slide-content">
+          <div class="cover-lockup">
+            <h1 class="cover-mark reveal delay-1">GEO<span>Flow</span></h1>
+            <p class="cover-subtitle reveal delay-2">面向企业官网与多站点运营的 GEO 智能运营系统</p>
+            <div class="cover-capabilities reveal delay-3" aria-label="核心能力">
+              <span>可信知识</span><span>AI 内容生产</span><span>质量门禁</span><span>多站点分发</span><span>数据反馈</span>
+            </div>
+            <p class="cover-offer reveal delay-4">人民币 10 万元 · 终身商业授权部署</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 02 / 执行摘要 -->
+      <section class="slide summary-slide" aria-label="GEOFlow 把分散的 GEO 工作接成一条持续运营链">
+        <header class="business-chrome">
+          <div class="brand-lockup"><span class="brand-symbol">GEOFlow</span><span class="brand-name">企业级 GEO 智能运营系统</span></div>
+          <div class="deck-meta"><span>2026.09</span><span>产品演示</span></div>
+        </header>
+        <div class="title-zone">
+          <h2>GEOFlow 把分散的 GEO 工作接成一条持续运营链</h2>
+          <p class="lead">企业资料、生产规则、审核结论、发布结果与运营数据拥有同一套上下文</p>
+        </div>
+        <div class="body-stage">
+          <div class="summary-layout">
+            <div class="summary-statement reveal-left delay-1">
+              <strong>从内容工具组合，升级为可治理的运营底座</strong>
+              <p>适合需要长期建设多渠道GEO运营、官网GEO内容、GEO子频道、行业信源站或多品牌站点的团队</p>
+            </div>
+            <div class="principle-stack">
+              <article class="principle-row reveal delay-1"><span class="principle-no">01</span><strong>统一资产</strong><p>知识、标题、关键词、图片、作者、模型与提示词集中管理</p></article>
+              <article class="principle-row reveal delay-2"><span class="principle-no">02</span><strong>统一流程</strong><p>任务生成、AI 质检、人工审核与发布状态完整衔接</p></article>
+              <article class="principle-row reveal delay-3"><span class="principle-no">03</span><strong>统一结果</strong><p>内容、流量、分发、线索与 AI 可见性回到同一数据中心</p></article>
+              <article class="principle-row reveal delay-4"><span class="principle-no">04</span><strong>私有部署</strong><p>核心资料、权限、审计、渠道配置与运营数据由企业掌控</p></article>
+            </div>
+          </div>
+        </div>
+        <footer class="deck-footer"><span>来源：GEOFlow 3.0 当前源码与官方后台指南</span><span class="page-number">02 / 12</span></footer>
+      </section>
+
+      <!-- 03 / 原理 -->
+      <section class="slide dark" aria-label="五个环节把可信事实沉淀为可复用的答案资产">
+        <header class="business-chrome">
+          <div class="brand-lockup"><span class="brand-symbol">GEOFlow</span><span class="brand-name">运行原理</span></div>
+          <div class="deck-meta"><span>2026.09</span><span>产品演示</span></div>
+        </header>
+        <div class="title-zone">
+          <h2>五个环节把可信事实沉淀为可复用的答案资产</h2>
+          <p class="lead">每一轮反馈都会回到知识、选题与渠道优先级，形成持续运营闭环</p>
+        </div>
+        <div class="body-stage">
+          <div class="workflow-shell" data-shape-template="workflow">
+            <div class="workflow">
+              <article class="workflow-node reveal-scale delay-1"><span class="workflow-no">01</span><strong>知识与素材</strong><p>资料、网页、事实、规则、图片与品牌口径</p></article>
+              <span class="workflow-arrow reveal delay-1" aria-hidden="true">→</span>
+              <article class="workflow-node reveal-scale delay-2"><span class="workflow-no">02</span><strong>任务与内容</strong><p>模型、提示词、标题、知识与运行计划协同生成</p></article>
+              <span class="workflow-arrow reveal delay-2" aria-hidden="true">→</span>
+              <article class="workflow-node current reveal-scale delay-3"><span class="workflow-no">03</span><strong>质量门禁</strong><p>风险扫描、AI 质检与人工审核决定发布状态</p></article>
+              <span class="workflow-arrow reveal delay-3" aria-hidden="true">→</span>
+              <article class="workflow-node reveal-scale delay-4"><span class="workflow-no">04</span><strong>官网与分发</strong><p>本站、托管站点、Agent、WordPress、API 与人工发布</p></article>
+              <span class="workflow-arrow reveal delay-4" aria-hidden="true">→</span>
+              <article class="workflow-node reveal-scale delay-5"><span class="workflow-no">05</span><strong>数据与可见性</strong><p>访问、内容、分发、线索和生成式引擎观测回流</p></article>
+            </div>
+            <div class="workflow-feedback reveal delay-6"><strong>结果回流：问题 → 事实 → 内容 → 信源 → 答案 → 线索</strong></div>
+          </div>
+        </div>
+        <footer class="deck-footer"><span>系统链路：可信知识 → AI 生产 → 质量门禁 → 多路交付 → 数据反馈</span><span class="page-number">03 / 12</span></footer>
+      </section>
+
+      <!-- 04 / 知识能力 -->
+      <section class="slide" aria-label="知识先被原子化内容才拥有稳定的事实边界">
+        <header class="business-chrome">
+          <div class="brand-lockup"><span class="brand-symbol">GEOFlow</span><span class="brand-name">知识能力</span></div>
+          <div class="deck-meta"><span>2026.09</span><span>产品演示</span></div>
+        </header>
+        <div class="title-zone">
+          <h2>知识先被原子化，内容才拥有稳定的事实边界</h2>
+          <p class="lead">多来源资料经过解析、校验、修订与发布，形成可被任务稳定调用的企业知识</p>
+        </div>
+        <div class="body-stage">
+          <div class="screen-page">
+            <div class="screen-grid three">
+              <figure class="screen-card primary mobile-primary reveal-scale delay-1">
+                <figcaption class="screen-head"><strong>企业知识原子化</strong><span>来源 → 原子 → 证据库</span></figcaption>
+                <div class="screen-frame"><img src="assets/15-enterprise-knowledge.webp" alt="GEOFlow 企业知识库的数据源与知识原子化页面" /></div>
+              </figure>
+              <figure class="screen-card reveal-scale delay-2">
+                <figcaption class="screen-head"><strong>版本与知识修订</strong><span>校验 · 恢复 · 发布</span></figcaption>
+                <div class="screen-frame"><img src="assets/14-knowledge-base-detail.webp" alt="GEOFlow 知识库详情、版本和修订页面" /></div>
+              </figure>
+              <figure class="screen-card reveal-scale delay-3">
+                <figcaption class="screen-head"><strong>URL 可信导入</strong><span>抓取 · 预览 · 确认</span></figcaption>
+                <div class="screen-frame"><img src="assets/16-url-import.webp" alt="GEOFlow URL 内容导入与预览页面" /></div>
+              </figure>
+            </div>
+            <div class="capability-tags reveal delay-4"><span>保留资料来源</span><span>冲突与风险校验</span><span>向量召回与稳定回退</span><span>知识变化触发质量结果更新</span></div>
+          </div>
+        </div>
+        <footer class="deck-footer"><span>截图：GEOFlow 3.0 内置脱敏帮助素材</span><span class="page-number">04 / 12</span></footer>
+      </section>
+
+      <!-- 05 / 内容能力 -->
+      <section class="slide" aria-label="内容生产由任务编排驱动规模与规则可以同时控制">
+        <header class="business-chrome">
+          <div class="brand-lockup"><span class="brand-symbol">GEOFlow</span><span class="brand-name">内容能力</span></div>
+          <div class="deck-meta"><span>2026.09</span><span>产品演示</span></div>
+        </header>
+        <div class="title-zone">
+          <h2>内容生产由任务编排驱动，规模与规则可以同时控制</h2>
+          <p class="lead">从候选标题、内容资产到文章编辑，每一次运行都保留配置快照、状态与结果</p>
+        </div>
+        <div class="body-stage">
+          <div class="screen-page">
+            <div class="screen-grid three">
+              <figure class="screen-card reveal-scale delay-1">
+                <figcaption class="screen-head"><strong>标题库与 AI 生成</strong><span>批次 · 恢复 · 去重</span></figcaption>
+                <div class="screen-frame"><img src="assets/12-title-ai-generation.webp" alt="GEOFlow 标题库与 AI 批量生成页面" /></div>
+              </figure>
+              <figure class="screen-card primary mobile-primary reveal-scale delay-2">
+                <figcaption class="screen-head"><strong>任务资产与发布配置</strong><span>模型 · 知识 · 质检 · 分发</span></figcaption>
+                <div class="screen-frame"><img src="assets/07-task-assets-distribution.webp" alt="GEOFlow 任务内容资产、AI 质检与发布配置页面" /></div>
+              </figure>
+              <figure class="screen-card reveal-scale delay-3">
+                <figcaption class="screen-head"><strong>文章编辑与生命周期</strong><span>草稿 · 审核 · 发布</span></figcaption>
+                <div class="screen-frame"><img src="assets/09-article-editor.webp" alt="GEOFlow 文章创建与编辑页面" /></div>
+              </figure>
+            </div>
+            <div class="capability-tags reveal delay-4"><span>计划与循环任务</span><span>多知识库组合</span><span>智能模型容错</span><span>作者、分类、图片与 SEO 协同</span><span>队列异步执行</span></div>
+          </div>
+        </div>
+        <footer class="deck-footer"><span>截图：GEOFlow 3.0 内置脱敏帮助素材</span><span class="page-number">05 / 12</span></footer>
+      </section>
+
+      <!-- 06 / AI 质检 -->
+      <section class="slide" aria-label="AI 质检成为发布门禁每次判断都有证据与状态">
+        <header class="business-chrome">
+          <div class="brand-lockup"><span class="brand-symbol">GEOFlow</span><span class="brand-name">AI 质检能力</span></div>
+          <div class="deck-meta"><span>2026.09</span><span>产品演示</span></div>
+        </header>
+        <div class="title-zone">
+          <h2>AI 质检成为发布门禁，每次判断都有证据与状态</h2>
+          <p class="lead">风险扫描、AI 质检与人工审核共同决定文章能否进入发布链路</p>
+        </div>
+        <div class="body-stage">
+          <div class="quality-layout">
+            <figure class="quality-shot reveal-left delay-1">
+              <img src="assets/10-article-quality.webp" alt="GEOFlow 文章列表中的质量检查与审核状态" />
+            </figure>
+            <div class="quality-stack">
+              <article class="quality-row reveal delay-1"><span>01</span><div><strong>文章分段</strong><p>把长文拆成可定位、可回看的审核片段</p></div></article>
+              <article class="quality-row reveal delay-2"><span>02</span><div><strong>证据构造</strong><p>结合知识来源、数据、引文、广告规则与发布语境</p></div></article>
+              <article class="quality-row reveal delay-3"><span>03</span><div><strong>结构化评审</strong><p>指定模型返回分项问题、依据与修改建议</p></div></article>
+              <article class="quality-row reveal delay-4"><span>04</span><div><strong>本地校验</strong><p>本地评分器验证结果结构并形成门禁结论</p></div></article>
+              <article class="quality-row reveal delay-5"><span>05</span><div><strong>审计与重检</strong><p>正文或证据变化后旧结果过期，人工放行记录原因</p></div></article>
+            </div>
+          </div>
+        </div>
+        <footer class="deck-footer"><span>来源：文章 AI 质检、风险扫描与发布门禁当前实现</span><span class="page-number">06 / 12</span></footer>
+      </section>
+
+      <!-- 07 / 分发能力 -->
+      <section class="slide" aria-label="一次审核完成后内容可以进入官网托管站点与外部渠道">
+        <header class="business-chrome">
+          <div class="brand-lockup"><span class="brand-symbol">GEOFlow</span><span class="brand-name">分发能力</span></div>
+          <div class="deck-meta"><span>2026.09</span><span>产品演示</span></div>
+        </header>
+        <div class="title-zone">
+          <h2>一次审核完成后，内容可以进入官网、托管站点与外部渠道</h2>
+          <p class="lead">自动分发与人工确认共享同一篇文章、同一组风险状态和同一条审计链</p>
+        </div>
+        <div class="body-stage">
+          <div class="screen-page">
+            <div class="screen-grid three">
+              <figure class="screen-card primary mobile-primary reveal-scale delay-1">
+                <figcaption class="screen-head"><strong>分发渠道与任务</strong><span>健康 · 幂等 · 重试</span></figcaption>
+                <div class="screen-frame"><img src="assets/17-distribution-list.webp" alt="GEOFlow 分发渠道和发布任务总览" /></div>
+              </figure>
+              <figure class="screen-card reveal-scale delay-2">
+                <figcaption class="screen-head"><strong>托管渠道站点</strong><span>子域 · 配额 · 索引</span></figcaption>
+                <div class="screen-frame"><img src="assets/19-hosted-sites.webp" alt="GEOFlow 托管渠道站点列表与创建入口" /></div>
+              </figure>
+              <figure class="screen-card reveal-scale delay-3">
+                <figcaption class="screen-head"><strong>人工发布工作台</strong><span>分配 · 回执 · 审计</span></figcaption>
+                <div class="screen-frame"><img src="assets/20-manual-publication.webp" alt="GEOFlow 人工发布工单列表与结果回填页面" /></div>
+              </figure>
+            </div>
+            <div class="capability-tags reveal delay-4"><span>企业官网</span><span>GEOFlow Agent</span><span>WordPress REST</span><span>通用 HTTP API</span><span>Chrome 运营助手</span></div>
+          </div>
+        </div>
+        <footer class="deck-footer"><span>截图：GEOFlow 3.0 内置脱敏帮助素材</span><span class="page-number">07 / 12</span></footer>
+      </section>
+
+      <!-- 08 / 数据能力 -->
+      <section class="slide" aria-label="一套数据看清 GEO 运营结果">
+        <header class="business-chrome">
+          <div class="brand-lockup"><span class="brand-symbol">GEOFlow</span><span class="brand-name">数据能力</span></div>
+          <div class="deck-meta"><span>2026.09</span><span>产品演示</span></div>
+        </header>
+        <div class="title-zone">
+          <h2>一套数据看清 GEO 运营结果</h2>
+          <p class="lead">从总览下钻内容、流量、分发、线索与 AI 可见性</p>
+        </div>
+        <div class="body-stage">
+          <div class="screen-page">
+            <div class="analytics-layout">
+              <figure class="analytics-shot primary reveal-left delay-1"><img src="assets/03-analytics-overview.webp" alt="GEOFlow 数据中心的内容、访问、线索和分发总览" /></figure>
+              <figure class="analytics-shot secondary reveal-scale delay-2"><img src="assets/04-ai-visibility.webp" alt="GEOFlow 数据中心的 AI 可见性观测和诊断页面" /></figure>
+            </div>
+            <div class="data-takeaway reveal delay-3"><strong>结果回流，驱动下一轮运营</strong><span>补知识 · 选主题 · 调渠道</span></div>
+          </div>
+        </div>
+        <footer class="deck-footer"><span>截图：GEOFlow 3.0 内置脱敏帮助素材</span><span class="page-number">08 / 12</span></footer>
+      </section>
+
+      <!-- 09 / 系统级亮点 -->
+      <section class="slide dark" aria-label="产品亮点集中在可运营可审计与可扩展">
+        <header class="business-chrome">
+          <div class="brand-lockup"><span class="brand-symbol">GEOFlow</span><span class="brand-name">系统级亮点</span></div>
+          <div class="deck-meta"><span>2026.09</span><span>产品演示</span></div>
+        </header>
+        <div class="title-zone">
+          <h2>产品亮点集中在可运营、可审计与可扩展</h2>
+          <p class="lead">GEOFlow 3.0 已覆盖团队日常使用、开发接入、安全治理与系统运维</p>
+        </div>
+        <div class="body-stage">
+          <div class="feature-matrix">
+            <article class="feature-item reveal-scale delay-1"><span class="feature-no">01 / UI</span><strong>Admin UI V3</strong><p>统一侧栏、顶栏、表单、弹窗与移动端交互，支持响应式布局</p></article>
+            <article class="feature-item reveal-scale delay-2"><span class="feature-no">02 / TEAM</span><strong>六种语言与 PWA</strong><p>后台可安装为独立窗口，适合跨语言团队开展日常运营</p></article>
+            <article class="feature-item reveal-scale delay-3"><span class="feature-no">03 / API</span><strong>API v1 与 CLI</strong><p>目录、任务、运行、素材与文章具备受控自动化入口</p></article>
+            <article class="feature-item reveal-scale delay-4"><span class="feature-no">04 / AGENT</span><strong>内置 GEOFlow Agent Skill</strong><p>面向开发、运营、前台、渠道与旧版迁移提供统一能力说明</p></article>
+            <article class="feature-item reveal-scale delay-5"><span class="feature-no">05 / GOVERN</span><strong>权限、安全与审计</strong><p>高风险操作分级控制，Token、出站请求、文件路径与日志均有边界</p></article>
+            <article class="feature-item reveal-scale delay-6"><span class="feature-no">06 / OPS</span><strong>签名更新与恢复点</strong><p>独立 Updater 负责环境验收、完整备份、应用更新与回滚</p></article>
+          </div>
+        </div>
+        <footer class="deck-footer"><span>当前仓库：72 控制器 · 81 模型 · 246 服务 · 29 命令 · 240 测试 · 27 主题</span><span class="page-number">09 / 12</span></footer>
+      </section>
+
+      <!-- 10 / 场景 -->
+      <section class="slide" aria-label="五类场景都围绕长期内容资产与持续运营展开">
+        <header class="business-chrome">
+          <div class="brand-lockup"><span class="brand-symbol">GEOFlow</span><span class="brand-name">适用场景</span></div>
+          <div class="deck-meta"><span>2026.09</span><span>产品演示</span></div>
+        </header>
+        <div class="title-zone">
+          <h2>五类场景都围绕长期内容资产与持续运营展开</h2>
+          <p class="lead">从单一官网到多品牌、多站点，系统能力可以随组织与渠道复杂度逐步展开</p>
+        </div>
+        <div class="body-stage">
+          <div class="scenario-layout">
+            <div class="scenario-list">
+              <article class="scenario-row reveal delay-1"><span>01</span><strong>企业官网 GEO 运营</strong><p>围绕产品、案例、FAQ、行业知识与品牌规则持续建设内容</p></article>
+              <article class="scenario-row reveal delay-2"><span>02</span><strong>官网 GEO 子频道</strong><p>通过子域名或独立目录建设资讯、知识或解决方案频道</p></article>
+              <article class="scenario-row reveal delay-3"><span>03</span><strong>行业信源站</strong><p>围绕一个行业、主题或问题域维护可核验的长期内容资产</p></article>
+              <article class="scenario-row reveal delay-4"><span>04</span><strong>内部内容运营平台</strong><p>由品牌、增长与内容团队统一生产、审核、导出与人工发布</p></article>
+              <article class="scenario-row reveal delay-5"><span>05</span><strong>多品牌与多站点</strong><p>从一套后台管理多个站点、栏目、托管渠道与外部分发目标</p></article>
+            </div>
+            <aside class="scenario-fit reveal-left delay-3">
+              <span class="tag">最适合的团队</span>
+              <h3>拥有真实业务资料、明确审核责任与持续运营计划</h3>
+              <div class="fit-points">
+                <div class="fit-point"><i aria-hidden="true"></i><p>知识质量决定内容事实边界</p></div>
+                <div class="fit-point"><i aria-hidden="true"></i><p>人工判断决定高风险内容能否放行</p></div>
+                <div class="fit-point"><i aria-hidden="true"></i><p>长期维护决定品牌能否稳定获得用户与 AI 的信任</p></div>
+              </div>
+            </aside>
+          </div>
+        </div>
+        <footer class="deck-footer"><span>来源：GEOFlow 3.0 README 适用场景</span><span class="page-number">10 / 12</span></footer>
+      </section>
+
+      <!-- 11 / 商业方案 -->
+      <section class="slide dark" aria-label="十万元获得 GEOFlow 终身商业授权部署">
+        <header class="business-chrome">
+          <div class="brand-lockup"><span class="brand-symbol">GEOFlow</span><span class="brand-name">商业授权方案</span></div>
+          <div class="deck-meta"><span>2026.09</span><span>商务建议</span></div>
+        </header>
+        <div class="title-zone">
+          <h2>10 万元获得 GEOFlow 终身商业授权部署</h2>
+          <p class="lead">一次授权建立可长期使用、私有部署并持续扩展的企业 GEO 基础设施</p>
+        </div>
+        <div class="body-stage">
+          <div class="offer-layout">
+            <div class="price-block reveal-left delay-1">
+              <span class="price-kicker">COMMERCIAL LICENSE</span>
+              <div class="price">10<small>万元人民币</small></div>
+              <strong class="price-title">终身商业授权部署</strong>
+              <p class="price-note">适用于闭源修改、白标、OEM、专有产品集成等需要单独商业许可的使用方式</p>
+              <div class="license-values"><span>终身授权</span><span>私有化部署</span><span>商业使用</span></div>
+            </div>
+            <aside class="scope-panel reveal delay-2">
+              <span class="tag">合同需要锁定</span>
+              <h3>把授权与交付边界写清楚</h3>
+              <ol class="scope-list">
+                <li><span>01</span>授权主体与允许使用的组织范围</li>
+                <li><span>02</span>部署实例、服务器、域名与数据责任</li>
+                <li><span>03</span>源码版本、升级服务与运维服务边界</li>
+                <li><span>04</span>第三方模型、云资源与外部平台费用</li>
+                <li><span>05</span>定制开发、培训、验收与后续支持</li>
+              </ol>
+            </aside>
+          </div>
+        </div>
+        <footer class="deck-footer"><span>具体授权义务、交付内容与服务范围以双方签署的合同为准</span><span class="page-number">11 / 12</span></footer>
+      </section>
+
+      <!-- 12 / 决策收束 -->
+      <section class="slide" aria-label="把 GEO 从一次项目沉淀为企业长期基础设施">
+        <header class="business-chrome">
+          <div class="brand-lockup"><span class="brand-symbol">GEOFlow</span><span class="brand-name">下一步</span></div>
+          <div class="deck-meta"><span>2026.09</span><span>产品演示</span></div>
+        </header>
+        <div class="body-stage" style="top: clamp(5rem, 12vh, 7.8rem)">
+          <div class="closing-layout">
+            <h2 class="closing-statement reveal-left delay-1">把 GEO 从一次项目沉淀为<br /><span class="accent">企业长期基础设施</span></h2>
+            <div class="closing-path" data-shape-template="roadmap">
+              <article class="closing-step reveal-scale delay-2"><span>01</span><strong>确认授权主体</strong><p>明确使用组织、商业用途与合同签署主体</p></article>
+              <article class="closing-step reveal-scale delay-3"><span>02</span><strong>确认部署环境</strong><p>准备服务器、域名、数据库、Redis 与模型接口</p></article>
+              <article class="closing-step reveal-scale delay-4"><span>03</span><strong>确认首批场景</strong><p>选择知识、内容、渠道与数据的第一条闭环</p></article>
+              <div class="closing-go reveal delay-5"><strong>进入部署实施</strong><span>GEOFlow · 10 万元终身商业授权</span></div>
+            </div>
+          </div>
+        </div>
+        <footer class="deck-footer"><span>可信知识 · AI 内容 · 质量门禁 · 多站点分发 · 数据反馈</span><span class="page-number">12 / 12</span></footer>
+      </section>
+    </main>
+
+    <script>
+      /* =========================================================
+         浏览器演示控制器：键盘、滚轮、触摸、Dock、哈希与全屏
+         ========================================================= */
+      class SlidePresentation {
+        constructor() {
+          this.slides = Array.from(document.querySelectorAll(".slide"));
+          this.currentSlide = 0;
+          this.progressBar = document.querySelector(".progress-bar");
+          this.navZone = document.querySelector(".nav-zone");
+          this.navDotsContainer = document.querySelector(".nav-dots");
+          this.fullscreenButton = document.querySelector(".fullscreen-button");
+          this.touchStartY = 0;
+          this.navigationPending = false;
+          this.dockPointerY = null;
+          this.navScrollTarget = 0;
+          this.navScrollFrame = null;
+          this.navHideTimer = null;
+          this.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+          this.setupNavDots();
+          this.setupIntersectionObserver();
+          this.setupKeyboardNav();
+          this.setupTouchNav();
+          this.setupWheelNav();
+          this.setupDockNavigation();
+          this.setupFullscreen();
+          this.setupHashNavigation();
+          this.updateUi();
+        }
+
+        clamp(value, min, max) {
+          return Math.max(min, Math.min(max, value));
+        }
+
+        setupIntersectionObserver() {
+          const observer = new IntersectionObserver(
+            (entries) => {
+              entries.forEach((entry) => {
+                if (!entry.isIntersecting) return;
+                entry.target.classList.add("visible");
+                this.currentSlide = this.slides.indexOf(entry.target);
+                this.navigationPending = false;
+                this.updateUi();
+              });
+            },
+            { threshold: 0.58 }
+          );
+
+          this.slides.forEach((slide) => observer.observe(slide));
+          this.slides[0]?.classList.add("visible");
+        }
+
+        setupKeyboardNav() {
+          document.addEventListener("keydown", (event) => {
+            const forwardKeys = ["ArrowDown", "ArrowRight", " ", "PageDown"];
+            const backKeys = ["ArrowUp", "ArrowLeft", "PageUp"];
+
+            if (forwardKeys.includes(event.key)) {
+              event.preventDefault();
+              this.next();
+            }
+
+            if (backKeys.includes(event.key)) {
+              event.preventDefault();
+              this.previous();
+            }
+
+            if (event.key === "Home") {
+              event.preventDefault();
+              this.goToSlide(0);
+            }
+
+            if (event.key === "End") {
+              event.preventDefault();
+              this.goToSlide(this.slides.length - 1);
+            }
+
+            if (event.key === "f" || event.key === "F") {
+              event.preventDefault();
+              this.toggleFullscreen();
+            }
+          });
+        }
+
+        setupTouchNav() {
+          document.addEventListener(
+            "touchstart",
+            (event) => {
+              this.touchStartY = event.touches[0].clientY;
+            },
+            { passive: true }
+          );
+
+          document.addEventListener(
+            "touchend",
+            (event) => {
+              const deltaY = this.touchStartY - event.changedTouches[0].clientY;
+              if (Math.abs(deltaY) < 48) return;
+              if (deltaY > 0) this.next();
+              if (deltaY < 0) this.previous();
+            },
+            { passive: true }
+          );
+        }
+
+        setupWheelNav() {
+          document.addEventListener(
+            "wheel",
+            (event) => {
+              if (this.navigationPending || Math.abs(event.deltaY) < 28) return;
+              const target = this.clamp(
+                this.currentSlide + (event.deltaY > 0 ? 1 : -1),
+                0,
+                this.slides.length - 1
+              );
+              if (target === this.currentSlide) return;
+              this.navigationPending = true;
+              this.goToSlide(target);
+            },
+            { passive: true }
+          );
+
+          document.addEventListener("scrollend", () => {
+            this.navigationPending = false;
+          });
+        }
+
+        setupNavDots() {
+          this.navDotsContainer.innerHTML = "";
+
+          this.slides.forEach((slide, index) => {
+            const button = document.createElement("button");
+            const title = slide.querySelector("h1, h2")?.textContent.trim() || "幻灯片";
+            button.type = "button";
+            button.title = `${String(index + 1).padStart(2, "0")} · ${title}`;
+            button.setAttribute("aria-label", `跳转到第${index + 1}页：${title}`);
+            button.addEventListener("click", () => this.goToSlide(index));
+            this.navDotsContainer.appendChild(button);
+          });
+        }
+
+        updateDockMagnification(pointerY = this.dockPointerY) {
+          if (typeof pointerY === "number") this.dockPointerY = pointerY;
+
+          Array.from(this.navDotsContainer.children).forEach((button) => {
+            let scale = 1;
+            let shift = 0;
+
+            if (typeof this.dockPointerY === "number") {
+              const rect = button.getBoundingClientRect();
+              const center = rect.top + rect.height / 2;
+              const radius = 60;
+              const signedDistance = center - this.dockPointerY;
+              const influence = 1 - Math.min(Math.abs(signedDistance) / radius, 1);
+              const eased = 0.5 - 0.5 * Math.cos(Math.PI * this.clamp(influence, 0, 1));
+              scale = 1 + 1.25 * eased;
+              shift = this.clamp(signedDistance / radius, -1, 1) * 6 * eased;
+            }
+
+            button.style.setProperty("--dock-scale", scale.toFixed(3));
+            button.style.setProperty("--dock-shift", `${shift.toFixed(2)}px`);
+          });
+        }
+
+        resetDockMagnification() {
+          this.dockPointerY = null;
+          Array.from(this.navDotsContainer.children).forEach((button) => {
+            button.style.setProperty("--dock-scale", "1");
+            button.style.setProperty("--dock-shift", "0px");
+          });
+        }
+
+        alignCurrentDot() {
+          const activeButton = this.navDotsContainer.children[this.currentSlide];
+          if (!activeButton) return;
+          const maxScroll = Math.max(0, this.navDotsContainer.scrollHeight - this.navDotsContainer.clientHeight);
+          this.navScrollTarget = Math.min(activeButton.offsetTop, maxScroll);
+          this.navDotsContainer.scrollTop = this.navScrollTarget;
+          this.updateDockMagnification();
+        }
+
+        animateNavScroll() {
+          if (this.navScrollFrame !== null) return;
+
+          const step = () => {
+            const delta = this.navScrollTarget - this.navDotsContainer.scrollTop;
+            if (Math.abs(delta) <= 2.5) {
+              this.navDotsContainer.scrollTop = this.navScrollTarget;
+              this.navScrollFrame = null;
+              this.updateDockMagnification();
+              return;
+            }
+
+            this.navDotsContainer.scrollTop += delta * 0.24;
+            this.updateDockMagnification();
+            this.navScrollFrame = window.requestAnimationFrame(step);
+          };
+
+          this.navScrollFrame = window.requestAnimationFrame(step);
+        }
+
+        revealNavigation() {
+          document.body.classList.add("nav-visible");
+          window.clearTimeout(this.navHideTimer);
+        }
+
+        scheduleNavigationHide(delay = 760) {
+          window.clearTimeout(this.navHideTimer);
+          this.navHideTimer = window.setTimeout(() => {
+            if (!this.navZone.matches(":hover") && !this.navZone.matches(":focus-within")) {
+              document.body.classList.remove("nav-visible");
+            }
+          }, delay);
+        }
+
+        setupDockNavigation() {
+          this.navDotsContainer.addEventListener(
+            "wheel",
+            (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const maxScroll = Math.max(0, this.navDotsContainer.scrollHeight - this.navDotsContainer.clientHeight);
+              this.navScrollTarget = this.clamp(
+                Math.max(this.navScrollTarget, this.navDotsContainer.scrollTop) + event.deltaY,
+                0,
+                maxScroll
+              );
+              this.animateNavScroll();
+              this.revealNavigation();
+              this.updateDockMagnification(event.clientY);
+              this.scheduleNavigationHide(900);
+            },
+            { passive: false }
+          );
+
+          this.navDotsContainer.addEventListener("scroll", () => this.updateDockMagnification(), { passive: true });
+          this.navZone.addEventListener("mouseenter", () => this.revealNavigation());
+          this.navZone.addEventListener("pointermove", (event) => {
+            this.revealNavigation();
+            this.updateDockMagnification(event.clientY);
+          });
+          this.navZone.addEventListener("mouseleave", () => {
+            this.resetDockMagnification();
+            this.scheduleNavigationHide();
+          });
+          this.navZone.addEventListener("focusin", () => this.revealNavigation());
+          this.navZone.addEventListener("focusout", () => this.scheduleNavigationHide(300));
+        }
+
+        setupFullscreen() {
+          this.fullscreenButton.addEventListener("click", () => {
+            this.toggleFullscreen();
+            this.fullscreenButton.blur();
+          });
+          document.addEventListener("fullscreenchange", () => this.updateFullscreenState());
+          this.updateFullscreenState();
+        }
+
+        updateFullscreenState() {
+          const active = Boolean(document.fullscreenElement);
+          this.fullscreenButton.setAttribute("aria-label", active ? "退出全屏" : "进入全屏");
+          this.fullscreenButton.title = active ? "退出全屏 · F" : "全屏 · F";
+        }
+
+        toggleFullscreen() {
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen?.().catch(() => {});
+            return;
+          }
+          document.exitFullscreen?.().catch(() => {});
+        }
+
+        setupHashNavigation() {
+          const match = window.location.hash.match(/^#(\d+)$/);
+          if (match) {
+            const index = this.clamp(Number(match[1]) - 1, 0, this.slides.length - 1);
+            requestAnimationFrame(() => this.goToSlide(index, false));
+          }
+
+          window.addEventListener("hashchange", () => {
+            const nextMatch = window.location.hash.match(/^#(\d+)$/);
+            if (!nextMatch) return;
+            const index = this.clamp(Number(nextMatch[1]) - 1, 0, this.slides.length - 1);
+            if (index !== this.currentSlide) this.goToSlide(index, false);
+          });
+        }
+
+        goToSlide(index, updateHash = true) {
+          const nextIndex = this.clamp(index, 0, this.slides.length - 1);
+          this.currentSlide = nextIndex;
+          this.slides[nextIndex].scrollIntoView({
+            behavior: this.reducedMotion ? "auto" : "smooth",
+            block: "start"
+          });
+          if (updateHash && window.location.hash !== `#${nextIndex + 1}`) {
+            history.replaceState(null, "", `#${nextIndex + 1}`);
+          }
+          this.revealNavigation();
+          this.scheduleNavigationHide();
+          this.updateUi();
+        }
+
+        next() {
+          this.goToSlide(this.currentSlide + 1);
+        }
+
+        previous() {
+          this.goToSlide(this.currentSlide - 1);
+        }
+
+        updateUi() {
+          const progress = this.slides.length <= 1 ? 100 : (this.currentSlide / (this.slides.length - 1)) * 100;
+          this.progressBar.style.width = `${progress}%`;
+          document.body.classList.toggle("on-dark", this.slides[this.currentSlide]?.classList.contains("dark"));
+
+          const dots = Array.from(this.navDotsContainer.querySelectorAll("button"));
+          dots.forEach((dot, index) => {
+            dot.classList.toggle("active", index === this.currentSlide);
+            dot.setAttribute("aria-current", index === this.currentSlide ? "page" : "false");
+          });
+          this.alignCurrentDot();
+        }
+      }
+
+      window.presentation = new SlidePresentation();
+    </script>
+  </body>
+</html>

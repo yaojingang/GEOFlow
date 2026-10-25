@@ -57,7 +57,7 @@
                 <ol class="as-related-list">
                     @foreach($relatedArticles as $related)
                         <li>
-                            <a href="{{ route('site.article', $related->slug) }}">{{ $related->title }}</a>
+                            <a href="{{ $siteUrls->article($related) }}">{{ $related->title }}</a>
                         </li>
                     @endforeach
                 </ol>
@@ -65,6 +65,8 @@
                 <a href="{{ route('site.home') }}" class="as-link-arrow">{{ __('front.nav.all_articles') }}</a>
             @endif
         </section>
+
+        @include('site.partials.link-pool')
 
         <section class="as-feedback-panel" aria-labelledby="feedbackTitle">
             <h2 id="feedbackTitle">Helpful?</h2>
@@ -95,6 +97,7 @@
             </aside>
         @endif
     </div>
+@include('site.partials.related-topics')
 @endsection
 
 @if($stickyAd)

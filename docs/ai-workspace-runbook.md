@@ -105,6 +105,7 @@ php artisan geoflow:sync-system-knowledge --key=ai_workspace_manual --media
 
 ```dotenv
 GEOFLOW_AI_WORKSPACE_RUNTIME_ENABLED=false
+GEOFLOW_AI_WORKSPACE_FORCE_DISABLED=false
 GEOFLOW_AI_WORKSPACE_RETENTION_DAYS=90
 GEOFLOW_AI_WORKSPACE_GLOBAL_CONCURRENCY=10
 GEOFLOW_AI_WORKSPACE_CONCURRENCY_CACHE_STORE=redis
@@ -122,10 +123,11 @@ GEOFLOW_AI_WORKSPACE_REQUIRE_VERIFIED_MODEL=true
 
 ### 页面显示 AI 服务不可用
 
-1. 确认 `GEOFLOW_AI_WORKSPACE_RUNTIME_ENABLED=true`。
-2. 在 AI 配置器中确认至少一个对话模型为启用状态。
-3. 新建模型、模型配置变更、检测失败或检测过期时，在工作台首页点击「检测连接」。管理员可检测自己的模型，共享模型由配置提供者检测；检测通过后模型才会进入工作台候选列表。
-4. 检查模型日额度和管理员日调用额度。
+1. 超级管理员进入「网站设置 → 系统管理 → AI 工作台」，确认开关已开启。首次保存前，`GEOFLOW_AI_WORKSPACE_RUNTIME_ENABLED` 提供默认值。
+2. 确认服务器紧急关闭 `GEOFLOW_AI_WORKSPACE_FORCE_DISABLED` 未启用；该配置启用时优先保持工作台关闭。
+3. 在 AI 配置器中确认至少一个对话模型为启用状态。
+4. 新建模型、模型配置变更、检测失败或检测过期时，在工作台首页点击「检测连接」。管理员可检测自己的模型，共享模型由配置提供者检测；检测通过后模型才会进入工作台候选列表。
+5. 检查模型日额度和管理员日调用额度。
 
 ### 一直等待且没有正文
 

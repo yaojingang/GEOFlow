@@ -762,6 +762,136 @@
       "name": "2026_09_08_094502_add_task_draft_to_ai_conversations",
       "sha256": "a0b77e05ee6d8d4aed9a32baf1cac3a204ea5f70dcd3f0fd965f7b00b1261910",
       "online": false
+    },
+    {
+      "name": "2026_09_12_220500_create_article_slug_histories_table",
+      "sha256": "ef8c891aff97bc636561238dd6829d9109da8e720a8c6cd7e7adf9e5297f31db",
+      "online": false
+    },
+    {
+      "name": "2026_09_13_000000_add_permalink_refresh_index_to_article_distributions",
+      "sha256": "109106dc21c1c8ee2e89b6c5b97eabe3302b7c26d845ecac8da32260ae0d8400",
+      "online": false
+    },
+    {
+      "name": "2026_09_13_000100_create_category_slug_histories",
+      "sha256": "6d22fc2a1f2ae8c0840760a7c985d97b645b50df1af23bd10747fae5099dceed",
+      "online": false
+    },
+    {
+      "name": "2026_09_13_000200_create_url_change_requests",
+      "sha256": "7e2c8774246c1a6bd74fb6d96b557ddf286aad8f3917d10f805b22da5297b4fd",
+      "online": false
+    },
+    {
+      "name": "2026_09_13_000300_track_url_data_revisions",
+      "sha256": "e3221646b61ce3b5c3b2589ca879a8201372c9006fd83368a38446267e72cf1d",
+      "online": false
+    },
+    {
+      "name": "2026_09_13_000400_add_url_change_article_lookup_index",
+      "sha256": "1975a41a4504849ca34e8973f351011f3255054ded055c4a303274a49193e611",
+      "online": false
+    },
+    {
+      "name": "2026_09_15_171103_create_management_operations_table",
+      "sha256": "fa9dd08de9cbf30ffb7a540b23cca60a44f2e694bcdad217ba06d8cb7351469a",
+      "online": false
+    },
+    {
+      "name": "2026_09_15_172155_create_theme_revisions_table",
+      "sha256": "5e3ac54286b8fb7f83e45ddef12f398714384956959cef97c401ad419013c437",
+      "online": false
+    },
+    {
+      "name": "2026_09_15_172155_create_theme_workspaces_table",
+      "sha256": "9e0c5e27d59e3ebbf0ad892e2ae8e25b7652642aea151327b22f1be9bde0062c",
+      "online": false
+    },
+    {
+      "name": "2026_09_15_172156_create_site_theme_bindings_table",
+      "sha256": "d9f68e998b5d3dd32f0f0b8d3db2f90207a9e157c826b865212791071c88bcf6",
+      "online": false
+    },
+    {
+      "name": "2026_09_15_172156_create_theme_releases_table",
+      "sha256": "5a0ba2409f3234dd778ed4fd7eb342e255bb1b96f042f920722e798849f2a913",
+      "online": false
+    },
+    {
+      "name": "2026_09_16_092941_add_recovery_epoch_to_admin_credentials",
+      "sha256": "7555aae25bb771bd836124a41b953e7ea9b49a52a117d964283b3542139f53ba",
+      "online": false
+    },
+    {
+      "name": "2026_09_16_094613_create_recovery_preparations_table",
+      "sha256": "1f52879c213457e0ea1f453045b2573d692fe9b66c93e67dc691fc75fd70538f",
+      "online": false
+    },
+    {
+      "name": "2026_09_16_144419_create_recovery_reconciliations_tables",
+      "sha256": "370b18a227ba6e9b14caf1aaf6314d56ce83b68b38547642ff97ccd23bbe1be1",
+      "online": false
+    },
+    {
+      "name": "2026_09_23_214005_add_publication_intent_to_article_workflow",
+      "sha256": "4f9c2f8793d5d70dad6b3e405b21a9e6fa946e70eb88caeaae26dc3325fd4aeb",
+      "online": false
+    },
+    {
+      "name": "2026_09_23_223537_add_workflow_fence_to_hosted_site_allocation_requests",
+      "sha256": "7969a61d4e7fee7c3311abcd59f1c562ed33de7a891c46bbdc0a4585f059176e",
+      "online": false
+    },
+    {
+      "name": "2026_09_30_122120_create_link_pool_tables",
+      "sha256": "1faccce8c323d03ee2720f3a903d638e193ae674152bf3cb8649a55b23533252",
+      "online": false
+    },
+    {
+      "name": "2026_09_30_130000_create_link_pool_theme_adaptations",
+      "sha256": "2d7c59e745ae507324d0eb0e1b40cb00e59415ccf4829c6c5f3ec3eeb038c2f1",
+      "online": false
+    },
+    {
+      "name": "2026_09_30_202116_add_external_targets_to_link_pool",
+      "sha256": "12443f412d0bff170748d3d143fd6cedd08ba110c915c8038c707573b02cddd7",
+      "online": false
+    },
+    {
+      "name": "2026_10_01_064730_create_topics_tables",
+      "sha256": "57e5caff312e7dd5ae10d496b22adb5a75af10874c4f5c73aa18b6bd2e314679",
+      "online": false
+    },
+    {
+      "name": "2026_10_01_084859_add_topic_freshness_snapshots_and_runtime_state",
+      "sha256": "5a5c29549250849d8e7cec7f2be495ece0002fd63952cf7f5fa495c2aa016234",
+      "online": false
+    },
+    {
+      "name": "2026_10_01_094730_add_topic_display_order",
+      "sha256": "f7537a95cb660cb4356317dd50c0345a7dced88e57db26eba531ef97f271a380",
+      "online": false
+    },
+    {
+      "name": "2026_10_01_094740_create_topic_paths",
+      "sha256": "0eff95563b2048a8db2d0d786618f40a7b135e07209e8b5081952683bdf03653",
+      "online": false
+    },
+    {
+      "name": "2026_10_02_000100_add_topic_execution_support",
+      "sha256": "fdf3ef72f9b4721587b262bf386b468ae4c8003b70899c6f1af21e13f584aa03",
+      "online": false
+    },
+    {
+      "name": "2026_10_02_000110_add_topic_dispatch_key",
+      "sha256": "40d5a411f1607f48742dced6b01733b4306c6bef541005cba6f3268f40a066dd",
+      "online": false
+    },
+    {
+      "name": "2026_10_02_000120_add_topic_review_records",
+      "sha256": "8052384dddceda28c692652d3c059c18bccdaf6774986c6d3dbb5c0d478dce7c",
+      "online": false
     }
   ],
   "compatibility": {

@@ -4,12 +4,18 @@ namespace App\Services\Site;
 
 use App\Models\Article;
 use App\Models\Category;
+use App\Models\Topic;
+use App\Support\Site\ArticlePermalinkPolicy;
 use App\Support\Site\CurrentSite;
 use App\Support\Site\SiteThemePreviewContext;
+use Illuminate\Support\Facades\Log;
 
 final class SiteUrlGenerator
 {
-    public function __construct(private readonly CurrentSite $currentSite) {}
+    public function __construct(
+        private readonly CurrentSite $currentSite,
+        private readonly ArticlePermalinkService $articlePermalinks,
+    ) {}
 
     public function home(array $query = []): string
     {
@@ -32,9 +38,17 @@ final class SiteUrlGenerator
 
     public function article(Article|string $article): string
     {
-        $slug = $article instanceof Article ? $article->slug : $article;
+        if ($article instanceof Article) {
+            return $this->url($this->articlePermalinks->path($article));
+        }
 
-        return $this->url('/article/'.rawurlencode((string) $slug));
+        if ($this->articlePermalinks->policy()->currentPattern !== ArticlePermalinkPolicy::DEFAULT_PATTERN) {
+            Log::warning('A slug-only article URL call used the permanent compatibility path.', [
+                'slug' => $article,
+            ]);
+        }
+
+        return $this->url('/article/'.rawurlencode($article));
     }
 
     public function form(string $slug): string
@@ -42,9 +56,35 @@ final class SiteUrlGenerator
         return $this->url('/forms/'.rawurlencode($slug));
     }
 
+    public function topics(array $query = []): string
+    {
+        $page = max(1, (int) ($query['page'] ?? 1));
+        unset($query['page']);
+        $path = '/topics'.($page > 1 ? '/page/'.$page : '');
+
+        return $this->url($path).($query !== [] ? '?'.http_build_query($query) : '');
+    }
+
+    public function topic(Topic|array|string $topic): string
+    {
+        $slug = is_array($topic) ? $topic['slug'] : ($topic instanceof Topic ? $topic->slug : $topic);
+
+        return $this->url('/topics/'.rawurlencode($slug));
+    }
+
     public function sitemap(): string
     {
         return $this->url('/sitemap.xml');
+    }
+
+    public function llms(): string
+    {
+        return $this->url('/llms.txt');
+    }
+
+    public function sitemapText(): string
+    {
+        return $this->url('/sitemap.txt');
     }
 
     public function sitemapShard(int $page): string

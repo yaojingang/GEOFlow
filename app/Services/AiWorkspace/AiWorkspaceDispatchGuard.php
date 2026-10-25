@@ -15,6 +15,8 @@ use Throwable;
 
 final readonly class AiWorkspaceDispatchGuard
 {
+    public function __construct(private AiWorkspaceRuntimeStatus $runtimeStatus) {}
+
     public function allowsDistribution(ArticleDistribution $distribution): bool
     {
         try {
@@ -93,7 +95,7 @@ final readonly class AiWorkspaceDispatchGuard
     /** @return array{AiWorkspaceRun,AiWorkspaceStep,Admin} */
     private function guardActors(array $guard, bool $lock = false): array
     {
-        if (! (bool) config('ai-workspace.runtime_enabled', false)) {
+        if (! $this->runtimeStatus->enabled()) {
             throw new RuntimeException('AI 工作台运行时已关闭。');
         }
         $runQuery = AiWorkspaceRun::query()->whereKey((string) ($guard['run_id'] ?? ''));

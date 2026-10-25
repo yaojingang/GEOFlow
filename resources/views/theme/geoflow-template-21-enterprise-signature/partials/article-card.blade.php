@@ -22,7 +22,7 @@
 @if($cardVariant === 'category-card')
     <article class="ent-article-card ent-article-card--category">
         <a
-            href="{{ route('site.article', $article->slug) }}"
+            href="{{ $siteUrls->article($article) }}"
             class="ent-article-card__category-link"
             aria-label="阅读《{{ $article->title }}》"
         >
@@ -45,7 +45,7 @@
     </article>
 @else
     <article class="ent-article-card">
-        <a href="{{ route('site.article', $article->slug) }}" class="ent-article-card__visual" aria-hidden="true" tabindex="-1">
+        <a href="{{ $siteUrls->article($article) }}" class="ent-article-card__visual" aria-hidden="true" tabindex="-1">
             <span>{{ $categoryInitial }}</span>
             <small>GEOFlow Insight</small>
         </a>
@@ -60,12 +60,12 @@
                 <time datetime="{{ $publishedAt?->toAtomString() }}">{{ $publishedAt?->format('Y.m.d') }}</time>
             </div>
             <h2 @class(['ent-balanced-card-title' => $balanceCardTitle])>
-                <a href="{{ route('site.article', $article->slug) }}">{{ $article->title }}</a>
+                <a href="{{ $siteUrls->article($article) }}">{{ $article->title }}</a>
             </h2>
             @if($summary !== '')
                 <p>{{ $summary }}</p>
             @endif
-            <a href="{{ route('site.article', $article->slug) }}" class="ent-card-action">
+            <a href="{{ $siteUrls->article($article) }}" class="ent-card-action">
                 {{ __('site.home_read_more') }}
                 <i data-lucide="arrow-right" aria-hidden="true"></i>
             </a>

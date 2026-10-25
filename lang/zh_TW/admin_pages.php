@@ -1,6 +1,19 @@
 <?php
 
 return [
+    'topics' => '專題管理',
+    'topic_create' => '新增專題',
+    'topic_articles' => '選擇專題文章',
+    'topic_settings' => '專題設定',
+    'topic_batch_create' => '批次新增專題',
+    'topic_batch_detail' => '專題批次詳情',
+    'topic_run_detail' => '專題產生記錄',
+    'topic_path' => '專題位址',
+    'topic_edit' => '編輯專題',
+    'topic_preview' => '專題預覽',
+    'topic_history' => '專題版本歷史',
+    'topic_revision_preview' => '專題版本預覽',
+
     'ai_workspace' => 'AI 工作台',
     'operations_dashboard' => '營運工作台',
     'analytics' => '資料中心',
@@ -9,6 +22,7 @@ return [
     'ai_visibility' => 'AI 可見性',
     'lead_analytics' => '線索分析',
     'distribution_analytics' => '分發分析',
+    'link_pool' => '內鏈投放',
     'tasks' => '任務管理',
     'task_workers' => 'Worker 監控',
     'task_jobs' => '任務記錄',

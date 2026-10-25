@@ -7,7 +7,7 @@
 
 @if($variant === 'support-row')
     <article class="as-support-row">
-        <a href="{{ route('site.article', $article->slug) }}">
+        <a href="{{ $siteUrls->article($article) }}">
             <span>{{ $article->title }}</span>
             <small>{{ $pub?->format('Y-m-d') }}</small>
         </a>
@@ -27,14 +27,14 @@
                 @endif
             </div>
             <h3>
-                <a href="{{ route('site.article', $article->slug) }}">{{ $article->title }}</a>
+                <a href="{{ $siteUrls->article($article) }}">{{ $article->title }}</a>
             </h3>
             @if($summary !== '')
                 <p>{{ $summary }}</p>
             @endif
             <div class="as-card-footer">
                 <time datetime="{{ $pub?->toAtomString() }}">{{ $pub?->format('Y-m-d') }}</time>
-                <a href="{{ route('site.article', $article->slug) }}" class="as-link-arrow">
+                <a href="{{ $siteUrls->article($article) }}" class="as-link-arrow">
                     {{ __('site.home_read_more') }}
                 </a>
             </div>

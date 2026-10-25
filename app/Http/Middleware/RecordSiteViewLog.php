@@ -3,7 +3,9 @@
 namespace App\Http\Middleware;
 
 use App\Services\Site\SiteScopedArticleQuery;
+use App\Services\SystemUpdater\RecoveryState;
 use App\Support\Site\CurrentSite;
+use App\Support\Site\SiteThemePreviewContext;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,9 +29,16 @@ class RecordSiteViewLog
     {
         $response = $next($request);
 
-        if (strtoupper((string) $request->method()) !== 'GET') {
+        if ($request->attributes->get('link_pool.theme_readback') === true || strtoupper((string) $request->method()) !== 'GET') {
             return $response;
         }
+
+        $state = app(RecoveryState::class)->snapshot();
+        if ($state !== null && $state['phase'] !== 'ready') {
+            return $response;
+        }
+
+        $this->recordCanonicalArticleRead($request, $response);
 
         if (! Schema::hasTable('view_logs')) {
             return $response;
@@ -56,8 +65,29 @@ class RecordSiteViewLog
         return $response;
     }
 
+    private function recordCanonicalArticleRead(Request $request, Response $response): void
+    {
+        $articleId = $request->attributes->get('article_permalink.article_id');
+        if ($response->getStatusCode() !== 200
+            || ! is_numeric($articleId)
+            || app(SiteThemePreviewContext::class)->isActive()) {
+            return;
+        }
+
+        try {
+            $this->siteArticles->query()->whereKey((int) $articleId)->increment('view_count');
+        } catch (\Throwable) {
+            // 阅读计数不能影响已经成功生成的页面响应。
+        }
+    }
+
     private function resolveArticleId(Request $request, Response $response): ?int
     {
+        $resolvedArticleId = $request->attributes->get('article_permalink.article_id');
+        if ($response->getStatusCode() < 400 && is_numeric($resolvedArticleId)) {
+            return (int) $resolvedArticleId;
+        }
+
         if ($response->getStatusCode() >= 400 || $request->route()?->getName() !== 'site.article') {
             return null;
         }

@@ -1,0 +1,51 @@
+name: Publish verified CLI release
+on:
+  workflow_dispatch:
+    inputs:
+      signing_run_id:
+        description: Successful approved CLI signing run
+        required: true
+        type: number
+      archive_sha256:
+        description: Reviewed signed archive SHA-256
+        required: true
+        type: string
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: geoflow-cli-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'yaojingang/GEOFlow' && github.ref == 'refs/heads/main'
+    environment: cli-release-publication
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Validate original signed candidate and publish unchanged bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.signing_run_id }}
+          EXPECTED: ${{ inputs.archive_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[1-9][0-9]*$ && "$EXPECTED" =~ ^[a-f0-9]{64}$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > "$RUNNER_TEMP/signing-run.json"
+          jq -e --arg sha "$GITHUB_SHA" '.conclusion == "success" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .path == ".github/workflows/cli-sign.yml"' "$RUNNER_TEMP/signing-run.json" >/dev/null
+          gh run download "$RUN_ID" --name "cli-signed-$RUN_ID" --dir "$RUNNER_TEMP/signed"
+          gh attestation verify "$RUNNER_TEMP/signed/release.json" --repo yaojingang/GEOFlow --signer-workflow yaojingang/GEOFlow/.github/workflows/cli-sign.yml --source-ref refs/heads/main --source-digest "$GITHUB_SHA" --deny-self-hosted-runners
+          version="$(jq -er '.version' "$RUNNER_TEMP/signed/release.json")"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          test "$(jq -er '.source_commit' "$RUNNER_TEMP/signed/release.json")" = "$GITHUB_SHA"
+          test "$(jq -er '.archive_sha256' "$RUNNER_TEMP/signed/release.json")" = "$EXPECTED"
+          archive="geoflow-cli-$version.tar"
+          test "$(sha256sum "$RUNNER_TEMP/signed/$archive" | cut -d ' ' -f 1)" = "$EXPECTED"
+          for name in "$archive" bootstrap.py; do
+            gh attestation verify "$RUNNER_TEMP/signed/$name" --repo yaojingang/GEOFlow --signer-workflow yaojingang/GEOFlow/.github/workflows/cli-sign.yml --source-ref refs/heads/main --source-digest "$GITHUB_SHA" --deny-self-hosted-runners
+          done
+          export CLI_RELEASE_TAG="cli-v$version"
+          # publish.py checks original candidate freshness before any draft promotion.
+          # Public immutable retries still verify proofs and bytes after candidate expiry.
+          python3 -B packages/geoflow-cli/publish.py --tag "$CLI_RELEASE_TAG" --source-commit "$GITHUB_SHA" --directory "$RUNNER_TEMP/signed"

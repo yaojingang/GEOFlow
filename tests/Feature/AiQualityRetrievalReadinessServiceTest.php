@@ -18,6 +18,23 @@ class AiQualityRetrievalReadinessServiceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_normal_risk_unreviewed_sources_allow_score_based_release(): void
+    {
+        $knowledgeBase = KnowledgeBase::query()->create([
+            'name' => '待审核的正常风险资料',
+            'content' => '服务期限为一年。',
+            'risk_level' => 'normal',
+            'review_status' => 'pending',
+        ]);
+        $readiness = app(AiQualityRetrievalReadinessService::class)->inspect([$knowledgeBase->id]);
+        $mode = $readiness['modes'][AiQualityRetrievalMode::KNOWLEDGE_BROAD];
+
+        $this->assertTrue($mode['available']);
+        $this->assertTrue($mode['auto_pass_prerequisites_ready']);
+        $this->assertSame([], $mode['auto_pass_blockers']);
+        $this->assertSame('pending', $knowledgeBase->fresh()->review_status);
+    }
+
     public function test_it_selects_the_highest_mode_available_to_every_selected_knowledge_base(): void
     {
         $sourceHash = hash('sha256', '产品价格为 980 元。');

@@ -16,6 +16,7 @@ class ArticleReview extends Model
         'admin_id',
         'review_status',
         'review_note',
+        'content_hash',
     ];
 
     protected function casts(): array

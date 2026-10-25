@@ -3,11 +3,13 @@
 namespace App\Services\Admin;
 
 use App\Services\Admin\SiteThemeReplication\ThemeReplicationPackagePathGuard;
+use App\Services\Topics\TopicTemplateCatalog;
 use App\Support\Site\SiteThemePackageStorage;
 use Composer\Semver\Semver;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Symfony\Component\Process\Process;
 use Throwable;
 use ZipArchive;
 
@@ -15,16 +17,23 @@ final class SiteThemePackageGuard
 {
     public const FORMAT = 'geoflow-theme-package';
 
-    public const CONTRACTS = ['site-theme-view-resolver' => 1];
+    public const LEGACY_CONTRACTS = ['site-theme-view-resolver' => 1];
 
-    public const PAGES = ['home', 'category', 'article', 'about', 'archive-index', 'archive-month'];
+    public const CONTRACTS = ['site-theme-view-resolver' => 1, 'topic-view' => 1];
+
+    public const LEGACY_PAGES = ['home', 'category', 'article', 'about', 'archive-index', 'archive-month'];
+
+    public const PAGES = [...self::LEGACY_PAGES, 'topics-index', 'topics-show'];
+
+    public const PAGE_PATHS = ['topics-index' => 'topics/index.blade.php', 'topics-show' => 'topics/show.blade.php'];
 
     public const ASSET_MIMES = [
         'css' => 'text/css', 'js' => 'text/javascript', 'png' => 'image/png',
         'jpeg' => 'image/jpeg', 'jpg' => 'image/jpeg', 'gif' => 'image/gif',
         'svg' => 'image/svg+xml', 'webp' => 'image/webp', 'avif' => 'image/avif',
         'ico' => 'image/x-icon', 'woff' => 'font/woff', 'woff2' => 'font/woff2',
-        'ttf' => 'font/ttf', 'otf' => 'font/otf',
+        'ttf' => 'font/ttf', 'otf' => 'font/otf', 'mp4' => 'video/mp4',
+        'webm' => 'video/webm', 'ogv' => 'video/ogg',
     ];
 
     public function __construct(
@@ -43,9 +52,47 @@ final class SiteThemePackageGuard
 
     public function limit(string $name): int
     {
-        $defaults = ['max_archive_bytes' => 10 * 1024 * 1024, 'max_files' => 500, 'max_file_bytes' => 5 * 1024 * 1024, 'max_total_bytes' => 25 * 1024 * 1024];
+        $defaults = ['max_archive_bytes' => 32 * 1024 * 1024, 'max_files' => 500, 'max_file_bytes' => 5 * 1024 * 1024, 'max_video_file_bytes' => 25 * 1024 * 1024, 'max_total_bytes' => 40 * 1024 * 1024];
 
         return max(1, (int) config('geoflow.theme_packages.'.$name, $defaults[$name]));
+    }
+
+    public function fileLimit(string $path): int
+    {
+        return in_array(strtolower(pathinfo($path, PATHINFO_EXTENSION)), ['mp4', 'webm', 'ogv'], true)
+            ? $this->limit('max_video_file_bytes')
+            : $this->limit('max_file_bytes');
+    }
+
+    public function validateVideo(string $logicalPath, string $absolutePath): void
+    {
+        $extension = strtolower(pathinfo($logicalPath, PATHINFO_EXTENSION));
+        if (! in_array($extension, ['mp4', 'webm', 'ogv'], true)) {
+            return;
+        }
+
+        $probe = new Process(['ffprobe', '-v', 'error', '-show_entries', 'format=format_name,duration:stream=codec_type,codec_name,width,height,avg_frame_rate', '-of', 'json', $absolutePath]);
+        $probe->setTimeout(10);
+        try {
+            $probe->run();
+        } catch (Throwable) {
+            $this->storage->fail('invalid_package');
+        }
+        $metadata = json_decode($probe->getOutput(), true);
+        $format = (string) ($metadata['format']['format_name'] ?? '');
+        $expected = ['mp4' => 'mp4', 'webm' => 'webm', 'ogv' => 'ogg'][$extension];
+        $duration = (float) ($metadata['format']['duration'] ?? 0);
+        $video = collect($metadata['streams'] ?? [])->first(fn ($stream): bool => ($stream['codec_type'] ?? null) === 'video');
+        $codecs = ['mp4' => ['h264'], 'webm' => ['vp8', 'vp9', 'av1'], 'ogv' => ['theora']];
+        $frameRate = (string) ($video['avg_frame_rate'] ?? '0/0');
+        [$frames, $seconds] = array_pad(explode('/', $frameRate, 2), 2, '1');
+        $fps = (float) $seconds > 0 ? (float) $frames / (float) $seconds : 0;
+        if (! $probe->isSuccessful() || ! str_contains($format, $expected) || $duration <= 0 || $duration > 120 || ! is_array($video)
+            || (int) ($video['width'] ?? 0) < 1 || (int) ($video['height'] ?? 0) < 1
+            || (int) $video['width'] > 1920 || (int) $video['height'] > 1080
+            || ! in_array($video['codec_name'] ?? null, $codecs[$extension], true) || $fps <= 0 || $fps > 60) {
+            $this->storage->fail('invalid_package');
+        }
     }
 
     public function filePath(string $path, string $id): void
@@ -113,7 +160,7 @@ final class SiteThemePackageGuard
                 if (($stat['encryption_method'] ?? ZipArchive::EM_NONE) !== ZipArchive::EM_NONE) {
                     $this->storage->fail('encrypted_archive');
                 }
-                if (! is_int($stat['size'] ?? null) || $stat['size'] < 0 || $stat['size'] > ($name === 'package.json' ? 1024 * 1024 : $this->limit('max_file_bytes'))) {
+                if (! is_int($stat['size'] ?? null) || $stat['size'] < 0 || $stat['size'] > ($name === 'package.json' ? 1024 * 1024 : $this->fileLimit($name))) {
                     $this->storage->fail('file_too_large');
                 }
                 if ($directory && $stat['size'] !== 0) {
@@ -155,7 +202,8 @@ final class SiteThemePackageGuard
                 }
                 $target = $destination.'/'.$name;
                 $this->storage->directory(dirname($target));
-                $result = $this->readEntry($zip, $entry, $this->storage->path($target), $this->limit('max_file_bytes'), $this->limit('max_total_bytes') - $total);
+                $result = $this->readEntry($zip, $entry, $this->storage->path($target), $this->fileLimit($name), $this->limit('max_total_bytes') - $total);
+                $this->validateVideo($name, $this->storage->path($target));
                 $total += $result['bytes'];
                 if ($files[$name]['bytes'] !== $result['bytes'] || ! hash_equals($files[$name]['sha256'], $result['sha256'])) {
                     $this->storage->fail('manifest_mismatch');
@@ -196,7 +244,7 @@ final class SiteThemePackageGuard
                 $this->storage->fail('invalid_package');
             }
         }
-        if (($package['exported_with']['contracts'] ?? null) !== self::CONTRACTS) {
+        if (! in_array($package['exported_with']['contracts'] ?? null, [self::CONTRACTS, self::LEGACY_CONTRACTS], true)) {
             $this->storage->fail('incompatible', ['component' => 'exported_with.contracts']);
         }
         if (! is_string($package['created_at'] ?? null) || strtotime($package['created_at']) === false || ! is_array($package['exported_with'] ?? null) || ! is_array($package['requires'] ?? null) || ! is_array($package['distribution'] ?? null) || ! is_array($package['pages'] ?? null) || ! is_array($package['files'] ?? null) || ! array_is_list($package['files']) || ! $this->hashValue($package['content_sha256'] ?? null)) {
@@ -227,7 +275,7 @@ final class SiteThemePackageGuard
             if (isset($folded[strtolower($file['path'])])) {
                 $this->storage->fail('duplicate_path');
             }
-            if ($checkLimits && $file['bytes'] > $this->limit('max_file_bytes')) {
+            if ($checkLimits && $file['bytes'] > $this->fileLimit($file['path'])) {
                 $this->storage->fail('file_too_large');
             }
             $total += $file['bytes'];
@@ -252,7 +300,8 @@ final class SiteThemePackageGuard
         if (! isset($files['resources/views/theme/'.$id.'/home.blade.php'])) {
             $this->storage->fail('missing_home');
         }
-        $expectedPages = $this->pages(array_values($files), $id);
+        $includeTopics = isset($package['exported_with']['contracts']['topic-view']);
+        $expectedPages = $this->pages(array_values($files), $id, $includeTopics);
         if (count($package['pages']) !== 2) {
             $this->storage->fail('invalid_package');
         }
@@ -303,6 +352,13 @@ final class SiteThemePackageGuard
                 $this->storage->fail('invalid_package');
             }
         }
+        if (array_key_exists('topic', $manifest)) {
+            try {
+                TopicTemplateCatalog::validateDeclaration($manifest['topic']);
+            } catch (\InvalidArgumentException) {
+                $this->storage->fail('invalid_package');
+            }
+        }
         if (array_key_exists('distribution', $manifest)) {
             $this->distributionMetadata($manifest['distribution']);
         }
@@ -326,12 +382,12 @@ final class SiteThemePackageGuard
     }
 
     /** @return array{provided:list<string>,fallback:list<string>} */
-    public function pages(array $files, string $id): array
+    public function pages(array $files, string $id, bool $includeTopics = true): array
     {
         $paths = array_column($files, 'path');
         $pages = ['provided' => [], 'fallback' => []];
-        foreach (self::PAGES as $page) {
-            $kind = in_array('resources/views/theme/'.$id.'/'.$page.'.blade.php', $paths, true) ? 'provided' : 'fallback';
+        foreach ($includeTopics ? self::PAGES : self::LEGACY_PAGES as $page) {
+            $kind = in_array('resources/views/theme/'.$id.'/'.(self::PAGE_PATHS[$page] ?? $page.'.blade.php'), $paths, true) ? 'provided' : 'fallback';
             $pages[$kind][] = $page;
         }
 
@@ -405,7 +461,7 @@ final class SiteThemePackageGuard
             $this->storage->fail('incompatible', ['component' => 'site-theme-view-resolver']);
         }
         foreach (array_keys($requires['contracts']) as $contract) {
-            if ($contract !== 'site-theme-view-resolver') {
+            if (! isset(self::CONTRACTS[$contract]) || ($requires['contracts'][$contract] ?? null) !== self::CONTRACTS[$contract]) {
                 $this->storage->fail('incompatible', ['component' => (string) $contract]);
             }
         }
@@ -432,11 +488,21 @@ final class SiteThemePackageGuard
             }
         }
         foreach ($package['pages']['fallback'] as $page) {
-            $dependencies['views'][] = 'site.'.$page;
+            $dependencies['views'][] = 'site.'.(isset(self::PAGE_PATHS[$page]) ? str_replace('/', '.', substr(self::PAGE_PATHS[$page], 0, -10)) : $page);
         }
         $risks = [];
         $paths = array_column($package['files'], 'path');
         $id = $package['theme']['id'];
+        if (isset($manifest['topic'])) {
+            foreach ($manifest['topic']['layouts'] as $layout) {
+                $reference = str_starts_with($layout['view'], 'site.') ? $layout['view'] : 'theme.'.$id.'.'.str_replace('/', '.', substr($layout['view'], 0, -10));
+                if (! $this->dependencyExists('views', $reference, $id, $paths)) {
+                    $this->storage->fail('missing_dependency', ['dependency' => 'views: '.$reference]);
+                }
+                $dependencies['views'][] = $reference;
+            }
+            $dependencies['views'][] = $manifest['topic']['homepage_module']['view'];
+        }
         foreach ($package['files'] as $file) {
             if (! str_ends_with($file['path'], '.blade.php')) {
                 continue;

@@ -19,14 +19,14 @@ class TrustedProxyConfigurationTest extends TestCase
 {
     public function test_admin_login_urls_respect_forwarded_prefix_from_trusted_proxy(): void
     {
-        config(['trustedproxy.proxies' => '*']);
+        config(['trustedproxy.proxies' => 'REMOTE_ADDR']);
         config(['session.driver' => 'array']);
         config(['geoflow.hosted_sites.primary_hosts' => ['geo.example.com']]);
 
         $loginPath = '/'.ltrim((string) app('router')->getRoutes()->getByName('admin.login')?->uri(), '/');
         $expectedLoginUrl = 'https://geo.example.com/docs'.$loginPath;
 
-        $this->get($loginPath, [
+        $this->withServerVariables(['REMOTE_ADDR' => '172.18.0.3'])->get($loginPath, [
             'HTTP_X_FORWARDED_PROTO' => 'https',
             'HTTP_X_FORWARDED_HOST' => 'geo.example.com',
             'HTTP_X_FORWARDED_PREFIX' => '/docs',
@@ -38,12 +38,12 @@ class TrustedProxyConfigurationTest extends TestCase
 
     public function test_trusted_public_scheme_and_port_generate_canonical_https_urls(): void
     {
-        config(['trustedproxy.proxies' => '*']);
+        config(['trustedproxy.proxies' => 'REMOTE_ADDR']);
         config(['session.driver' => 'array']);
         config(['geoflow.hosted_sites.primary_hosts' => ['geo.example.com']]);
         $loginPath = '/'.ltrim((string) app('router')->getRoutes()->getByName('admin.login')?->uri(), '/');
 
-        $this->get($loginPath, [
+        $this->withServerVariables(['REMOTE_ADDR' => '172.18.0.3'])->get($loginPath, [
             'HTTP_X_FORWARDED_PROTO' => 'https',
             'HTTP_X_FORWARDED_HOST' => 'geo.example.com',
             'HTTP_X_FORWARDED_PORT' => '443',
@@ -52,11 +52,28 @@ class TrustedProxyConfigurationTest extends TestCase
             ->assertSee('action="https://geo.example.com'.$loginPath.'"', false)
             ->assertDontSee('https://geo.example.com:80', false);
 
-        $this->get($loginPath, [
+        $this->withServerVariables(['REMOTE_ADDR' => '172.18.0.3'])->get($loginPath, [
             'HTTP_X_FORWARDED_PROTO' => 'https',
             'HTTP_X_FORWARDED_HOST' => 'geo.example.com',
             'HTTP_X_FORWARDED_PORT' => '8443',
         ])->assertSee('action="https://geo.example.com:8443'.$loginPath.'"', false);
+    }
+
+    public function test_untrusted_proxy_cannot_override_the_public_origin(): void
+    {
+        config(['trustedproxy.proxies' => ['10.0.0.1']]);
+        config(['session.driver' => 'array']);
+        config(['geoflow.hosted_sites.primary_hosts' => ['geo.example.com']]);
+        $loginPath = '/'.ltrim((string) app('router')->getRoutes()->getByName('admin.login')?->uri(), '/');
+
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.25'])
+            ->get('http://geo.example.com'.$loginPath, [
+                'HTTP_X_FORWARDED_PROTO' => 'https',
+                'HTTP_X_FORWARDED_HOST' => 'attacker.example.com',
+                'HTTP_X_FORWARDED_PORT' => '443',
+            ])
+            ->assertSee('action="http://geo.example.com'.$loginPath.'"', false)
+            ->assertDontSee('attacker.example.com', false);
     }
 
     public function test_wrapped_untrusted_host_exception_is_a_quiet_api_not_found(): void

@@ -4,10 +4,28 @@ namespace App\Http\Controllers\Site;
 
 use App\Http\Controllers\Controller;
 use App\Models\HostedSiteProfile;
+use App\Models\Topic;
+use App\Services\Site\ArticlePermalinkService;
+use App\Services\Site\SitemapManifest;
 use App\Services\Site\SiteScopedArticleQuery;
 use App\Services\Site\SiteUrlGenerator;
+use App\Services\Site\UrlChangeService;
+use App\Services\Topics\TopicReadModel;
+use App\Services\Topics\TopicService;
+use App\Services\Topics\TopicSitemapManifest;
+use App\Services\Topics\TopicSiteSettings;
+use App\Services\Topics\TopicViewBuilder;
+use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\CurrentSite;
+use App\Support\Site\RobotsPolicy;
+use App\Support\Site\SiteSettingsBag;
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class SiteDiscoveryController extends Controller
 {
@@ -15,65 +33,179 @@ final class SiteDiscoveryController extends Controller
         private readonly CurrentSite $currentSite,
         private readonly SiteScopedArticleQuery $siteArticles,
         private readonly SiteUrlGenerator $urls,
+        private readonly ArticlePermalinkService $articlePermalinks,
     ) {}
 
     public function robots(): Response
     {
-        $lines = ['User-agent: *'];
-        if (! $this->indexingAllowed()) {
-            $lines[] = 'Disallow: /';
-        } else {
-            $lines[] = 'Allow: /';
-            $lines[] = 'Sitemap: '.$this->urls->sitemap();
+        return response(RobotsPolicy::render(
+            $this->indexingAllowed(),
+            $this->urls->sitemap(),
+            $this->urls->sitemapText(),
+        ), 200, [
+            'Content-Type' => 'text/plain; charset=UTF-8',
+            'Cache-Control' => 'no-cache, private',
+        ]);
+    }
+
+    public function llms(): Response
+    {
+        $settings = SiteSettingsBag::all();
+        $siteName = $this->textMapLine((string) ($settings['site_name'] ?? config('geoflow.site_name', config('app.name'))));
+        $description = $this->textMapLine((string) ($settings['site_description'] ?? config('geoflow.site_description', '')));
+        $lines = [
+            '# '.($siteName !== '' ? $siteName : 'GEOFlow Site'),
+            '',
+        ];
+
+        if ($description !== '') {
+            $lines[] = '> '.$description;
+            $lines[] = '';
         }
 
-        return response(implode("\n", $lines)."\n", 200, [
-            'Content-Type' => 'text/plain; charset=UTF-8',
-        ]);
+        $lines[] = '## Site';
+        $lines[] = '';
+        $lines[] = '- [Home]('.$this->urls->home().'): The public site homepage.';
+        $lines[] = '- [XML Sitemap]('.$this->urls->sitemap().'): Canonical URLs and verified last modification timestamps for search engines.';
+        $lines[] = '- [Text Sitemap]('.$this->urls->sitemapText().'): One canonical URL per line for simple sitemap consumers.';
+        $lines[] = '';
+        $lines[] = '## Articles';
+        $lines[] = '';
+
+        if (! $this->indexingAllowed()) {
+            $lines[] = 'No articles are currently available for indexing.';
+        } else {
+            $articles = $this->withPermalinkRelations($this->siteArticles->query())
+                ->orderByDesc('published_at')
+                ->orderByDesc('id')
+                ->limit(200)
+                ->get(['id', 'title', 'slug', 'excerpt', 'meta_description', 'content', 'category_id', 'created_at', 'published_at', 'updated_at']);
+
+            if ($articles->isEmpty()) {
+                $lines[] = 'No articles have been published yet.';
+            } else {
+                foreach ($articles as $article) {
+                    $title = $this->textMapLine((string) $article->title);
+                    $summary = $this->textMapLine((string) ($article->excerpt ?: $article->meta_description));
+                    if ($summary === '') {
+                        $summary = $this->textMapLine(ArticleHtmlPresenter::cardSummary($article, 180));
+                    }
+
+                    $notes = array_values(array_filter([
+                        $summary,
+                        $article->published_at ? 'Published: '.$article->published_at->utc()->toAtomString() : null,
+                        $article->updated_at ? 'Updated: '.$article->updated_at->utc()->toAtomString() : null,
+                    ]));
+                    $line = '- ['.$this->textMapLinkLabel($title !== '' ? $title : (string) $article->slug).']('.$this->urls->article($article).')';
+                    if ($notes !== []) {
+                        $line .= ': '.implode(' ', $notes);
+                    }
+                    $lines[] = $line;
+                }
+            }
+        }
+
+        if ($this->indexingAllowed()) {
+            $topics = app(TopicReadModel::class)->all($this->topicSiteKey(), [], 200);
+            if ($topics->isNotEmpty()) {
+                $lines[] = '';
+                $lines[] = '## Topics';
+                $lines[] = '';
+                foreach ($topics as $topic) {
+                    $lines[] = '- ['.$this->textMapLinkLabel($topic['title']).']('.$topic['url'].'): '.$this->textMapLine(app(TopicReadModel::class)->description($topic)).' Updated: '.($topic['modified_at'] ?? '');
+                }
+            }
+        }
+
+        return $this->textResponse(array_values(array_unique($lines)));
+    }
+
+    public function sitemapText(): Response
+    {
+        $lines = [$this->urls->home()];
+        if ($this->indexingAllowed()) {
+            $articles = $this->withPermalinkRelations($this->siteArticles->query())
+                ->orderByDesc('published_at')
+                ->orderByDesc('id')
+                ->get(['id', 'slug', 'category_id', 'created_at', 'updated_at']);
+            foreach ($articles as $article) {
+                $lines[] = $this->urls->article($article);
+            }
+        }
+
+        if ($this->indexingAllowed()) {
+            foreach (app(TopicReadModel::class)->all($this->topicSiteKey()) as $topic) {
+                $lines[] = $topic['url'];
+            }if (count($lines) > 1 && app(TopicReadModel::class)->all($this->topicSiteKey(), [], 1)->isNotEmpty()) {
+                $lines[] = $this->urls->topics();
+            }
+        }
+
+        return $this->textResponse(array_values(array_unique($lines)));
     }
 
     public function sitemap(): Response
     {
         if ($this->currentSite->isHosted()) {
-            return $this->hostedSitemapIndex();
+            $articleCount = $this->indexingAllowed() ? $this->siteArticles->query()->count() : 0;
+
+            return $this->sitemapIndex($articleCount);
         }
 
         $urls = [];
         if ($this->indexingAllowed()) {
+            $articleCount = $this->siteArticles->query()->count();
+            if ($articleCount + 1 + $this->topicUrlCount() > $this->primarySitemapInlineLimit()) {
+                return $this->sitemapIndex($articleCount);
+            }
+
             $urls[] = ['loc' => $this->urls->home(), 'lastmod' => null];
-            $articles = $this->siteArticles->query()
+            $articles = $this->withPermalinkRelations($this->siteArticles->query())
                 ->orderByDesc('published_at')
                 ->orderByDesc('id')
-                ->limit(5000)
-                ->get(['id', 'slug', 'updated_at']);
+                ->limit($this->primarySitemapInlineLimit() - 1)
+                ->get(['id', 'slug', 'category_id', 'created_at', 'updated_at']);
+            $changedAt = $this->urlChangedAt();
             foreach ($articles as $article) {
                 $urls[] = [
                     'loc' => $this->urls->article($article),
-                    'lastmod' => $article->updated_at?->toAtomString(),
+                    'lastmod' => $this->lastmod($article->updated_at, $changedAt),
                 ];
             }
         }
 
-        $body = '<?xml version="1.0" encoding="UTF-8"?>'."\n";
-        $body .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'."\n";
-        foreach ($urls as $url) {
-            $body .= '  <url><loc>'.htmlspecialchars($url['loc'], ENT_XML1 | ENT_QUOTES, 'UTF-8').'</loc>';
-            if ($url['lastmod'] !== null) {
-                $body .= '<lastmod>'.htmlspecialchars($url['lastmod'], ENT_XML1 | ENT_QUOTES, 'UTF-8').'</lastmod>';
+        if ($this->indexingAllowed()) {
+            foreach (app(TopicReadModel::class)->all($this->topicSiteKey()) as $topic) {
+                $urls[] = ['loc' => $topic['url'], 'lastmod' => $topic['modified_at']];
+            }if ($this->topicUrlCount() > 0) {
+                $urls[] = ['loc' => $this->urls->topics(), 'lastmod' => null];
             }
-            $body .= '</url>'."\n";
         }
-        $body .= '</urlset>'."\n";
 
-        return response($body, 200, ['Content-Type' => 'application/xml; charset=UTF-8']);
+        return $this->urlSetResponse($urls);
     }
 
-    public function sitemapShard(int $page): Response
+    public function sitemapShard(int $page): Response|StreamedResponse
     {
-        abort_unless($this->currentSite->isHosted() && $page > 0, 404);
+        abort_unless($page > 0, 404);
 
         $articleCount = $this->indexingAllowed() ? $this->siteArticles->query()->count() : 0;
-        $pageCount = $this->hostedSitemapPageCount($articleCount);
+        if ($this->currentSite->isPrimary()
+            && $page === 1
+            && $articleCount + 1 + $this->topicUrlCount() <= $this->primarySitemapInlineLimit()) {
+            return $this->sitemap();
+        }
+
+        $site = $this->manifestSite();
+        $manifests = app(SitemapManifest::class);
+        $manifest = $manifests->current($site);
+        abort_unless(
+            $this->currentSite->isHosted()
+                || $manifest !== null
+                || $articleCount + 1 > $this->primarySitemapInlineLimit(),
+            404,
+        );
+        $pageCount = $manifest['pages'] ?? $this->sitemapPageCount($articleCount);
         abort_if($page > $pageCount, 404);
 
         $urls = [];
@@ -82,29 +214,100 @@ final class SiteDiscoveryController extends Controller
                 $urls[] = ['loc' => $this->urls->home(), 'lastmod' => null];
             }
             $urlLimit = $this->sitemapUrlLimit();
-            $offset = max(0, (($page - 1) * $urlLimit) - 1);
-            $limit = $urlLimit - ($page === 1 ? 1 : 0);
-            $articles = $this->siteArticles->query()
-                ->orderByDesc('published_at')
-                ->orderByDesc('id')
-                ->offset($offset)
-                ->limit($limit)
-                ->get(['id', 'slug', 'updated_at']);
-            foreach ($articles as $article) {
-                $urls[] = [
-                    'loc' => $this->urls->article($article),
-                    'lastmod' => $article->updated_at?->toAtomString(),
-                ];
+            if ($manifest === null && $articleCount <= 500) {
+                $manifests->buildStep($site);
+                $manifest = $manifests->current($site);
             }
+            if ($manifest === null) {
+                return response('', 503, ['Retry-After' => '60', 'Cache-Control' => 'no-store']);
+            }
+            abort_unless(isset($manifest['boundaries'][$page - 1]), 404);
+            $limit = $urlLimit - ($page === 1 ? 1 : 0);
+            $articles = $this->withPermalinkRelations($this->siteArticles->query())
+                ->orderBy('articles.id')
+                ->where('articles.id', '>', $manifest['boundaries'][$page - 1])
+                ->select(['id', 'slug', 'category_id', 'created_at', 'updated_at']);
+            if (isset($manifest['boundaries'][$page])) {
+                $articles->where('articles.id', '<=', $manifest['boundaries'][$page]);
+            }
+            $changedAt = $this->urlChangedAt();
+
+            return response()->stream(function () use ($articles, $urls, $limit, $changedAt): void {
+                echo '<?xml version="1.0" encoding="UTF-8"?>'."\n".'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'."\n";
+                foreach ($urls as $url) {
+                    echo $this->urlXml($url);
+                }
+                foreach ($articles->lazyById(500, 'articles.id', 'id')->take($limit) as $article) {
+                    echo $this->urlXml(['loc' => $this->urls->article($article), 'lastmod' => $this->lastmod($article->updated_at, $changedAt)]);
+                }
+                echo '</urlset>'."\n";
+            }, 200, ['Content-Type' => 'application/xml; charset=UTF-8', 'Cache-Control' => 'no-cache, private']);
         }
 
         return $this->urlSetResponse($urls);
     }
 
-    private function hostedSitemapIndex(): Response
+    public function topicSitemapShard(int $page): Response
     {
-        $articleCount = $this->indexingAllowed() ? $this->siteArticles->query()->count() : 0;
-        $pageCount = $this->hostedSitemapPageCount($articleCount);
+        abort_unless($this->indexingAllowed() && $page > 0, 404);
+        $site = $this->topicSiteKey();
+        $manifest = app(TopicSitemapManifest::class)->current($site);
+        if ($manifest === null) {
+            return response('', 503, ['Retry-After' => '60', 'Cache-Control' => 'no-store']);
+        }
+        abort_unless(isset($manifest['boundaries'][$page - 1]) && app(TopicSiteSettings::class)->get($site)['enabled'], 404);
+        $query = Topic::query()->where('site_key', $site)->whereNotNull('public_revision_id')->where('id', '>', $manifest['boundaries'][$page - 1])->with('publicRevision.articles')->orderBy('id');
+        $query->where('id', '<=', $manifest['boundaries'][$page] ?? $manifest['after']);
+        abort_if(app(TopicReadModel::class)->all($site, [], 1)->isEmpty(), 404);
+        $urls = [];
+        if ($page === 1) {
+            $urls[] = ['loc' => $this->urls->topics(), 'lastmod' => $manifest['lastmod']];
+        }
+        foreach ($query->lazy(100)->chunk(100) as $rows) {
+            app(TopicViewBuilder::class)->withReadBatch($site, $rows, function () use ($rows, &$urls): void {
+                foreach ($rows as $topic) {
+                    $view = app(TopicService::class)->publicView($topic);
+                    if ($view) {
+                        $urls[] = ['loc' => $view['url'], 'lastmod' => $view['modified_at']];
+                    }
+                }
+            });
+        }
+
+        return $this->urlSetResponse($urls);
+    }
+
+    private function topicSiteKey(): string
+    {
+        return app(TopicSiteSettings::class)->currentKey();
+    }
+
+    private function topicUrlCount(): int
+    {
+        if (! Schema::hasTable('topics') || ! app(TopicSiteSettings::class)->get($this->topicSiteKey())['enabled']) {
+            return 0;
+        }
+        if (app(TopicReadModel::class)->all($this->topicSiteKey(), [], 1)->isEmpty()) {
+            return 0;
+        }
+        $manifest = app(TopicSitemapManifest::class)->current($this->topicSiteKey());
+        if ($manifest) {
+            return $manifest['count'] > 0 ? $manifest['count'] + 1 : 0;
+        }
+        $count = Topic::query()->where('site_key', $this->topicSiteKey())->whereNotNull('public_revision_id')->count();
+
+        return $count > 0 ? $count + 1 : 0;
+    }
+
+    private function sitemapIndex(int $articleCount): Response
+    {
+        $pageCount = $this->sitemapPageCount($articleCount);
+        if ($articleCount > 500) {
+            $manifest = app(SitemapManifest::class)->current($this->manifestSite());
+            if ($manifest !== null) {
+                $pageCount = $manifest['pages'];
+            }
+        }
         $body = '<?xml version="1.0" encoding="UTF-8"?>'."\n";
         $body .= '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'."\n";
         if ($this->indexingAllowed()) {
@@ -114,6 +317,14 @@ final class SiteDiscoveryController extends Controller
                     ENT_XML1 | ENT_QUOTES,
                     'UTF-8'
                 ).'</loc></sitemap>'."\n";
+            }
+        }
+        if ($this->indexingAllowed()) {
+            $manifest = app(TopicSitemapManifest::class)->current($this->topicSiteKey());
+            if ($this->topicUrlCount() > 0) {
+                for ($page = 1; $page <= ($manifest['pages'] ?? max(1, (int) ceil($this->topicUrlCount() / $this->sitemapUrlLimit()))); $page++) {
+                    $body .= '  <sitemap><loc>'.htmlspecialchars($this->urls->url('/sitemaps/topics-'.$page.'.xml'), ENT_XML1 | ENT_QUOTES, 'UTF-8').'</loc></sitemap>'."\n";
+                }
             }
         }
         $body .= '</sitemapindex>'."\n";
@@ -130,11 +341,7 @@ final class SiteDiscoveryController extends Controller
         $body = '<?xml version="1.0" encoding="UTF-8"?>'."\n";
         $body .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'."\n";
         foreach ($urls as $url) {
-            $body .= '  <url><loc>'.htmlspecialchars($url['loc'], ENT_XML1 | ENT_QUOTES, 'UTF-8').'</loc>';
-            if ($url['lastmod'] !== null) {
-                $body .= '<lastmod>'.htmlspecialchars($url['lastmod'], ENT_XML1 | ENT_QUOTES, 'UTF-8').'</lastmod>';
-            }
-            $body .= '</url>'."\n";
+            $body .= $this->urlXml($url);
         }
         $body .= '</urlset>'."\n";
 
@@ -144,9 +351,23 @@ final class SiteDiscoveryController extends Controller
         ]);
     }
 
-    private function hostedSitemapPageCount(int $articleCount): int
+    private function sitemapPageCount(int $articleCount): int
     {
         return max(1, (int) ceil(($articleCount + 1) / $this->sitemapUrlLimit()));
+    }
+
+    private function primarySitemapInlineLimit(): int
+    {
+        return min(5000, $this->sitemapUrlLimit());
+    }
+
+    private function withPermalinkRelations(Builder $query): Builder
+    {
+        if ($this->articlePermalinks->currentPatternUses('category')) {
+            $query->with('category:id,slug');
+        }
+
+        return $query;
     }
 
     private function sitemapUrlLimit(): int
@@ -158,5 +379,54 @@ final class SiteDiscoveryController extends Controller
     {
         return ! $this->currentSite->isHosted()
             || $this->currentSite->profile()?->indexing_status === HostedSiteProfile::INDEXING_INDEX;
+    }
+
+    private function manifestSite(): array
+    {
+        return app(UrlChangeService::class)->sites($this->currentSite->isHosted() ? 'hosted' : 'primary', $this->currentSite->profile()?->distribution_channel_id)[0];
+    }
+
+    private function urlXml(array $url): string
+    {
+        return '  <url><loc>'.htmlspecialchars($url['loc'], ENT_XML1 | ENT_QUOTES, 'UTF-8').'</loc>'
+            .($url['lastmod'] !== null ? '<lastmod>'.htmlspecialchars($url['lastmod'], ENT_XML1 | ENT_QUOTES, 'UTF-8').'</lastmod>' : '').'</url>'."\n";
+    }
+
+    private function urlChangedAt(): ?CarbonImmutable
+    {
+        if (! Schema::hasTable('url_change_scope_states')) {
+            return null;
+        }
+        $scope = $this->currentSite->isHosted() ? 'hosted:'.$this->currentSite->profile()?->distribution_channel_id : 'primary';
+        $value = DB::table('url_change_scope_states')->where('scope_key', $scope)->value('url_changed_at');
+
+        return $value ? CarbonImmutable::parse($value) : null;
+    }
+
+    private function lastmod(?CarbonInterface $updated, ?CarbonImmutable $urlChanged): ?string
+    {
+        return ($urlChanged && (! $updated || $urlChanged->gt($updated)) ? $urlChanged : $updated)?->toAtomString();
+    }
+
+    /** @param list<string> $lines */
+    private function textResponse(array $lines): Response
+    {
+        return response(implode("\n", $lines)."\n", 200, [
+            'Content-Type' => 'text/plain; charset=UTF-8',
+            'Cache-Control' => 'no-cache, private',
+        ]);
+    }
+
+    private function textMapLine(string $value): string
+    {
+        $value = trim(strip_tags($value));
+        $value = preg_replace('/\s+/u', ' ', $value);
+
+        return trim(is_string($value) ? $value : '');
+    }
+
+    private function textMapLinkLabel(string $value): string
+    {
+        return str_replace(['\\', '[', ']'], ['\\\\', '\\[', '\\]'], $this->textMapLine($value));
     }
 }

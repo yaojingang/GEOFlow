@@ -1,6 +1,19 @@
 <?php
 
 return [
+    'topics' => 'Topic Management',
+    'topic_create' => 'Create Topic',
+    'topic_articles' => 'Select Topic Articles',
+    'topic_settings' => 'Topic Settings',
+    'topic_batch_create' => 'Create Topic Batch',
+    'topic_batch_detail' => 'Topic Batch Details',
+    'topic_run_detail' => 'Topic Generation Run',
+    'topic_path' => 'Topic URL',
+    'topic_edit' => 'Edit Topic',
+    'topic_preview' => 'Topic Preview',
+    'topic_history' => 'Topic Version History',
+    'topic_revision_preview' => 'Topic Version Preview',
+
     'theme_package_upload' => 'Import theme',
     'theme_package_inspection' => 'Inspect theme package',
     'theme_package_preview' => 'Preview theme',
@@ -13,6 +26,7 @@ return [
     'ai_visibility' => 'AI Visibility',
     'lead_analytics' => 'Lead Analytics',
     'distribution_analytics' => 'Distribution Analytics',
+    'link_pool' => 'Internal Link Campaigns',
     'tasks' => 'Task Management',
     'task_workers' => 'Worker Monitor',
     'task_jobs' => 'Task Runs',
@@ -92,6 +106,7 @@ return [
     'browser_clients' => 'Browser Clients',
     'system_updates' => 'System Updates',
     'system_update_detail' => 'Update Details',
+    'updater_operations' => 'Operations and Receipts',
     'system_backup_detail' => 'Backup Details',
     'lead_forms' => 'Conversion Forms',
     'lead_form_create' => 'New Form',

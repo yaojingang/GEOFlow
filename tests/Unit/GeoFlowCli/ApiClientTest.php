@@ -17,6 +17,29 @@ use PHPUnit\Framework\TestCase;
 class ApiClientTest extends TestCase
 {
     #[Test]
+    public function recovery_epoch_discovery_is_forwarded_only_to_authenticated_writes(): void
+    {
+        $factory = new HttpFactory;
+        $factory->fake(['*/capabilities' => $factory->response(['success' => true, 'data' => ['recovery' => ['supported' => true, 'epoch' => str_repeat('a', 32)]]]), '*' => $factory->response(['success' => true])]);
+        $client = new ApiClient($factory, 'https://api.example.com', 'secret-token', 30);
+        $client->send('capabilities');
+        $client->send('task.update', ['task' => 4], body: ['name' => 'changed']);
+        $client->send('catalog');
+        $this->assertTrue($factory->recorded()[1][0]->hasHeader('X-GEOFlow-Recovery-Epoch', str_repeat('a', 32)));
+        $this->assertFalse($factory->recorded()[2][0]->hasHeader('X-GEOFlow-Recovery-Epoch'));
+    }
+
+    #[Test]
+    public function malformed_recovery_discovery_cannot_enable_writes(): void
+    {
+        $factory = new HttpFactory;
+        $factory->fake(['*' => $factory->response(['success' => true, 'data' => ['recovery' => ['supported' => true, 'epoch' => 'bad-epoch']]])]);
+        $client = new ApiClient($factory, 'https://api.example.com', 'secret-token', 30);
+        $this->expectException(CliException::class);
+        $client->send('capabilities');
+    }
+
+    #[Test]
     public function authenticated_request_preserves_success_json_and_expected_headers(): void
     {
         $factory = new HttpFactory;

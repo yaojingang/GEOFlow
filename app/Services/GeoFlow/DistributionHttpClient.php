@@ -2,10 +2,12 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Exceptions\DistributionAcknowledgedResponseException;
 use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
 use App\Services\Outbound\SafeOutboundHttpClient;
+use App\Support\Site\ArticlePermalinkPolicy;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Response;
 use RuntimeException;
@@ -163,10 +165,27 @@ class DistributionHttpClient
         }
 
         $path = '/geoflow-agent/v1/site-settings';
+        $settings ??= $channel->targetSiteSettingsPayload();
+        $policy = ArticlePermalinkPolicy::fromRaw($settings[ArticlePermalinkPolicy::SETTING_KEY] ?? null);
+        $capabilities = $channel->frontendCapabilitiesCache();
+        if ($policy->currentPattern !== ArticlePermalinkPolicy::DEFAULT_PATTERN
+            && (! $capabilities['supports_article_permalink_policy']
+                || ! in_array(1, $capabilities['article_permalink_schema_versions'], true))) {
+            throw new RuntimeException(__('article_permalink.errors.agent_capability_required'));
+        }
 
-        return $this->sendChannelSignedJson($channel, $secret, $path, 'site.settings.update', $idempotencyKey ?: 'site-settings-channel-'.(int) $channel->id.'-'.time(), [
-            'settings' => $settings ?? $channel->targetSiteSettingsPayload(),
+        $result = $this->sendChannelSignedJson($channel, $secret, $path, 'site.settings.update', $idempotencyKey ?: 'site-settings-channel-'.(int) $channel->id.'-'.time(), [
+            'settings' => $settings,
+            'expected_article_permalink_revision' => (int) $capabilities['current_article_permalink_revision'],
         ], '目标站点设置同步');
+
+        if (isset($result['article_permalink_revision'])) {
+            $capabilities['current_article_permalink_revision'] = max(0, (int) $result['article_permalink_revision']);
+            $capabilities['current_article_permalink_pattern'] = trim((string) ($result['article_permalink_pattern'] ?? $policy->currentPattern));
+            $channel->fillFrontendCapabilitiesCache($capabilities)->save();
+        }
+
+        return $result;
     }
 
     /**
@@ -182,29 +201,29 @@ class DistributionHttpClient
 
         $endpoint = $this->endpoint($channel, $path);
         $response = $this->postSignedJson($secret, $endpoint, $path, $body, $event, $idempotencyKey, 30);
-        $failedResponse = $response;
-
+        $resolvedEndpoint = null;
         if ($response->status() === 404 && $this->canUseIndexPhpFallback($channel)) {
             $fallbackBaseUrl = $this->indexPhpBaseUrl($channel);
-            $fallbackEndpoint = $this->indexPhpEndpoint($channel, $path);
-            $fallbackResponse = $this->postSignedJson($secret, $fallbackEndpoint, $path, $body, $event, $idempotencyKey, 30);
-            $failedResponse = $fallbackResponse;
-
+            $fallbackResponse = $this->postSignedJson($secret, $this->indexPhpEndpoint($channel, $path), $path, $body, $event, $idempotencyKey, 30);
+            $response = $fallbackResponse;
             if (! $fallbackResponse->failed()) {
-                $channel->forceFill(['endpoint_url' => $fallbackBaseUrl])->save();
-                $secret->forceFill(['last_used_at' => now()])->save();
-
-                return $this->decodeJson($fallbackResponse);
+                $resolvedEndpoint = $fallbackBaseUrl;
             }
         }
-
-        $secret->forceFill(['last_used_at' => now()])->save();
-
-        if ($failedResponse->failed()) {
-            throw new DistributionHttpException($this->failureMessage($operation, $failedResponse), $failedResponse->status());
+        if ($response->failed()) {
+            throw new DistributionHttpException($this->failureMessage($operation, $response), $response->status());
+        }
+        $result = $this->decodeJson($response);
+        try {
+            if ($resolvedEndpoint !== null) {
+                $channel->forceFill(['endpoint_url' => $resolvedEndpoint])->save();
+            }
+            $secret->forceFill(['last_used_at' => now()])->save();
+        } catch (\Throwable $exception) {
+            throw new DistributionAcknowledgedResponseException($result, $exception);
         }
 
-        return $this->decodeJson($response);
+        return $result;
     }
 
     private function postSignedJson(DistributionChannelSecret $secret, string $endpoint, string $path, string $body, string $event, string $idempotencyKey, int $timeout): Response

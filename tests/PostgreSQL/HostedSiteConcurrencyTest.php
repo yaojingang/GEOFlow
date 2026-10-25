@@ -3,6 +3,7 @@
 namespace Tests\PostgreSQL;
 
 use App\Models\Article;
+use App\Models\ArticleDistribution;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
@@ -10,6 +11,9 @@ use App\Models\HostedSiteAllocationRequest;
 use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
 use App\Models\Task;
+use App\Services\GeoFlow\ArticleAiQualityRolloutPolicy;
+use App\Services\GeoFlow\ArticlePublicationEligibilityService;
+use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\HostedSites\HostedSiteAllocator;
 use App\Services\HostedSites\HostedSiteLifecycleService;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
@@ -95,6 +99,34 @@ class HostedSiteConcurrencyTest extends PostgreSqlTestCase
         $this->assertSame(0, DB::table('article_distributions')->whereIn('status', ['queued', 'sending'])->count());
     }
 
+    public function test_postgresql_hosted_send_and_allocator_keep_channel_before_task_locks(): void
+    {
+        $request = $this->fixtures(dailyLimit: 3, articleCount: 1)[0];
+        app(HostedSiteAllocator::class)->allocate($request);
+        app(ArticleAiQualityRolloutPolicy::class)->ensureState();
+        $distributionId = (int) DB::table('article_distributions')->sole()->id;
+        $barrier = tempnam(sys_get_temp_dir(), 'hosted-send-locks-');
+        try {
+            $results = $this->runConcurrentActions([
+                ['action' => 'fenced_send', 'id' => $distributionId, 'barrier' => $barrier],
+                ['action' => 'contended_allocate', 'id' => (int) $request->id, 'barrier' => $barrier],
+            ]);
+            $this->assertSame([0, 0], array_column($results, 'exit'), json_encode($results));
+            $this->assertSame('sent', $results[0]['result']);
+            DB::purge('pgsql');
+            DB::reconnect('pgsql');
+            $this->assertSame('synced', DB::table('article_distributions')->where('id', $distributionId)->value('status'));
+            $this->assertSame(1, DB::table('article_distributions')->where('id', $distributionId)->value('attempt_count'));
+            $this->assertSame(HostedSiteArticleAssignment::STATUS_PUBLISHED, HostedSiteArticleAssignment::query()->sole()->status);
+        } finally {
+            foreach ([$barrier, $barrier.'.send', $barrier.'.task'] as $path) {
+                if (is_file($path)) {
+                    unlink($path);
+                }
+            }
+        }
+    }
+
     /** @param list<int> $requestIds @return list<array{exit:int,result:string}> */
     private function runConcurrent(array $requestIds): array
     {
@@ -105,7 +137,7 @@ class HostedSiteConcurrencyTest extends PostgreSqlTestCase
     }
 
     /**
-     * @param  list<array{action:string,id:int,hostname?:string}>  $actions
+     * @param  list<array{action:string,id:int,hostname?:string,barrier?:string}>  $actions
      * @return list<array{exit:int,result:string}>
      */
     private function runConcurrentActions(array $actions): array
@@ -132,7 +164,43 @@ class HostedSiteConcurrencyTest extends PostgreSqlTestCase
                     DB::purge('pgsql');
                     DB::reconnect('pgsql');
                     DB::statement("SET lock_timeout TO '5s'");
-                    if ($action['action'] === 'archive') {
+                    if ($action['action'] === 'fenced_send') {
+                        $inSend = false;
+                        $taskObserved = false;
+                        DB::listen(function ($query) use ($action, &$inSend, &$taskObserved): void {
+                            if (! $inSend && str_contains($query->sql, 'article_ai_quality_rollouts') && str_contains($query->sql, 'for share')) {
+                                $inSend = true;
+                                file_put_contents($action['barrier'].'.send', 'ready');
+                                usleep(200000);
+                            } elseif ($inSend && ! $taskObserved && str_contains($query->sql, 'from "tasks"') && str_contains($query->sql, 'for update')) {
+                                $taskObserved = true;
+                                file_put_contents($action['barrier'].'.task', 'ready');
+                                usleep(200000);
+                            }
+                        });
+                        $delivery = ArticleDistribution::query()->findOrFail($action['id']);
+                        $sent = app(DistributionOrchestrator::class)->process($delivery);
+                        file_put_contents($resultPath, $sent ? 'sent' : 'cancelled');
+                    } elseif ($action['action'] === 'contended_allocate') {
+                        $deadline = microtime(true) + 4;
+                        while (! is_file($action['barrier'].'.send') && microtime(true) < $deadline) {
+                            usleep(10000);
+                        }
+                        if (! is_file($action['barrier'].'.send')) {
+                            throw new \RuntimeException('Sender did not reach the fenced send boundary.');
+                        }
+                        DB::transaction(function () use ($action, $resultPath): void {
+                            $request = HostedSiteAllocationRequest::query()->findOrFail($action['id']);
+                            $channelId = $request->profile->distribution_channel_id;
+                            DistributionChannel::query()->whereKey($channelId)->lockForUpdate()->firstOrFail();
+                            $deadline = microtime(true) + 2;
+                            while (! is_file($action['barrier'].'.task') && microtime(true) < $deadline) {
+                                usleep(10000);
+                            }
+                            $assignment = app(HostedSiteAllocator::class)->allocate($request);
+                            file_put_contents($resultPath, $assignment?->id === null ? 'none' : (string) $assignment->id);
+                        });
+                    } elseif ($action['action'] === 'archive') {
                         $channel = DistributionChannel::query()->findOrFail($action['id']);
                         app(HostedSiteLifecycleService::class)->archive($channel, (string) $action['hostname']);
                         file_put_contents($resultPath, 'archived');
@@ -215,6 +283,7 @@ class HostedSiteConcurrencyTest extends PostgreSqlTestCase
             'prompt_id' => $promptId,
             'ai_model_id' => $aiModelId,
             'status' => 'active',
+            'schedule_enabled' => true,
             'publish_scope' => 'distribution_only',
         ]);
         $task->distributionChannels()->attach($channel->id, [
@@ -243,6 +312,7 @@ class HostedSiteConcurrencyTest extends PostgreSqlTestCase
                 'author_id' => $author->id,
                 'task_id' => $task->id,
                 'status' => 'private',
+                'publication_intent' => 'none',
                 'review_status' => 'approved',
             ]);
             $requests[] = HostedSiteAllocationRequest::query()->create([
@@ -251,6 +321,7 @@ class HostedSiteConcurrencyTest extends PostgreSqlTestCase
                 'hosted_site_profile_id' => $profile->id,
                 'status' => HostedSiteAllocationRequest::STATUS_PENDING,
                 'next_attempt_at' => now(),
+                'workflow_fence' => app(ArticlePublicationEligibilityService::class)->fence($article),
             ]);
         }
 

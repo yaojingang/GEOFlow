@@ -5,6 +5,7 @@
  */
 
 use App\Data\Ai\SystemAiIdentity;
+use App\Jobs\RecoverUrlChanges;
 use App\Models\KnowledgeFactGenerationRun;
 use App\Services\GeoFlow\ArticleMarkdownExportService;
 use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
@@ -12,6 +13,8 @@ use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schedule;
+
+Schedule::job(new RecoverUrlChanges)->everyMinute()->withoutOverlapping(2)->onOneServer();
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -178,6 +181,11 @@ Schedule::command('geoflow:prune-article-exports')
     ->onOneServer()
     ->withoutOverlapping(10);
 
+Schedule::command('geoflow:prune-link-pool')
+    ->hourlyAt(17)
+    ->onOneServer()
+    ->withoutOverlapping(30);
+
 Schedule::command('geoflow:prune-ai-workspace')
     ->dailyAt('02:30')
     ->onOneServer()
@@ -199,3 +207,5 @@ Schedule::command('hosted-sites:reconcile', [
     ->everyFiveMinutes()
     ->onOneServer()
     ->withoutOverlapping(10);
+
+Schedule::command('geoflow:check-topic-temporal-state')->everyFiveMinutes()->onOneServer()->withoutOverlapping(5);

@@ -28,6 +28,7 @@ class HostedSiteAllocationRequest extends Model
         'last_attempt_at',
         'last_error_code',
         'last_error_message',
+        'workflow_fence',
     ];
 
     protected $attributes = [
@@ -43,6 +44,7 @@ class HostedSiteAllocationRequest extends Model
             'hosted_site_profile_id' => 'integer',
             'hosted_site_article_assignment_id' => 'integer',
             'attempt_count' => 'integer',
+            'workflow_fence' => 'array',
             'next_attempt_at' => 'datetime',
             'last_attempt_at' => 'datetime',
         ];

@@ -30,8 +30,11 @@ final class ArticleHandler
                 'review_status' => $this->runtime->requiredOption('status'),
                 'review_note' => trim((string) ($this->runtime->context->options['note'] ?? '')),
                 'risk_override_reason' => trim((string) ($this->runtime->context->options['risk-override-reason'] ?? '')),
+                ...$this->workflowVersionBody(),
             ], idempotencyKey: $this->runtime->idempotencyKey()),
-            'publish' => $this->runtime->send('article.publish', ['article' => $articleId()], body: [], idempotencyKey: $this->runtime->idempotencyKey()),
+            'publish' => $this->runtime->send('article.publish', ['article' => $articleId()], body: array_merge($this->workflowVersionBody(), isset($this->runtime->context->options['risk-override-reason']) ? ['risk_override_reason' => trim((string) $this->runtime->context->options['risk-override-reason'])] : []), idempotencyKey: $this->runtime->idempotencyKey()),
+            'schedule' => $this->runtime->send('article.schedule', ['article' => $articleId()], body: $this->workflowVersionBody(), idempotencyKey: $this->runtime->idempotencyKey()),
+            'hold' => $this->hold($articleId()),
             'ai-quality-status' => $this->runtime->send('article.ai-quality-status', ['article' => $articleId()]),
             'ai-quality-recheck' => $this->runtime->send('article.ai-quality-recheck', ['article' => $articleId()], body: [], idempotencyKey: $this->runtime->idempotencyKey()),
             'ai-quality-override' => $this->runtime->send('article.ai-quality-override', ['article' => $articleId()], body: [
@@ -44,6 +47,29 @@ final class ArticleHandler
             'ai-optimization-cancel' => $this->cancelOptimization($articleId()),
             'trash' => $this->runtime->send('article.trash', ['article' => $articleId()], body: [], idempotencyKey: $this->runtime->idempotencyKey()),
         };
+    }
+
+    /** @return array{workflow_version?:int} */
+    private function workflowVersionBody(): array
+    {
+        $version = $this->runtime->optionalInteger('workflow-version');
+        if ($version !== null && $version < 0) {
+            throw new CliException('--workflow-version 必须大于或等于 0');
+        }
+
+        return $version === null ? [] : ['workflow_version' => $version];
+    }
+
+    private function hold(int $articleId): int
+    {
+        $status = $this->runtime->requiredOption('status');
+        if (! in_array($status, ['draft', 'private'], true)) {
+            throw new CliException('--status 必须是 draft 或 private');
+        }
+
+        return $this->runtime->send('article.hold', ['article' => $articleId], body: [
+            'status' => $status, ...$this->workflowVersionBody(),
+        ], idempotencyKey: $this->runtime->idempotencyKey());
     }
 
     private function startOptimization(int $articleId): int

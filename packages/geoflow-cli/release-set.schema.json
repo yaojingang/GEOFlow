@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GEOFlow coordinated release evidence",
+  "type": "object",
+  "required": ["schema_version", "components"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "components": {
+      "type": "object",
+      "required": ["core", "updater", "cli", "skill"],
+      "additionalProperties": false,
+      "properties": {
+        "core": {"$ref": "#/$defs/component"},
+        "updater": {"$ref": "#/$defs/component"},
+        "cli": {"$ref": "#/$defs/component"},
+        "skill": {"$ref": "#/$defs/component"}
+      }
+    }
+  },
+  "$defs": {
+    "component": {
+      "type": "object",
+      "required": ["version", "commit", "sha256", "protocols"],
+      "properties": {
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z0-9.-]+)?$"},
+        "commit": {"type": "string", "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$"},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$", "not": {"const": "0000000000000000000000000000000000000000000000000000000000000000"}},
+        "protocols": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {"pattern": "^[a-z][a-z0-9_]{0,63}$"},
+          "additionalProperties": {
+            "type": "object", "required": ["min", "max"], "additionalProperties": false,
+            "properties": {
+              "min": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)*$"},
+              "max": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)*$"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

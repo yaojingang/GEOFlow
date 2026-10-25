@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use App\Events\Admin\TasksOverviewUpdated;
+use App\Models\Article;
+use App\Models\Author;
+use App\Models\Category;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Services\GeoFlow\TaskMonitoringQueryService;
@@ -104,6 +107,39 @@ class TaskMonitoringMemoryBoundTest extends TestCase
         $this->assertSame(130, $overview['task_summary']['total_tasks']);
         $this->assertSame(65, $overview['task_summary']['enabled_tasks']);
         $this->assertCount(100, $snapshot);
+    }
+
+    public function test_polling_skips_article_diagnostics_while_detail_counts_every_article(): void
+    {
+        $category = Category::query()->create(['name' => 'Backlog', 'slug' => 'backlog']);
+        $author = Author::query()->create(['name' => 'Author']);
+        $tasks = [];
+        foreach (range(1, 50) as $index) {
+            $task = Task::query()->create(['name' => 'Backlog '.$index, 'status' => 'paused', 'need_review' => 0]);
+            $tasks[] = $task;
+            $rows = [];
+            foreach (range(1, 20) as $number) {
+                $rows[] = ['task_id' => $task->id, 'title' => 'Article', 'slug' => "backlog-$index-$number", 'content' => 'Text',
+                    'category_id' => $category->id, 'author_id' => $author->id, 'status' => 'draft', 'review_status' => 'auto_approved',
+                    'publication_intent' => 'hold', 'created_at' => now(), 'updated_at' => now()];
+            }
+            DB::table('articles')->insert($rows);
+        }
+        $retrieved = 0;
+        Event::listen('eloquent.retrieved: '.Article::class, function () use (&$retrieved): void {
+            $retrieved++;
+        });
+        $service = app(TaskMonitoringQueryService::class);
+        $overview = $service->buildAdminOverview();
+        $service->buildTaskSnapshot();
+        $this->assertSame(0, $retrieved);
+        $this->assertFalse($overview['tasks'][0]['task_progress']['diagnostics_loaded']);
+        $this->assertArrayNotHasKey('ready_articles', $overview['tasks'][0]['task_progress']);
+        $detail = $service->getTaskMonitoringDetail($tasks[0]->id);
+        $this->assertTrue($detail['task_progress']['diagnostics_loaded']);
+        $this->assertSame(20, $detail['task_progress']['workflow']['states']['held']);
+        $this->assertSame(20, $detail['task_progress']['workflow']['blocking_reasons']['manual_hold']);
+        $this->assertSame(20, $retrieved);
     }
 
     public function test_realtime_event_contains_only_a_lightweight_refresh_signal(): void

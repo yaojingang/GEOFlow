@@ -5,6 +5,7 @@ namespace App\View\Composers;
 use App\Models\Category;
 use App\Models\HostedSiteProfile;
 use App\Services\Site\SiteScopedArticleQuery;
+use App\Services\Site\SiteUrlGenerator;
 use App\Support\Site\CurrentSite;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemePreviewContext;
@@ -19,6 +20,7 @@ final class SiteLayoutComposer
     public function __construct(
         private readonly SiteScopedArticleQuery $siteArticles,
         private readonly CurrentSite $currentSite,
+        private readonly SiteUrlGenerator $siteUrls,
     ) {}
 
     public function compose(View $view): void
@@ -59,6 +61,7 @@ final class SiteLayoutComposer
             'navCategories' => $categories,
             'siteIndexingAllowed' => ! $this->currentSite->isHosted()
                 || $this->currentSite->profile()?->indexing_status === HostedSiteProfile::INDEXING_INDEX,
+            'siteUrls' => $this->siteUrls,
         ]);
     }
 }

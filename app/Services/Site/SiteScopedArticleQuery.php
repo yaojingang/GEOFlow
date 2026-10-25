@@ -21,11 +21,36 @@ final class SiteScopedArticleQuery
     /** @param Builder<Article> $query @return Builder<Article> */
     public function apply(Builder $query): Builder
     {
-        if (! $this->currentSite->isHosted()) {
-            return $query->published();
+        return $this->applyForSiteKey($query, $this->currentSite->isHosted()
+            ? 'hosted:'.$this->currentSite->profileId()
+            : 'primary');
+    }
+
+    /** @return Builder<Article> */
+    public function queryForSiteKey(string $siteKey): Builder
+    {
+        return $this->applyForSiteKey(Article::query(), $siteKey);
+    }
+
+    /** @param Builder<Article> $query @return Builder<Article> */
+    public function applyForSiteKey(Builder $query, string $siteKey): Builder
+    {
+        if ($siteKey === 'primary') {
+            return $query
+                ->published()
+                ->where(function (Builder $articles): void {
+                    $articles
+                        ->whereNull('articles.task_id')
+                        ->orWhereHas('task', fn (Builder $task): Builder => $task
+                            ->where('publish_scope', '!=', 'distribution_only'));
+                });
         }
 
-        $profileId = (int) $this->currentSite->profileId();
+        if (! preg_match('/^hosted:([1-9][0-9]*)$/D', $siteKey, $matches)) {
+            throw new \InvalidArgumentException('Invalid site key.');
+        }
+
+        $profileId = (int) $matches[1];
 
         return $query
             ->whereNull('articles.deleted_at')

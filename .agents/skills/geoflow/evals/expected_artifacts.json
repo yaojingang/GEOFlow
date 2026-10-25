@@ -59,14 +59,40 @@
     "scripts/validate_homepage_design_payload.py",
     "security/network_policy.json",
     "security/permission_policy.json",
-    "templates/homepage-design-template.json"
+    "templates/homepage-design-template.json",
+    "references/remote-cli-workflow.md",
+    "reports/remote-cli-review.md",
+    "references/remote-updater-workflow.md",
+    "reports/coordinated-updater-review.md",
+    "references/topic-workflow.md",
+    "evals/test_topic_support.py"
   ],
   "mode_outputs": {
-    "development": ["changed-files", "contract-impact", "verification-result"],
-    "operations": ["surface-used", "resource-readback", "final-state"],
-    "public_frontend": ["target-theme-or-payload", "preview-evidence", "contract-check"],
-    "channel_frontend": ["capability-status", "sync-preview", "rollback-note"],
-    "legacy_migration": ["legacy-inventory", "laravel-mapping", "migration-handoff"]
+    "development": [
+      "changed-files",
+      "contract-impact",
+      "verification-result"
+    ],
+    "operations": [
+      "surface-used",
+      "resource-readback",
+      "final-state"
+    ],
+    "public_frontend": [
+      "target-theme-or-payload",
+      "preview-evidence",
+      "contract-check"
+    ],
+    "channel_frontend": [
+      "capability-status",
+      "sync-preview",
+      "rollback-note"
+    ],
+    "legacy_migration": [
+      "legacy-inventory",
+      "laravel-mapping",
+      "migration-handoff"
+    ]
   },
   "required_report_fields": [
     "selected-mode",
@@ -108,6 +134,9 @@
     "authentication-or-csrf-bypass",
     "secret-or-personal-data-exposure",
     "unreviewed-live-theme-or-channel-publication",
-    "unsupported-remote-module-sync"
+    "unsupported-remote-module-sync",
+    "updater-uncertain-replay",
+    "updater-v1-write-fallback",
+    "held-background-reported-as-success"
   ]
 }

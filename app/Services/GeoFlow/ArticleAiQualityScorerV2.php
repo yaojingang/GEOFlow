@@ -52,24 +52,11 @@ final class ArticleAiQualityScorerV2
         $dimensionScores = self::DIMENSION_MAXIMUMS;
         $categoryDeductions = [];
         $knowledgeClaimDeductions = [];
-        $hardBlocker = false;
-        $hasHighSeverityIssue = false;
-        $gateReasons = [];
 
         foreach ($issues as &$issue) {
             $code = (string) ($issue['code'] ?? 'content_integrity');
             $severity = (string) ($issue['severity'] ?? 'medium');
             $dimension = self::CODE_DIMENSIONS[$code] ?? 'content_integrity';
-            $hardBlocker = $hardBlocker || $severity === 'critical' || ($issue['hard_blocker'] ?? false) === true;
-            $hasHighSeverityIssue = $hasHighSeverityIssue || $severity === 'high';
-
-            if (($issue['evidence_status'] ?? null) === 'unverified') {
-                $issue['deduction'] = 0;
-                $gateReasons[] = 'unverified_material_claim';
-
-                continue;
-            }
-
             $deduction = self::DEDUCTIONS[$dimension][$severity] ?? self::DEDUCTIONS[$dimension]['medium'];
             $category = $this->cappedCategory($issue, $dimension);
             if ($category !== null) {
@@ -79,7 +66,7 @@ final class ArticleAiQualityScorerV2
                 $categoryDeductions[$category] = $used + $deduction;
             }
             if ($dimension === 'knowledge_consistency') {
-                $claimKey = (string) ($issue['claim_hash'] ?? $issue['root_cause_key'] ?? 'unknown');
+                $claimKey = trim((string) ($issue['claim_hash'] ?? '')) ?: (string) $issue['root_cause_key'];
                 $used = (int) ($knowledgeClaimDeductions[$claimKey] ?? 0);
                 $deduction = min($deduction, max(0, 10 - $used));
                 $knowledgeClaimDeductions[$claimKey] = $used + $deduction;
@@ -90,51 +77,13 @@ final class ArticleAiQualityScorerV2
         }
         unset($issue);
 
-        $score = array_sum($dimensionScores);
-        $coverage = (string) ($modelResult['knowledge_coverage'] ?? 'insufficient');
-        if (in_array($coverage, ['partial', 'insufficient'], true)) {
-            $gateReasons[] = 'evidence_coverage_'.$coverage;
-        }
-        if ($this->hasHighMaterialityUncertainty($uncertainties)) {
-            $gateReasons[] = 'high_materiality_uncertainty';
-        }
-        foreach ($uncertainties as $uncertainty) {
-            $gateReason = (string) ($uncertainty['gate_reason'] ?? '');
-            if (in_array($gateReason, ['unverified_material_claim', 'claim_coverage_incomplete'], true)) {
-                $gateReasons[] = $gateReason;
-            }
-        }
-        if ((int) ($modelResult['truncated_issue_count'] ?? 0) > 0) {
-            $gateReasons[] = 'model_output_truncated';
-        }
-        if ($this->hasUnresolvedReference($issues)) {
-            $gateReasons[] = 'unresolved_reference';
-        }
-        if ($hardBlocker) {
-            $gateReasons[] = 'confirmed_hard_blocker';
-        }
-        if ($hasHighSeverityIssue) {
-            $gateReasons[] = 'confirmed_high_severity_issue';
-        }
-
-        $gateReasons = array_values(array_unique($gateReasons));
-        $decision = match (true) {
-            $hardBlocker, $score < $manualOverrideMinScore => 'blocked',
-            $score < $passScore, $gateReasons !== [] => 'needs_review',
-            default => 'passed',
-        };
-
-        return [
-            'score' => $score,
-            'dimension_scores' => $dimensionScores,
-            'decision' => $decision,
-            'issues' => $issues,
-            'uncertainties' => $uncertainties,
+        return array_replace((new ArticleAiQualityScorePolicy)->finalize(
+            $modelResult, $issues, $uncertainties, $dimensionScores, $passScore, $manualOverrideMinScore,
+        ), [
             'confidence' => $this->confidence($issues),
-            'evidence_coverage' => $coverage,
-            'gate_reasons' => $gateReasons,
+            'evidence_coverage' => (string) ($modelResult['knowledge_coverage'] ?? 'insufficient'),
             'scoring_version' => 'v2',
-        ];
+        ]);
     }
 
     /** @param array<int, mixed> $issues @return list<array<string, mixed>> */
@@ -166,6 +115,7 @@ final class ArticleAiQualityScorerV2
             }
 
             $groups[$rootKey]['occurrences'][] = $occurrence;
+            $hardBlocker = ($groups[$rootKey]['hard_blocker'] ?? false) === true || ($issue['hard_blocker'] ?? false) === true;
             if ($this->severityRank((string) ($issue['severity'] ?? 'medium'))
                 > $this->severityRank((string) ($groups[$rootKey]['severity'] ?? 'medium'))) {
                 $occurrences = $groups[$rootKey]['occurrences'];
@@ -174,6 +124,7 @@ final class ArticleAiQualityScorerV2
                     'occurrences' => $occurrences,
                 ]);
             }
+            $groups[$rootKey]['hard_blocker'] = $hardBlocker;
         }
 
         foreach ($groups as &$group) {
@@ -235,22 +186,6 @@ final class ArticleAiQualityScorerV2
         return null;
     }
 
-    /** @param list<array<string, mixed>> $uncertainties */
-    private function hasHighMaterialityUncertainty(array $uncertainties): bool
-    {
-        return collect($uncertainties)->contains(
-            static fn (array $uncertainty): bool => ($uncertainty['materiality'] ?? null) === 'high',
-        );
-    }
-
-    /** @param list<array<string, mixed>> $issues */
-    private function hasUnresolvedReference(array $issues): bool
-    {
-        return collect($issues)->contains(static fn (array $issue): bool => ($issue['location_status'] ?? 'resolved') === 'unresolved'
-            || ($issue['references_valid'] ?? true) !== true
-        );
-    }
-
     /** @param list<array<string, mixed>> $issues */
     private function confidence(array $issues): float
     {
@@ -275,6 +210,8 @@ final class ArticleAiQualityScorerV2
     {
         $value = mb_strtolower(trim($value), 'UTF-8');
 
-        return preg_replace('/[\s\p{P}\p{S}]+/u', '', $value) ?? $value;
+        $value = preg_replace('/\s+/u', '', $value) ?? $value;
+
+        return preg_replace('/[。！？!?；;，,：:]+$/u', '', $value) ?? $value;
     }
 }

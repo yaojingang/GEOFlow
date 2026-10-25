@@ -2,6 +2,102 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+
+## Unreleased
+
+### Link pool and live prompt testing
+
+- Distribution management adds internal link placement for the primary site and first-party hosted sites, including a link library, import preflight, campaigns, recommendation previews, site controls, and an emergency stop.
+- Article recommendations support site articles and health-checked external links, selected by source site, category, keywords, and campaign rules. Metrics distinguish server output, reader visibility, and clicks.
+- Site themes can report recommendation support. Super administrators can adapt and roll back themes when shared storage and HTTP readback are available.
+- Prompt editing adds live testing of unsaved drafts, knowledge retrieval, manual or library titles, streamed generation, cancellation, and AI diagnostics linked to source text.
+- Theme adaptation and prompt testing follow administrator model access, quota, and usage auditing. Regression checks cover queue cache refresh, displayed-link metrics, desktop layouts, and mobile layouts.
+- Three link-pool migrations require maintenance mode. Back up the database and themes, build frontend assets, and drain old workers before upgrading. Source versions remain at the current development versions.
+
+See [Link pool and live prompt testing](operations/link-pool-and-prompt-test.md) for configuration, operation, and metric definitions.
+
+### v3.2.0-beta.2 (release preparation)
+
+This version covers public repository changes since `v3.2.0-beta.1`; source versions have been updated, while the GitHub Release and distribution archives remain unpublished. The latest stable release remains `3.1.0`.
+
+#### Topics and theme management
+
+- Content management adds a topic library with article grouping, ordering, bulk creation, review, publication, and recoverable trash.
+- Topic tasks use title libraries and AI generation, with per-row scopes and layouts, source validation, scheduled maintenance, pause and resume, and failed-run retries.
+- Public topic lists and detail pages provide structured summaries, genuine update dates, tags, source citations, FAQs, and three reading layouts.
+- Built-in themes support topic navigation, homepage modules, and article backlinks, while canonical paths, pagination, and sitemaps follow publication eligibility.
+- Theme settings separate the current theme, six curated themes, personal themes, and archives, with search, version groups, bulk archive and restore, and previews.
+- The GEOFlow Skill adds topic management, task creation, and topic theme design, replication, and editing workflows.
+
+#### Article workflows and admin fixes
+
+- Article bulk actions use the current selection and report success, no change, blocked, conflict, or failure for each article.
+- Task auto-publication consistently follows review settings, the current AI passing score, and publication intervals, while respecting manual holds, rejection, pauses, and explicit non-publication markers in article text.
+- Late quality and optimization results cannot override newer manual actions, while publication and distribution are recorded separately with recoverable delivery handoffs.
+- Fix fixed and random category assignment, SEO keyword and summary settings, and add a preview-and-review tool for restoring historical article workflows.
+- Fix blank pages after saving AI Workspace settings, settings sections staying collapsed after canceling URL changes, and the DeepSeek API key placeholder.
+- Keep long site names within narrow screens in the news theme and preserve usable mobile navigation on home, article, and topic pages.
+
+#### GEO discovery, theme video, and security
+
+- The primary site automatically serves `llms.txt` and `sitemap.txt`, while target-site packages add discovery files and sitemap shards that respect crawl policies and public-content eligibility.
+- Theme packages support validated short videos with click-to-play behavior, with video validation dependencies, upload limits, and request rate limits included in official containers.
+- Apply security fixes to the framework, Markdown parser, file storage, frontend request library, and HTML sanitizer.
+
+#### Versions and upgrade notes
+
+- Companion source versions are Core `3.2.0-beta.2`, CLI `0.4.0-preview.2`, and Skill `1.2.0-preview.2`, with an Updater build that explicitly declares compatibility with this Core contract.
+- Upgrading from `beta.1` adds nine maintenance-mode migrations, two for article workflows and seven for topics; back up the database, themes, and configuration, drain old workers, build frontend assets, and upgrade during maintenance.
+- API/CLI creation of article tasks requires an explicit `need_review` field; recheck older AI quality reports, keep historical held articles unchanged, and preview and review each restoration.
+- Theme videos require `ffprobe`, so custom runtime environments need the documented dependency and verified upload limits.
+- This remains a development and isolated-testing preview, with official signed distribution, native dual-architecture recovery, and production acceptance pending, while remote theme publication and rollback remain unavailable.
+
+See [Topics and theme management](implementations/topic-channel-implementation.md), [Article workflow recovery](operations/article-workflow-recovery.md), [Theme packages and video](site-themes/theme-packages.md), and [Remote management preview scope](api/remote-management-preview.md).
+
+## 2026-09-16
+
+### v3.2.0-beta.1
+
+- Core advances to `3.2.0-beta.1`; CLI `0.4.0-preview.1` adds a standalone PHAR, signed-bundle installation and interrupted-update recovery, named profiles, explicit login scopes, identity binding, and current-token revocation.
+- Task enqueue gains receipts and client request IDs for lost-response lookup, duplicate protection, and recovery after logging back into the same account. Theme drafts do not yet support receipt recovery.
+- Built-in and installed primary-site themes support remote drafts, chunked file reads, atomic incremental changes, signed previews with real content, and discard, without manual theme-package round trips for draft editing.
+- Native template code requires a trusted super administrator, explicit code scope, and a short-lived password grant. Admin appearance writes share a lock and version conflict checks.
+- Skill `1.2.0-preview.1` defaults to the remote CLI. Added operation/route coverage records, a preview contract, and CI installation verification.
+- Core and Updater add remote action plans, durable admission records, and receipt lookup. Full recovery records a recovery epoch, invalidates old credentials, and quarantines background work; uncertain responses are reconciled through the original receipt without automatic resend.
+- Five maintenance-mode migrations extend the data model. Theme publication, rollback, full administration, multiple sites, and official signed distribution remain pending; see [current coverage](api/remote-management-preview.md).
+
+## 2026-09-13
+
+### URL change risk controls
+
+- Primary/hosted article rules, existing category URL identifiers and link-changing article category moves require a super administrator, an impact check, a centered risk dialog and typed confirmation. API and automation requests cannot bypass this workflow.
+- Added category identifier history, deleted-name reservations, scope data versions and change records, with stale-report detection, concurrency checks, idempotent confirmation and direct historical-address redirects.
+- Impact checks, private migration files, sitemaps and hosted URL refreshes run in resumable batches with explicit failure states. Upgrading preserves current URL rules and the configured admin path.
+- See the [URL risk-control operations guide](deployment/URL_CHANGE_RISK_CONTROL.md) for upgrade requirements, resource limits and measured results.
+
+## 2026-09-12
+
+### Article permalink rules
+
+- Site settings now provide six permalink presets and constrained custom patterns built from `{slug}`, `{id}`, `{category}`, `{year}`, `{month}`, and `{day}`.
+- Activation uses a check-and-preview confirmation flow with a downloadable migration map. Historical patterns, old slugs, old categories, mismatched dates, and `/article/{slug}` compatibility URLs redirect once to the current canonical URL.
+- Canonical metadata, Open Graph, JSON-LD, internal article links, sitemaps, view analytics, and first-party hosted-site remote URLs now share the same permalink generator.
+- First-party hosted sites can use independent policies. GEOFlow Agent target packages now advertise capability 1.3 with dynamic matching, a private static manifest, atomic activation, and Apache, Nginx, and BaoTa fallbacks.
+
+## 2026-09-11
+
+### Local reverse-proxy origin fidelity
+
+- Fixed local Docker gateway handling when a host reverse proxy terminates TLS, so admin forms and redirects retain the public HTTPS scheme and port.
+- Local Compose now trusts only its direct Nginx caller by default and validates forwarded schemes and ports. Subdirectory deployments use `GEOFLOW_FORWARDED_PREFIX` as the fixed public prefix, overriding the client-supplied header.
+- Upgrade note: root Compose deployments that previously relied only on an outer proxy to send `X-Forwarded-Prefix` must add the fixed prefix to `.env` before rebuilding the `web` container.
+
+### Idempotent WordPress distribution
+
+- WordPress distribution now reuses the known remote post ID for each article and channel. Saving unchanged content skips delivery, while content or channel changes update the same remote post.
+- When a WordPress create request times out, returns a server error, or omits a valid ID, GEOFlow reconciles the result by slug across post statuses. Results that cannot be identified uniquely are marked for manual reconciliation and excluded from automatic retries.
+- Immediate admin updates and deletions use dedicated action records while retaining the publish mapping. Remote ID conflicts preserve the known identity and block further overwrites.
+
 ## 2026-09-09
 
 ### v3.1.0

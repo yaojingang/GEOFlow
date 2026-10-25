@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow;
 
 use App\Exceptions\HostedSitesDisabled;
+use App\Models\Article;
 use App\Models\ArticleDistribution;
 use App\Models\DistributionChannel;
 use App\Models\HostedSiteAllocationRequest;
@@ -10,6 +11,7 @@ use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
 use App\Models\Task;
 use App\Services\HostedSites\HostedSiteContentFingerprint;
+use App\Services\HostedSites\HostedSiteUrlGenerator;
 use App\Services\Site\HostedSiteResolver;
 use App\Support\GeoFlow\ArticleWorkflow;
 use Carbon\CarbonImmutable;
@@ -21,6 +23,7 @@ final class HostedSitePublisher implements DistributionPublisherInterface
     public function __construct(
         private readonly HostedSiteContentFingerprint $fingerprints,
         private readonly HostedSiteResolver $resolver,
+        private readonly HostedSiteUrlGenerator $hostedUrls,
     ) {}
 
     public function health(DistributionChannel $channel): array
@@ -90,12 +93,17 @@ final class HostedSitePublisher implements DistributionPublisherInterface
                 ->where('distribution_channel_id', (int) $channel->id)
                 ->lockForUpdate()
                 ->firstOrFail();
+            $taskId = (int) Article::query()->whereKey((int) $distribution->article_id)->value('task_id');
+            $task = Task::query()->whereKey($taskId)->lockForUpdate()->first();
+            $article = $distribution->article()->lockForUpdate()->firstOrFail();
+            if ((int) $article->task_id !== $taskId) {
+                throw new RuntimeException('workflow_version_conflict');
+            }
+            $article->setRelation('task', $task);
             $request = HostedSiteAllocationRequest::query()
                 ->where('article_id', (int) $distribution->article_id)
                 ->lockForUpdate()
                 ->first();
-            $article = $distribution->article()->lockForUpdate()->firstOrFail();
-            $task = Task::query()->whereKey((int) $article->task_id)->lockForUpdate()->first();
             $assignment = HostedSiteArticleAssignment::query()
                 ->where('article_id', (int) $distribution->article_id)
                 ->where('hosted_site_profile_id', (int) $profile->id)
@@ -193,7 +201,7 @@ final class HostedSitePublisher implements DistributionPublisherInterface
 
         [$profile, $assignment, $article] = $result;
         $this->resolver->invalidate($profile->hostname);
-        $url = 'https://'.$profile->hostname.'/article/'.$article->slug;
+        $url = $this->hostedUrls->article($profile, $article);
 
         return [
             'remote_id' => (string) $assignment->id,

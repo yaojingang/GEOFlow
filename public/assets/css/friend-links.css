@@ -1,0 +1,65 @@
+footer nav.site-friend-links {
+    display: block;
+}
+.site-friend-links {
+    color: inherit;
+    font-family: inherit;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    width: 100%;
+    min-width: 0;
+    margin: 0 0 1.5rem;
+    text-align: start;
+}
+.site-friend-links .site-friend-links__title {
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: 600;
+    line-height: inherit;
+    margin: 0 0 0.5rem;
+}
+.site-friend-links .site-friend-links__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.25rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.site-friend-links .site-friend-links__item {
+    min-width: 0;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+}
+.site-friend-links .site-friend-links__link {
+    display: inline-block;
+    color: inherit;
+    font: inherit;
+    padding: 0.25rem 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    text-decoration: none;
+    text-underline-offset: 0.2em;
+}
+.site-friend-links .site-friend-links__link:hover {
+    text-decoration: underline;
+}
+.site-friend-links .site-friend-links__link:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 3px;
+    border-radius: 2px;
+}
+.site-friend-links .site-friend-links__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}

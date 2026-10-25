@@ -57,7 +57,7 @@ final class SiteThemePreviewContext
             }
             URL::formatPathUsing(function (string $path, $route) use ($previousFormatter): string {
                 $path = $previousFormatter($path, $route);
-                if (in_array($route?->getName(), ['site.home', 'site.category', 'site.article', 'site.about', 'site.archive', 'site.archive.month'], true)) {
+                if (in_array($route?->getName(), ['site.topics.index', 'site.topics.page', 'site.topics.show', 'site.home', 'site.category', 'site.article', 'site.about', 'site.archive', 'site.archive.month'], true)) {
                     return (string) parse_url($this->frameBase, PHP_URL_PATH).'/'.ltrim($path, '/');
                 }
 
@@ -85,7 +85,10 @@ final class SiteThemePreviewContext
 
     public function urlForPath(string $path): ?string
     {
-        if (! $this->isActive() || preg_match('~\A/(?:\?(?:.*)|(?:about|archive(?:/[0-9]{4}/[0-9]{2})?|(?:category|article)/[^/?#]+)(?:[?#].*)?)?\z~D', $path) !== 1) {
+        if (! $this->isActive()
+            || ! str_starts_with($path, '/')
+            || str_starts_with($path, '//')
+            || preg_match('/[\x00-\x1F\x7F]/', $path) === 1) {
             return null;
         }
 

@@ -5,6 +5,7 @@ namespace App\Services\BrowserOperations;
 use App\Exceptions\ApiException;
 use App\Models\Admin;
 use App\Services\Api\ApiTokenService;
+use App\Services\SystemUpdater\RecoveryState;
 use App\Support\AdminActivityLogger;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -15,17 +16,19 @@ final class DeviceAuthorizationService
 
     public const POLL_INTERVAL = 5;
 
-    public function __construct(private readonly ApiTokenService $tokenService) {}
+    public function __construct(private readonly ApiTokenService $tokenService, private readonly RecoveryState $recovery) {}
 
     /** @return array<string,mixed> */
     public function create(string $clientName): array
     {
+        $epoch = $this->recovery->assertHttpReady()['epoch'] ?? null;
         $deviceCode = Str::random(64);
         $userCode = $this->uniqueUserCode();
         $deviceHash = hash('sha256', $deviceCode);
         $expiresAt = now()->addSeconds(self::EXPIRES_IN);
         $record = [
             'device_hash' => $deviceHash,
+            'recovery_epoch' => $epoch,
             'user_code' => $userCode,
             'client_name' => mb_substr(trim($clientName) ?: 'GEOFlow Chrome', 0, 80),
             'status' => 'pending',
@@ -57,7 +60,7 @@ final class DeviceAuthorizationService
 
         $record = Cache::get($this->deviceKey($deviceHash));
 
-        return is_array($record) && ($record['expires_at'] ?? 0) >= now()->timestamp ? $record : null;
+        return is_array($record) && $this->currentEpoch($record) && ($record['expires_at'] ?? 0) >= now()->timestamp ? $record : null;
     }
 
     public function decide(string $userCode, Admin $admin, bool $approved): void
@@ -70,7 +73,7 @@ final class DeviceAuthorizationService
 
         Cache::lock('browser-device-decision:'.$deviceHash, 10)->block(3, function () use ($deviceHash, $admin, $approved): void {
             $record = Cache::get($this->deviceKey($deviceHash));
-            if (! is_array($record) || ($record['expires_at'] ?? 0) < now()->timestamp) {
+            if (! is_array($record) || ! $this->currentEpoch($record) || ($record['expires_at'] ?? 0) < now()->timestamp) {
                 throw new ApiException('expired_token', '配对码已失效，请在扩展中重新申请', 400);
             }
             if (($record['status'] ?? null) !== 'pending') {
@@ -95,7 +98,7 @@ final class DeviceAuthorizationService
         return Cache::lock('browser-device-exchange:'.$deviceHash, 10)->block(3, function () use ($deviceHash, $clientVersion): array {
             $key = $this->deviceKey($deviceHash);
             $record = Cache::get($key);
-            if (! is_array($record) || ($record['expires_at'] ?? 0) < now()->timestamp) {
+            if (! is_array($record) || ! $this->currentEpoch($record) || ($record['expires_at'] ?? 0) < now()->timestamp) {
                 throw new ApiException('expired_token', '设备授权已过期', 400);
             }
 
@@ -142,6 +145,7 @@ final class DeviceAuthorizationService
                 'scopes' => $this->tokenService->getBrowserClientScopes(),
                 'expires_at' => $created['record']['expires_at'] ?? null,
                 'protocol_version' => 1,
+                'recovery' => ($epoch = $this->recovery->assertHttpReady()['epoch'] ?? null) === null ? ['supported' => false] : ['supported' => true, 'epoch' => $epoch],
             ];
         });
     }
@@ -151,6 +155,13 @@ final class DeviceAuthorizationService
     {
         Cache::forget($this->deviceKey((string) ($record['device_hash'] ?? '')));
         Cache::forget($this->userKey((string) ($record['user_code'] ?? '')));
+    }
+
+    private function currentEpoch(array $record): bool
+    {
+        $epoch = $this->recovery->assertHttpReady()['epoch'] ?? null;
+
+        return $epoch === null || ($record['recovery_epoch'] ?? null) === $epoch;
     }
 
     private function uniqueUserCode(): string

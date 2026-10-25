@@ -92,6 +92,7 @@ REVERB_ALLOWED_ORIGINS=your-domain.com
 - `SESSION_SECURE_COOKIE` 必须与访问协议一致：HTTPS 使用 `true`，直接通过 `http://IP:端口` 访问使用 `false`，否则浏览器不会回传登录 Cookie。
 - `TRUSTED_PROXIES` 在直连部署中留空；反向代理、CDN、负载均衡或一级目录部署填写实际代理 IP/CIDR。避免使用 `*`，否则直连客户端可伪造转发地址并绕过按 IP 的登录限流。
 - 如果部署在任意一级目录下，例如外部访问路径是 `/wiki`、`/docs`、`/site`，不要把目录写进 `ADMIN_BASE_PATH`；应由反向代理透传 `X-Forwarded-Prefix`，后台路径仍保持 `ADMIN_BASE_PATH=geo_admin`。
+- 使用仓库根目录 `docker-compose.yml` 作为内层网关时，还需在 `.env` 中设置固定前缀，例如 `GEOFLOW_FORWARDED_PREFIX=/wiki`。内层 Nginx 会用该值覆盖请求头，避免客户端伪造公开路径。此前仅依赖外层代理传入 `X-Forwarded-Prefix` 的实例，升级后应先补充此变量，再重建 `web` 容器。
 - `AUTO_MIGRATE=true` 由生产 `init` 服务执行迁移；常驻服务不接收 `.env.prod` 作为容器环境变量，重启时不会重复初始化。
 - `AUTO_INSTALL_ONCE=true` 由生产 `init` 服务在迁移后运行 `php artisan geoflow:install`；该命令只在空库首次安装时执行安装填充，旧库只补初始化标记。
 - 生产镜像不会在启动时执行 `composer install`

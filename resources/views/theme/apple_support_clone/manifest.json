@@ -47,5 +47,34 @@
     "partials/article-card.blade.php"
   ],
   "fallback_templates": [],
-  "notes": "Preview requires selecting this theme in admin site settings or using static rendered review, because this Laravel app has no isolated theme preview route."
+  "notes": "Preview requires selecting this theme in admin site settings or using static rendered review, because this Laravel app has no isolated theme preview route.",
+  "requires": {
+    "views": [
+      "site.partials.friend-links"
+    ]
+  },
+    "topic": {
+        "contract": 1,
+        "layouts": [
+            {
+                "id": "default",
+                "name": "标准聚合",
+                "view": "site.topics.templates.default"
+            },
+            {
+                "id": "guide",
+                "name": "阅读指南",
+                "view": "site.topics.templates.guide"
+            },
+            {
+                "id": "roundup",
+                "name": "资讯盘点",
+                "view": "site.topics.templates.roundup"
+            }
+        ],
+        "homepage_module": {
+            "view": "site.partials.topic-home",
+            "enabled": true
+        }
+    }
 }

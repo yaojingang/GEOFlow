@@ -21,6 +21,7 @@
         'analytics' => ['route' => 'admin.analytics', 'name' => __('admin.nav.analytics')],
         'tasks' => ['route' => 'admin.tasks.index', 'name' => __('admin.nav.tasks')],
         'distribution' => ['route' => 'admin.distribution.index', 'name' => __('admin.nav.distribution')],
+        'link_pool' => ['route' => 'admin.link-pool.overview', 'name' => __('admin.nav.link_pool')],
         'articles' => ['route' => 'admin.articles.index', 'name' => __('admin.nav.articles')],
         'materials' => ['route' => 'admin.materials.index', 'name' => __('admin.nav.materials')],
         'ai_config' => ['route' => 'admin.ai.configurator', 'name' => __('admin.nav.ai_config')],
@@ -30,6 +31,7 @@
         unset($menu['distribution']);
     }
     if ($isSuperAdmin) {
+        unset($menu['link_pool']);
         $menu['admin_users'] = ['route' => 'admin.admin-users.index', 'name' => __('admin.nav.admin_users')];
     }
     $subMap = [
@@ -112,6 +114,8 @@
         'admin.ai-models.index' => 'ai_config',
         'admin.ai-source-providers.index' => 'ai_config',
         'admin.ai-prompts' => 'ai_config',
+        'admin.site-settings.friend-links.edit' => 'site_settings',
+        'admin.site-settings.friend-links.update' => 'site_settings',
         'admin.site-settings.sensitive-words' => 'site_settings',
         'admin.site-settings.sensitive-words.store' => 'site_settings',
         'admin.site-settings.sensitive-words.delete' => 'site_settings',

@@ -1,4 +1,10 @@
-# GEOFlow CLI 0.2.0
+# GEOFlow CLI 0.3.0-preview.1
+
+## Remote management preview
+
+The standalone client can run without local GEOFlow Core source. See [installation and recovery](../packages/geoflow-cli/README.md), [remote CLI workflow](../.agents/skills/geoflow/references/remote-cli-workflow.md), and [implemented coverage and pending work](api/remote-management-preview.md). This preview adds profiles, explicit scopes, identity binding, receipts, and primary-site theme drafts and previews. Theme publication, rollback, and complete backend coverage remain unavailable. Existing commands are documented below.
+
+After losing a task-enqueue response, retain the client request ID and query its receipt. A remote `operation_not_found` / 404 stops automatic resending, including old local journals with only a `prepared` state. Restoring an older database can remove receipts. Reconcile the business result before explicitly authorizing a new request. Login, profile binding and CLI updates must preserve the original journal.
 
 GEOFlow CLI is the repository's API v1 client for catalog, task, job, material, and article operations. It handles profiles, login, HTTPS policy, secret redaction, JSON validation, deletion confirmation, and API error hints.
 
@@ -6,7 +12,9 @@ The supported platforms are macOS, Linux, and WSL. Native Windows can run PHP, b
 
 ## Installation And Prerequisites
 
-The CLI ships with the GEOFlow source tree. It requires:
+An installed standalone `geoflow` connects directly to an instance without Core source or full project dependencies. It requires PHP 8.3+ and the extensions listed in the [installation guide](../packages/geoflow-cli/README.md). Trusted local signed bundles can be installed now; an official download channel remains pending.
+
+Source contributors can also run the repository entrypoint. This path requires:
 
 - PHP 8.3 or later.
 - Project dependencies installed with Composer.
@@ -34,15 +42,16 @@ You can also invoke the file through PHP:
 php bin/geoflow --version
 ```
 
-`--version` returns JSON. The current version is `0.2.0`. Treat `--help` as the source of truth for command names and basic usage.
+`--version` returns JSON. The current version is `0.3.0-preview.1`. Treat `--help` as the source of truth for command names and basic usage.
 
 ## Profiles And Precedence
 
 The CLI selects one profile per invocation in this order:
 
-1. `--config PATH`
-2. An existing `.geoflow.json` in the current working directory
-3. `~/.config/geoflow/config.json`
+1. `--profile NAME`, selecting `~/.config/geoflow/profiles/NAME.json`; it cannot be combined with `--config` or `--file`
+2. `--config PATH`
+3. An existing `.geoflow.json` in the current working directory
+4. `~/.config/geoflow/config.json`
 
 After profile selection, each value follows this precedence:
 
@@ -198,7 +207,7 @@ geoflow task jobs TASK_ID [--status STATUS] [--limit N]
 geoflow job get JOB_ID
 ```
 
-Task creation requires `name`, `title_library_id`, `prompt_id`, and `ai_model_id`:
+Task creation requires `name`, `title_library_id`, `prompt_id`, `ai_model_id`, and an explicit `need_review`. Set `true`/`1` to require human approval for every article, or `false`/`0` to publish at the task cadence after basic risk checks and any enabled AI inspection pass. The CLI rejects a missing policy before sending a request. The external API retains its legacy human-review default and returns `compatibility` and `effective_configuration`:
 
 ```json
 {
@@ -280,6 +289,8 @@ geoflow article update ARTICLE_ID (--json FILE | direct fields) [--idempotency-k
 geoflow article review ARTICLE_ID --status STATUS [--note TEXT]
   [--risk-override-reason TEXT] [--idempotency-key KEY]
 geoflow article publish ARTICLE_ID [--idempotency-key KEY]
+geoflow article schedule ARTICLE_ID [--workflow-version N] [--idempotency-key KEY]
+geoflow article hold ARTICLE_ID --status draft|private [--workflow-version N] [--idempotency-key KEY]
 geoflow article ai-quality-status ARTICLE_ID
 geoflow article ai-quality-recheck ARTICLE_ID [--idempotency-key KEY]
 geoflow article ai-quality-override ARTICLE_ID --reason TEXT [--idempotency-key KEY]
@@ -290,6 +301,10 @@ geoflow article ai-optimization-apply ARTICLE_ID --run-id RUN_ID --candidate-has
 geoflow article ai-optimization-cancel ARTICLE_ID --run-id RUN_ID --idempotency-key KEY
 geoflow article trash ARTICLE_ID [--idempotency-key KEY]
 ```
+
+`article review` records human approval and preserves the current publication plan; an existing explicit request to publish immediately resumes once the remaining requirements are met. `article schedule` joins the task publication schedule, `article publish` explicitly requests immediate publication after required checks, and `article hold --status draft|private` preserves a manual hold. All four support `--workflow-version N`; stale versions return 409. Their API routes are `POST /articles/{id}/review|schedule|publish|hold`, with `workflow_version` in the body and `status` for hold. All require `articles:publish`.
+
+Updating a published article with `article update` also requires `articles:publish`. A token without that scope receives 403 and no changes are saved. Content updates still have to satisfy the current risk, human-review, and AI quality requirements.
 
 `ai-quality-status` returns the current phase, elapsed time, business deadline, and safe error code. An AI quality recheck invalidates the previous result and queues a new run against the current article and task policy. Manual approval applies only above the configured floor when no critical issue remains, and `--reason` must contain an auditable basis.
 
@@ -466,7 +481,7 @@ When the caller runs on the host, it can usually run the host copy of `bin/geofl
 
 ## API And Admin Boundaries
 
-CLI 0.2.0 covers catalog, task, job, material, and article operations exposed by API v1. If the CLI is absent, use the matching `/api/v1` route with a token carrying the required scopes.
+CLI 0.3.0-preview.1 covers catalog, task, job, material, and article operations exposed by API v1. If the CLI is absent, use the matching `/api/v1` route with a token carrying the required scopes.
 
 These capabilities currently require an authenticated admin session:
 

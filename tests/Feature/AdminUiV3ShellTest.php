@@ -33,7 +33,53 @@ class AdminUiV3ShellTest extends TestCase
         $this->get(route('admin.dashboard'))
             ->assertOk()
             ->assertDontSee('data-gf-shell', false)
+            ->assertSeeInOrder([
+                'href="'.route('admin.distribution.index').'"',
+                'href="'.route('admin.articles.index').'"',
+            ], false)
+            ->assertDontSee('href="'.route('admin.link-pool.overview').'"', false)
             ->assertSee('tailwindcss.play-cdn.js', false);
+    }
+
+    public function test_link_pool_navigation_preserves_role_permissions_in_both_shells(): void
+    {
+        foreach ([true, false] as $v3Enabled) {
+            config()->set('geoflow.admin_ui_v3_enabled', $v3Enabled);
+            foreach (['super_admin', 'admin'] as $role) {
+                $admin = $this->admin('link_pool_'.$role.'_'.(int) $v3Enabled, $role);
+                $html = $this->withSession([Admin::AUTH_VERSION_SESSION_KEY => 1])
+                    ->actingAs($admin, 'admin')
+                    ->get(route('admin.link-pool.overview'))
+                    ->assertOk()
+                    ->getContent();
+
+                $document = new \DOMDocument;
+                $document->loadHTML($html, LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
+                $xpath = new \DOMXPath($document);
+                $returnLinks = $xpath->query('//*[@data-link-pool-distribution-return]');
+                $this->assertSame($role === 'super_admin' ? 1 : 0, $returnLinks?->length);
+
+                if ($role === 'super_admin') {
+                    $this->assertSame(AdminWeb::routePath('admin.distribution.index'), $returnLinks?->item(0)?->attributes?->getNamedItem('href')?->nodeValue);
+                }
+                if ($v3Enabled) {
+                    $linkPoolLinks = $xpath->query('//*[@class="gf-sidebar__primary"]//a[@href="'.AdminWeb::routePath('admin.link-pool.overview').'"]');
+                    $this->assertSame($role === 'super_admin' ? 0 : 1, $linkPoolLinks?->length);
+                    $activeLinks = $xpath->query('//*[@class="gf-sidebar__primary"]//a[@aria-current="page"]');
+                    $this->assertSame(1, $activeLinks?->length);
+                    $this->assertSame(
+                        AdminWeb::routePath($role === 'super_admin' ? 'admin.distribution.index' : 'admin.link-pool.overview'),
+                        $activeLinks?->item(0)?->attributes?->getNamedItem('href')?->nodeValue,
+                    );
+                }
+                $response = $this->get(route('admin.distribution.index'));
+                if ($role === 'admin') {
+                    $response->assertForbidden();
+                } else {
+                    $response->assertOk()->assertSee('data-distribution-navigation-item="link-pool"', false);
+                }
+            }
+        }
     }
 
     public function test_product_footer_is_shared_by_v3_and_legacy_shells(): void
@@ -198,7 +244,9 @@ class AdminUiV3ShellTest extends TestCase
             ->assertSee('data-ai-form', false)
             ->assertSee('data-ai-suggestion', false)
             ->assertSee(__('admin.ai_workspace.suggestions'))
-            ->assertSee(__('admin.ai_workspace.connection_runtime_disabled'))
+            ->assertSee(__('admin.ai_workspace.connection_runtime_disabled_admin'))
+            ->assertSee('data-ai-runtime-settings', false)
+            ->assertSee(AdminWeb::routePath('admin.site-settings.index').'#site-settings-ai-workspace', false)
             ->assertSee('data-runtime-enabled="false"', false)
             ->assertDontSee('data-ai-runs', false)
             ->assertDontSee('data-capability-carousel', false)

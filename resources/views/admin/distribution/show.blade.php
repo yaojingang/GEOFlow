@@ -357,7 +357,7 @@
                             </div>
                             <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
                                 <div class="font-medium text-gray-900">{{ __('admin.distribution.detail.target_package_feature_detail') }}</div>
-                                <code class="mt-1 block break-all text-xs text-gray-500">/article/{slug}</code>
+                                <code class="mt-1 block break-all text-xs text-gray-500">{{ __('article_permalink.remote_policy_hint') }}</code>
                             </div>
                         </div>
                         <div class="mt-5">

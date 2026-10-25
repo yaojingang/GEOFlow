@@ -737,6 +737,8 @@ class DistributionController extends Controller
             if ((string) $channel->status !== DistributionChannel::STATUS_ACTIVE) {
                 return 'unavailable';
             }
+            $taskId = (int) Article::query()->whereKey((int) $candidate->article_id)->value('task_id');
+            $task = $taskId ? Task::query()->whereKey($taskId)->lockForUpdate()->first(['id']) : null;
             $article = Article::query()
                 ->whereKey((int) $candidate->article_id)
                 ->lockForUpdate()
@@ -744,10 +746,7 @@ class DistributionController extends Controller
             if (! $article) {
                 return 'article_unavailable';
             }
-            $task = $article->task_id
-                ? Task::query()->whereKey((int) $article->task_id)->lockForUpdate()->first(['id'])
-                : null;
-            if ($article->task_id && ! $task) {
+            if ((int) $article->task_id !== $taskId || ($taskId && ! $task)) {
                 return 'article_unavailable';
             }
             $distribution = ArticleDistribution::query()
@@ -925,7 +924,7 @@ class DistributionController extends Controller
         }
 
         try {
-            $this->distributionOrchestrator->deleteRemoteArticle($distribution);
+            $distribution = $this->distributionOrchestrator->deleteRemoteArticle($distribution);
         } catch (Throwable $e) {
             if ($request->expectsJson()) {
                 return response()->json([
@@ -937,7 +936,6 @@ class DistributionController extends Controller
             return back()->withErrors(__('admin.distribution.message.remote_article_delete_failed', ['message' => $e->getMessage()]));
         }
 
-        $distribution->refresh();
         if ($request->expectsJson()) {
             return response()->json([
                 'ok' => true,
@@ -1243,6 +1241,12 @@ class DistributionController extends Controller
             function (DistributionChannel $lockedChannel): array {
                 try {
                     $result = $this->publisherManager->forChannel($lockedChannel)->syncSiteSettings($lockedChannel);
+                    if (isset($result['article_permalink_revision'])) {
+                        $capabilities = $lockedChannel->frontendCapabilitiesCache();
+                        $capabilities['current_article_permalink_revision'] = (int) $result['article_permalink_revision'];
+                        $capabilities['current_article_permalink_pattern'] = (string) ($result['article_permalink_pattern'] ?? '');
+                        $lockedChannel->fillFrontendCapabilitiesCache($capabilities)->save();
+                    }
                     $this->distributionOrchestrator->log(
                         'info',
                         '目标站点设置已同步',

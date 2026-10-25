@@ -15,6 +15,8 @@ final class SiteSettingsBag
 
     private const CACHE_TTL_SECONDS = 60;
 
+    private static int $localRevision = 0;
+
     /**
      * @return array<string, string>
      */
@@ -37,7 +39,7 @@ final class SiteSettingsBag
             return [];
         }
 
-        return Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, static function (): array {
+        $cached = Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, static function (): array {
             /** @var array<string, string> $map */
             $map = SiteSetting::query()
                 ->pluck('setting_value', 'setting_key')
@@ -45,6 +47,8 @@ final class SiteSettingsBag
 
             return $map;
         });
+
+        return array_replace($cached, app(ThemeRevisionContext::class)->snapshot()['settings'] ?? []);
     }
 
     /** @return array<string,string> */
@@ -90,6 +94,7 @@ final class SiteSettingsBag
                 'home_carousel_slides' => '[]',
                 'article_detail_text_ads' => '[]',
                 'article_detail_ads' => '[]',
+                'article_permalink_policy' => (string) json_encode(ArticlePermalinkPolicy::defaults()->toArray(), JSON_UNESCAPED_SLASHES),
             ];
 
             foreach ([
@@ -97,6 +102,9 @@ final class SiteSettingsBag
                 'site_logo', 'site_favicon', 'filing_info', 'filing_url', 'about_title', 'about_content', 'contact_email',
                 'featured_limit', 'per_page', 'lead_form_slugs', 'homepage_style', 'homepage_modules',
                 'home_carousel_slides', 'article_detail_text_ads', 'article_detail_ads',
+                'article_permalink_policy',
+                'article_recommendations',
+                'topics',
             ] as $key) {
                 if (array_key_exists($key, $stored)) {
                     $settings[$key] = self::stringValue($stored[$key]);
@@ -135,5 +143,11 @@ final class SiteSettingsBag
     public static function forget(): void
     {
         Cache::forget(self::CACHE_KEY);
+        self::$localRevision++;
+    }
+
+    public static function localRevision(): int
+    {
+        return self::$localRevision;
     }
 }

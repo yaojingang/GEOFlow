@@ -20,6 +20,7 @@ class ArticleAiQualityGate
         private readonly ArticleAiQualityPolicyResolver $policyResolver,
         private readonly ArticleAiQualityInspectionService $inspectionService,
         private readonly ArticleAiQualityVersionPolicy $versionPolicy,
+        private readonly ArticlePublicationEligibilityService $publicationEligibility,
     ) {}
 
     /**
@@ -44,8 +45,12 @@ class ArticleAiQualityGate
                 ->latest('id')
                 ->lockForUpdate()
                 ->first();
+            if ($optimization?->trigger === ArticleAiOptimizationRun::TRIGGER_TASK_AUTO && ! $article->task?->ai_quality_auto_optimize_enabled) {
+                $optimization = null;
+            }
             if ($optimization
-                && in_array((string) $optimization->status, ArticleAiOptimizationRun::ACTIVE_STATUSES, true)) {
+                && in_array((string) $optimization->status, ArticleAiOptimizationRun::ACTIVE_STATUSES, true)
+                && ! $this->publicationEligibility->canRestartOptimizationForCurrentIntent($article, $optimization)) {
                 return null;
             }
 
@@ -90,6 +95,11 @@ class ArticleAiQualityGate
                 || ! $optimization->updated_at
                 || $check->created_at->lessThanOrEqualTo($optimization->updated_at)
             );
+            if ($optimizationStillApplies && $optimization->trigger === ArticleAiOptimizationRun::TRIGGER_TASK_AUTO
+                && ($this->publicationEligibility->optimizationBlockReason($article, $check, $policy) === null
+                    || $this->publicationEligibility->canRestartOptimizationForCurrentIntent($article, $optimization))) {
+                $optimizationStillApplies = false;
+            }
             if ($optimizationStillApplies && in_array((string) $optimization->status, [
                 ArticleAiOptimizationRun::STATUS_STALE,
                 ArticleAiOptimizationRun::STATUS_NEEDS_REVIEW,
@@ -167,14 +177,22 @@ class ArticleAiQualityGate
             $task->load(['qualityPrompt', 'qualityModel', 'aiModel', 'knowledgeBases']);
             $article->setRelation('task', $task);
         }
+        $policy = $this->policyResolver->resolve($article);
+        if (! ($policy['required'] ?? false)) {
+            return null;
+        }
         $optimization = ArticleAiOptimizationRun::query()
             ->where('article_id', (int) $article->id)
             ->latest('id')
             ->lockForUpdate()
             ->first();
+        if ($optimization?->trigger === ArticleAiOptimizationRun::TRIGGER_TASK_AUTO && ! $task?->ai_quality_auto_optimize_enabled) {
+            $optimization = null;
+        }
         $explicitOverride = in_array($trigger, ['admin_ai_quality_override', 'api_ai_quality_override'], true);
         if ($optimization
             && in_array((string) $optimization->status, ArticleAiOptimizationRun::ACTIVE_STATUSES, true)
+            && ! $this->publicationEligibility->canRestartOptimizationForCurrentIntent($article, $optimization)
             && ! $explicitOverride) {
             throw new ArticleAiQualityGateException(
                 'article_ai_optimization_pending',
@@ -221,6 +239,11 @@ class ArticleAiQualityGate
             || ! $optimization->updated_at
             || $check->created_at->lessThanOrEqualTo($optimization->updated_at)
         );
+        if ($optimizationStillApplies && $optimization->trigger === ArticleAiOptimizationRun::TRIGGER_TASK_AUTO
+            && ($this->publicationEligibility->optimizationBlockReason($article, $check, $policy) === null
+                || $this->publicationEligibility->canRestartOptimizationForCurrentIntent($article, $optimization))) {
+            $optimizationStillApplies = false;
+        }
         if ($optimizationStillApplies && (string) $optimization->status === ArticleAiOptimizationRun::STATUS_STALE) {
             throw new ArticleAiQualityGateException(
                 'article_ai_optimization_stale',
@@ -326,7 +349,32 @@ class ArticleAiQualityGate
             );
         }
 
+        if (! $explicitOverride && $check->inspection_scope === 'full'
+            && $this->publicationEligibility->optimizationBlockReason($article, $check, $policy) === 'optimization_target_not_met'
+            && (($optimization && $this->publicationEligibility->canRestartOptimizationForCurrentIntent($article, $optimization))
+                || ($optimization === null && $check->decision !== 'passed'))) {
+            $resumed = app(ArticleAiOptimizationCoordinator::class)->resumeForCurrentPublication($check);
+            if ($resumed && in_array($resumed->status, ArticleAiOptimizationRun::ACTIVE_STATUSES, true)) {
+                throw new ArticleAiQualityGateException(
+                    'article_ai_optimization_pending',
+                    'AI 内容优化正在进行，候选复检并应用后可继续发布。',
+                    $resumed->sourceCheck,
+                );
+            }
+        }
+
         if ($check->decision === 'passed') {
+            $blockReason = $this->publicationEligibility->optimizationBlockReason($article, $check, $policy);
+            if ($blockReason !== null && ! $explicitOverride) {
+                if ($blockReason === 'optimization_target_not_met') {
+                    $meta = (array) $check->execution_meta;
+                    $meta['workflow_fence'] = $this->publicationEligibility->fence($article, $article->publication_intent === 'immediate' ? 'manual' : 'automatic');
+                    $check->update(['execution_meta' => $meta]);
+                    app(ArticleAiOptimizationCoordinator::class)->interceptCompletedWorkflow((int) $check->id);
+                }
+                throw new ArticleAiQualityGateException($blockReason, '自动优化尚未达到设定目标或执行能力未完整开放，文章保留当前发布安排。', $check);
+            }
+
             return $check;
         }
         if ($check->decision === 'needs_review') {
@@ -454,7 +502,7 @@ class ArticleAiQualityGate
     }
 
     /** @param array<string,mixed> $policy */
-    private function sampledResultCanAuthorize(ArticleAiQualityCheck $check, array $policy): bool
+    public function sampledResultCanAuthorize(ArticleAiQualityCheck $check, array $policy): bool
     {
         $executionMeta = is_array($check->execution_meta) ? $check->execution_meta : [];
         $policySnapshot = is_array($executionMeta['policy_snapshot'] ?? null)

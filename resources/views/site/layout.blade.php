@@ -8,6 +8,7 @@
     <script src="{{ asset('js/tailwindcss.play-cdn.js') }}"></script>
     <link rel="stylesheet" href="{{ asset('assets/css/style.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/custom.css') }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/article-prose.css') }}">
     <script src="{{ asset('js/lucide.min.js') }}"></script>
     @if(!empty($headAnalyticsCode))
         {!! $headAnalyticsCode !!}

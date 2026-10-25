@@ -39,6 +39,6 @@ class ArticleAiQualityVersionPolicyTest extends TestCase
         $this->assertSame('v2', $selection['principles']);
         $this->assertSame('v2', $selection['scoring']);
         $this->assertFalse($selection['shadow_v2']);
-        $this->assertSame('exec=f2;ret=4;principles=2;prompt=2;score=2', $selection['algorithm_version']);
+        $this->assertSame('exec=f2;ret=6;principles=2;prompt=2;score=2;decision=score-release-1', $selection['algorithm_version']);
     }
 }

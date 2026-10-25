@@ -19,10 +19,7 @@ final class SiteThemeViewResolver
         if ($preview !== null) {
             return $preview;
         }
-        $id = trim(SiteSettingsBag::get('active_theme', ''));
-        if ($id === '') {
-            $id = trim((string) config('geoflow.default_theme', ''));
-        }
+        $id = trim(SiteSettingsBag::get('active_theme', (string) config('geoflow.default_theme', '')));
 
         return preg_match('/^[a-zA-Z0-9_-]+$/', $id) === 1 ? $id : '';
     }
@@ -41,6 +38,10 @@ final class SiteThemeViewResolver
 
     private static function registerInstalledTheme(): void
     {
+        app(ThemeRevisionContext::class)->views();
+        if ((app(ThemeRevisionContext::class)->snapshot()['revision_id'] ?? null) !== null) {
+            return;
+        }
         $id = self::activeThemeId();
         if ($id === '' || is_dir(resource_path('views/theme/'.$id))) {
             return;

@@ -1,6 +1,19 @@
 <?php
 
 return [
+    'topics' => '专题列表',
+    'topic_create' => '新建专题',
+    'topic_articles' => '选择专题文章',
+    'topic_settings' => '专题设置',
+    'topic_batch_create' => '批量新建专题',
+    'topic_batch_detail' => '专题批次结果',
+    'topic_run_detail' => '专题生成状态',
+    'topic_path' => '专题地址',
+    'topic_edit' => '编辑专题',
+    'topic_preview' => '专题预览',
+    'topic_history' => '专题版本历史',
+    'topic_revision_preview' => '专题预览',
+
     'theme_package_upload' => '导入模板',
     'theme_package_inspection' => '检查模板包',
     'theme_package_preview' => '预览模板',
@@ -13,6 +26,7 @@ return [
     'ai_visibility' => 'AI 可见性',
     'lead_analytics' => '线索分析',
     'distribution_analytics' => '分发分析',
+    'link_pool' => '内链投放',
     'tasks' => '任务管理',
     'task_workers' => 'Worker 监控',
     'task_jobs' => '任务记录',
@@ -92,6 +106,7 @@ return [
     'browser_clients' => '浏览器客户端',
     'system_updates' => '系统更新',
     'system_update_detail' => '更新详情',
+    'updater_operations' => '运维操作与收据',
     'system_backup_detail' => '备份详情',
     'lead_forms' => '转化表单',
     'lead_form_create' => '新建表单',

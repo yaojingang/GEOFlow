@@ -8,8 +8,10 @@ use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\SensitiveWord;
+use App\Models\Task;
 use App\Services\GeoFlow\ArticleRiskGate;
 use App\Services\GeoFlow\ArticleRiskScanner;
+use App\Services\GeoFlow\DistributionOrchestrator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
@@ -100,7 +102,7 @@ class AdminArticleRiskWorkflowTest extends TestCase
         $this->assertSame('Original content.', $article->content);
     }
 
-    public function test_warning_publish_without_reason_is_saved_as_pending_draft_with_an_error(): void
+    public function test_warning_publish_preserves_approval_and_returns_an_error(): void
     {
         SensitiveWord::query()->create(['word' => 'review me']);
 
@@ -115,7 +117,7 @@ class AdminArticleRiskWorkflowTest extends TestCase
         $response->assertRedirect(route('admin.articles.edit', ['articleId' => $article->id]))
             ->assertSessionHasErrors();
         $this->assertSame('draft', $article->status);
-        $this->assertSame('pending', $article->review_status);
+        $this->assertSame('approved', $article->review_status);
         $this->assertNull($article->published_at);
         $this->assertSame('warning', $article->latestRiskScan->status);
         $this->assertFalse($article->latestRiskScan->is_overridden);
@@ -145,7 +147,7 @@ class AdminArticleRiskWorkflowTest extends TestCase
         $this->assertSame($this->admin->id, $scan->overridden_by_admin_id);
     }
 
-    public function test_blocked_publish_with_reason_remains_a_pending_draft(): void
+    public function test_blocked_publish_preserves_approval_and_cannot_use_an_override(): void
     {
         SensitiveWord::query()->create([
             'word' => 'prohibited',
@@ -163,13 +165,13 @@ class AdminArticleRiskWorkflowTest extends TestCase
         $article = Article::query()->where('title', 'Manual article')->firstOrFail();
         $response->assertSessionHasErrors();
         $this->assertSame('draft', $article->status);
-        $this->assertSame('pending', $article->review_status);
+        $this->assertSame('approved', $article->review_status);
         $this->assertNull($article->published_at);
         $this->assertSame('blocked', $article->latestRiskScan->status);
         $this->assertFalse($article->latestRiskScan->is_overridden);
     }
 
-    public function test_auto_approved_warning_is_downgraded_without_using_an_override(): void
+    public function test_legacy_auto_approved_form_records_human_approval_without_overriding_risk(): void
     {
         SensitiveWord::query()->create(['word' => 'review me']);
 
@@ -181,14 +183,14 @@ class AdminArticleRiskWorkflowTest extends TestCase
             ]));
 
         $article = Article::query()->where('title', 'Manual article')->firstOrFail();
-        $response->assertSessionHasErrors();
+        $response->assertSessionDoesntHaveErrors();
         $this->assertSame('draft', $article->status);
-        $this->assertSame('pending', $article->review_status);
+        $this->assertSame('approved', $article->review_status);
         $this->assertNull($article->published_at);
         $this->assertFalse($article->latestRiskScan->is_overridden);
     }
 
-    public function test_batch_auto_approved_warning_ignores_an_existing_manual_override(): void
+    public function test_legacy_auto_approved_batch_records_human_approval_and_keeps_risk_override(): void
     {
         SensitiveWord::query()->create(['word' => 'review me']);
         $article = $this->createArticle([
@@ -209,16 +211,16 @@ class AdminArticleRiskWorkflowTest extends TestCase
                 'risk_override_reason' => 'Must be ignored.',
             ])
             ->assertRedirect()
-            ->assertSessionHasErrors();
+            ->assertSessionDoesntHaveErrors();
 
         $article->refresh();
         $this->assertSame('draft', $article->status);
-        $this->assertSame('pending', $article->review_status);
+        $this->assertSame('approved', $article->review_status);
         $this->assertNull($article->published_at);
         $this->assertTrue($article->latestRiskScan->is($confirmedScan));
     }
 
-    public function test_warning_update_never_leaves_the_previously_published_article_public(): void
+    public function test_warning_update_rolls_back_new_content_and_preserves_published_article(): void
     {
         SensitiveWord::query()->create(['word' => 'review me']);
         $article = $this->createArticle([
@@ -238,12 +240,12 @@ class AdminArticleRiskWorkflowTest extends TestCase
         $response->assertRedirect(route('admin.articles.edit', ['articleId' => $article->id]))
             ->assertSessionHasErrors();
         $article->refresh();
-        $this->assertSame('Updated risky article', $article->title);
-        $this->assertSame('draft', $article->status);
-        $this->assertSame('pending', $article->review_status);
-        $this->assertNull($article->published_at);
-        $this->assertSame('admin_save', $article->latestRiskScan->trigger);
-        $this->assertSame('warning', $article->latestRiskScan->status);
+        $this->assertSame('Existing article', $article->title);
+        $this->assertSame('published', $article->status);
+        $this->assertSame('approved', $article->review_status);
+        $this->assertNotNull($article->published_at);
+        $this->assertSame('Existing article content.', $article->content);
+        $this->assertSame(0, $article->riskScans()->count());
     }
 
     public function test_clean_published_update_remains_published_with_a_fresh_admin_save_scan(): void
@@ -277,6 +279,188 @@ class AdminArticleRiskWorkflowTest extends TestCase
         $this->assertSame($this->admin->id, $latestScan->admin_id);
         $this->assertFalse($latestScan->is($previousScan));
         $this->assertSame(2, $article->riskScans()->count());
+    }
+
+    public function test_distribution_only_article_update_stays_private_and_enters_distribution(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Admin distribution only task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'distribution_only',
+            'ai_quality_enabled' => false,
+        ]);
+        $article = $this->createArticle([
+            'task_id' => $task->id,
+            'review_status' => 'approved',
+        ]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldReceive('enqueueForArticle')->once()->andReturn([]);
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->actingAs($this->admin, 'admin')
+            ->put(route('admin.articles.update', ['articleId' => $article->id]), $this->articlePayload([
+                'status' => 'published',
+                'review_status' => 'approved',
+            ]))
+            ->assertRedirect(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertSessionDoesntHaveErrors();
+
+        $article->refresh();
+        $this->assertSame('private', $article->status);
+        $this->assertSame('approved', $article->review_status);
+        $this->assertNull($article->published_at);
+    }
+
+    public function test_distribution_only_explicit_private_update_does_not_enter_distribution(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Admin explicit private task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'distribution_only',
+            'ai_quality_enabled' => false,
+        ]);
+        $article = $this->createArticle([
+            'task_id' => $task->id,
+            'status' => 'private',
+            'review_status' => 'approved',
+        ]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldNotReceive('enqueueForArticle');
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->actingAs($this->admin, 'admin')
+            ->put(route('admin.articles.update', ['articleId' => $article->id]), $this->articlePayload([
+                'status' => 'private',
+                'review_status' => 'approved',
+            ]))
+            ->assertRedirect(route('admin.articles.edit', ['articleId' => $article->id]))
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertNull($article->fresh()->published_at);
+    }
+
+    public function test_distribution_only_batch_publish_stays_private_and_enters_distribution(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Admin batch distribution only task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'distribution_only',
+            'ai_quality_enabled' => false,
+        ]);
+        $article = $this->createArticle([
+            'task_id' => $task->id,
+            'review_status' => 'approved',
+        ]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldReceive('enqueueForArticle')->once()->andReturn([]);
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->actingAs($this->admin, 'admin')
+            ->post(route('admin.articles.batch.update-status'), [
+                'article_ids' => [$article->id],
+                'new_status' => 'published',
+            ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $article->refresh();
+        $this->assertSame('private', $article->status);
+        $this->assertSame('approved', $article->review_status);
+        $this->assertNull($article->published_at);
+    }
+
+    public function test_distribution_only_batch_private_status_does_not_enter_distribution(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Admin batch private task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'distribution_only',
+            'ai_quality_enabled' => false,
+        ]);
+        $article = $this->createArticle([
+            'task_id' => $task->id,
+            'status' => 'private',
+            'review_status' => 'approved',
+        ]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldNotReceive('enqueueForArticle');
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->actingAs($this->admin, 'admin')
+            ->post(route('admin.articles.batch.update-status'), [
+                'article_ids' => [$article->id],
+                'new_status' => 'private',
+            ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertNull($article->fresh()->published_at);
+    }
+
+    public function test_distribution_only_batch_review_records_approval_without_publishing(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Admin batch review distribution only task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'distribution_only',
+            'need_review' => 0,
+            'ai_quality_enabled' => false,
+        ]);
+        $article = $this->createArticle(['task_id' => $task->id]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldNotReceive('enqueueForArticle');
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->actingAs($this->admin, 'admin')
+            ->post(route('admin.articles.batch.update-review'), [
+                'article_ids' => [$article->id],
+                'review_status' => 'approved',
+            ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $article->refresh();
+        $this->assertSame('draft', $article->status);
+        $this->assertSame('approved', $article->review_status);
+        $this->assertNull($article->published_at);
+    }
+
+    public function test_distribution_only_batch_review_of_private_article_does_not_enter_distribution(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Admin batch private review task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'distribution_only',
+            'need_review' => 1,
+            'ai_quality_enabled' => false,
+        ]);
+        $article = $this->createArticle([
+            'task_id' => $task->id,
+            'status' => 'private',
+        ]);
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldNotReceive('enqueueForArticle');
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->actingAs($this->admin, 'admin')
+            ->post(route('admin.articles.batch.update-review'), [
+                'article_ids' => [$article->id],
+                'review_status' => 'approved',
+            ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertSame('private', $article->fresh()->status);
+        $this->assertSame('approved', $article->fresh()->review_status);
+        $this->assertNull($article->fresh()->published_at);
     }
 
     public function test_non_risk_admin_update_preserves_a_fresh_warning_override(): void
@@ -316,7 +500,7 @@ class AdminArticleRiskWorkflowTest extends TestCase
         $this->assertTrue($article->latestRiskScan->is_overridden);
     }
 
-    public function test_manual_recheck_downgrades_a_published_article_when_a_new_blocked_rule_matches(): void
+    public function test_manual_recheck_alert_preserves_published_article_and_human_approval(): void
     {
         $article = $this->createArticle([
             'status' => 'published',
@@ -334,9 +518,9 @@ class AdminArticleRiskWorkflowTest extends TestCase
             ->assertSessionHasErrors();
 
         $article->refresh();
-        $this->assertSame('draft', $article->status);
-        $this->assertSame('pending', $article->review_status);
-        $this->assertNull($article->published_at);
+        $this->assertSame('published', $article->status);
+        $this->assertSame('approved', $article->review_status);
+        $this->assertNotNull($article->published_at);
         $this->assertSame('blocked', $article->latestRiskScan->status);
         $this->assertSame('admin_recheck', $article->latestRiskScan->trigger);
     }
@@ -362,17 +546,17 @@ class AdminArticleRiskWorkflowTest extends TestCase
             ]);
 
         $response->assertRedirect()
-            ->assertSessionHas('message')
-            ->assertSessionHasErrors();
-        $this->assertStringContainsString('1', session('errors')->first());
+            ->assertSessionHas('article_batch_results.totals.success', 1)
+            ->assertSessionHas('article_batch_results.totals.blocked', 1)
+            ->assertSessionHas('article_batch_results.results.1.reason', 'article_risk_blocked');
         $this->assertSame('published', $cleanArticle->fresh()->status);
         $this->assertSame('approved', $cleanArticle->fresh()->review_status);
         $this->assertNotNull($cleanArticle->fresh()->published_at);
         $this->assertSame('draft', $riskyArticle->fresh()->status);
-        $this->assertSame('pending', $riskyArticle->fresh()->review_status);
+        $this->assertSame('approved', $riskyArticle->fresh()->review_status);
         $this->assertNull($riskyArticle->fresh()->published_at);
         $this->assertSame('warning', $riskyArticle->fresh()->latestRiskScan->status);
-        $this->assertSame('admin_batch_status', $riskyArticle->fresh()->latestRiskScan->trigger);
+        $this->assertSame('manual_publish', $riskyArticle->fresh()->latestRiskScan->trigger);
     }
 
     public function test_batch_draft_transition_does_not_call_the_risk_gate(): void

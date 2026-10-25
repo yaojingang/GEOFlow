@@ -1,6 +1,21 @@
 <?php
 
 return [
+    'topic_runtime' => [
+        'limit_reached' => '已达到专题数量上限',
+        'completed_with_topic' => '任务“:task”已生成专题“:topic”',
+        'running_explanation' => '后台正在处理这次任务，完成后会显示生成的专题记录。',
+        'failed_with_topic' => '专题“:topic”处理时遇到问题：:reason',
+        'failed_before_topic' => '本次执行尚未生成专题，问题发生在任务执行阶段：:reason',
+    ],
+    'primary_site' => '主站',
+    'all_categories' => '全部来源栏目',
+    'total_titles' => '共 :count 个标题',
+    'suggested_topic_name' => ':name专题任务',
+    'view_topics' => '查看专题结果',
+    'content_types' => ['article' => '文章任务', 'topic' => '专题任务'],
+    'topic_generation_modes' => ['auto_publish' => '自动发布', 'draft_only' => '仅生成草稿', 'review_then_publish' => '审核后发布'],
+    'topic_templates' => ['default' => '默认布局', 'guide' => '指南布局', 'roundup' => '汇总布局'],
     'remaining' => '还需补充 :count 项：:fields',
     'suggested_name' => ':name文章任务',
     'use_name' => '使用名称「:name」',
@@ -10,6 +25,9 @@ return [
     'no_ready_titles' => '现有标题库都不足 :count 个可用标题，请先补充标题，或减少文章数量。',
     'invalid_value' => '请重新填写:field，当前值不符合任务要求。',
     'limits' => [
+        'topic_limit' => '专题数量支持 1 至 99999 个，请重新设置。',
+        'category_ids' => '最多选择 100 个不同的来源栏目，请重新选择。',
+        'rules' => '来源规则最多支持 5000 字，请缩短后重试。',
         'article_limit' => '文章数量支持 1 至 99999 篇，请重新设置。',
         'image_count' => '每篇配图支持 0 至 5 张，请重新设置。',
         'publish_interval_minutes' => '发布间隔支持 1 至 525600 分钟，请重新设置。',
@@ -21,7 +39,7 @@ return [
     'choice_saved' => '已保存所选配置，请继续补充下方信息。',
     'created' => '任务已创建，目前暂停。你可以查看任务，核对设置后再启动。',
     'cancelled' => '本次任务创建已取消。',
-    'scope' => '这里可以配置生成新文章的本站任务，审核方式支持人工审核或自动通过，创建后保持暂停。立即启动、多站分发和发布已有文章请到任务管理操作。已保留当前设置，可以继续修改或核对摘要后创建。',
+    'scope' => '这里可以配置文章或专题任务，文章审核方式支持人工审核或自动通过，专题支持自动发布、仅生成草稿和审核后发布，创建后保持暂停。立即启动、多站分发和发布已有文章请到任务管理操作。已保留当前设置，可以继续修改或核对摘要后创建。',
     'stale' => '这份摘要已有更新，请核对当前设置后再次确认。',
     'changed' => '相关配置已发生变化，我已更新摘要，请核对后继续。',
     'invalid_option' => ':field 已不可用，请重新选择。',
@@ -48,12 +66,15 @@ return [
     'interrupted' => '本轮操作已中断，请刷新查看最新任务草稿后继续。',
     'failed' => '本轮任务设置未完成，已填写的设置会保留。请重试；若刚才在确认创建，请刷新查看结果后再确认。',
     'fields' => [
+        'content_type' => '任务类型', 'site_key' => '目标站点', 'topic_limit' => '专题数量',
+        'after' => '生成方式', 'template_key' => '专题布局', 'category_ids' => '来源栏目', 'rules' => '来源规则',
         'name' => '任务名称', 'article_limit' => '文章数量', 'title_library_id' => '标题库',
         'prompt_id' => '写作模板', 'ai_model_id' => '写作模型', 'fixed_category_id' => '文章栏目',
         'knowledge_base_ids' => '知识库', 'author_id' => '作者', 'image_library_id' => '图库',
         'image_count' => '每篇配图', 'publish_interval_minutes' => '发布间隔', 'need_review' => '审核方式',
     ],
     'questions' => [
+        'topic_limit' => '这次计划生成多少个专题？',
         'name' => '请给任务起个名字，可以直接在下方输入，例如：官网文章发布。',
         'article_limit' => '这次计划生成多少篇文章？',
         'title_library_id' => '使用哪个标题库？',

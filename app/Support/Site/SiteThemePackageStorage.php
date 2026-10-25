@@ -140,6 +140,51 @@ final class SiteThemePackageStorage
         $this->deleteTree($path);
     }
 
+    /** Only the retention service may delete revisions after checking database references. */
+    public function deleteRevision(string $id): int
+    {
+        if (! preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/D', $id)) {
+            $this->fail('invalid_path');
+        }
+        $path = $this->path('revisions/'.$id);
+        if (! is_readable(dirname($path))) {
+            $this->fail('storage_failed');
+        }
+        if (@lstat($path) === false) {
+            return 0;
+        }
+        $remove = function (string $entry) use (&$remove): int {
+            $stat = @lstat($entry);
+            if ($stat === false) {
+                $this->fail('storage_failed');
+            }
+            if (($stat['mode'] & 0170000) === 0040000) {
+                $entries = @scandir($entry);
+                if ($entries === false) {
+                    $this->fail('storage_failed');
+                }
+                $bytes = 0;
+                foreach ($entries as $child) {
+                    if ($child !== '.' && $child !== '..') {
+                        $bytes += $remove($entry.'/'.$child);
+                    }
+                }
+                if (! @rmdir($entry)) {
+                    $this->fail('storage_failed');
+                }
+
+                return $bytes;
+            }
+            if (! @unlink($entry)) {
+                $this->fail('storage_failed');
+            }
+
+            return ($stat['mode'] & 0170000) === 0100000 ? $stat['size'] : 0;
+        };
+
+        return $remove($path);
+    }
+
     public function lock(string $key, Closure $operation, bool $wait = true): mixed
     {
         $directory = $this->directory('locks');

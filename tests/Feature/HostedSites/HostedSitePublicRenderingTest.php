@@ -9,8 +9,11 @@ use App\Models\DistributionChannel;
 use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
 use App\Models\LeadForm;
+use App\Models\SiteSetting;
 use App\Models\Task;
+use App\Support\Site\ArticlePermalinkPolicy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -70,6 +73,46 @@ class HostedSitePublicRenderingTest extends TestCase
         $this->assertNotNull($betaArticle->id);
     }
 
+    public function test_primary_site_excludes_distribution_only_articles_from_every_public_entry(): void
+    {
+        $distributionOnlyArticle = $this->articleFixture(
+            'Channel only article',
+            'channel-only-article',
+            'published',
+        );
+        $localArticle = $this->articleFixture(
+            'Primary local article',
+            'primary-local-article',
+            'published',
+            'local_and_distribution',
+        );
+        $archiveYear = $localArticle->published_at->format('Y');
+        $archiveMonth = $localArticle->published_at->format('m');
+
+        $this->get('http://primary.test/')
+            ->assertOk()
+            ->assertSee($localArticle->title)
+            ->assertDontSee($distributionOnlyArticle->title);
+        $this->get('http://primary.test/category/'.$localArticle->category->slug)
+            ->assertOk()
+            ->assertSee($localArticle->title)
+            ->assertDontSee($distributionOnlyArticle->title);
+        $this->get('http://primary.test/article/'.$localArticle->slug)->assertOk();
+        $this->get('http://primary.test/article/'.$distributionOnlyArticle->slug)->assertNotFound();
+        $this->get("http://primary.test/archive/{$archiveYear}/{$archiveMonth}")
+            ->assertOk()
+            ->assertSee($localArticle->title)
+            ->assertDontSee($distributionOnlyArticle->title);
+        $this->get('http://primary.test/archive')
+            ->assertOk()
+            ->assertViewHas('archives', fn (array $archives): bool => count($archives) === 1
+                && $archives[0]['count'] === 1);
+        $this->get('http://primary.test/sitemap.xml')
+            ->assertOk()
+            ->assertSee($localArticle->slug)
+            ->assertDontSee($distributionOnlyArticle->slug);
+    }
+
     public function test_hosted_about_forms_and_submission_ownership_use_the_site_allowlist(): void
     {
         [$profile] = $this->siteFixture('alpha', 'Alpha Site', 'Alpha article', [
@@ -127,6 +170,14 @@ class HostedSitePublicRenderingTest extends TestCase
         $this->get('http://alpha.sites.test/robots.txt')
             ->assertOk()
             ->assertSee('Disallow: /');
+        $this->get('http://alpha.sites.test/llms.txt')
+            ->assertOk()
+            ->assertSee('No articles are currently available for indexing.')
+            ->assertDontSee($article->slug);
+        $this->get('http://alpha.sites.test/sitemap.txt')
+            ->assertOk()
+            ->assertSee('https://alpha.sites.test/', false)
+            ->assertDontSee($article->slug);
         $this->get('http://alpha.sites.test/sitemap.xml')
             ->assertOk()
             ->assertDontSee($article->slug);
@@ -139,7 +190,19 @@ class HostedSitePublicRenderingTest extends TestCase
         $this->get('http://alpha.sites.test/robots.txt')
             ->assertOk()
             ->assertSee('Sitemap: https://alpha.sites.test/sitemap.xml')
-            ->assertDontSee('Disallow: /');
+            ->assertSee('Sitemap: https://alpha.sites.test/sitemap.txt')
+            ->assertDontSee("User-agent: *\nDisallow: /\n", false);
+        $this->get('http://alpha.sites.test/llms.txt')
+            ->assertOk()
+            ->assertSee('# Alpha Site')
+            ->assertSee('[Alpha article](https://alpha.sites.test/article/'.$article->slug.')', false)
+            ->assertDontSee($betaArticle->slug);
+        $this->get('http://alpha.sites.test/sitemap.txt')
+            ->assertOk()
+            ->assertSee('https://alpha.sites.test/', false)
+            ->assertSee('https://alpha.sites.test/article/'.$article->slug, false)
+            ->assertSee('https://alpha.sites.test/article/'.$secondArticle->slug, false)
+            ->assertDontSee($betaArticle->slug);
         $this->get('http://alpha.sites.test/sitemap.xml')
             ->assertOk()
             ->assertSee('<sitemapindex', false)
@@ -148,7 +211,7 @@ class HostedSitePublicRenderingTest extends TestCase
             ->assertDontSee($article->slug);
         $firstShard = $this->get('http://alpha.sites.test/sitemaps/pages-1.xml')->assertOk();
         $secondShard = $this->get('http://alpha.sites.test/sitemaps/pages-2.xml')->assertOk();
-        $combinedShards = $firstShard->getContent().$secondShard->getContent();
+        $combinedShards = $firstShard->streamedContent().$secondShard->streamedContent();
         $this->assertStringContainsString('https://alpha.sites.test/article/'.$article->slug, $combinedShards);
         $this->assertStringContainsString('https://alpha.sites.test/article/'.$secondArticle->slug, $combinedShards);
         $this->assertStringNotContainsString($betaArticle->slug, $combinedShards);
@@ -179,6 +242,25 @@ class HostedSitePublicRenderingTest extends TestCase
             ->assertSee('Automatically approved article');
         $this->get('http://alpha.sites.test/article/'.$article->slug)
             ->assertOk();
+    }
+
+    public function test_hosted_archive_uses_the_site_article_scope_and_permalink_policy(): void
+    {
+        $policy = ArticlePermalinkPolicy::defaults()->activate('/news/{year}/{slug}.html')->toArray();
+        [, $hostedArticle] = $this->siteFixture('alpha', 'Alpha Site', 'Alpha archive article', [
+            ArticlePermalinkPolicy::SETTING_KEY => $policy,
+        ]);
+        $primaryArticle = $this->articleFixture('Primary archive article', 'primary-archive-article', 'published');
+        $year = $hostedArticle->published_at->format('Y');
+        $month = $hostedArticle->published_at->format('m');
+
+        $this->get('http://alpha.sites.test/archive/'.$year.'/'.$month)
+            ->assertOk()
+            ->assertSee('Alpha archive article')
+            ->assertSee('/news/'.$hostedArticle->created_at->format('Y').'/'.$hostedArticle->slug.'.html', false)
+            ->assertDontSee('Primary archive article');
+
+        $this->assertNotNull($primaryArticle->id);
     }
 
     public function test_hosted_storage_assets_are_served_only_after_host_resolution(): void
@@ -219,6 +301,30 @@ class HostedSitePublicRenderingTest extends TestCase
             ->assertSee('Alpha Site');
     }
 
+    public function test_primary_friend_links_never_leak_into_hosted_sites_or_trigger_hosted_reads(): void
+    {
+        $this->siteFixture('alpha', 'Alpha Site', 'Alpha article');
+        $this->siteFixture('beta', 'Beta Site', 'Beta article');
+        SiteSetting::query()->create(['setting_key' => 'friend_links', 'setting_value' => json_encode([
+            'enabled' => true, 'links' => [['name' => 'Primary friend', 'url' => 'https://example.com/primary-friend',
+                'sort_order' => 0, 'enabled' => true, 'target' => '_blank', 'relationship' => 'regular']],
+        ])]);
+        $reads = 0;
+        DB::listen(function ($query) use (&$reads): void {
+            if (str_starts_with($query->sql, 'select') && in_array('friend_links', $query->bindings, true)) {
+                $reads++;
+            }
+        });
+        foreach (['alpha', 'beta'] as $host) {
+            $this->get('http://primary.test/')->assertOk()->assertSee('Primary friend');
+            $before = $reads;
+            $this->get('http://'.$host.'.sites.test/')->assertOk()->assertDontSee('Primary friend')->assertDontSee('assets/css/friend-links.css');
+            $this->assertSame($before, $reads);
+        }
+        $this->get('http://primary.test/')->assertOk()->assertSee('Primary friend');
+        $this->assertSame(3, $reads);
+    }
+
     /** @param array<string,mixed> $extraSettings @return array{HostedSiteProfile,Article} */
     private function siteFixture(string $label, string $siteName, string $articleTitle, array $extraSettings = []): array
     {
@@ -252,12 +358,16 @@ class HostedSitePublicRenderingTest extends TestCase
         return [$profile, $article];
     }
 
-    private function articleFixture(string $title, string $slug, string $status): Article
-    {
+    private function articleFixture(
+        string $title,
+        string $slug,
+        string $status,
+        string $publishScope = 'distribution_only',
+    ): Article {
         $task = Task::query()->create([
             'name' => $title.' task',
             'status' => 'active',
-            'publish_scope' => 'distribution_only',
+            'publish_scope' => $publishScope,
         ]);
         $category = Category::query()->firstOrCreate(
             ['slug' => 'ai'],

@@ -25,7 +25,7 @@
         </div>
 
         <h2 class="entry-title font-semibold text-gray-900 mb-3">
-            <a href="{{ route('site.article', $article->slug) }}" class="hover:text-blue-600">
+            <a href="{{ $siteUrls->article($article) }}" class="hover:text-blue-600">
                 {{ $article->title }}
             </a>
         </h2>
@@ -35,7 +35,7 @@
         </p>
 
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
-            <a href="{{ route('site.article', $article->slug) }}" class="read-more-btn self-start sm:self-center">
+            <a href="{{ $siteUrls->article($article) }}" class="read-more-btn self-start sm:self-center">
                 {{ __('site.home_read_more') }}
                 <i data-lucide="arrow-right" class="w-4 h-4 ml-1"></i>
             </a>

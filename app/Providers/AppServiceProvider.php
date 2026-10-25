@@ -9,12 +9,15 @@ use App\Contracts\ArticleAiQualityReviewer;
 use App\Contracts\Outbound\HostResolver;
 use App\Contracts\Outbound\OutboundTransport;
 use App\Contracts\SystemUpdater\AgentClient;
+use App\Exceptions\ApiException;
 use App\Http\ApiAuthContext;
 use App\Http\Requests\Admin\AiWorkspace\SendMessageRequest;
 use App\Jobs\GenerateKnowledgeFactBatchJob;
 use App\Jobs\ProcessTitleGenerationBatchJob;
 use App\Models\Admin;
 use App\Models\KnowledgeFactGenerationRun;
+use App\Models\Topic;
+use App\Models\TopicSourceInvalidation;
 use App\Services\Admin\AdminUpdateMetadataService;
 use App\Services\Admin\AdminWelcomeModalService;
 use App\Services\Admin\DatabaseAiModelWriteLock;
@@ -35,19 +38,30 @@ use App\Services\Outbound\SafeOutboundHttpClient;
 use App\Services\Outbound\SecureHttpFactory;
 use App\Services\Outbound\SystemHostResolver;
 use App\Services\Site\HostedSiteResolver;
+use App\Services\Site\SiteUrlGenerator;
+use App\Services\SystemUpdater\RecoveryReconciliation;
+use App\Services\SystemUpdater\RecoveryState;
 use App\Services\SystemUpdater\UnixSocketAgentClient;
+use App\Services\Topics\TopicReadModel;
+use App\Services\Topics\TopicSiteSettings;
+use App\Services\Topics\TopicViewBuilder;
 use App\Support\AdminUiRegistry;
 use App\Support\Site\CurrentSite;
+use App\Support\Site\LinkPoolThemeValidationContext;
 use App\Support\Site\SiteThemePreviewContext;
+use App\Support\Site\ThemeRevisionContext;
 use App\View\Composers\SiteLayoutComposer;
 use Closure;
 use GuzzleHttp\Utils;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobPopping;
 use Illuminate\Queue\Events\Looping;
 use Illuminate\Queue\Events\WorkerStarting;
 use Illuminate\Queue\Events\WorkerStopping;
+use Illuminate\Queue\Queue as BaseQueue;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
@@ -62,6 +76,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->scoped(TopicViewBuilder::class);
+        $this->app->scoped(TopicReadModel::class);
+        $this->app->scoped(ThemeRevisionContext::class);
+        $this->app->scoped(LinkPoolThemeValidationContext::class);
         $fixedContextCapability = new \stdClass;
         $trustedTerminal = Closure::fromCallable(Utils::chooseHandler());
 
@@ -69,6 +87,12 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(ArticleAiQualityReviewer::class, LaravelArticleAiQualityReviewer::class);
         $this->app->bind(ArticleAiOptimizationRefiner::class, LaravelArticleAiOptimizationRefiner::class);
         $this->app->bind(AgentClient::class, UnixSocketAgentClient::class);
+        $this->app->bind(RecoveryState::class, fn () => new RecoveryState(
+            (string) config('geoflow.recovery_control_directory', RecoveryState::CONTAINER_DIRECTORY),
+            (string) config('geoflow.updater_instance_id', 'primary'),
+            (bool) config('geoflow.recovery_contract_required', false),
+            fn (array $state) => $this->app->make(RecoveryReconciliation::class)->assertReady($state),
+        ));
         $this->app->bind(AiModelWriteLock::class, DatabaseAiModelWriteLock::class);
         $this->app->singleton(FinalOutboundSecurityPolicy::class);
         $this->app->bind(OutboundTransport::class, function () use ($fixedContextCapability): LaravelPinnedOutboundTransport {
@@ -93,6 +117,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(TaskLifecycleService::class);
         $this->app->singleton(ArticleGeoFlowService::class);
         $this->app->scoped(CurrentSite::class);
+        $this->app->scoped(SiteUrlGenerator::class);
         $this->app->scoped(SiteThemePreviewContext::class);
         $this->app->singleton(HostedSiteResolver::class);
         $this->app->singleton(AiWorkspaceModelRuntime::class);
@@ -104,16 +129,60 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        TopicSourceInvalidation::registerSourceObservers();
+        Topic::saved(function (): void {
+            if (app()->resolved(TopicReadModel::class)) {
+                app(TopicReadModel::class)->reset();
+            }
+        });
+        Topic::deleted(function (): void {
+            if (app()->resolved(TopicReadModel::class)) {
+                app(TopicReadModel::class)->reset();
+            }
+        });
+        BaseQueue::createPayloadUsing(static function (): array {
+            app(RecoveryState::class)->assertBackgroundReady();
+
+            return [];
+        });
+        Event::listen(JobPopping::class, static function (): void {
+            app(RecoveryState::class)->assertBackgroundReady();
+        });
+        Event::listen(CommandStarting::class, static function (CommandStarting $event): void {
+            if (! in_array($event->command, ['geoflow:recovery', 'geoflow:recovery-reconcile', 'geoflow:upgrade', 'up', 'down', 'migrate', 'migrate:status', 'config:cache', 'config:clear', 'route:cache', 'route:clear', 'view:cache', 'view:clear', 'optimize', 'optimize:clear', 'list', 'help'], true)) {
+                app(RecoveryState::class)->assertBackgroundReady();
+            }
+        });
+        View::composer(['site.*', 'theme.*'], function ($view): void {
+            $view->with('siteUrls', app(SiteUrlGenerator::class));
+            $topicSettings = app(TopicSiteSettings::class);
+            $key = $topicSettings->currentKey();
+            $navigation = $topicSettings->get($key)['navigation_enabled'] && app(TopicReadModel::class)->all($key, [], 1)->isNotEmpty();
+            $view->with('showTopicNavigation', $navigation);
+        });
         $this->assertHostedSiteConfiguration();
         Event::listen(WorkerStarting::class, function (WorkerStarting $event): void {
+            app(RecoveryState::class)->assertBackgroundReady();
             app(ArticleAiQualityWorkerLiveness::class)->record((string) $event->connectionName, (string) $event->queue);
         });
-        Event::listen(Looping::class, function (Looping $event): void {
+        Event::listen(Looping::class, function (Looping $event): bool {
+            try {
+                app(RecoveryState::class)->assertBackgroundReady();
+            } catch (ApiException) {
+                return false;
+            }
             app(ArticleAiQualityWorkerLiveness::class)->record((string) $event->connectionName, (string) $event->queue);
+
+            return true;
         });
         Event::listen(WorkerStopping::class, function (): void {
             app(ArticleAiQualityWorkerLiveness::class)->removeCurrentProcess();
         });
+        foreach (['read' => 60, 'generate' => 10, 'diagnose' => 10, 'cancel' => 30] as $operation => $limit) {
+            RateLimiter::for('prompt-test-'.$operation, fn (Request $request): Limit => Limit::perMinute($limit)
+                ->by('prompt-test-'.$operation.':admin:'.($request->user('admin')?->id ?? $request->ip())));
+        }
+
         RateLimiter::for('admin-login', function (Request $request): Limit {
             return Limit::perMinute(30)->by('admin-login-ip:'.$request->ip());
         });

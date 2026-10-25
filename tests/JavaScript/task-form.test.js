@@ -351,10 +351,65 @@ function fixture(fetchImpl, reducedMotion = true, options = {}) {
         GeoFlowAdminUi: { refreshIcons: true },
     };
 
+    options.configureForm?.(form);
     initializeTaskForm(root, { fetchImpl, ...options });
 
     return { articleLimit, dialog, dialogElements, draftLimit, form, loopMode, status, submitButton, submitLabel, titleLibrary };
 }
+
+test('manual review preserves editable cadence and quality controls enforce supported combinations', () => {
+    const review = new FakeElement();
+    review.checked = true;
+    const interval = new FakeElement();
+    interval.value = '15';
+    const quality = new FakeElement();
+    quality.checked = true;
+    const sampling = new FakeElement();
+    sampling.checked = true;
+    const optimization = new FakeElement();
+    optimization.dataset.available = 'true';
+    const optimize = new FakeElement();
+    const level = new FakeElement();
+    level.value = 'excellent_90';
+    const mode = new FakeElement();
+    mode.value = 'chunk';
+    const view = fixture(async () => ({}), true, { configureForm(form) {
+        Object.entries({
+            '#need_review': review,
+            '#publish_interval': interval,
+            '[data-ai-quality-toggle]': quality,
+            '[data-ai-quality-settings]': new FakeElement(),
+            '[data-ai-quality-timeout-sampling]': sampling,
+            '[data-ai-quality-optimization]': optimization,
+            '[data-ai-quality-optimization-toggle]': optimize,
+            '[data-retrieval-mode-input]:checked': mode,
+        }).forEach(([selector, element]) => form.selectors.set(selector, element));
+        form.selectorLists.set('[data-ai-quality-optimization-level]', [level]);
+        form.selectorLists.set('[data-retrieval-mode-input]', [mode]);
+    } });
+
+    assert.equal(interval.disabled, false);
+    assert.equal(interval.value, '15');
+    assert.equal(sampling.checked, true);
+    optimize.checked = true;
+    optimize.dispatch('change');
+    assert.equal(sampling.checked, false);
+    assert.equal(sampling.disabled, true);
+    optimize.checked = false;
+    optimize.dispatch('change');
+    assert.equal(level.disabled, true);
+    assert.equal(level.value, 'excellent_90');
+    mode.value = 'knowledge_broad';
+    mode.dispatch('change');
+    assert.equal(sampling.disabled, true);
+    optimization.dataset.available = 'false';
+    view.form.dispatch('ai-quality-retrieval-changed');
+    assert.equal(optimize.disabled, true);
+    quality.checked = false;
+    quality.dispatch('change');
+    assert.equal(sampling.checked, false);
+    assert.equal(interval.disabled, false);
+});
 
 test('successful readiness check submits once and locks duplicate submission', async () => {
     let resolveFetch;

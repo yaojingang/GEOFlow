@@ -130,7 +130,39 @@ final class AdminAiWorkspaceConnectionTest extends TestCase
         $this->actingAs($admin, 'admin')->get(route('admin.ai-workspace'))
             ->assertOk()
             ->assertSee(__('admin.ai_workspace.connection_runtime_disabled'))
+            ->assertDontSee('data-ai-runtime-settings', false)
             ->assertDontSee('data-ai-connection-check', false);
+    }
+
+    public function test_runtime_disabled_routes_super_admin_to_the_workspace_toggle(): void
+    {
+        $admin = $this->admin('disabled-super', 'super_admin');
+        $this->model($admin);
+        config()->set('ai-workspace.runtime_enabled', false);
+
+        $this->actingAs($admin, 'admin')->get(route('admin.ai-workspace'))
+            ->assertOk()
+            ->assertSee(__('admin.ai_workspace.connection_runtime_disabled_admin'))
+            ->assertSee('data-ai-runtime-settings', false)
+            ->assertSee(route('admin.site-settings.index', [], false).'#site-settings-ai-workspace', false)
+            ->assertSee(__('admin.ai_workspace.connection_runtime_settings'))
+            ->assertDontSee('data-ai-connection-check', false);
+    }
+
+    public function test_super_admin_model_test_reports_the_disabled_workspace_after_protocol_success(): void
+    {
+        $admin = $this->admin('dialog-disabled', 'super_admin');
+        $model = $this->model($admin);
+        config()->set('ai-workspace.runtime_enabled', false);
+        AdminHelpAssistant::fake(['连接可用。'])->preventStrayPrompts();
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => $model->id]))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('meta.workspace_ready', false)
+            ->assertJsonPath('meta.workspace_connection.message', __('admin.ai_workspace.connection_runtime_disabled_admin'))
+            ->assertJsonPath('meta.workspace_connection.settings_url', route('admin.site-settings.index', [], false).'#site-settings-ai-workspace');
     }
 
     public function test_no_model_offers_configuration_instead_of_a_check(): void

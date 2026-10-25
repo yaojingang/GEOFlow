@@ -9,7 +9,7 @@
             $schemaItems[] = [
                 $schemaAtType => 'ListItem',
                 'position' => count($schemaItems) + 1,
-                'url' => route('site.article', $schemaArticle->slug),
+                'url' => $siteUrls->article($schemaArticle),
                 'name' => $schemaArticle->title,
             ];
         }
@@ -448,7 +448,7 @@
                     </div>
                     <div class="ent-latest__list">
                         @forelse($homeArticles->take(5) as $article)
-                            <a href="{{ route('site.article', $article->slug) }}">
+                            <a href="{{ $siteUrls->article($article) }}">
                                 <span>{{ str_pad((string) $loop->iteration, 2, '0', STR_PAD_LEFT) }}</span>
                                 <div>
                                     <small>{{ $article->category?->name ?? __('front.nav.all_articles') }}</small>

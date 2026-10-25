@@ -15,11 +15,14 @@ use App\Models\HostedSiteAllocationRequest;
 use App\Models\HostedSiteArticleAssignment;
 use App\Models\HostedSiteProfile;
 use App\Models\LeadSubmission;
+use App\Services\GeoFlow\ArticlePublicationEligibilityService;
 use App\Services\HostedSites\HostedSiteAllocationRequestService;
 use App\Services\HostedSites\HostedSiteAllocator;
 use App\Services\HostedSites\HostedSiteLifecycleService;
+use App\Services\HostedSites\HostedSitePermalinkService;
 use App\Services\HostedSites\HostedSiteQualityService;
 use App\Support\AdminWeb;
+use App\Support\Site\ArticlePermalinkPolicy;
 use App\Support\Site\SiteThemeCatalog;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -36,6 +39,7 @@ class HostedSiteController extends Controller
         private readonly SiteThemeCatalog $themeCatalog,
         private readonly HostedSiteAllocationRequestService $allocationRequests,
         private readonly HostedSiteAllocator $allocator,
+        private readonly HostedSitePermalinkService $permalinks,
     ) {}
 
     public function index(): View
@@ -86,6 +90,9 @@ class HostedSiteController extends Controller
             'channel' => null,
             'profile' => null,
             'availableThemes' => $this->themeCatalog->hostedCompatible(),
+            'articlePermalinkPolicy' => ArticlePermalinkPolicy::fromRaw(null),
+            'articlePermalinkPresets' => ArticlePermalinkPolicy::PRESETS,
+            'articlePermalinkPreview' => null,
         ]);
     }
 
@@ -171,6 +178,9 @@ class HostedSiteController extends Controller
             'channel' => $channel,
             'profile' => $channel->hostedSiteProfile,
             'availableThemes' => $this->themeCatalog->hostedCompatible(),
+            'articlePermalinkPolicy' => $this->permalinks->policy($channel),
+            'articlePermalinkPresets' => ArticlePermalinkPolicy::PRESETS,
+            'articlePermalinkPreview' => session('hosted_article_permalink_preview'),
         ]);
     }
 
@@ -308,7 +318,9 @@ class HostedSiteController extends Controller
             if ($boundHostedChannelIds !== [(int) $channel->id]) {
                 throw new DomainException('文章任务没有精确绑定当前托管站点。');
             }
-            $allocationRequest = $this->allocationRequests->request($article);
+            $allocationRequest = $this->allocationRequests->request(
+                $article, app(ArticlePublicationEligibilityService::class)->fence($article, 'manual'),
+            );
             $assignment = $this->allocator->allocate($allocationRequest);
             if ($assignment === null
                 || (int) $assignment->hosted_site_profile_id !== (int) $channel->hostedSiteProfile?->id) {
