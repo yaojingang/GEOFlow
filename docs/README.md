@@ -22,9 +22,9 @@
 
 ## 开发与集成方案
 
-- [GEOFlow原生MCP与ChatGPT接入方案](plans/chatgpt-mcp-management-rfc.md)：单仓库、每实例独立授权、共享管理服务、连接界面与七个实施工作包；仅设计，尚未实现或部署。
-- [原生MCP方案复核报告](reviews/chatgpt-mcp-management-review.md)：20项风险与设计缺口，含Sanctum/OAuth共存、资源范围及恢复边界。
-- [原生MCP实施与验收清单](plans/chatgpt-mcp-management-acceptance.md)：80项后续验收规格，当前全部NOT_RUN。
+- [GEOFlow 原生 MCP 与 ChatGPT 接入方案](plans/chatgpt-mcp-management-rfc.md)：维护者已批准文档方案并进入实施准备；单仓库、每实例授权、共享管理服务，包含 D01+D02 最小读取交接。仅交付文档，运行接入仍待实现。
+- [原生 MCP 方案复核报告](reviews/chatgpt-mcp-management-review.md)：2026-10-25 按固定源码基线复查 20 项风险与缺口，含现有工作流版本/收据复用、OAuth 身份及恢复边界。
+- [原生 MCP 实施与验收清单](plans/chatgpt-mcp-management-acceptance.md)：80 项运行验收全部 NOT_RUN；文档一致性、仓库 CI 及未来 MCP 运行验收分别报告。
 
 ## Wiki 与维护者资料
 
