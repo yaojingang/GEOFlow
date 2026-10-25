@@ -688,6 +688,32 @@ class PlatformWebDistributionFlowTest extends TestCase
         $this->actingAs($admin->fresh(), 'admin')->post(route('admin.distribution.store'), $payload)->assertForbidden();
     }
 
+    public function test_inactive_channel_creator_cannot_create_a_work_order(): void
+    {
+        [$article, $channel] = $this->fixtures('inactive-creator');
+        $orchestrator = app(DistributionOrchestrator::class);
+        $ids = $orchestrator->enqueueForArticle($article);
+        Admin::findOrFail($channel->created_by_admin_id)->update(['status' => 'inactive']);
+        try {
+            $orchestrator->process(ArticleDistribution::findOrFail($ids[0]));
+            $this->fail('An inactive creator must not create work orders.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('创建管理员', $exception->getMessage());
+        }
+        $this->assertDatabaseCount('manual_publications', 0);
+    }
+
+    public function test_active_platform_accounts_are_shared_instance_management_resources(): void
+    {
+        [, $channel] = $this->fixtures('shared-account');
+        $other = Admin::create(['username' => 'other-platform-manager', 'password' => 'test', 'role' => 'super_admin', 'status' => 'active']);
+        $this->actingAs($other, 'admin')->post(route('admin.distribution.store'), [
+            'name' => 'Shared account channel', 'channel_type' => 'platform_web', 'platform' => 'toutiao',
+            'manual_publication_account_id' => $channel->resolvedPlatformWebConfig()['manual_publication_account_id'], 'status' => 'active',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame((int) $other->id, (int) DistributionChannel::where('name', 'Shared account channel')->sole()->created_by_admin_id);
+    }
+
     public function test_existing_delivery_prevents_platform_identity_change(): void
     {
         [$article, $channel] = $this->fixtures('identity');
