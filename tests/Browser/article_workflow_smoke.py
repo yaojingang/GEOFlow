@@ -22,6 +22,7 @@ from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 ADMIN = "geo_browser"
+FIXTURE_SCRIPT = "tests/Browser/article_workflow_fixture.php"
 
 
 def database_row(database, table, row_id):
@@ -288,7 +289,7 @@ def main():
             APP_CONFIG_CACHE=str(temporary / 'config.php'), APP_ROUTES_CACHE=str(temporary / 'routes.php'),
             APP_EVENTS_CACHE=str(temporary / 'events.php'), APP_SERVICES_CACHE=str(temporary / 'services.php'),
             APP_PACKAGES_CACHE=str(temporary / 'packages.php'), PULSE_ENABLED='false', TELESCOPE_ENABLED='false', NIGHTWATCH_ENABLED='false')
-        fixture_process = subprocess.run(['php', 'tests/Browser/article_workflow_fixture.php'], cwd=ROOT, env=environment, text=True, capture_output=True, timeout=120)
+        fixture_process = subprocess.run(['php', FIXTURE_SCRIPT], cwd=ROOT, env=environment, text=True, capture_output=True, timeout=120)
         (output / 'fixture.log').write_text(fixture_process.stdout + fixture_process.stderr, encoding='utf-8')
         assert fixture_process.returncode == 0, fixture_process.stdout + fixture_process.stderr
         fixture = json.loads(fixture_process.stdout.strip().splitlines()[-1])

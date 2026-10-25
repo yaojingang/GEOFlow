@@ -91,6 +91,40 @@ def run_browser(base_url, database, fixture, output):
             expect(page.get_by_text('关键词批量采集', exact=True)).to_be_visible()
             assert not errors, errors
             evidence["checks"].append("search workspace opens and closes on mobile; desktop keeps keyword collection")
+            for order in fixture['retry_work_orders']:
+                api = base_url + f"/api/v1/manual-publications/{order['id']}"
+                browser_headers = {'Authorization': 'Bearer ' + fixture['browser_token'],
+                    'X-GEOFlow-Browser-Protocol': '1', 'X-GEOFlow-Client-Version': '0.1.0'}
+                def api_post(action, payload, key):
+                    response = context.request.post(api + '/' + action, data=payload,
+                        headers={**browser_headers, 'X-Idempotency-Key': key})
+                    assert response.ok, response.text()
+                    return response.json()['data']['publication']
+                claimed = api_post('claim', {'revision': order['revision']}, f"retry-first-claim-{order['id']}")
+                finished = api_post('receipt', {'revision': claimed['revision'], 'outcome': order['outcome'],
+                    'adapter_version': 'manual-test-only', 'target_origin': 'https://mp.toutiao.com',
+                    'finished_at': '2026-10-25T12:00:00Z'}, f"retry-first-receipt-{order['id']}")
+                goto(f"/{harness.ADMIN}/manual-publications/{order['id']}")
+                form = page.locator('[data-confirm-unpublished-retry]')
+                expect(form).to_be_visible()
+                expect(form.locator('[name="publication_revision"]')).to_have_value(str(finished['revision']))
+                expect(form.locator('[name="confirm_unpublished"]')).to_be_empty()
+                screenshot(f"05-retry-{order['outcome']}-confirm.png")
+                form.locator('[name="confirm_unpublished"]').fill('确认未发布')
+                with page.expect_navigation():
+                    form.get_by_role('button', name='确认未发布并重试', exact=True).click()
+                expect(page.locator('[data-confirm-unpublished-retry]')).to_have_count(0)
+                expect(page.get_by_text('已确认未发布，原工单已生成新修订，可重新领取。', exact=True)).to_be_visible()
+                with sqlite3.connect(database) as db:
+                    row = db.execute('SELECT revision, execution_receipt FROM manual_publications WHERE id = ?', (order['id'],)).fetchone()
+                    revision, receipt = row[0], json.loads(row[1])
+                assert revision == finished['revision'] + 1
+                assert receipt['previous_attempts'][0]['receipt']['outcome'] == order['outcome']
+                screenshot(f"05-retry-{order['outcome']}.png")
+                next_claim = api_post('claim', {'revision': revision}, f"retry-new-claim-{order['id']}")
+                assert next_claim['status'] == 'in_progress'
+                evidence['checks'].append(f"real browser API claim and {order['outcome']} receipt, human form confirmation, preserved history and new-revision claim")
+            assert not errors, errors
         except Exception:
             screenshot("failure.png")
             (output / 'failure.html').write_text(page.content(), encoding='utf-8')
@@ -104,5 +138,6 @@ def run_browser(base_url, database, fixture, output):
 
 
 if __name__ == '__main__':
+    harness.FIXTURE_SCRIPT = "tests/Browser/platform_web_fixture.php"
     harness.run_browser = run_browser
     harness.main()

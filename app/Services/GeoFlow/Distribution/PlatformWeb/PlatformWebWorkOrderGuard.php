@@ -8,7 +8,7 @@ use App\Models\ArticleDistribution;
 use App\Models\ManualPublication;
 use App\Services\GeoFlow\DistributionOrchestrator;
 
-/** Claim authorization only. Receipt recording preserves already-observed external facts. */
+/** Immutable source binding and claim authorization. Receipts preserve already-observed external facts. */
 final class PlatformWebWorkOrderGuard
 {
     public static function digest(ManualPublication $publication): string
@@ -32,23 +32,32 @@ final class PlatformWebWorkOrderGuard
         if ($publication->source_distribution_id === null) {
             return;
         }
+        $distribution = $this->assertBoundSnapshot($publication);
+        if (! app(DistributionOrchestrator::class)->platformWorkOrderExecutable($distribution, $distribution->article)) {
+            throw new ApiException('publication_source_superseded', '分发快照或发布授权已变化，请通过源分发重新入队。', 409);
+        }
+    }
+
+    /** Validate immutable identity before a separately authorized source refresh. Caller holds the same locks. */
+    public function assertBoundSnapshot(ManualPublication $publication): ArticleDistribution
+    {
         $publication->load(['account.persona', 'persona']);
         $distribution = ArticleDistribution::query()->with(['channel', 'article.task'])->find($publication->source_distribution_id);
         $article = $distribution?->article;
         $channel = $distribution?->channel;
         $payload = data_get($distribution?->remote_meta, 'distribution_payload');
-        $orchestrator = app(DistributionOrchestrator::class);
         if (! $distribution || ! $article || ! $channel?->isPlatformWeb() || $channel->status !== 'active'
             || (int) $publication->article_id !== (int) $article->id
             || $publication->platform !== $channel->resolvedPlatformWebConfig()['platform']
             || ! is_array($payload)
             || ! hash_equals((string) $distribution->payload_hash, AiPayloadDigest::make($payload))
             || ! hash_equals((string) data_get($distribution->remote_meta, 'platform_web_work_order_digest'), self::digest($publication))
-            || ! $orchestrator->platformWorkOrderExecutable($distribution, $article)
             || ! $publication->account?->is_active || ! $publication->persona?->is_active
             || $publication->account->platform !== $publication->platform
             || (int) $publication->account->persona_id !== (int) $publication->persona_id) {
             throw new ApiException('publication_source_superseded', '分发快照或发布授权已变化，请通过源分发重新入队。', 409);
         }
+
+        return $distribution;
     }
 }

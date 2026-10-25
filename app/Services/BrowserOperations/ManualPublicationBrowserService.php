@@ -14,8 +14,11 @@ use App\Models\ManualPublicationAccount;
 use App\Models\ManualPublicationTransition;
 use App\Models\Task;
 use App\Services\GeoFlow\ArticlePublicationQualityGate;
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebContentFormatter;
 use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebDistributionBridge;
 use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebWorkOrderGuard;
+use App\Services\GeoFlow\DistributionChannelOperationLeaseService;
+use App\Services\GeoFlow\DistributionOrchestrator;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -104,6 +107,72 @@ final class ManualPublicationBrowserService
         });
     }
 
+    /** Explicit human authorization; automatic retries must never infer that a prior attempt was unpublished. */
+    public function confirmUnpublishedRetry(Admin $actor, int $publicationId, int $revision): ManualPublication
+    {
+        return DB::transaction(function () use ($actor, $publicationId, $revision): ManualPublication {
+            $actor = Admin::query()->findOrFail($actor->id);
+            if ($actor->status !== 'active' || ! $actor->isSuperAdmin()) {
+                throw new ApiException('forbidden', '仅有效的超级管理员可以确认未发布并重试。', 403);
+            }
+            $publication = $this->lockVisible($actor, $publicationId);
+            $this->assertRevision($publication, $revision);
+            $distribution = app(PlatformWebWorkOrderGuard::class)->assertBoundSnapshot($publication);
+            app(DistributionChannelOperationLeaseService::class)->assertNoActiveLease($distribution->channel);
+            if (! Admin::query()->active()->whereKey($distribution->channel->created_by_admin_id)->exists()
+                || ! Admin::query()->active()->whereKey($publication->assigned_admin_id)->exists()) {
+                throw new ApiException('publication_unavailable', '渠道创建管理员或工单执行管理员已停用。', 409);
+            }
+            $history = (array) data_get($publication->execution_receipt, 'previous_attempts', []);
+            if (! in_array($publication->status, ['failed', 'outcome_unknown'], true)
+                || ! in_array($distribution->status, ['failed', 'outcome_unknown', 'queued'], true)
+                || $publication->completion_url || $distribution->remote_url
+                || data_get($publication->execution_receipt, 'outcome') === 'completed'
+                || collect($history)->contains(fn ($attempt) => data_get($attempt, 'receipt.outcome') === 'completed')
+                || $publication->transitions()->where('to_status', 'completed')->exists()
+                || data_get($distribution->remote_meta, 'work_order_status') === 'completed') {
+                throw new ApiException('publication_retry_blocked', '当前结果不可重新授权；已完成的发布事实须保留。', 409);
+            }
+            $fromStatus = (string) $publication->status;
+            // Keep claim transitions and receipts. The explicit confirmation permits one new revision only.
+            $receipt = (array) $publication->execution_receipt;
+            unset($receipt['previous_attempts']);
+            $history[] = ['revision' => $revision, 'status' => $fromStatus, 'receipt' => $receipt,
+                'confirmed_unpublished_by_admin_id' => (int) $actor->id, 'confirmed_at' => now()->toIso8601String()];
+            $publication->forceFill(['status' => 'failed'])->save();
+            $distribution->forceFill(['status' => 'failed'])->save();
+            $orchestrator = app(DistributionOrchestrator::class);
+            $ids = $orchestrator->enqueueForArticleTargets($distribution->article, [(int) $distribution->distribution_channel_id], []);
+            if (! in_array((int) $distribution->id, $ids, true)) {
+                throw new ApiException('publication_source_superseded', '源文章、任务或发布授权当前不可重新入队。', 409);
+            }
+            $distribution->refresh();
+            $snapshot = data_get($distribution->remote_meta, 'distribution_payload.article');
+            $content = PlatformWebContentFormatter::plainText((string) ($snapshot['content'] ?? ''));
+            $config = $distribution->channel->resolvedPlatformWebConfig();
+            $publication->forceFill([
+                'status' => 'ready', 'status_changed_at' => now(), 'revision' => $revision + 1,
+                'execution_receipt' => ['previous_attempts' => $history],
+                'browser_claimed_by_token_id' => null, 'browser_claimed_at' => null, 'browser_last_seen_at' => null,
+                'content' => $content, 'source_snapshot' => $snapshot, 'result_note' => '管理员已核实未发布并重新授权。',
+                'publication_payload' => app(PublicationPayloadBuilder::class)->build([
+                    'type' => 'post', 'platform' => $publication->platform, 'content' => $content,
+                    'source_snapshot' => $snapshot, 'target_url' => $publication->target_url,
+                    'disclosure_snapshot' => $publication->disclosure_snapshot,
+                    'publication_payload_extras' => $this->platformWebBridge->payloadExtras($distribution, $config, data_get($distribution->remote_meta, 'distribution_payload')),
+                ]),
+            ])->save();
+            $meta = $distribution->remote_meta;
+            $meta['platform_web_work_order_digest'] = PlatformWebWorkOrderGuard::digest($publication);
+            $meta['work_order_status'] = 'ready';
+            $distribution->forceFill(['status' => 'awaiting_extension', 'next_retry_at' => null, 'remote_meta' => $meta])->save();
+            app(PlatformWebWorkOrderGuard::class)->assertExecutable($publication);
+            $this->recordTransition($publication, $actor, $fromStatus, 'ready', resultNote: '已人工确认未发布，重新授权修订 '.($revision + 1).'。');
+
+            return $publication->refresh();
+        });
+    }
+
     public function heartbeat(Admin $admin, int $tokenId, int $publicationId): ManualPublication
     {
         return DB::transaction(function () use ($admin, $tokenId, $publicationId): ManualPublication {
@@ -189,6 +258,10 @@ final class ManualPublicationBrowserService
                 'error_code' => $receipt['error_code'] ?? null,
             ];
 
+            $history = data_get($publication->execution_receipt, 'previous_attempts');
+            if (is_array($history) && $history !== []) {
+                $storedReceipt['previous_attempts'] = $history;
+            }
             $fromStatus = (string) $publication->status;
             $transitionedAt = now();
             $resultNote = trim((string) ($receipt['result_note'] ?? '')) ?: null;

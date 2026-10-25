@@ -59,7 +59,9 @@
                                     <button type="submit" class="text-red-600 hover:text-red-800">{{ __('admin.distribution.button.delete_remote_article') }}</button>
                                 </form>
                             @endif
-                            @if ($job->status === 'failed')
+                            @if ($job->channel?->isPlatformWeb() && $job->remote_id && in_array($job->status, ['failed', 'outcome_unknown'], true))
+                                <a href="{{ route('admin.manual-publications.show', ['manualPublicationId' => (int) $job->remote_id]) }}" class="text-blue-600 hover:text-blue-800">人工核实与重试</a>
+                            @elseif ($job->status === 'failed')
                                 <form method="POST" action="{{ route('admin.distribution.retry', ['distributionId' => (int) $job->id]) }}">
                                     @csrf
                                     <button type="submit" class="text-blue-600 hover:text-blue-800">{{ __('admin.distribution.button.retry') }}</button>

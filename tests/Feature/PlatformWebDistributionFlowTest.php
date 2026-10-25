@@ -10,6 +10,7 @@ use App\Models\ArticleDistribution;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
+use App\Models\DistributionChannelOperation;
 use App\Models\DistributionLog;
 use App\Models\ManualPublication;
 use App\Models\ManualPublicationAccount;
@@ -25,6 +26,7 @@ use App\Services\GeoFlow\ManualPublicationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -885,6 +887,99 @@ class PlatformWebDistributionFlowTest extends TestCase
         $claimed = app(ManualPublicationBrowserService::class)->claim($admin, $tokenId, $publication->id, $publication->revision);
         $this->assertSame('in_progress', $claimed->status);
         $this->assertDatabaseCount('manual_publications', 1);
+    }
+
+    public function test_explicit_unpublished_confirmation_reauthorizes_failed_and_unknown_attempts(): void
+    {
+        foreach (['failed', 'outcome_unknown'] as $outcome) {
+            [$article, , $publication, $admin, $tokenId, $distribution] = $this->guardedWorkOrder('confirm-'.$outcome);
+            $browser = app(ManualPublicationBrowserService::class);
+            $claimed = $browser->claim($admin, $tokenId, $publication->id, $publication->revision);
+            $finished = $browser->recordReceipt($admin, $tokenId, $publication->id, $claimed->revision, [
+                'outcome' => $outcome, 'target_origin' => 'https://mp.toutiao.com',
+            ], '0.1.0');
+            $revision = $finished->revision;
+            $url = route('admin.distribution.retry', ['distributionId' => $distribution->id]);
+            $this->actingAs($admin, 'admin')->post($url)->assertSessionHasErrors();
+            $this->post($url, ['confirm_unpublished' => '确认未发布', 'publication_revision' => $revision - 1])->assertSessionHasErrors();
+            $this->assertSame($outcome, $publication->fresh()->status);
+            $this->post($url, ['confirm_unpublished' => '确认未发布', 'publication_revision' => $revision])->assertSessionHasNoErrors();
+            $ready = $publication->fresh();
+            $this->assertSame('ready', $ready->status);
+            $this->assertSame($revision + 1, $ready->revision);
+            $this->assertSame($outcome, data_get($ready->execution_receipt, 'previous_attempts.0.receipt.outcome'));
+            $this->assertSame(1, $ready->transitions()->where('to_status', 'in_progress')->count());
+            $this->post($url, ['confirm_unpublished' => '确认未发布', 'publication_revision' => $ready->revision])->assertSessionHasErrors();
+            try {
+                $browser->recordReceipt($admin, $tokenId, $publication->id, $claimed->revision, ['outcome' => 'failed'], '0.1.0');
+                $this->fail('An old receipt must not finalize the authorized revision.');
+            } catch (ApiException $exception) {
+                $this->assertSame('revision_conflict', $exception->getErrorCode());
+            }
+            $next = $browser->claim($admin, $tokenId, $publication->id, $ready->revision);
+            $this->assertSame('in_progress', $next->status);
+            $final = $browser->recordReceipt($admin, $tokenId, $publication->id, $next->revision, [
+                'outcome' => 'completed', 'completion_url' => 'https://www.toutiao.com/article/123456789/',
+                'target_origin' => 'https://mp.toutiao.com',
+            ], '0.1.0');
+            $this->assertSame('completed', $final->status);
+            $this->assertSame($outcome, data_get($final->execution_receipt, 'previous_attempts.0.receipt.outcome'));
+            $this->post($url, ['confirm_unpublished' => '确认未发布', 'publication_revision' => $final->revision])->assertSessionHasErrors();
+            $this->assertDatabaseCount('manual_publications', $outcome === 'failed' ? 1 : 2);
+        }
+    }
+
+    public function test_unpublished_retry_requires_current_actor_source_and_uncompleted_facts(): void
+    {
+        foreach (['unauthorized', 'inactive', 'held', 'stopped', 'account', 'completed', 'binding', 'deleted', 'leased'] as $case) {
+            [$article, $channel, $publication, $admin, $tokenId, $distribution] = $this->guardedWorkOrder('reject-confirm-'.$case);
+            $browser = app(ManualPublicationBrowserService::class);
+            $claimed = $browser->claim($admin, $tokenId, $publication->id, $publication->revision);
+            $finished = $browser->recordReceipt($admin, $tokenId, $publication->id, $claimed->revision, [
+                'outcome' => $case === 'completed' ? 'completed' : 'failed',
+                'completion_url' => $case === 'completed' ? 'https://www.toutiao.com/article/123456789/' : null,
+                'target_origin' => 'https://mp.toutiao.com',
+            ], '0.1.0');
+            match ($case) {
+                'unauthorized' => $admin->update(['role' => 'admin']),
+                'inactive' => $admin->update(['status' => 'inactive']),
+                'held' => app(ArticleWorkflowTransitionService::class)->humanAction($article, 'hold', $admin->id, expectedVersion: $article->workflow_version),
+                'stopped' => $article->task->update(['status' => 'paused']),
+                'account' => $publication->account->update(['is_active' => false]),
+                'binding' => $publication->update(['content' => 'Tampered payload']),
+                'deleted' => app(DistributionChannelDeletionService::class)->prepare($channel),
+                'leased' => DistributionChannelOperation::create(['distribution_channel_id' => $channel->id, 'token' => (string) Str::uuid(), 'operation' => 'fixture', 'started_at' => now(), 'expires_at' => now()->addMinute()]),
+                default => null,
+            };
+            $this->actingAs($admin->fresh(), 'admin');
+            $response = $this->post(route('admin.distribution.retry', ['distributionId' => $distribution->id]), [
+                'confirm_unpublished' => '确认未发布', 'publication_revision' => $finished->revision,
+            ]);
+            if (in_array($case, ['unauthorized', 'inactive'], true)) {
+                $this->assertContains($response->status(), [302, 403]);
+            } else {
+                $response->assertSessionHasErrors();
+            }
+            $this->assertNotSame('ready', $publication->fresh()->status, $case);
+        }
+    }
+
+    public function test_confirmed_retry_refreshes_payload_after_current_article_publication_is_restored(): void
+    {
+        [$article, , $publication, $admin, $tokenId, $distribution] = $this->guardedWorkOrder('retry-restored');
+        $browser = app(ManualPublicationBrowserService::class);
+        $claim = $browser->claim($admin, $tokenId, $publication->id, $publication->revision);
+        $finished = $browser->recordReceipt($admin, $tokenId, $publication->id, $claim->revision, [
+            'outcome' => 'failed', 'target_origin' => 'https://mp.toutiao.com',
+        ], '0.1.0');
+        $workflow = app(ArticleWorkflowTransitionService::class);
+        $article = $workflow->humanAction($article, 'hold', $admin->id, expectedVersion: $article->workflow_version);
+        $article->update(['content' => 'Current approved replacement body.']);
+        $article = $workflow->humanAction($article, 'publish', $admin->id, expectedVersion: $article->workflow_version);
+        $ready = $browser->confirmUnpublishedRetry($admin, $publication->id, $finished->revision);
+        $this->assertSame('Current approved replacement body.', $ready->content);
+        $this->assertSame($article->workflow_version, data_get($distribution->fresh()->remote_meta, 'workflow_fence.workflow_version'));
+        $this->assertSame('in_progress', $browser->claim($admin, $tokenId, $ready->id, $ready->revision)->status);
     }
 
     private function fixtures(string $suffix, array $channelConfigOverrides = []): array

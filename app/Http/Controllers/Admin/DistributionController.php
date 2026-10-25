@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\ApiException;
 use App\Exceptions\DistributionChannelDeletionBlocked;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\DeleteDistributionChannelRequest;
@@ -13,10 +14,13 @@ use App\Models\DistributionChannel;
 use App\Models\DistributionChannelSecret;
 use App\Models\DistributionLog;
 use App\Models\LeadForm;
+use App\Models\ManualPublication;
 use App\Models\ManualPublicationAccount;
 use App\Models\Task;
+use App\Services\BrowserOperations\ManualPublicationBrowserService;
 use App\Services\GeoFlow\ArticleCitationMarkerCleaner;
 use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformCatalog;
+use App\Services\GeoFlow\Distribution\PlatformWeb\PlatformWebWorkOrderGuard;
 use App\Services\GeoFlow\DistributionChannelDeletionConfirmation;
 use App\Services\GeoFlow\DistributionChannelDeletionService;
 use App\Services\GeoFlow\DistributionChannelOperationLeaseService;
@@ -725,7 +729,7 @@ class DistributionController extends Controller
         ]);
     }
 
-    public function retry(int $distributionId): RedirectResponse
+    public function retry(Request $request, int $distributionId): RedirectResponse
     {
         $candidate = ArticleDistribution::query()
             ->select(['id', 'article_id', 'distribution_channel_id'])
@@ -733,6 +737,28 @@ class DistributionController extends Controller
             ->first();
         if (! $candidate) {
             return back()->withErrors(__('admin.distribution.message.job_not_found'));
+        }
+
+        $publication = ManualPublication::query()->where('source_distribution_id', $distributionId)->first();
+        if ($publication && ($request->has('confirm_unpublished') || ! PlatformWebWorkOrderGuard::canRefresh($publication))) {
+            abort_unless($request->user('admin')?->isSuperAdmin(), 403);
+            $input = $request->validate([
+                'confirm_unpublished' => ['required', 'in:确认未发布'],
+                'publication_revision' => ['required', 'integer', 'min:1'],
+            ]);
+            try {
+                app(ManualPublicationBrowserService::class)->confirmUnpublishedRetry($request->user('admin'), (int) $publication->id, (int) $input['publication_revision']);
+            } catch (ApiException $exception) {
+                if ($exception->getHttpStatus() === 403) {
+                    abort(403);
+                }
+
+                return back()->withErrors($exception->getMessage());
+            } catch (DistributionChannelDeletionBlocked $exception) {
+                return back()->withErrors(__('admin.distribution.delete.'.$exception->reason));
+            }
+
+            return back()->with('message', '已确认未发布，原工单已生成新修订，可重新领取。');
         }
 
         $result = DB::transaction(function () use ($candidate): string {

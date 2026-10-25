@@ -147,6 +147,92 @@ class PlatformWebPublicationConcurrencyTest extends PostgreSqlTestCase
         }
     }
 
+    public function test_duplicate_unpublished_confirmations_serialize_one_new_revision(): void
+    {
+        [$admin, , $channel, $publication, $tokenId, $distribution] = $this->fixtures();
+        $browser = app(ManualPublicationBrowserService::class);
+        $claim = $browser->claim($admin, $tokenId, $publication->id, $publication->revision);
+        $finished = $browser->recordReceipt($admin, $tokenId, $publication->id, $claim->revision, [
+            'outcome' => 'failed', 'target_origin' => 'https://mp.toutiao.com',
+        ], '0.1.0');
+        $barrier = tempnam(sys_get_temp_dir(), 'platform-confirm-lock-');
+        $peer = tempnam(sys_get_temp_dir(), 'platform-confirm-peer-');
+        try {
+            $results = $this->concurrent([
+                fn () => DB::transaction(function () use ($admin, $channel, $finished, $barrier, $peer): string {
+                    DistributionChannel::whereKey($channel->id)->lockForUpdate()->firstOrFail();
+                    file_put_contents($barrier, 'locked');
+                    $this->waitForBlockedConnection($peer);
+
+                    return app(ManualPublicationBrowserService::class)->confirmUnpublishedRetry($admin, $finished->id, $finished->revision)->status;
+                }),
+                function () use ($admin, $finished, $barrier, $peer): string {
+                    $this->waitForBarrier($barrier);
+                    file_put_contents($peer, (string) DB::selectOne('SELECT pg_backend_pid() AS pid')->pid);
+                    try {
+                        app(ManualPublicationBrowserService::class)->confirmUnpublishedRetry($admin, $finished->id, $finished->revision);
+
+                        return 'unexpectedly_repeated';
+                    } catch (ApiException $exception) {
+                        return $exception->getErrorCode();
+                    }
+                },
+            ]);
+            $this->assertSame(['ready', 'revision_conflict'], $results);
+            $ready = $publication->fresh();
+            $this->assertSame($finished->revision + 1, $ready->revision);
+            $this->assertCount(1, $ready->execution_receipt['previous_attempts']);
+            $this->assertSame('awaiting_extension', $distribution->fresh()->status);
+            $this->assertSame('in_progress', $browser->claim($admin, $tokenId, $ready->id, $ready->revision)->status);
+        } finally {
+            @unlink($barrier);
+            @unlink($peer);
+        }
+    }
+
+    public function test_human_hold_wins_against_unpublished_confirmation_without_reviving_delivery(): void
+    {
+        [$admin, $task, , $publication, $tokenId, $distribution] = $this->fixtures();
+        $browser = app(ManualPublicationBrowserService::class);
+        $claim = $browser->claim($admin, $tokenId, $publication->id, $publication->revision);
+        $finished = $browser->recordReceipt($admin, $tokenId, $publication->id, $claim->revision, [
+            'outcome' => 'failed', 'target_origin' => 'https://mp.toutiao.com',
+        ], '0.1.0');
+        $barrier = tempnam(sys_get_temp_dir(), 'platform-confirm-hold-');
+        $peer = tempnam(sys_get_temp_dir(), 'platform-confirm-wait-');
+        try {
+            $results = $this->concurrent([
+                fn () => DB::transaction(function () use ($admin, $task, $distribution, $barrier, $peer): string {
+                    Task::whereKey($task->id)->lockForUpdate()->firstOrFail();
+                    file_put_contents($barrier, 'locked');
+                    $this->waitForBlockedConnection($peer);
+                    $article = Article::findOrFail($distribution->article_id);
+                    app(ArticleWorkflowTransitionService::class)->humanAction($article, 'hold', $admin->id, expectedVersion: $article->workflow_version);
+
+                    return 'held';
+                }),
+                function () use ($admin, $finished, $barrier, $peer): string {
+                    $this->waitForBarrier($barrier);
+                    file_put_contents($peer, (string) DB::selectOne('SELECT pg_backend_pid() AS pid')->pid);
+                    try {
+                        app(ManualPublicationBrowserService::class)->confirmUnpublishedRetry($admin, $finished->id, $finished->revision);
+
+                        return 'unexpectedly_authorized';
+                    } catch (ApiException $exception) {
+                        return $exception->getErrorCode();
+                    }
+                },
+            ]);
+            $this->assertSame(['held', 'publication_source_superseded'], $results);
+            $this->assertSame('failed', $publication->fresh()->status);
+            $this->assertSame($finished->revision, $publication->fresh()->revision);
+            $this->assertSame('failed', $distribution->fresh()->status);
+        } finally {
+            @unlink($barrier);
+            @unlink($peer);
+        }
+    }
+
     private function fixtures(): array
     {
         $admin = Admin::create(['username' => 'platform-concurrency', 'password' => 'test', 'role' => 'super_admin', 'status' => 'active']);

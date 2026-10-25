@@ -21,6 +21,16 @@
 <div class="px-4 sm:px-0">
     @if ($publication->source_distribution_id !== null)
         <p class="mb-4 rounded-md border border-gray-200 p-4 text-sm">该工单的来源、目标和发布内容由分发快照管理。重新准备未执行内容请从源分发重新入队，已领取或结果不明的工单须先核实外部结果。</p>
+        @if(auth('admin')->user()?->isSuperAdmin() && in_array($publication->status, ['failed', 'outcome_unknown'], true))
+            <form method="POST" action="{{ route('admin.distribution.retry', ['distributionId' => $publication->source_distribution_id]) }}" class="mb-4 space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4" data-confirm-unpublished-retry>
+                @csrf
+                <input type="hidden" name="publication_revision" value="{{ $publication->revision }}">
+                <p class="text-sm text-amber-900">先在目标平台核实这次操作确实未发布。确认后将保留回执历史，并用当前源文章的有效发布授权生成原工单的新修订。已完成的发布记录不能重试。</p>
+                <label for="confirm-unpublished" class="block text-sm font-medium text-gray-900">输入“确认未发布”后重新授权</label>
+                <input id="confirm-unpublished" name="confirm_unpublished" required pattern="确认未发布" autocomplete="off" class="block w-full max-w-sm rounded-md border-gray-300 text-sm" placeholder="确认未发布">
+                <button type="submit" class="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700">确认未发布并重试</button>
+            </form>
+        @endif
     @endif
     <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>

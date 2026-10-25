@@ -6,6 +6,8 @@ use Closure;
 use League\CommonMark\Environment\EnvironmentAwareInterface;
 use League\CommonMark\Environment\EnvironmentInterface;
 use League\CommonMark\Extension\CommonMark\Parser\Inline\CloseBracketParser;
+use League\CommonMark\Extension\Table\TableCell;
+use League\CommonMark\Extension\Table\TableSection;
 use League\CommonMark\GithubFlavoredMarkdownConverter;
 use League\CommonMark\Parser\Inline\InlineParserInterface;
 use League\CommonMark\Parser\Inline\InlineParserMatch;
@@ -57,6 +59,8 @@ final class MarkdownImagePolicy
                     $syntax = $context->getCursor()->getSubstring($start, $context->getCursor()->getPosition() - $start);
                     ($this->capture)([
                         'syntax' => $syntax, 'url' => $replacement->getUrl(),
+                        'container' => $context->getContainer(),
+                        'prefix' => $context->getCursor()->getSubstring(0, $start),
                         'line' => $context->getContainer()->getStartLine(), 'end_line' => $context->getContainer()->getEndLine(),
                         'occurrence' => substr_count($context->getCursor()->getSubstring(0, $start), $syntax),
                     ]);
@@ -74,6 +78,12 @@ final class MarkdownImagePolicy
         $edits = [];
         foreach ($spans as $span) {
             if ($accept($span['url'])) {
+                continue;
+            }
+            if ($span['container'] instanceof TableCell) {
+                [$position, $length] = $this->tableSpan($span, $lines, $offsets);
+                $edits[$position] = $length;
+
                 continue;
             }
             $start = $offsets[max(0, (int) $span['line'] - 1)] ?? 0;
@@ -106,5 +116,63 @@ final class MarkdownImagePolicy
         }
 
         return $markdown;
+    }
+
+    /** TableParser attaches cells after inline parsing and removes escaped pipe backslashes. */
+    private function tableSpan(array $span, array $lines, array $offsets): array
+    {
+        $cell = $span['container'];
+        $row = $cell->parent();
+        $section = $row?->parent();
+        $table = $section?->parent();
+        $rowIndex = 0;
+        for ($previous = $row?->previous(); $previous !== null; $previous = $previous->previous()) {
+            $rowIndex++;
+        }
+        $column = 0;
+        for ($previous = $cell->previous(); $previous !== null; $previous = $previous->previous()) {
+            $column++;
+        }
+        $lineIndex = (int) $table?->getStartLine() - 1 + $rowIndex
+            + ($section?->getType() === TableSection::TYPE_HEAD ? 0 : 2);
+        $raw = rtrim($lines[$lineIndex] ?? '', "\r\n");
+        // Remove the enclosing block's source prefix before locating table delimiters.
+        preg_match('/^[ \t]*(?:>[ \t]*|(?:[-+*]|[0-9]+[.)])[ \t]+)*/u', $raw, $prefix);
+        $start = strlen($prefix[0]);
+        $length = strlen($raw);
+        if (($raw[$start] ?? '') === '|') {
+            $start++;
+        }
+        $cells = [];
+        $decoded = '';
+        $mapping = [];
+        for ($i = $start; $i < $length; $i++) {
+            if ($raw[$i] === '|') {
+                $mapping[] = $i;
+                $cells[] = [$decoded, $mapping];
+                $decoded = '';
+                $mapping = [];
+            } else {
+                if ($raw[$i] === '\\' && ($raw[$i + 1] ?? '') === '|') {
+                    $mapping[] = $i;
+                    $decoded .= '|';
+                    $i++;
+                } else {
+                    $mapping[] = $i;
+                    $decoded .= $raw[$i];
+                }
+            }
+        }
+        $mapping[] = $length;
+        $cells[] = [$decoded, $mapping];
+        [$decoded, $mapping] = $cells[$column] ?? ['', []];
+        $relative = strlen($decoded) - strlen(ltrim($decoded)) + strlen($span['prefix']);
+        $begin = $mapping[$relative] ?? null;
+        $end = $mapping[$relative + strlen($span['syntax'])] ?? null;
+        if ($begin === null || $end === null || substr(trim($decoded), strlen($span['prefix']), strlen($span['syntax'])) !== $span['syntax']) {
+            throw new RuntimeException('generated_image_source_unlocatable');
+        }
+
+        return [$offsets[$lineIndex] + $begin, $end - $begin];
     }
 }

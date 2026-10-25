@@ -137,6 +137,38 @@ class WorkerExecutionServiceImageSelectionTest extends TestCase
         }
     }
 
+    public function test_final_renderer_enforces_images_inside_table_cells(): void
+    {
+        $library = $this->imageLibrary();
+        $a = $this->image($library->id, 'storage/uploads/images/table-a.jpg', 'A');
+        $b = $this->image($library->id, 'storage/uploads/images/table-b.jpg', 'B');
+        $aUrl = ImageUrlNormalizer::toPublicUrl($a->file_path);
+        $bUrl = ImageUrlNormalizer::toPublicUrl($b->file_path);
+        foreach (['', '> ', '  > '] as $prefix) {
+            $headerPrefix = $prefix === '  > ' ? '- > ' : $prefix;
+            $table = $headerPrefix.'| 中文说明 | Illustration ![header][x] |'."\n"
+                .$prefix.'| --- | --- |'."\n"
+                .$prefix.'| 保留 **文字** 与 `![picture][shot]` | ![picture][shot] ![second][b] ![outside][x] |'."\n"
+                .$prefix.'| 转义 \| 管道 | ![picture][shot] |'."\n"
+                .$prefix.'| `![same](https://outside.example/same.jpg)` | ![same](https://outside.example/same.jpg) |';
+            $content = $table."\n\n[shot]: $aUrl\n[b]: $bUrl\n[x]: https://outside.example/photo.jpg";
+            foreach ([0, 1] as $count) {
+                $result = $this->insertImagesIntoContent($this->task($library->id, $count), $content);
+                $html = ArticleHtmlPresenter::markdownToHtml($result['content']);
+                $dom = new \DOMDocument;
+                @$dom->loadHTML($html);
+                $this->assertSame($count, $dom->getElementsByTagName('img')->length);
+                $this->assertSame(1, $dom->getElementsByTagName('table')->length);
+                $this->assertStringContainsString('中文说明', $html);
+                $this->assertStringContainsString('<strong>文字</strong>', $html);
+                $this->assertStringContainsString('<code>![picture][shot]</code>', $html);
+                $this->assertStringContainsString('转义 | 管道', $html);
+                $this->assertStringContainsString('<code>![same](https://outside.example/same.jpg)</code>', $html);
+                $this->assertStringNotContainsString('src="https://outside.example', $html);
+            }
+        }
+    }
+
     private function insertImagesIntoContent(Task $task, string $content): array
     {
         $service = app(WorkerExecutionService::class);
