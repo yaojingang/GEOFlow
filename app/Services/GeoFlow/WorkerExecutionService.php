@@ -1144,6 +1144,7 @@ class WorkerExecutionService
      */
     private function buildExcerpt(string $content): string
     {
+        $content = str_replace('&#32;', ' ', $content);
         $plain = preg_replace('/[`#>*_\-\[\]\(\)]/u', ' ', $content) ?: $content;
         $plain = preg_replace('/\s+/u', ' ', $plain) ?: $plain;
         $plain = trim($plain);
