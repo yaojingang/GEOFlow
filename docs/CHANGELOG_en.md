@@ -5,6 +5,12 @@ This document tracks user-facing updates in the public repository. For future Gi
 
 ## Unreleased
 
+### Egress proxy for WAF-protected targets
+
+- The hardened outbound gateway can route an explicit host allowlist through an egress proxy; direct connections remain the default and the proxy is only enabled when both GEOFLOW_OUTBOUND_PROXY and GEOFLOW_OUTBOUND_PROXY_HOSTS are configured.
+- Proxied hosts are resolved by the proxy, while private and reserved address targets stay blocked. Only http, https, socks5 and socks5h proxy URLs are accepted.
+- Added operator documentation: [Egress proxy for WAF-protected targets](operations/outbound-egress-proxy.md).
+
 ### Link pool and live prompt testing
 
 - Distribution management adds internal link placement for the primary site and first-party hosted sites, including a link library, import preflight, campaigns, recommendation previews, site controls, and an emergency stop.

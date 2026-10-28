@@ -5,6 +5,12 @@
 
 ## 未发布
 
+### 出站代理与 WAF 目标访问
+
+- 统一出站安全网关支持按主机名单启用出站代理，默认保持直连；仅 GEOFLOW_OUTBOUND_PROXY 与 GEOFLOW_OUTBOUND_PROXY_HOSTS 同时配置时生效。
+- 代理主机名由代理方解析，私网与保留地址目标仍然拒绝；代理地址仅接受 http、https、socks5、socks5h。
+- 新增出站代理说明文档： [出站代理与 WAF 目标访问](operations/outbound-egress-proxy.md)。
+
 ### 链接池与提示词实时测试
 
 - 分发管理新增内链投放，支持主站和第一方托管站的链接库、导入预检、投放活动、推荐预览、站点开关及紧急停用。

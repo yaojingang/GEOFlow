@@ -128,12 +128,14 @@ final class FinalOutboundSecurityPolicy
             $target->url,
             $crossOrigin,
         );
+        $proxyUrl = OutboundProxyOptions::resolve($target->proxyUrl);
         $curl = $this->secureCurlOptions(
             $target,
             (string) $request->getUri()->withFragment(''),
             $maxBytes,
             $callerProgress,
             $limitExceeded,
+            $proxyUrl !== null,
         );
         $options = $this->secureHandlerOptions(
             $options,
@@ -145,6 +147,7 @@ final class FinalOutboundSecurityPolicy
             $onHeaders,
             $curl,
             $streamingRequested,
+            $proxyUrl,
         );
 
         try {
@@ -230,6 +233,7 @@ final class FinalOutboundSecurityPolicy
         callable $onHeaders,
         array $curl,
         bool $streamingRequested,
+        ?string $proxyUrl = null,
     ): array {
         $secure = [
             'allow_redirects' => false,
@@ -240,7 +244,7 @@ final class FinalOutboundSecurityPolicy
             'force_ip_resolve' => str_contains($target->selectedIp, ':') ? 'v6' : 'v4',
             'http_errors' => false,
             'on_headers' => $onHeaders,
-            'proxy' => '',
+            'proxy' => $proxyUrl ?? '',
             'stream' => $streamingRequested,
             'timeout' => $timeout,
             'verify' => true,
@@ -274,13 +278,12 @@ final class FinalOutboundSecurityPolicy
         int $maxBytes,
         ?callable $callerProgress,
         bool &$limitExceeded,
+        bool $proxied = false,
     ): array {
         $ipLiteral = filter_var($target->host, FILTER_VALIDATE_IP) !== false;
         $options = [
             CURLOPT_URL => $url,
             CURLOPT_PORT => $target->port,
-            CURLOPT_PROXY => '',
-            CURLOPT_NOPROXY => '*',
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_MAXREDIRS => 0,
             CURLOPT_NOPROGRESS => false,
@@ -309,6 +312,14 @@ final class FinalOutboundSecurityPolicy
         if (! $ipLiteral) {
             $pinnedIp = str_contains($target->selectedIp, ':') ? '['.$target->selectedIp.']' : $target->selectedIp;
             $options[CURLOPT_RESOLVE] = [$target->host.':'.$target->port.':'.$pinnedIp];
+        }
+        if ($proxied) {
+            // Guzzle owns the proxy decision when a host is explicitly opted
+            // into the egress proxy; raw cURL overrides would discard it.
+            $options = OutboundProxyOptions::withoutDirectConnectionOverrides($options);
+        } else {
+            $options[CURLOPT_PROXY] = '';
+            $options[CURLOPT_NOPROXY] = '*';
         }
         $options[CURLOPT_ENCODING] = 'identity';
         if (defined('CURLOPT_PROTOCOLS')) {
