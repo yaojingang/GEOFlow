@@ -399,6 +399,7 @@ class AiModelController extends Controller
             $modelName = trim($snapshot->providerModelId);
             $isGemini = $snapshot->gemini;
             $usesOpenAiResponses = $snapshot->usesOpenAiResponses;
+            $isVolcengineMultimodal = $snapshot->volcengineMultimodal;
 
             if ($endpoint === '') {
                 return $this->modelTestResponse(
@@ -514,7 +515,7 @@ class AiModelController extends Controller
                 ? $request->withHeaders(['x-goog-api-key' => $apiKey])
                 : $request->withToken($apiKey);
 
-            $testPayload = $this->buildTestPayload($modelName, $modelType, $isGemini, $usesOpenAiResponses);
+            $testPayload = $this->buildTestPayload($modelName, $modelType, $isGemini, $usesOpenAiResponses, $isVolcengineMultimodal);
             $response = $this->safeHttp->post(
                 $request,
                 $endpoint,
@@ -554,7 +555,7 @@ class AiModelController extends Controller
                 );
             }
 
-            if (! $this->isValidTestResponse($json, $modelType, $isGemini, $usesOpenAiResponses)) {
+            if (! $this->isValidTestResponse($json, $modelType, $isGemini, $usesOpenAiResponses, $isVolcengineMultimodal)) {
                 $usageSession->discarded('direct.p1', 'ai_provider_response_invalid', $json['usage'] ?? null);
                 if ($reservation instanceof AiUsageReservation) {
                     $this->recordModelTestAttempt($reservation);
@@ -960,7 +961,8 @@ class AiModelController extends Controller
         string $modelName,
         string $modelType,
         bool $isGemini = false,
-        bool $usesOpenAiResponses = false
+        bool $usesOpenAiResponses = false,
+        bool $isVolcengineMultimodal = false
     ): array {
         if ($isGemini) {
             if ($modelType === 'embedding') {
@@ -1004,6 +1006,15 @@ class AiModelController extends Controller
             ];
         }
 
+        if ($modelType === 'embedding' && $isVolcengineMultimodal) {
+            return [
+                'model' => $modelName,
+                'input' => [
+                    ['type' => 'text', 'text' => 'GEOFlow embedding connection test'],
+                ],
+            ];
+        }
+
         if ($modelType === 'embedding') {
             return [
                 'model' => $modelName,
@@ -1033,7 +1044,8 @@ class AiModelController extends Controller
         mixed $json,
         string $modelType,
         bool $isGemini = false,
-        bool $usesOpenAiResponses = false
+        bool $usesOpenAiResponses = false,
+        bool $isVolcengineMultimodal = false
     ): bool {
         if (! is_array($json)) {
             return false;
