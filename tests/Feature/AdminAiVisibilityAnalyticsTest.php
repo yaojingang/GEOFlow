@@ -9,6 +9,8 @@ use App\Models\AiVisibilityRun;
 use App\Models\AiVisibilitySource;
 use App\Models\AiVisibilityTopic;
 use App\Models\AiVisibilityTopicKeyword;
+use App\Models\Keyword;
+use App\Models\KeywordLibrary;
 use App\Models\SiteSetting;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsFilter;
 use App\Services\Admin\Analytics\AiVisibilityAnalyticsService;
@@ -928,6 +930,89 @@ class AdminAiVisibilityAnalyticsTest extends TestCase
         Http::fake(['https://open.feedcoopapi.com/search_api/web_search' => Http::response(['Result' => ['WebResults' => []]])]);
         $this->actingAs($this->admin(), 'admin')->post(route('admin.analytics.ai-visibility.search'), ['query' => 'GEOFlow', 'mode' => 'custom', 'need_summary' => '0', 'query_rewrite' => '0'])->assertRedirect()->assertSessionHasNoErrors();
         Http::assertSent(fn ($request) => $request->data()['NeedSummary'] === false && $request->data()['QueryControl']['QueryRewrite'] === false);
+    }
+
+    public function test_collect_panel_marks_recently_sampled_keywords_and_disables_them(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-28 12:00:00'));
+        config()->set('geoflow.site_name', 'GEOFlow');
+        config()->set('geoflow.site_url', 'https://geoflow.example.com');
+        $this->configureAiVisibilityApis();
+
+        $library = KeywordLibrary::query()->create(['name' => 'GEOFlow 关键词库']);
+        $sampled = Keyword::query()->create(['library_id' => $library->id, 'keyword' => 'GEOFlow 内容工程']);
+        $fresh = Keyword::query()->create(['library_id' => $library->id, 'keyword' => 'AI 可见度']);
+
+        $this->completedRun(
+            keyword: 'GEOFlow 内容工程',
+            providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+            answer: 'GEOFlow 在内容工程场景中表现良好。',
+            sentiment: 'positive',
+            completedAt: '2026-10-27 09:00:00',
+            sources: [],
+        );
+
+        $response = $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.analytics.ai-visibility'))
+            ->assertOk();
+
+        $response->assertSee('data-ai-visibility-sampled="1"', false);
+        $response->assertSee(__('admin.analytics.ai_visibility.collect.recently_sampled'));
+        $response->assertSee('data-ai-visibility-counter', false);
+        $response->assertSee('data-ai-visibility-global-counter', false);
+
+        $content = $response->getContent();
+        $sampledInput = $this->keywordCheckbox($content, (int) $sampled->id);
+        $freshInput = $this->keywordCheckbox($content, (int) $fresh->id);
+        $this->assertNotNull($sampledInput, 'sampled keyword must still be rendered');
+        $this->assertNotNull($freshInput, 'fresh keyword must be rendered');
+        $this->assertMatchesRegularExpression('/\sdisabled\s*>/', $sampledInput, 'recently sampled keywords must not be resubmitted');
+        $this->assertDoesNotMatchRegularExpression('/\sdisabled\s*>/', $freshInput, 'fresh keywords stay selectable');
+
+        Carbon::setTestNow();
+    }
+
+    public function test_collect_panel_keeps_keywords_sampled_before_the_recent_window_selectable(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-28 12:00:00'));
+        config()->set('geoflow.site_name', 'GEOFlow');
+        config()->set('geoflow.site_url', 'https://geoflow.example.com');
+        $this->configureAiVisibilityApis();
+
+        $library = KeywordLibrary::query()->create(['name' => 'GEOFlow 关键词库']);
+        $stale = Keyword::query()->create(['library_id' => $library->id, 'keyword' => 'GEOFlow 内容工程']);
+
+        $this->completedRun(
+            keyword: 'GEOFlow 内容工程',
+            providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,
+            answer: 'GEOFlow 在内容工程场景中表现良好。',
+            sentiment: 'positive',
+            completedAt: '2026-10-10 09:00:00',
+            sources: [],
+        );
+
+        $response = $this->actingAs($this->admin(), 'admin')
+            ->get(route('admin.analytics.ai-visibility'))
+            ->assertOk();
+
+        $response->assertDontSee('data-ai-visibility-sampled="1"', false);
+
+        $input = $this->keywordCheckbox($response->getContent(), (int) $stale->id);
+        $this->assertNotNull($input, 'stale keyword must be rendered');
+        $this->assertDoesNotMatchRegularExpression('/\sdisabled\s*>/', $input, 'keywords sampled before the window stay selectable');
+
+        Carbon::setTestNow();
+    }
+
+    private function keywordCheckbox(string $content, int $keywordId): ?string
+    {
+        $matched = preg_match(
+            '/<input[^>]*name="keyword_ids\[\]"[^>]*value="'.((string) $keywordId).'"[^>]*>/',
+            $content,
+            $matches,
+        );
+
+        return $matched === 1 ? $matches[0] : null;
     }
 
     private function configureAiVisibilityApis(): void

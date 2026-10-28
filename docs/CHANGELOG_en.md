@@ -5,6 +5,11 @@ This document tracks user-facing updates in the public repository. For future Gi
 
 ## Unreleased
 
+### AI visibility collection panel
+
+- The keyword collection panel shows the selected count per library and overall, keeps the selection limit aligned with the server validation, and clears the excess selection automatically.
+- Keywords sampled in the last 7 days are marked and cannot be selected again, so repeated collection does not consume quota; keywords are compared with the same normalization used for topic assignment.
+
 ### Link pool and live prompt testing
 
 - Distribution management adds internal link placement for the primary site and first-party hosted sites, including a link library, import preflight, campaigns, recommendation previews, site controls, and an emergency stop.
