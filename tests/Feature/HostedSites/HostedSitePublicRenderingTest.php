@@ -11,10 +11,13 @@ use App\Models\HostedSiteProfile;
 use App\Models\LeadForm;
 use App\Models\SiteSetting;
 use App\Models\Task;
+use App\Models\ThemeRelease;
+use App\Services\Api\ThemeRevisionStorage;
 use App\Support\Site\ArticlePermalinkPolicy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class HostedSitePublicRenderingTest extends TestCase
@@ -111,6 +114,57 @@ class HostedSitePublicRenderingTest extends TestCase
             ->assertOk()
             ->assertSee($localArticle->slug)
             ->assertDontSee($distributionOnlyArticle->slug);
+    }
+
+    public function test_category_years_and_results_include_only_articles_assigned_to_the_current_host(): void
+    {
+        [, $alphaArticle] = $this->siteFixture('alpha', 'Alpha Site', 'Alpha article');
+        [, $betaArticle] = $this->siteFixture('beta', 'Beta Site', 'Beta article');
+        $alphaArticle->update(['published_at' => '2024-06-01 12:00:00']);
+        $betaArticle->update(['published_at' => '2025-06-01 12:00:00']);
+
+        $this->get('http://alpha.sites.test/category/ai?year=2025')
+            ->assertOk()
+            ->assertViewHas('yearOptions', [2024])
+            ->assertViewHas('articles', fn ($articles): bool => $articles->total() === 0)
+            ->assertDontSee('Beta article');
+        $this->get('http://beta.sites.test/category/ai?year=2025')
+            ->assertOk()
+            ->assertViewHas('yearOptions', [2025])
+            ->assertViewHas('articles', fn ($articles): bool => $articles->total() === 1
+                && $articles->first()->id === $betaArticle->id);
+    }
+
+    public function test_encoded_revision_asset_names_preserve_host_method_and_serving_restrictions(): void
+    {
+        Storage::fake('local');
+        [$alpha] = $this->siteFixture('alpha', 'Alpha Site', 'Alpha article');
+        $this->siteFixture('beta', 'Beta Site', 'Beta article');
+        $theme = 'geoflow-template-01-ink-editorial';
+        $revision = app(ThemeRevisionStorage::class)->create((string) Str::uuid(), $theme, [
+            'public/themes/'.$theme.'/hero image+brand.css' => '.hero { color: red; }',
+        ], []);
+        ThemeRelease::query()->create([
+            'id' => (string) Str::uuid(), 'site_key' => 'hosted:'.$alpha->id,
+            'workspace_id' => (string) Str::uuid(), 'revision_id' => $revision->id,
+            'admin_id' => 1, 'binding_version' => 1, 'changes' => [],
+            'plan_sha256' => str_repeat('a', 64),
+        ]);
+        $path = '/theme-assets/'.$revision->id.'/hero%20image%2Bbrand.css';
+
+        $this->get('http://alpha.sites.test'.$path)
+            ->assertOk()->assertHeader('Content-Type', 'text/css; charset=utf-8')
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+        $this->head('http://alpha.sites.test'.$path)->assertOk();
+        $this->get('http://beta.sites.test'.$path)->assertNotFound();
+        $this->post('http://alpha.sites.test'.$path)->assertNotFound();
+        $this->get('http://alpha.sites.test/theme-assets/'.$revision->id.'/missing.css')->assertNotFound();
+        $this->get('http://alpha.sites.test/theme-assets/'.$revision->id.'/%2e%2e/manifest.json')->assertNotFound();
+
+        $alpha->update(['serving_status' => HostedSiteProfile::SERVING_MAINTENANCE]);
+        $this->get('http://alpha.sites.test'.$path)->assertServiceUnavailable();
+        $alpha->update(['serving_status' => HostedSiteProfile::SERVING_ARCHIVED]);
+        $this->get('http://alpha.sites.test'.$path)->assertGone();
     }
 
     public function test_hosted_about_forms_and_submission_ownership_use_the_site_allowlist(): void

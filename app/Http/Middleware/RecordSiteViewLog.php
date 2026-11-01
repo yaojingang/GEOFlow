@@ -75,7 +75,7 @@ class RecordSiteViewLog
         }
 
         try {
-            $this->siteArticles->query()->whereKey((int) $articleId)->increment('view_count');
+            $this->siteArticles->query()->whereKey((int) $articleId)->toBase()->increment('view_count');
         } catch (\Throwable) {
             // 阅读计数不能影响已经成功生成的页面响应。
         }

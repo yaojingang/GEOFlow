@@ -128,6 +128,38 @@ class ThemeWorkspacePreviewContractTest extends TestCase
         $this->assertNull(Session::get('preview_write'));
     }
 
+    public function test_signed_category_preview_preserves_the_year_filter_across_pagination(): void
+    {
+        $category = Category::query()->create(['name' => 'News', 'slug' => 'news']);
+        $author = Author::query()->create(['name' => 'Author']);
+        foreach (['Older story' => '2024-06-01', 'First story' => '2025-12-01', 'Second story' => '2025-06-01'] as $title => $date) {
+            Article::query()->create([
+                'title' => $title, 'slug' => Str::slug($title), 'content' => 'Published body',
+                'category_id' => $category->id, 'author_id' => $author->id,
+                'status' => 'published', 'review_status' => 'approved', 'published_at' => $date,
+            ]);
+        }
+        SiteSetting::query()->updateOrCreate(['setting_key' => 'per_page'], ['setting_value' => '1']);
+        SiteSettingsBag::forget();
+        $base = $this->workspace([
+            'resources/views/theme/default/home.blade.php' => '<a id="filtered" href="/category/news?year=2025">News</a>',
+            'resources/views/theme/default/category.blade.php' => '@foreach($articles as $article)<h1>{{ $article->title }}</h1>@endforeach @if($articles->hasMorePages())<a id="next" href="{{ $articles->nextPageUrl() }}">Next</a>@endif',
+        ]);
+        $this->getJson($base.'/contract')->assertOk()
+            ->assertJsonPath('data.page_variables.category.yearOptions', 'list<int>')
+            ->assertJsonPath('data.page_variables.category.selectedYear', 'int|null');
+        $homeUrl = $this->postJson($base.'/previews')->assertOk()->json('data.pages.home.url');
+        $home = $this->get($homeUrl)->assertOk()->getContent();
+        $categoryUrl = $this->attribute($home, 'filtered');
+
+        $this->assertStringContainsString('year=2025', $categoryUrl);
+        $categoryPage = $this->get($categoryUrl)->assertOk()->assertSee('First story')->assertDontSee('Older story');
+        $next = $this->attribute($categoryPage->getContent(), 'next');
+        $this->assertStringContainsString('year=2025', $next);
+        $this->get($next)->assertOk()->assertSee('Second story')->assertDontSee('First story')->assertDontSee('Older story');
+        $this->get(str_replace('year=2025', 'year=2024', $next))->assertForbidden();
+    }
+
     public function test_signed_preview_rejects_a_revision_changed_after_signature_validation(): void
     {
         $base = $this->workspace([

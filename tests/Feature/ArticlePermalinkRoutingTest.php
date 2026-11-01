@@ -127,6 +127,18 @@ class ArticlePermalinkRoutingTest extends TestCase
         $this->get('/sitemaps/pages-3.xml')->assertNotFound();
     }
 
+    public function test_reading_an_article_increments_views_without_changing_its_content_timestamp(): void
+    {
+        $article = $this->article();
+        $article->forceFill(['updated_at' => '2025-04-05 06:07:08'])->save();
+        $timestamp = $article->fresh()->getRawOriginal('updated_at');
+
+        $this->get(app(SiteUrlGenerator::class)->article($article))->assertOk();
+
+        $this->assertSame(1, $article->fresh()->view_count);
+        $this->assertSame($timestamp, $article->fresh()->getRawOriginal('updated_at'));
+    }
+
     public function test_first_primary_sitemap_shard_is_available_when_the_index_is_inline(): void
     {
         $article = $this->article();

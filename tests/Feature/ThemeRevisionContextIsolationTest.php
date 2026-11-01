@@ -2,11 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\Site\ThemeRevisionAssetController;
 use App\Http\Middleware\ScopeThemeRevision;
+use App\Models\DistributionChannel;
 use App\Models\HostedSiteProfile;
 use App\Models\SiteThemeBinding;
+use App\Models\ThemeRelease;
 use App\Models\ThemeRevision;
 use App\Services\Api\ThemeRevisionStorage;
+use App\Services\Site\LinkPoolSiteService;
 use App\Support\Site\CurrentSite;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeViewResolver;
@@ -18,6 +22,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 class ThemeRevisionContextIsolationTest extends TestCase
@@ -123,5 +128,115 @@ class ThemeRevisionContextIsolationTest extends TestCase
 
         $this->assertSame('Hosted request', $response->getContent());
         $this->assertSame($original, View::getFinder());
+    }
+
+    public function test_hosted_site_reads_only_its_matching_theme_revision_without_primary_settings(): void
+    {
+        $revision = $this->revision('Primary private value');
+        $channel = DistributionChannel::query()->create([
+            'name' => 'Hosted theme', 'domain' => 'hosted.example.test', 'endpoint_url' => 'https://hosted.example.test',
+            'channel_type' => DistributionChannel::TYPE_HOSTED_SITE, 'status' => DistributionChannel::STATUS_ACTIVE,
+            'template_key' => $revision->theme_id,
+            'site_settings' => ['site_name' => 'Hosted name', 'theme_id' => $revision->theme_id],
+        ]);
+        $profile = HostedSiteProfile::query()->create([
+            'distribution_channel_id' => $channel->id, 'hostname' => 'hosted.example.test', 'root_domain' => 'example.test',
+            'serving_status' => HostedSiteProfile::SERVING_ONLINE,
+        ]);
+        SiteThemeBinding::query()->create([
+            'site_key' => 'hosted:'.$profile->id, 'theme_id' => $revision->theme_id,
+            'revision_id' => $revision->id, 'settings' => ['site_name' => 'Primary private value'],
+        ]);
+        app(CurrentSite::class)->setHosted($profile);
+        $context = app(ThemeRevisionContext::class);
+        $context->reset();
+
+        $this->assertSame($revision->id, $context->snapshot()['revision_id']);
+        $this->assertSame([], $context->snapshot()['settings']);
+        $this->assertSame('Hosted name', SiteSettingsBag::get('site_name'));
+        $rendered = app(ScopeThemeRevision::class)->handle(
+            Request::create('https://hosted.example.test/'),
+            fn () => response(SiteThemeViewResolver::first('home', ['siteTitle' => SiteSettingsBag::get('site_name')])->render()),
+        );
+        $this->assertStringContainsString('Frozen fallback: Hosted name', $rendered->getContent());
+
+        $profile->setRelation('channel', new DistributionChannel(['template_key' => 'default']));
+        $context->reset();
+        $this->assertNull($context->snapshot());
+    }
+
+    public function test_revision_assets_are_scoped_to_the_current_hosted_site_release(): void
+    {
+        $themeId = 'geoflow-template-01-ink-editorial';
+        $previous = app(ThemeRevisionStorage::class)->create((string) Str::uuid(), $themeId, [
+            'public/themes/'.$themeId.'/theme.css' => '.theme { color: blue; }',
+        ], []);
+        $revision = app(ThemeRevisionStorage::class)->create((string) Str::uuid(), $themeId, [
+            'public/themes/'.$themeId.'/theme.css' => '.theme { color: red; }',
+        ], []);
+        ThemeRelease::query()->create([
+            'id' => (string) Str::uuid(), 'site_key' => 'hosted:17',
+            'workspace_id' => (string) Str::uuid(), 'revision_id' => $revision->id,
+            'previous_revision_id' => $previous->id,
+            'admin_id' => 1, 'binding_version' => 1, 'changes' => [],
+            'plan_sha256' => str_repeat('a', 64),
+        ]);
+        $profile = new HostedSiteProfile(['hostname' => 'hosted.example.test']);
+        $profile->id = 17;
+        app(CurrentSite::class)->setHosted($profile);
+        $asset = app(ThemeRevisionAssetController::class)(
+            Request::create('https://hosted.example.test/theme-assets/'.$revision->id.'/theme.css'),
+            $revision->id,
+            'theme.css',
+            app(ThemeRevisionStorage::class),
+        );
+        $this->assertSame(200, $asset->getStatusCode());
+        $rolledBackAsset = app(ThemeRevisionAssetController::class)(
+            Request::create('https://hosted.example.test/theme-assets/'.$previous->id.'/theme.css'),
+            $previous->id,
+            'theme.css',
+            app(ThemeRevisionStorage::class),
+        );
+        $this->assertSame(200, $rolledBackAsset->getStatusCode());
+
+        $other = new HostedSiteProfile(['hostname' => 'other.example.test']);
+        $other->id = 18;
+        app(CurrentSite::class)->setHosted($other);
+        $this->expectException(HttpException::class);
+        $this->expectExceptionCode(0);
+        app(ThemeRevisionAssetController::class)(
+            Request::create('https://other.example.test/theme-assets/'.$revision->id.'/theme.css'),
+            $revision->id,
+            'theme.css',
+            app(ThemeRevisionStorage::class),
+        );
+    }
+
+    public function test_hosted_recommendation_capability_uses_the_bound_revision(): void
+    {
+        $revision = app(ThemeRevisionStorage::class)->create((string) Str::uuid(), 'adapted-hosted-theme', [
+            'resources/views/theme/adapted-hosted-theme/article.blade.php' => "<article>Article</article>\n@include('site.partials.link-pool')",
+        ], []);
+        $channel = DistributionChannel::query()->create([
+            'name' => 'Hosted theme', 'domain' => 'theme.example.test', 'endpoint_url' => 'https://theme.example.test',
+            'channel_type' => DistributionChannel::TYPE_HOSTED_SITE, 'status' => DistributionChannel::STATUS_ACTIVE,
+            'template_key' => 'adapted-hosted-theme', 'site_settings' => ['theme_id' => 'adapted-hosted-theme'],
+        ]);
+        $profile = HostedSiteProfile::query()->create([
+            'distribution_channel_id' => $channel->id, 'hostname' => 'theme.example.test', 'root_domain' => 'example.test',
+            'serving_status' => HostedSiteProfile::SERVING_ONLINE, 'indexing_status' => HostedSiteProfile::INDEXING_INDEX,
+            'quality_status' => HostedSiteProfile::QUALITY_PASSED,
+        ]);
+        $siteKey = 'hosted:'.$profile->id;
+        SiteThemeBinding::query()->create([
+            'site_key' => $siteKey, 'theme_id' => $revision->theme_id, 'revision_id' => $revision->id, 'settings' => [],
+        ]);
+        $this->assertTrue(app(LinkPoolSiteService::class)->themeSupportsRecommendations($siteKey));
+
+        $withoutPartial = app(ThemeRevisionStorage::class)->create((string) Str::uuid(), 'adapted-hosted-theme', [
+            'resources/views/theme/adapted-hosted-theme/article.blade.php' => '<article>Article</article>',
+        ], []);
+        SiteThemeBinding::query()->whereKey($siteKey)->update(['revision_id' => $withoutPartial->id]);
+        $this->assertFalse(app(LinkPoolSiteService::class)->themeSupportsRecommendations($siteKey));
     }
 }
