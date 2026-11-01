@@ -93,7 +93,7 @@ final class ThemeWorkspacePreview
         if ($pageType === 'article') {
             $sitePath = ltrim(app(ArticlePermalinkService::class)->resolve('/'.$sitePath)->canonicalPath, '/');
         }
-        $request = Request::create(rtrim(config('app.url'), '/').'/'.$sitePath, 'GET', array_intersect_key($query, array_flip(['search', 'tag', 'page'])));
+        $request = Request::create(rtrim(config('app.url'), '/').'/'.$sitePath, 'GET', array_intersect_key($query, array_flip(['search', 'tag', 'page', 'year'])));
         $route = Route::getRoutes()->match($request);
         $request->setRouteResolver(fn () => $route);
         $frameBase = URL::route('api.v1.theme-preview', ['workspace' => $workspace->id, 'revision' => $revision->id]);
@@ -249,7 +249,7 @@ final class ThemeWorkspacePreview
                 return $match[0];
             }
             parse_str($parts['query'] ?? '', $query);
-            $query = array_intersect_key($query, array_flip(['search', 'tag', 'page']));
+            $query = array_intersect_key($query, array_flip(['search', 'tag', 'page', 'year']));
             $signed = URL::temporarySignedRoute('api.v1.theme-preview', now()->addMinutes(15), [
                 'workspace' => $workspace, 'revision' => $revision, 'sitePath' => $path, 'token_id' => $auth->token['id'], 'recovery_epoch' => $this->recovery->assertHttpReady()['epoch'] ?? null, ...$query,
             ]);
