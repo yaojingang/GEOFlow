@@ -265,7 +265,7 @@ class AiVisibilityAnalyticsController extends Controller
     }
 
     /**
-     * @return Collection<int, array{id: int, name: string, keywords: list<array{id: int, keyword: string}>}>
+     * @return Collection<int, array{id: int, name: string, keywords: list<array{id: int, keyword: string, recently_sampled: bool}>}>
      */
     private function keywordLibraries(): Collection
     {
@@ -275,6 +275,7 @@ class AiVisibilityAnalyticsController extends Controller
 
         $keywords = Keyword::query()->where('keyword', '!=', '')->orderBy('id')->limit(1000)
             ->get(['id', 'library_id', 'keyword'])->groupBy('library_id');
+        $sampled = $this->recentlySampledKeywords();
 
         return KeywordLibrary::query()->whereIn('id', $keywords->keys())->orderBy('id')
             ->get(['id', 'name'])
@@ -282,8 +283,46 @@ class AiVisibilityAnalyticsController extends Controller
                 'id' => $library->id,
                 'name' => $library->name,
                 'keywords' => $keywords->get($library->id, collect())
-                    ->map(static fn (Keyword $keyword): array => ['id' => $keyword->id, 'keyword' => (string) $keyword->keyword])
+                    ->map(static fn (Keyword $keyword): array => [
+                        'id' => $keyword->id,
+                        'keyword' => (string) $keyword->keyword,
+                        'recently_sampled' => isset($sampled[AiVisibilityKeywordNormalizer::normalize((string) $keyword->keyword)]),
+                    ])
                     ->values()->all(),
             ])->values();
+    }
+
+    /**
+     * 最近 7 天已成功采样的关键词，供面板提示及批量选择时跳过。
+     *
+     * 关键词按与专题归类一致的归一化规则比较，因此大小写、空白和全角差异
+     * 共用近期成功标记；用户仍可手动勾选重采。
+     *
+     * @return array<string, true>
+     */
+    private function recentlySampledKeywords(): array
+    {
+        if (! Schema::hasTable('ai_visibility_runs')) {
+            return [];
+        }
+
+        $since = now()->subDays(7);
+        $runs = AiVisibilityRun::query()
+            ->whereIn('provider_type', AiVisibilityRun::SAMPLE_PROVIDERS)
+            ->whereNotNull('keyword')
+            ->where('keyword', '!=', '')
+            ->where('status', AiVisibilityRun::STATUS_COMPLETED)
+            ->where('completed_at', '>=', $since)
+            ->distinct()->pluck('keyword');
+
+        $sampled = [];
+        foreach ($runs as $keyword) {
+            $key = AiVisibilityKeywordNormalizer::normalize((string) $keyword);
+            if ($key !== '') {
+                $sampled[$key] = true;
+            }
+        }
+
+        return $sampled;
     }
 }
