@@ -84,7 +84,7 @@ class EnforceCurrentSiteSurface
 
         if ($path === '/favicon.ico'
             || preg_match('#^/(?:assets|js|storage|themes)/[a-zA-Z0-9._/-]+$#', $path) === 1
-            || preg_match('#^/theme-assets/[0-9a-fA-F-]{36}/[a-zA-Z0-9._/-]+$#', $path) === 1
+            || preg_match('#^/theme-assets/[0-9a-fA-F-]{36}/[\x20-\x7E]+$#D', $path) === 1
             || preg_match('#^/build/assets/[a-zA-Z0-9._-]+$#', $path) === 1) {
             return true;
         }
