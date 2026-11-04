@@ -644,7 +644,7 @@ class KnowledgeChunkSyncService
 
     /**
      * @param  mixed  $stagedQuery
-     * @param  array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,api_key:string,driver:string}|null  $currentMetadata
+     * @param  array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,configured_api_url:string,api_key:string,driver:string}|null  $currentMetadata
      */
     private function assertSingleStagedEmbeddingProfile($stagedQuery, ?array $currentMetadata): ?object
     {
@@ -716,7 +716,7 @@ class KnowledgeChunkSyncService
         }
 
         $expectedDigest = $this->embeddingFingerprint->forRuntimeProfile(
-            (string) $currentMetadata['api_url'],
+            (string) $currentMetadata['configured_api_url'],
             (string) $currentMetadata['model_name'],
             (int) $profile->embedding_dimensions,
         );
@@ -1834,7 +1834,7 @@ class KnowledgeChunkSyncService
         return $this->adminModelAccessResolver->assertUsable($current, $model);
     }
 
-    /** @return array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,api_key:string,driver:string}|null */
+    /** @return array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,configured_api_url:string,api_key:string,driver:string}|null */
     private function resolveSystemEmbeddingMetadata(SystemAiIdentity $identity): ?array
     {
         $model = $this->systemModelAccessResolver->resolveEmbedding($identity);
@@ -1877,7 +1877,7 @@ class KnowledgeChunkSyncService
     }
 
     /**
-     * @return array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,api_key:string,driver:string}|null
+     * @return array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,configured_api_url:string,api_key:string,driver:string}|null
      */
     private function resolveFrozenSystemEmbeddingMetadata(
         int $knowledgeBaseId,
@@ -1892,7 +1892,7 @@ class KnowledgeChunkSyncService
     }
 
     /**
-     * @return array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,api_key:string,driver:string}|null
+     * @return array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,configured_api_url:string,api_key:string,driver:string}|null
      */
     private function assertFrozenSystemEmbeddingPipelineCurrent(
         int $knowledgeBaseId,
@@ -1955,7 +1955,7 @@ class KnowledgeChunkSyncService
     }
 
     /**
-     * @return array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,api_key:string,driver:string}|null
+     * @return array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,configured_api_url:string,api_key:string,driver:string}|null
      */
     private function modelToEmbeddingMetadata(AiModel $model): ?array
     {
@@ -1972,8 +1972,9 @@ class KnowledgeChunkSyncService
             'provider' => $this->embeddingFingerprint->provider($model),
             'config_revision' => $this->embeddingFingerprint->configurationRevision($model),
             'api_url' => $providerUrl,
+            'configured_api_url' => (string) $model->api_url,
             'api_key' => $apiKey,
-            'driver' => OpenAiRuntimeProvider::resolveEmbeddingDriver($providerUrl, $modelName),
+            'driver' => OpenAiRuntimeProvider::resolveEmbeddingDriver((string) $model->api_url, $modelName),
         ];
     }
 
@@ -1981,7 +1982,7 @@ class KnowledgeChunkSyncService
      * 批量生成真实向量；任一异常则整体回退到 fallback 向量。
      *
      * @param  list<string>  $chunks
-     * @param  array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,api_key:string,driver:string}|null  $embeddingMetadata
+     * @param  array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,configured_api_url:string,api_key:string,driver:string}|null  $embeddingMetadata
      * @return array<int, array{model_id:int,dimensions:int,provider:string,fingerprint:string,profile_version:int,profile_digest:string,config_revision:string,vector:list<float>,vector_literal:?string}>
      */
     private function generateEmbeddingsForChunks(
@@ -2038,7 +2039,9 @@ class KnowledgeChunkSyncService
             }
             $results = [];
             $pendingChunks = $chunks;
-            $batchSize = $this->embeddingBatchSize();
+            $batchSize = $this->isVolcengineMultimodalEmbeddingMetadata($embeddingMetadata)
+                ? 1
+                : $this->embeddingBatchSize();
             $providerOrdinal = 0;
             $currentMetadata = $embeddingMetadata;
             while ($pendingChunks !== []) {
@@ -2172,7 +2175,7 @@ class KnowledgeChunkSyncService
 
     /**
      * @param  array<int, string>  $batch
-     * @param  array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,api_key:string,driver:string}  $embeddingMetadata
+     * @param  array{model_id:int,model_name:string,provider:string,config_revision:string,api_url:string,configured_api_url:string,api_key:string,driver:string}  $embeddingMetadata
      * @return array<int, array{model_id:int,dimensions:int,provider:string,fingerprint:string,profile_version:int,profile_digest:string,config_revision:string,vector:list<float>,vector_literal:?string}>
      */
     private function generateEmbeddingBatch(
@@ -2351,7 +2354,7 @@ class KnowledgeChunkSyncService
      * Gemini 原生接口形态不同，继续复用 SDK。
      *
      * @param  list<string>  $inputs
-     * @param  array{model_id:int,model_name:string,provider:string,fingerprint:string,api_url:string,api_key:string,driver:string}  $embeddingMetadata
+     * @param  array{model_id:int,model_name:string,provider:string,fingerprint:string,api_url:string,configured_api_url:string,api_key:string,driver:string}  $embeddingMetadata
      * @return KnowledgeEmbeddingProviderResult 与 $inputs 顺序对应的原始向量和用量
      */
     private function requestEmbeddingVectors(
@@ -2370,6 +2373,10 @@ class KnowledgeChunkSyncService
             );
         }
 
+        if ($this->isVolcengineMultimodalEmbeddingMetadata($embeddingMetadata)) {
+            return $this->requestVolcengineMultimodalEmbeddings($inputs, $embeddingMetadata);
+        }
+
         return $this->requestOpenAiCompatibleEmbeddings($inputs, $embeddingMetadata);
     }
 
@@ -2379,7 +2386,7 @@ class KnowledgeChunkSyncService
      * 请求通过统一安全出站网关校验并固定目标地址。
      *
      * @param  list<string>  $inputs
-     * @param  array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string,driver:string}  $embeddingMetadata
+     * @param  array{model_id:int,model_name:string,provider:string,api_url:string,configured_api_url:string,api_key:string,driver:string}  $embeddingMetadata
      */
     private function requestOpenAiCompatibleEmbeddings(
         array $inputs,
@@ -2437,6 +2444,64 @@ class KnowledgeChunkSyncService
         );
     }
 
+    /**
+     * 直连火山方舟多模态 embedding endpoint。
+     *
+     * 每次请求的 input 描述一个样本，返回单个 data.embedding 向量。
+     * 调度层为每段文本单独执行配额、权限和同步来源检查。
+     *
+     * 请求通过统一安全出站网关校验并固定目标地址。
+     *
+     * @param  list<string>  $inputs
+     * @param  array{model_id:int,model_name:string,provider:string,api_url:string,configured_api_url:string,api_key:string,driver:string}  $embeddingMetadata
+     */
+    private function requestVolcengineMultimodalEmbeddings(
+        array $inputs,
+        array $embeddingMetadata,
+    ): KnowledgeEmbeddingProviderResult {
+        if (count($inputs) !== 1) {
+            throw new \InvalidArgumentException('Multimodal embeddings require one independent text per request.');
+        }
+
+        $endpoint = rtrim((string) $embeddingMetadata['api_url'], '/')
+            .OpenAiRuntimeProvider::volcengineMultimodalEmbeddingPath();
+
+        $payload = [
+            'model' => (string) $embeddingMetadata['model_name'],
+            'input' => array_map(
+                static fn (string $text): array => ['type' => 'text', 'text' => $text],
+                $inputs,
+            ),
+        ];
+
+        $request = $this->http->acceptJson()
+            ->asJson()
+            ->withToken((string) $embeddingMetadata['api_key'])
+            ->connectTimeout(8)
+            ->timeout(45);
+        $response = $this->safeHttp->post($request, $endpoint, $payload, (int) config('geoflow.outbound_ai_max_bytes', 8 * 1024 * 1024));
+
+        if (! $response->successful()) {
+            $error = data_get($response->json(), 'error.message');
+            $message = is_string($error) && $this->isEmbeddingBatchSizeError($error)
+                ? 'Embedding provider rejected batch size.'
+                : 'Embedding provider request failed.';
+
+            throw new \RuntimeException(sprintf(
+                'HTTP request returned status code %d: %s',
+                $response->status(),
+                $message,
+            ), 0, $response->toException());
+        }
+
+        $data = $response->json();
+
+        return new KnowledgeEmbeddingProviderResult(
+            [is_array($data) ? data_get($data, 'data.embedding') : null],
+            is_array($data) ? ($data['usage'] ?? null) : null,
+        );
+    }
+
     private function embeddingBatchSize(): int
     {
         return max(1, min(64, (int) config('geoflow.embedding_batch_size', 1)));
@@ -2450,7 +2515,7 @@ class KnowledgeChunkSyncService
     }
 
     /**
-     * @param  array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string,driver:string}  $embeddingMetadata
+     * @param  array{model_id:int,model_name:string,provider:string,api_url:string,configured_api_url:string,api_key:string,driver:string}  $embeddingMetadata
      */
     private function formatEmbeddingQueryInput(string $query, array $embeddingMetadata): string
     {
@@ -2464,7 +2529,7 @@ class KnowledgeChunkSyncService
 
     /**
      * @param  list<string>  $chunks
-     * @param  array{model_id:int,model_name:string,provider:string,api_url:string,api_key:string,driver:string}  $embeddingMetadata
+     * @param  array{model_id:int,model_name:string,provider:string,api_url:string,configured_api_url:string,api_key:string,driver:string}  $embeddingMetadata
      * @return list<string>
      */
     private function formatEmbeddingDocumentInputs(array $chunks, array $embeddingMetadata, ?string $documentTitle): array
@@ -2489,6 +2554,19 @@ class KnowledgeChunkSyncService
     {
         return (string) ($embeddingMetadata['driver'] ?? '') === 'gemini'
             || OpenAiRuntimeProvider::isGeminiProviderUrl((string) ($embeddingMetadata['api_url'] ?? ''));
+    }
+
+    /**
+     * @param  array<string, mixed>  $embeddingMetadata
+     */
+    private function isVolcengineMultimodalEmbeddingMetadata(array $embeddingMetadata): bool
+    {
+        if ((string) ($embeddingMetadata['driver'] ?? '') === 'volcengine-multimodal') {
+            return true;
+        }
+
+        return OpenAiRuntimeProvider::isVolcengineProviderUrl((string) ($embeddingMetadata['api_url'] ?? ''))
+            && OpenAiRuntimeProvider::isVolcengineMultimodalEmbeddingModel((string) ($embeddingMetadata['model_name'] ?? ''));
     }
 
     private function normalizeGeminiEmbeddingSegment(string $value): string

@@ -60,6 +60,11 @@ final class OpenAiRuntimeProvider
             return self::resolveGeminiBaseUrl($normalized);
         }
 
+        if (self::isVolcengineProviderUrl($normalized)
+            && str_ends_with($normalized, self::volcengineMultimodalEmbeddingPath())) {
+            return substr($normalized, 0, -strlen(self::volcengineMultimodalEmbeddingPath()));
+        }
+
         if (preg_match('#/v1/embeddings$#', $normalized) === 1) {
             return substr($normalized, 0, -strlen('/embeddings'));
         }
@@ -112,6 +117,10 @@ final class OpenAiRuntimeProvider
             return 'gemini';
         }
 
+        if (self::isVolcengineMultimodalEmbedding($apiUrl, $modelId)) {
+            return 'volcengine-multimodal';
+        }
+
         $host = strtolower((string) (parse_url(trim($apiUrl), PHP_URL_HOST) ?? ''));
 
         return $host === 'api.openai.com' ? 'openai' : 'openai-compatible';
@@ -125,6 +134,50 @@ final class OpenAiRuntimeProvider
         $host = strtolower((string) (parse_url(trim($apiUrl), PHP_URL_HOST) ?? ''));
 
         return $host === 'generativelanguage.googleapis.com';
+    }
+
+    /**
+     * 判断 URL 是否指向火山方舟 (Volcengine ARK) API 服务。
+     */
+    public static function isVolcengineProviderUrl(string $apiUrl): bool
+    {
+        $host = strtolower((string) (parse_url(trim($apiUrl), PHP_URL_HOST) ?? ''));
+
+        return $host !== '' && str_ends_with($host, '.volces.com');
+    }
+
+    /**
+     * 判断模型 ID 是否属于火山方舟多模态 embedding 系列。
+     *
+     * 火山方舟多模态 embedding（如 doubao-embedding-vision-*）走独立 endpoint，
+     * 不能复用通用 /v3/embeddings 接口。
+     */
+    public static function isVolcengineMultimodalEmbeddingModel(string $modelId): bool
+    {
+        return str_starts_with(strtolower(trim($modelId)), 'doubao-embedding-vision-');
+    }
+
+    /**
+     * 火山方舟多模态 embedding API 子路径，独立于通用 /embeddings。
+     *
+     * 参考：https://docs.volcengine.com/docs/ark/multimodal-vectorization-api?lang=zh
+     */
+    public static function volcengineMultimodalEmbeddingPath(): string
+    {
+        return '/embeddings/multimodal';
+    }
+
+    /**
+     * 综合判断 URL + 模型是否属于火山方舟多模态 embedding。
+     *
+     * 使用已知 doubao-embedding-vision-* 模型名或显式 /embeddings/multimodal URL。
+     * ep-* ID 不包含模型能力信息，由完整接口 URL 指定协议。
+     */
+    public static function isVolcengineMultimodalEmbedding(string $apiUrl, string $modelId): bool
+    {
+        return self::isVolcengineProviderUrl($apiUrl)
+            && (self::isVolcengineMultimodalEmbeddingModel($modelId)
+                || str_ends_with(rtrim(trim($apiUrl), '/'), self::volcengineMultimodalEmbeddingPath()));
     }
 
     /**
