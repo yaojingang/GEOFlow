@@ -28,6 +28,12 @@
 
 配置、操作及统计口径见 [链接池与提示词实时测试](operations/link-pool-and-prompt-test.md)。
 
+### 出站代理与 WAF 目标访问
+
+- 统一出站安全网关支持按主机名单启用出站代理，默认保持直连；仅 GEOFLOW_OUTBOUND_PROXY 与 GEOFLOW_OUTBOUND_PROXY_HOSTS 同时配置时生效。
+- 代理连接固定到已校验的目标 IP，保留 Host 与 TLS 校验；私网精确例外始终直连，代理地址支持 http、https、socks5、socks5h。
+- 新增出站代理说明文档： [出站代理与 WAF 目标访问](operations/outbound-egress-proxy.md)。
+
 ### v3.2.0-beta.2（发布准备）
 
 本次版本覆盖 `v3.2.0-beta.1` 之后的公开仓库更新，源码版本已更新，GitHub Release 与安装包待发布；最新稳定版仍为 `3.1.0`。

@@ -128,12 +128,14 @@ final class FinalOutboundSecurityPolicy
             $target->url,
             $crossOrigin,
         );
+        $proxyUrl = OutboundProxyOptions::resolve($target->proxyUrl);
         $curl = $this->secureCurlOptions(
             $target,
             (string) $request->getUri()->withFragment(''),
             $maxBytes,
             $callerProgress,
             $limitExceeded,
+            $proxyUrl !== null,
         );
         $options = $this->secureHandlerOptions(
             $options,
@@ -145,6 +147,7 @@ final class FinalOutboundSecurityPolicy
             $onHeaders,
             $curl,
             $streamingRequested,
+            $proxyUrl,
         );
 
         try {
@@ -230,6 +233,7 @@ final class FinalOutboundSecurityPolicy
         callable $onHeaders,
         array $curl,
         bool $streamingRequested,
+        ?string $proxyUrl = null,
     ): array {
         $secure = [
             'allow_redirects' => false,
@@ -237,14 +241,16 @@ final class FinalOutboundSecurityPolicy
             'crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT,
             'curl' => $curl,
             'decode_content' => false,
-            'force_ip_resolve' => str_contains($target->selectedIp, ':') ? 'v6' : 'v4',
             'http_errors' => false,
             'on_headers' => $onHeaders,
-            'proxy' => '',
+            'proxy' => $proxyUrl ?? '',
             'stream' => $streamingRequested,
             'timeout' => $timeout,
             'verify' => true,
         ];
+        if ($proxyUrl === null) {
+            $secure['force_ip_resolve'] = str_contains($target->selectedIp, ':') ? 'v6' : 'v4';
+        }
         foreach (['sink', 'on_stats', 'laravel_data'] as $key) {
             if (array_key_exists($key, $current)) {
                 $secure[$key] = $current[$key];
@@ -274,17 +280,15 @@ final class FinalOutboundSecurityPolicy
         int $maxBytes,
         ?callable $callerProgress,
         bool &$limitExceeded,
+        bool $proxied = false,
     ): array {
         $ipLiteral = filter_var($target->host, FILTER_VALIDATE_IP) !== false;
         $options = [
             CURLOPT_URL => $url,
             CURLOPT_PORT => $target->port,
-            CURLOPT_PROXY => '',
-            CURLOPT_NOPROXY => '*',
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_MAXREDIRS => 0,
             CURLOPT_NOPROGRESS => false,
-            CURLOPT_IPRESOLVE => str_contains($target->selectedIp, ':') ? CURL_IPRESOLVE_V6 : CURL_IPRESOLVE_V4,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_XFERINFOFUNCTION => static function (
@@ -309,6 +313,17 @@ final class FinalOutboundSecurityPolicy
         if (! $ipLiteral) {
             $pinnedIp = str_contains($target->selectedIp, ':') ? '['.$target->selectedIp.']' : $target->selectedIp;
             $options[CURLOPT_RESOLVE] = [$target->host.':'.$target->port.':'.$pinnedIp];
+        }
+        if ($proxied) {
+            $host = str_contains($target->host, ':') ? '['.$target->host.']' : $target->host;
+            $ip = str_contains($target->selectedIp, ':') ? '['.$target->selectedIp.']' : $target->selectedIp;
+            $options[CURLOPT_CONNECT_TO] = [$host.':'.$target->port.':'.$ip.':'.$target->port];
+            $options[CURLOPT_HTTPPROXYTUNNEL] = true;
+            $options[CURLOPT_NOPROXY] = '';
+        } else {
+            $options[CURLOPT_IPRESOLVE] = str_contains($target->selectedIp, ':') ? CURL_IPRESOLVE_V6 : CURL_IPRESOLVE_V4;
+            $options[CURLOPT_PROXY] = '';
+            $options[CURLOPT_NOPROXY] = '*';
         }
         $options[CURLOPT_ENCODING] = 'identity';
         if (defined('CURLOPT_PROTOCOLS')) {
@@ -375,6 +390,7 @@ final class FinalOutboundSecurityPolicy
         if (
             ! $this->constantsDefined($requiredConstants)
             || ($requiresDnsPin && ! defined('CURLOPT_RESOLVE'))
+            || ($target->proxyUrl !== null && ! $this->constantsDefined(['CURLOPT_CONNECT_TO', 'CURLOPT_HTTPPROXYTUNNEL']))
             || (defined('CURLOPT_PROTOCOLS') && (! defined('CURLPROTO_HTTP') || ! defined('CURLPROTO_HTTPS')))
             || (defined('CURLOPT_REDIR_PROTOCOLS') && (! defined('CURLPROTO_HTTP') || ! defined('CURLPROTO_HTTPS')))
             || ! function_exists('curl_version')
@@ -384,7 +400,7 @@ final class FinalOutboundSecurityPolicy
         }
         $curlInfo = curl_version();
         $version = is_array($curlInfo) ? ($curlInfo['version'] ?? '0') : '0';
-        if (! version_compare((string) $version, '7.21.2', '>=')) {
+        if (! version_compare((string) $version, $target->proxyUrl !== null ? '7.49.0' : '7.21.2', '>=')) {
             throw new OutboundRequestBlockedException('pinning_unavailable');
         }
     }

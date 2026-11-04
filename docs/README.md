@@ -21,6 +21,7 @@
 - [平台网页人工辅助发布](distribution/platform-web-assisted-publishing.md)。
 - [AI 可见性专题与词云](ai-visibility-operations.md)。
 - [图片备注与智能配图](image-library-remarks.md)。
+- [出站代理与 WAF 目标访问](operations/outbound-egress-proxy.md)。
 - [Chrome 运营助手](browser-operations-runbook.md)。
 - [GEOFlow CLI](GEOFLOW_CLI.md) · [CLI English guide](GEOFLOW_CLI_en.md)。
 

@@ -28,6 +28,12 @@ See [Knowledge document import](knowledge-import.md#火山方舟-embedding-配�
 
 See [Link pool and live prompt testing](operations/link-pool-and-prompt-test.md) for configuration, operation, and metric definitions.
 
+### Egress proxy for WAF-protected targets
+
+- The hardened outbound gateway can route an explicit host allowlist through an egress proxy; direct connections remain the default and the proxy is only enabled when both GEOFLOW_OUTBOUND_PROXY and GEOFLOW_OUTBOUND_PROXY_HOSTS are configured.
+- Proxied connections use the validated target IP while preserving Host and TLS verification; exact private-target exceptions remain direct. Supported proxy schemes are http, https, socks5 and socks5h.
+- Added operator documentation: [Egress proxy for WAF-protected targets](operations/outbound-egress-proxy.md).
+
 ### v3.2.0-beta.2 (release preparation)
 
 This version covers public repository changes since `v3.2.0-beta.1`; source versions have been updated, while the GitHub Release and distribution archives remain unpublished. The latest stable release remains `3.1.0`.
