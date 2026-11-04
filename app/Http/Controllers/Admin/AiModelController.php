@@ -1071,6 +1071,13 @@ class AiModelController extends Controller
             return false;
         }
 
+        if ($modelType === 'embedding' && $isVolcengineMultimodal) {
+            $vector = data_get($json, 'data.embedding');
+
+            return is_array($vector) && array_is_list($vector) && $vector !== []
+                && array_all($vector, static fn (mixed $value): bool => is_int($value) || (is_float($value) && is_finite($value)));
+        }
+
         if ($modelType === 'embedding') {
             return isset($json['data'][0]['embedding']) && is_array($json['data'][0]['embedding']);
         }

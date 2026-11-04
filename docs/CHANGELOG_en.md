@@ -5,6 +5,13 @@ This document tracks user-facing updates in the public repository. For future Gi
 
 ## Unreleased
 
+### Volcengine multimodal embeddings
+
+- Fix Volcengine multimodal embedding connection tests, knowledge indexing, and queries, with one official API request and quota/usage record per independent text.
+- Multimodal models using `ep-*` IDs require the full `/embeddings/multimodal` URL; text models keep their existing endpoint, and switching protocols requires a knowledge index resync.
+
+See [Knowledge document import](knowledge-import.md#火山方舟-embedding-配置) for configuration.
+
 ### Link pool and live prompt testing
 
 - Distribution management adds internal link placement for the primary site and first-party hosted sites, including a link library, import preflight, campaigns, recommendation previews, site controls, and an emergency stop.
