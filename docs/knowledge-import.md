@@ -11,3 +11,9 @@ PPTX 按演示稿中保存的幻灯片顺序提取正文。压缩包最多 2,048
 PPTX 最多保留 2,048 个幻灯片 ID；每个关系文件最多 2,048 条关系，整包最多 16,384 条。所有幻灯片合计最多 100,000 个文本节点，空节点和短文本节点也计数。幻灯片与关系 ID 最长 255 字节；压缩包路径及关系的 Target、Type、TargetMode 属性最长 1,024 字节，路径在规范化前最多 64 段。相对关系路径与所在目录拼接后也需满足路径限制。上述结构预算在数组保留和路径分段前检查，正文继续受 8 MiB 上限约束。
 
 文件校验或解析失败时，本次已上传的来源文件会被清理，知识库和企业知识记录不会创建。部署时还需确认 PHP、反向代理的上传限制允许本次请求大小；应用中的 8 MiB 上限持续生效。
+
+## 火山方舟 Embedding 配置
+
+`doubao-embedding-vision-*` 模型使用多模态向量接口，可将 API Base URL 填为 `https://ark.cn-beijing.volces.com/api/v3`。使用 `ep-*` Endpoint ID 调用多模态模型时，请填写完整地址 `https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal`，由路径明确指定协议。文本模型和填写基础地址的 `ep-*` 继续使用 `/embeddings`。
+
+连接测试、知识库索引和检索查询使用相同的协议。多模态接口对每段独立文本分别发起请求，每次调用单独预留额度并记录用量；即使配置了更大的 Embedding 批次，每段文本也会保留权限与同步来源检查。切换文本与多模态协议后，需要重新同步知识库索引。接口格式见[火山方舟官方文档](https://docs.volcengine.com/docs/ark/multimodal-vectorization-api?lang=zh)。

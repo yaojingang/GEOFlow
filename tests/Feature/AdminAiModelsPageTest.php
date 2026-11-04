@@ -720,6 +720,105 @@ class AdminAiModelsPageTest extends TestCase
             && $request['input'] === 'GEOFlow embedding connection test');
     }
 
+    public function test_admin_can_test_volcengine_multimodal_embedding_with_the_official_contract(): void
+    {
+        Http::preventStrayRequests();
+        $endpoint = 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal';
+        Http::fake([
+            $endpoint => Http::response([
+                'id' => 'test-multimodal',
+                'object' => 'list',
+                'model' => 'doubao-embedding-vision-251215',
+                'data' => ['object' => 'embedding', 'embedding' => [0.11, 0.22, 0.33]],
+                'usage' => ['prompt_tokens' => 4, 'total_tokens' => 4],
+            ]),
+        ]);
+        $model = $this->createAiModel('embedding', [
+            'model_id' => 'doubao-embedding-vision-251215',
+            'api_url' => 'https://ark.cn-beijing.volces.com/api/v3',
+        ]);
+
+        $this->actingAs($model->owner, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => $model->id]))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('meta.endpoint', $endpoint);
+
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer test-api-key')
+            && $request->data() === [
+                'model' => 'doubao-embedding-vision-251215',
+                'input' => [['type' => 'text', 'text' => 'GEOFlow embedding connection test']],
+            ]);
+        $this->assertSame(1, $model->fresh()->total_used);
+        $event = AiModelUsageEvent::query()->sole();
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, $event->status);
+        $this->assertSame(4, $event->input_tokens);
+    }
+
+    public function test_admin_can_explicitly_select_multimodal_for_an_opaque_endpoint_id(): void
+    {
+        Http::preventStrayRequests();
+        $endpoint = 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal';
+        Http::fake([$endpoint => Http::response([
+            'data' => ['object' => 'embedding', 'embedding' => [0.1, 0.2, 0.3]],
+        ])]);
+        $model = $this->createAiModel('embedding', [
+            'model_id' => 'ep-opaque',
+            'api_url' => $endpoint,
+        ]);
+
+        $this->actingAs($model->owner, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => $model->id]))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('meta.endpoint', $endpoint);
+
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request): bool => $request['model'] === 'ep-opaque'
+            && $request['input'] === [['type' => 'text', 'text' => 'GEOFlow embedding connection test']]);
+    }
+
+    public function test_admin_preserves_text_embeddings_for_an_opaque_endpoint_id_at_the_base_url(): void
+    {
+        Http::preventStrayRequests();
+        $endpoint = 'https://ark.cn-beijing.volces.com/api/v3/embeddings';
+        Http::fake([$endpoint => Http::response(['data' => [['embedding' => [0.1, 0.2, 0.3]]]])]);
+        $model = $this->createAiModel('embedding', [
+            'model_id' => 'ep-opaque',
+            'api_url' => 'https://ark.cn-beijing.volces.com/api/v3',
+        ]);
+
+        $this->actingAs($model->owner, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => $model->id]))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('meta.endpoint', $endpoint);
+
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request): bool => $request['input'] === 'GEOFlow embedding connection test');
+    }
+
+    public function test_admin_rejects_an_invalid_multimodal_vector(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal' => Http::response([
+            'data' => ['embedding' => []],
+        ])]);
+        $model = $this->createAiModel('embedding', [
+            'model_id' => 'doubao-embedding-vision-251215',
+            'api_url' => 'https://ark.cn-beijing.volces.com/api/v3',
+        ]);
+
+        $this->actingAs($model->owner, 'admin')
+            ->postJson(route('admin.ai-models.test', ['modelId' => $model->id]))
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false);
+
+        Http::assertSentCount(1);
+        $this->assertSame(AiModelUsageEvent::STATUS_DISCARDED, AiModelUsageEvent::query()->sole()->status);
+    }
+
     public function test_admin_can_test_gemini_chat_model_connection(): void
     {
         Http::fake([

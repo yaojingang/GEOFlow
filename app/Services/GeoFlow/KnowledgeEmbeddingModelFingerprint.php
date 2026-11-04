@@ -70,11 +70,15 @@ final class KnowledgeEmbeddingModelFingerprint
     private function compatibilityProfile(string $apiUrl, string $modelIdentifier): array
     {
         $baseUrl = OpenAiRuntimeProvider::resolveEmbeddingBaseUrl($apiUrl);
-        $driver = OpenAiRuntimeProvider::resolveEmbeddingDriver($baseUrl, $modelIdentifier);
+        $driver = OpenAiRuntimeProvider::resolveEmbeddingDriver($apiUrl, $modelIdentifier);
 
         return [
             'profile_version' => self::PROFILE_VERSION,
-            'protocol' => $driver === 'gemini' ? 'gemini-batch-embed-v1beta' : 'openai-embeddings-v1',
+            'protocol' => match ($driver) {
+                'gemini' => 'gemini-batch-embed-v1beta',
+                'volcengine-multimodal' => 'volcengine-multimodal-embeddings',
+                default => 'openai-embeddings-v1',
+            },
             'driver' => $driver,
             'provider' => $this->normalizeProviderBase($baseUrl),
             'model' => trim($modelIdentifier),

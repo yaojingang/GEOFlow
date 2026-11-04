@@ -18,6 +18,7 @@ use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class KnowledgeChunkEmbeddingSyncTest extends TestCase
@@ -1143,6 +1144,212 @@ class KnowledgeChunkEmbeddingSyncTest extends TestCase
             && $request['model'] === 'doubao-embedding-text-240515'
             && ($request['input'][0] ?? '') === 'GEOFlow 知识库如何向量化？'
             && ! array_key_exists('dimensions', (array) $request->data()));
+    }
+
+    #[DataProvider('multimodalConfigurations')]
+    public function test_volcengine_multimodal_sync_keeps_independent_chunks_ordered_and_accounts_for_each_request(string $modelId, string $apiUrl): void
+    {
+        config(['geoflow.embedding_batch_size' => 3]);
+        Http::preventStrayRequests();
+        $endpoint = 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal';
+        $sequence = Http::sequence()
+            ->push(['data' => ['object' => 'embedding', 'embedding' => [0.11, 0.12, 0.13]], 'usage' => ['prompt_tokens' => 4, 'total_tokens' => 4]])
+            ->push(['data' => ['object' => 'embedding', 'embedding' => [0.21, 0.22, 0.23]], 'usage' => ['prompt_tokens' => 5, 'total_tokens' => 5]])
+            ->push(['data' => ['object' => 'embedding', 'embedding' => [0.31, 0.32, 0.33]], 'usage' => ['prompt_tokens' => 6, 'total_tokens' => 6]]);
+        Http::fake([$endpoint => $sequence]);
+        $model = $this->createEmbeddingModel([
+            'model_id' => $modelId,
+            'api_url' => $apiUrl,
+        ]);
+        $knowledgeBase = $this->multimodalKnowledgeBase();
+
+        $this->syncKnowledge((int) $knowledgeBase->id, "## 第一节\n\n第一节内容。\n\n## 第二节\n\n第二节内容。\n\n## 第三节\n\n第三节内容。", true);
+
+        $chunks = $knowledgeBase->chunks()->orderBy('chunk_index')->get();
+        $this->assertSame([
+            [0.11, 0.12, 0.13], [0.21, 0.22, 0.23], [0.31, 0.32, 0.33],
+        ], $chunks->map(fn ($chunk): array => json_decode((string) $chunk->embedding_json, true))->all());
+        $requests = Http::recorded()->map(fn ($record): array => $record[0]->data())->all();
+        $this->assertSame($chunks->map(fn ($chunk): array => [
+            'model' => $modelId,
+            'input' => [['type' => 'text', 'text' => $chunk->content]],
+        ])->all(), $requests);
+        Http::assertSentCount(3);
+        $this->assertSame(3, $model->fresh()->total_used);
+        $this->assertSame(3, $model->fresh()->used_today);
+        $events = AiModelUsageEvent::query()->orderBy('id')->get();
+        $this->assertCount(3, $events);
+        $this->assertSame([4, 5, 6], $events->pluck('input_tokens')->all());
+        $this->assertSame([4, 5, 6], $events->pluck('total_tokens')->all());
+        $this->assertCount(1, $events->pluck('request_id')->unique());
+        $this->assertCount(3, $events->pluck('call_key')->unique());
+        $this->assertTrue($events->every(fn (AiModelUsageEvent $event): bool => $event->status === AiModelUsageEvent::STATUS_SUCCEEDED));
+    }
+
+    public function test_volcengine_multimodal_sync_reserves_quota_for_every_independent_text(): void
+    {
+        config(['geoflow.embedding_batch_size' => 3]);
+        Http::preventStrayRequests();
+        Http::fake(['https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal' => Http::response([
+            'data' => ['embedding' => [0.1, 0.2, 0.3]],
+            'usage' => ['prompt_tokens' => 7, 'total_tokens' => 7],
+        ])]);
+        $model = $this->createEmbeddingModel([
+            'model_id' => 'doubao-embedding-vision-251215',
+            'api_url' => 'https://ark.cn-beijing.volces.com/api/v3',
+            'daily_limit' => 1,
+        ]);
+        $knowledgeBase = $this->multimodalKnowledgeBase();
+
+        $this->expectException(\RuntimeException::class);
+        try {
+            $this->syncKnowledge((int) $knowledgeBase->id, "## 第一节\n\n第一节内容。\n\n## 第二节\n\n第二节内容。", true);
+        } finally {
+            Http::assertSentCount(1);
+            $this->assertSame(0, $knowledgeBase->chunks()->count());
+            $this->assertSame(0, $model->fresh()->total_used);
+            $this->assertSame(0, $model->fresh()->used_today);
+            $event = AiModelUsageEvent::query()->sole();
+            $this->assertSame(AiModelUsageEvent::STATUS_DISCARDED, $event->status);
+            $this->assertSame(7, $event->input_tokens);
+        }
+    }
+
+    public function test_volcengine_multimodal_sync_stops_after_the_system_binding_is_revoked(): void
+    {
+        config(['geoflow.embedding_batch_size' => 3]);
+        Http::preventStrayRequests();
+        Http::fake(['https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal' => function () {
+            SiteSetting::query()->where('setting_key', 'default_embedding_model_id')->update(['setting_value' => '0']);
+
+            return Http::response(['data' => ['embedding' => [0.1, 0.2, 0.3]]]);
+        }]);
+        $this->createEmbeddingModel([
+            'model_id' => 'doubao-embedding-vision-251215',
+            'api_url' => 'https://ark.cn-beijing.volces.com/api/v3',
+        ]);
+        $knowledgeBase = $this->multimodalKnowledgeBase();
+
+        $this->expectException(AiModelAccessException::class);
+        try {
+            $this->syncKnowledge((int) $knowledgeBase->id, "## 第一节\n\n第一节内容。\n\n## 第二节\n\n第二节内容。", true);
+        } finally {
+            Http::assertSentCount(1);
+            $this->assertSame(0, $knowledgeBase->chunks()->count());
+            $this->assertSame(AiModelUsageEvent::STATUS_REVOKED, AiModelUsageEvent::query()->sole()->status);
+        }
+    }
+
+    public function test_volcengine_multimodal_sync_stops_after_the_source_changes(): void
+    {
+        config(['geoflow.embedding_batch_size' => 3]);
+        Http::preventStrayRequests();
+        $this->createEmbeddingModel([
+            'model_id' => 'doubao-embedding-vision-251215',
+            'api_url' => 'https://ark.cn-beijing.volces.com/api/v3',
+        ]);
+        $knowledgeBase = $this->multimodalKnowledgeBase();
+        Http::fake(['https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal' => function () use ($knowledgeBase) {
+            KnowledgeBase::query()->whereKey($knowledgeBase->id)->update(['content' => '更新后的来源']);
+
+            return Http::response(['data' => ['embedding' => [0.1, 0.2, 0.3]]]);
+        }]);
+
+        $this->expectException(\RuntimeException::class);
+        try {
+            $this->syncKnowledge((int) $knowledgeBase->id, "## 第一节\n\n第一节内容。\n\n## 第二节\n\n第二节内容。", true);
+        } finally {
+            Http::assertSentCount(1);
+            $this->assertSame(0, $knowledgeBase->chunks()->count());
+            $this->assertSame(AiModelUsageEvent::STATUS_DISCARDED, AiModelUsageEvent::query()->sole()->status);
+        }
+    }
+
+    public function test_volcengine_multimodal_sync_discards_partial_results_after_a_provider_failure(): void
+    {
+        config(['geoflow.embedding_batch_size' => 3]);
+        Http::preventStrayRequests();
+        Http::fake(['https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal' => Http::sequence()
+            ->push(['data' => ['embedding' => [0.1, 0.2, 0.3]], 'usage' => ['prompt_tokens' => 7, 'total_tokens' => 7]])
+            ->push(['error' => ['message' => 'unavailable']], 503)]);
+        $model = $this->createEmbeddingModel([
+            'model_id' => 'doubao-embedding-vision-251215',
+            'api_url' => 'https://ark.cn-beijing.volces.com/api/v3',
+        ]);
+        $knowledgeBase = $this->multimodalKnowledgeBase();
+
+        $this->expectException(\RuntimeException::class);
+        try {
+            $this->syncKnowledge((int) $knowledgeBase->id, "## 第一节\n\n第一节内容。\n\n## 第二节\n\n第二节内容。", true);
+        } finally {
+            Http::assertSentCount(2);
+            $this->assertSame(0, $knowledgeBase->chunks()->count());
+            $this->assertSame(0, $model->fresh()->used_today);
+            $this->assertSame(0, $model->fresh()->total_used);
+            $events = AiModelUsageEvent::query()->orderBy('call_key')->get();
+            $this->assertSame([AiModelUsageEvent::STATUS_DISCARDED, AiModelUsageEvent::STATUS_FAILED], $events->pluck('status')->all());
+            $this->assertSame(7, $events->first()->input_tokens);
+        }
+    }
+
+    public function test_volcengine_multimodal_query_accepts_the_official_response_for_an_explicit_endpoint(): void
+    {
+        Http::preventStrayRequests();
+        $endpoint = 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal';
+        Http::fake([$endpoint => Http::response([
+            'data' => ['object' => 'embedding', 'embedding' => [0.41, 0.42, 0.43]],
+            'usage' => ['prompt_tokens' => 8, 'total_tokens' => 8],
+        ])]);
+        $model = $this->createEmbeddingModel(['model_id' => 'ep-opaque', 'api_url' => $endpoint]);
+
+        $this->assertSame([0.41, 0.42, 0.43], $this->queryEmbeddingVector('查询文本'));
+
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request): bool => $request->data() === [
+            'model' => 'ep-opaque',
+            'input' => [['type' => 'text', 'text' => '查询文本']],
+        ]);
+        $this->assertSame(1, $model->fresh()->total_used);
+        $this->assertSame(8, AiModelUsageEvent::query()->sole()->input_tokens);
+    }
+
+    public function test_volcengine_opaque_text_endpoint_keeps_the_standard_embedding_contract(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://ark.cn-beijing.volces.com/api/v3/embeddings' => Http::response([
+            'data' => [['embedding' => [0.51, 0.52, 0.53]]],
+        ])]);
+        $this->createEmbeddingModel([
+            'model_id' => 'ep-opaque',
+            'api_url' => 'https://ark.cn-beijing.volces.com/api/v3',
+        ]);
+        $knowledgeBase = $this->multimodalKnowledgeBase();
+
+        $this->syncKnowledge((int) $knowledgeBase->id, '独立文本', true);
+
+        $this->assertSame([0.51, 0.52, 0.53], json_decode($knowledgeBase->chunks()->sole()->embedding_json, true));
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request): bool => $request['input'] === ['独立文本']);
+    }
+
+    /** @return array<string,array{string,string}> */
+    public static function multimodalConfigurations(): array
+    {
+        return [
+            'named model' => ['doubao-embedding-vision-251215', 'https://ark.cn-beijing.volces.com/api/v3'],
+            'explicit endpoint' => ['ep-opaque', 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal'],
+        ];
+    }
+
+    private function multimodalKnowledgeBase(): KnowledgeBase
+    {
+        return KnowledgeBase::query()->create([
+            'name' => '多模态知识库',
+            'content' => '',
+            'character_count' => 0,
+            'file_type' => 'markdown',
+            'word_count' => 0,
+        ]);
     }
 
     private function syncKnowledge(int $knowledgeBaseId, string $content, bool $requireRealEmbedding = false): int
