@@ -59,6 +59,7 @@ final class SafeOutboundHttpClient
     public function __construct(
         private readonly HostResolver $resolver,
         private readonly OutboundTransport $transport,
+        private readonly OutboundProxyPolicy $proxyPolicy = new OutboundProxyPolicy(null, []),
     ) {}
 
     /** @param array<string, mixed> $query */
@@ -166,6 +167,24 @@ final class SafeOutboundHttpClient
         }
     }
 
+    private function applyProxyPolicy(ResolvedOutboundTarget $target): ResolvedOutboundTarget
+    {
+        if ($this->privateTargetAllowed($target->host, $target->port)
+            || $target->proxyUrl !== null || ! $this->proxyPolicy->appliesTo($target->host)) {
+            return $target;
+        }
+
+        return new ResolvedOutboundTarget(
+            $target->url,
+            $target->scheme,
+            $target->host,
+            $target->port,
+            $target->addresses,
+            $target->selectedIp,
+            (string) $this->proxyPolicy->proxyUrl,
+        );
+    }
+
     public function resolveTarget(string $url): ResolvedOutboundTarget
     {
         [$normalizedUrl, $scheme, $host, $port] = $this->normalizeUrl($url);
@@ -199,7 +218,7 @@ final class SafeOutboundHttpClient
             }
         }
 
-        return new ResolvedOutboundTarget($normalizedUrl, $scheme, $host, $port, $addresses, $addresses[0]);
+        return $this->applyProxyPolicy(new ResolvedOutboundTarget($normalizedUrl, $scheme, $host, $port, $addresses, $addresses[0]));
     }
 
     /** @return array{string, string, string, int} */

@@ -14,5 +14,6 @@ final readonly class ResolvedOutboundTarget
         public int $port,
         public array $addresses,
         public string $selectedIp,
+        public ?string $proxyUrl = null,
     ) {}
 }

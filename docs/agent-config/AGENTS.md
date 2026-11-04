@@ -32,3 +32,9 @@ Tool-specific configuration files are kept at their default discovery paths in t
 - Run channel-scoped remote calls and credential/package exports through `DistributionChannelOperationLeaseService` so final deletion can detect in-flight work.
 - Lock the distribution channel row before channel writes, task-channel binding changes, queue claims, retries, or immediate distribution actions, and reject work while the channel status is `deleting`.
 - Keep final deletion behind the two-step impact review. Recompute and verify the impact fingerprint inside the locked deletion transaction before removing local data.
+
+## Outbound Proxy Safety
+
+- Apply host proxy policy after target validation in `SafeOutboundHttpClient::resolveTarget()` so dynamic SDK calls and fixed requests share the same decision.
+- Proxy connections must use the validated numeric target IP while preserving the original Host, TLS SNI, certificate checks and response limits; discard caller overrides and environment proxy bypasses.
+- Exact `outbound_private_targets` exceptions remain direct. Test real local proxy handshakes when changing proxy transport or IP pinning.
