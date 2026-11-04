@@ -25,6 +25,8 @@
                                 <span class="text-xs text-gray-500" data-ai-visibility-counter="{{ $libraryContainerId }}">{{ __('admin.analytics.ai_visibility.collect.selection_counter', ['count' => 0, 'cap' => $collectSelectionCap]) }}</span>
                                 <button type="button" class="text-xs font-medium text-violet-600 hover:text-violet-700"
                                     data-ai-visibility-select-all="{{ $libraryContainerId }}"
+                                    title="{{ __('admin.analytics.ai_visibility.collect.select_all_recent_hint') }}"
+                                    data-ai-visibility-select-all-recent-hint="{{ __('admin.analytics.ai_visibility.collect.select_all_recent_hint') }}"
                                     data-ai-visibility-select-all-hint="{{ __('admin.analytics.ai_visibility.collect.select_all_hint_overflow', ['cap' => $collectSelectionCap]) }}"
                                 >{{ __('admin.analytics.ai_visibility.collect.select_all') }}</button>
                             </div>
@@ -35,7 +37,7 @@
                                 <label class="inline-flex min-h-8 cursor-pointer items-center gap-2 rounded-md border px-2 text-sm has-[:checked]:border-violet-500 has-[:checked]:bg-violet-50 has-[:checked]:text-violet-700 {{ $isSampled ? 'border-emerald-200 bg-emerald-50/60 text-emerald-800' : 'border-gray-200 text-gray-700' }}"
                                     @if ($isSampled) data-ai-visibility-sampled="1" title="{{ __('admin.analytics.ai_visibility.collect.recently_sampled_hint') }}" @endif
                                 >
-                                    <input type="checkbox" name="keyword_ids[]" value="{{ $item['id'] }}" class="h-4 w-4 rounded border-gray-300 text-violet-600 disabled:cursor-not-allowed disabled:opacity-50" @if ($isSampled) disabled @endif>
+                                    <input type="checkbox" name="keyword_ids[]" value="{{ $item['id'] }}" class="h-4 w-4 rounded border-gray-300 text-violet-600" @if ($isSampled) data-ai-visibility-recent-success="1" @endif>
                                     <span>{{ $item['keyword'] }}</span>
                                     @if ($isSampled)
                                         <span class="inline-flex items-center rounded-full bg-emerald-100 px-1.5 text-[10px] font-medium text-emerald-700">{{ __('admin.analytics.ai_visibility.collect.recently_sampled') }}</span>
@@ -63,7 +65,7 @@
         var selectAllLabel = @json(__('admin.analytics.ai_visibility.collect.select_all'));
         var selectAllClearLabel = @json(__('admin.analytics.ai_visibility.collect.select_all_clear'));
 
-        function eligibleBoxes(container) {
+        function libraryBoxes(container) {
             return Array.from(container.querySelectorAll('input[name="keyword_ids[]"]'))
                 .filter(function (box) { return ! box.disabled; });
         }
@@ -72,10 +74,8 @@
             return Array.from(document.querySelectorAll('input[name="keyword_ids[]"]:checked'));
         }
 
-        function enforceCap() {
-            var boxes = checkedBoxes();
-            if (boxes.length <= cap) { return; }
-            boxes.slice(cap).forEach(function (box) { box.checked = false; });
+        function enforceCap(changedBox) {
+            if (checkedBoxes().length > cap) { changedBox.checked = false; }
         }
 
         function updateCounters() {
@@ -93,13 +93,13 @@
             document.querySelectorAll('[data-ai-visibility-select-all]').forEach(function (button) {
                 var container = document.getElementById(button.getAttribute('data-ai-visibility-select-all'));
                 if (! container) { return; }
-                var boxes = eligibleBoxes(container);
+                var boxes = libraryBoxes(container);
                 var anyChecked = boxes.some(function (box) { return box.checked; });
                 button.textContent = anyChecked ? selectAllClearLabel : selectAllLabel;
                 if (boxes.length > cap) {
-                    button.setAttribute('title', button.getAttribute('data-ai-visibility-select-all-hint') || '');
+                    button.setAttribute('title', (button.getAttribute('data-ai-visibility-select-all-hint') || '') + '\n' + (button.getAttribute('data-ai-visibility-select-all-recent-hint') || ''));
                 } else {
-                    button.removeAttribute('title');
+                    button.setAttribute('title', button.getAttribute('data-ai-visibility-select-all-recent-hint') || '');
                 }
             });
         }
@@ -108,14 +108,15 @@
             var container = document.getElementById(button.getAttribute('data-ai-visibility-select-all'));
             if (! container) { return; }
             button.addEventListener('click', function () {
-                var boxes = eligibleBoxes(container);
+                var boxes = libraryBoxes(container);
                 if (boxes.length === 0) { return; }
                 var anyChecked = boxes.some(function (box) { return box.checked; });
                 if (anyChecked) {
                     boxes.forEach(function (box) { box.checked = false; });
                 } else {
                     var remaining = Math.max(0, cap - checkedBoxes().length);
-                    boxes.slice(0, remaining).forEach(function (box) { box.checked = true; });
+                    boxes.filter(function (box) { return ! box.hasAttribute('data-ai-visibility-recent-success'); })
+                        .slice(0, remaining).forEach(function (box) { box.checked = true; });
                 }
                 updateCounters();
             });
@@ -123,7 +124,7 @@
 
         document.querySelectorAll('input[name="keyword_ids[]"]').forEach(function (box) {
             box.addEventListener('change', function () {
-                enforceCap();
+                enforceCap(box);
                 updateCounters();
             });
         });

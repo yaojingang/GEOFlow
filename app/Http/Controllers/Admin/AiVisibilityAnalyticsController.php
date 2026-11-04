@@ -293,10 +293,10 @@ class AiVisibilityAnalyticsController extends Controller
     }
 
     /**
-     * 最近 7 天已经发起过采样的关键词，用于在采集面板标记并跳过重复采集。
+     * 最近 7 天已成功采样的关键词，供面板提示及批量选择时跳过。
      *
      * 关键词按与专题归类一致的归一化规则比较，因此大小写、空白和全角差异
-     * 不会让同一个关键词被重复采集。
+     * 共用近期成功标记；用户仍可手动勾选重采。
      *
      * @return array<string, true>
      */
@@ -311,12 +311,13 @@ class AiVisibilityAnalyticsController extends Controller
             ->whereIn('provider_type', AiVisibilityRun::SAMPLE_PROVIDERS)
             ->whereNotNull('keyword')
             ->where('keyword', '!=', '')
-            ->whereRaw('COALESCE(completed_at, started_at, created_at) >= ?', [$since])
-            ->get(['keyword']);
+            ->where('status', AiVisibilityRun::STATUS_COMPLETED)
+            ->where('completed_at', '>=', $since)
+            ->distinct()->pluck('keyword');
 
         $sampled = [];
-        foreach ($runs as $run) {
-            $key = AiVisibilityKeywordNormalizer::normalize((string) $run->keyword);
+        foreach ($runs as $keyword) {
+            $key = AiVisibilityKeywordNormalizer::normalize((string) $keyword);
             if ($key !== '') {
                 $sampled[$key] = true;
             }

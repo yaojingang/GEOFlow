@@ -8,7 +8,7 @@ This document tracks user-facing updates in the public repository. For future Gi
 ### AI visibility collection panel
 
 - The keyword collection panel shows the selected count per library and overall, keeps the selection limit aligned with the server validation, and clears the excess selection automatically.
-- Keywords sampled in the last 7 days are marked and cannot be selected again, so repeated collection does not consume quota; keywords are compared with the same normalization used for topic assignment.
+- Keywords successfully collected in the last 7 days are marked and skipped by Select all. Manual selection allows resampling, failed requests remain retryable, and keyword matching uses the normalization applied to topic assignment.
 
 ### Link pool and live prompt testing
 
