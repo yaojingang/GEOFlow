@@ -5,6 +5,11 @@ This document tracks user-facing updates in the public repository. For future Gi
 
 ## Unreleased
 
+### AI visibility collection panel
+
+- The keyword collection panel shows the selected count per library and overall, keeps the selection limit aligned with the server validation, and clears the excess selection automatically.
+- Keywords successfully collected in the last 7 days are marked and skipped by Select all. Manual selection allows resampling, failed requests remain retryable, and keyword matching uses the normalization applied to topic assignment.
+
 ### Volcengine multimodal embeddings
 
 - Fix Volcengine multimodal embedding connection tests, knowledge indexing, and queries, with one official API request and quota/usage record per independent text.
