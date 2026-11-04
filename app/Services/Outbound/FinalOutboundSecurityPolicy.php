@@ -241,7 +241,6 @@ final class FinalOutboundSecurityPolicy
             'crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT,
             'curl' => $curl,
             'decode_content' => false,
-            'force_ip_resolve' => str_contains($target->selectedIp, ':') ? 'v6' : 'v4',
             'http_errors' => false,
             'on_headers' => $onHeaders,
             'proxy' => $proxyUrl ?? '',
@@ -249,6 +248,9 @@ final class FinalOutboundSecurityPolicy
             'timeout' => $timeout,
             'verify' => true,
         ];
+        if ($proxyUrl === null) {
+            $secure['force_ip_resolve'] = str_contains($target->selectedIp, ':') ? 'v6' : 'v4';
+        }
         foreach (['sink', 'on_stats', 'laravel_data'] as $key) {
             if (array_key_exists($key, $current)) {
                 $secure[$key] = $current[$key];
@@ -287,7 +289,6 @@ final class FinalOutboundSecurityPolicy
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_MAXREDIRS => 0,
             CURLOPT_NOPROGRESS => false,
-            CURLOPT_IPRESOLVE => str_contains($target->selectedIp, ':') ? CURL_IPRESOLVE_V6 : CURL_IPRESOLVE_V4,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_XFERINFOFUNCTION => static function (
@@ -314,10 +315,13 @@ final class FinalOutboundSecurityPolicy
             $options[CURLOPT_RESOLVE] = [$target->host.':'.$target->port.':'.$pinnedIp];
         }
         if ($proxied) {
-            // Guzzle owns the proxy decision when a host is explicitly opted
-            // into the egress proxy; raw cURL overrides would discard it.
-            $options = OutboundProxyOptions::withoutDirectConnectionOverrides($options);
+            $host = str_contains($target->host, ':') ? '['.$target->host.']' : $target->host;
+            $ip = str_contains($target->selectedIp, ':') ? '['.$target->selectedIp.']' : $target->selectedIp;
+            $options[CURLOPT_CONNECT_TO] = [$host.':'.$target->port.':'.$ip.':'.$target->port];
+            $options[CURLOPT_HTTPPROXYTUNNEL] = true;
+            $options[CURLOPT_NOPROXY] = '';
         } else {
+            $options[CURLOPT_IPRESOLVE] = str_contains($target->selectedIp, ':') ? CURL_IPRESOLVE_V6 : CURL_IPRESOLVE_V4;
             $options[CURLOPT_PROXY] = '';
             $options[CURLOPT_NOPROXY] = '*';
         }
@@ -386,6 +390,7 @@ final class FinalOutboundSecurityPolicy
         if (
             ! $this->constantsDefined($requiredConstants)
             || ($requiresDnsPin && ! defined('CURLOPT_RESOLVE'))
+            || ($target->proxyUrl !== null && ! $this->constantsDefined(['CURLOPT_CONNECT_TO', 'CURLOPT_HTTPPROXYTUNNEL']))
             || (defined('CURLOPT_PROTOCOLS') && (! defined('CURLPROTO_HTTP') || ! defined('CURLPROTO_HTTPS')))
             || (defined('CURLOPT_REDIR_PROTOCOLS') && (! defined('CURLPROTO_HTTP') || ! defined('CURLPROTO_HTTPS')))
             || ! function_exists('curl_version')
@@ -395,7 +400,7 @@ final class FinalOutboundSecurityPolicy
         }
         $curlInfo = curl_version();
         $version = is_array($curlInfo) ? ($curlInfo['version'] ?? '0') : '0';
-        if (! version_compare((string) $version, '7.21.2', '>=')) {
+        if (! version_compare((string) $version, $target->proxyUrl !== null ? '7.49.0' : '7.21.2', '>=')) {
             throw new OutboundRequestBlockedException('pinning_unavailable');
         }
     }

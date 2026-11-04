@@ -18,7 +18,7 @@ GEOFLOW_OUTBOUND_PROXY_HOSTS=jshh.com,*.jshh.com
 主机名单支持三种写法：
 
 - 精确匹配：`jshh.com`，不包含其子域名；
-- 后缀匹配：`*.jshh.com`，匹配该域名及其子域名；
+- 后缀匹配：`*.jshh.com`，仅匹配子域名，不包含根域名；
 - 通配：`*` 或 `.`，匹配所有公网主机，请谨慎使用。
 
 只配置其中一个变量时不会启用代理，所有出站保持直连。代理地址仅接受 `http`、`https`、`socks5`、`socks5h`，其他协议会在请求阶段被出站安全网关拒绝。
@@ -33,9 +33,12 @@ php artisan queue:restart
 ## 生效范围与安全边界
 
 - 只有命中名单的主机才会走代理，AI 模型、搜索、更新器等其他出站保持原有直连路径。
-- 私网与保留地址目标始终被出站网关拒绝，不会因为启用代理而放宽。
+- 未获准的私网与保留地址目标仍被出站网关拒绝；`GEOFLOW_OUTBOUND_PRIVATE_TARGETS` 中的精确例外始终直连。
 - 调用方在 HTTP 请求里自带的 proxy 选项会被忽略，代理只能由上面的主机名单决定。
-- 代理主机名由代理方解析，因此 GEOFlow 的 IP 固定只作用于直连路径；请只把确有需要的公网主机加入名单。
+- 代理连接使用 GEOFlow 已校验的目标 IP，保留原始 Host、TLS SNI 和证书校验；HTTP、HTTPS 代理通过 CONNECT 隧道传输，SOCKS 代理接收数字 IP。代理需允许目标端口的 CONNECT；连接失败时请求失败。
+- 代理传输需要 libcurl 7.49.0 或更新版本，以及 `CURLOPT_CONNECT_TO` 和 `CURLOPT_HTTPPROXYTUNNEL` 支持；缺少所需能力时网关拒绝请求。
+- `socks5h` 配置会使用固定 IP 的 SOCKS5 模式发送，目标地址由网关完成解析与校验。
+- `NO_PROXY` 等环境配置不会绕过显式代理策略；目标 IPv6 地址也可通过 IPv4 代理访问。
 - 代理地址可能包含账号密码，只写入 `.env` 或部署平台的密钥管理，不要提交到仓库或写进工单。
 - 紧急停用时清空 `GEOFLOW_OUTBOUND_PROXY_HOSTS` 并重启进程即可恢复直连。
 

@@ -8,8 +8,8 @@ namespace App\Services\Outbound;
  * The hardened outbound gateway pins every request to a validated IP and
  * disables proxy usage by default. When an operator explicitly opts a host
  * into the egress proxy, the proxy must stay reachable through Guzzle's own
- * proxy option, and the raw cURL "no proxy" overrides must be dropped so the
- * configured proxy is not silently discarded.
+ * proxy option, and trusted cURL connection mapping keeps the target pinned while bypass
+ * environment variables are disabled.
  */
 final readonly class OutboundProxyOptions
 {
@@ -44,23 +44,7 @@ final readonly class OutboundProxyOptions
             throw new OutboundRequestBlockedException('outbound_proxy_invalid');
         }
 
-        return $proxyUrl;
-    }
-
-    /**
-     * Removes the raw cURL overrides that force a direct connection.
-     *
-     * Raw cURL options are applied after Guzzle resolves its own proxy
-     * decision, so keeping `CURLOPT_PROXY => ''` or `CURLOPT_NOPROXY => '*'`
-     * would silently disable the configured proxy.
-     *
-     * @param  array<int|string, mixed>  $curlOptions
-     * @return array<int|string, mixed>
-     */
-    public static function withoutDirectConnectionOverrides(array $curlOptions): array
-    {
-        unset($curlOptions[CURLOPT_PROXY], $curlOptions[CURLOPT_NOPROXY]);
-
-        return $curlOptions;
+        // Fixed numeric targets use SOCKS5 address encoding.
+        return $scheme === 'socks5h' ? 'socks5'.substr($proxyUrl, strpos($proxyUrl, ':')) : $proxyUrl;
     }
 }
