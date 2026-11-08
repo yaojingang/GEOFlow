@@ -91,6 +91,9 @@ class AdminSiteThemePackageTest extends TestCase
 
         $this->actingAs($admin, 'admin')->get($this->url('imports.show', ['token' => $report['token']]))
             ->assertOk()->assertSee('适用 GEOFlow 3.x')->assertSee('GEOFlow 3.1.0');
+        $this->withSession(['locale' => 'pt_BR'])->get($this->url('imports.show', ['token' => $report['token']]))
+            ->assertOk()->assertSee('Compatível com GEOFlow 3.x');
+        $this->withSession(['locale' => 'zh_CN']);
         $this->post($this->url('imports.install', ['token' => $report['token']]), ['trusted_source' => '1'])->assertOk();
         $this->post($this->url('exports.store'), ['theme_id' => 'fixture-theme'])
             ->assertOk()->assertSee('适用 GEOFlow 3.x')->assertSee('GEOFlow 3.3.0');
