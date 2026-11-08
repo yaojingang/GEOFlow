@@ -1,4 +1,4 @@
-# GEOFlow 3.2 Beta
+# GEOFlow 3.2.1
 
 > Languages: [简体中文](../../README.md) | [English](README_en.md) | [日本語](README_ja.md) | [Español](README_es.md) | [Русский](README_ru.md) | [Português (BR)](README_pt_BR.md)
 
@@ -14,18 +14,18 @@ https://github.com/user-attachments/assets/8dbbf34e-e9c1-4139-977a-8e78394e34d9
 
 > Plataforma GEO de código aberto para operar sites empresariais
 
-O GEOFlow conecta conhecimento confiável, produção de conteúdo com IA, controle de qualidade, revisão humana, distribuição para vários sites e análise em um único fluxo operacional. Equipes de marca, crescimento e conteúdo podem usá-lo para operar um site corporativo, um canal GEO, um site de referência setorial ou uma plataforma interna de conteúdo, mantendo fontes, decisões, resultados de publicação e dados operacionais no mesmo sistema.
+O GEOFlow conecta importação de conhecimento empresarial, artigos e tópicos com IA, seleção de imagens, controle de qualidade, revisão humana, distribuição multissite e análise de visibilidade em IA. Equipes de marca, crescimento e conteúdo podem operar sites corporativos, canais GEO, sites de referência ou plataformas internas, gerenciando fontes, versões de conteúdo, publicações e dados operacionais no mesmo painel.
 
-[Início rápido](#início-rápido) · [Prévia da interface](#prévia-da-interface) · [Principais recursos](#principais-recursos-do-geoflow-30) · [Guia de implantação](../deployment/DEPLOYMENT.md) · [Histórico de alterações](../CHANGELOG_en.md) · [Site oficial](https://www.geoflow.me)
+[Início rápido](#início-rápido) · [Prévia da interface](#prévia-da-interface) · [Principais recursos](#principais-recursos-do-geoflow-321) · [Guia de implantação](../deployment/DEPLOYMENT.md) · [Histórico de alterações](../CHANGELOG_en.md) · [Site oficial](https://www.geoflow.me)
 
-[![Source version](https://img.shields.io/badge/source-3.2.0--beta.1-2563eb)](../../version.json)
+[![Source version](https://img.shields.io/badge/source-3.2.1-2563eb)](../../version.json)
 [![Latest release](https://img.shields.io/github/v/release/yaojingang/GEOFlow?display_name=tag)](https://github.com/yaojingang/GEOFlow/releases/latest)
 [![PHP](https://img.shields.io/badge/PHP-8.3%2B-777bb4)](https://www.php.net/)
 [![CI](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/yaojingang/GEOFlow/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../../LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yaojingang/GEOFlow?style=social)](https://github.com/yaojingang/GEOFlow/stargazers)
 
-> **Status da versão:** A versão atual do código-fonte é a prévia `3.2.0-beta.2`. A versão estável mais recente é `3.1.0`. Consulte [`version.json`](../../version.json) para ver a versão exata do código-fonte e [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) para ver as versões oficiais e as instruções de atualização. Em produção, use uma versão estável ou fixe um commit revisado.
+> **Status da versão:** A versão atual do código-fonte é a versão estável `3.2.1`. Consulte [`version.json`](../../version.json) para a versão exata e [GitHub Releases](https://github.com/yaojingang/GEOFlow/releases) para os pacotes e as instruções de atualização. A branch `main` continua recebendo mudanças; fixe uma tag de versão ou um commit revisado ao implantar.
 
 ---
 
@@ -74,27 +74,32 @@ Essas telas anonimizadas fazem parte da ajuda incluída no 3.0 e cobrem assistê
 
 ---
 
-## Principais recursos do GEOFlow 3.0
+## Principais recursos do GEOFlow 3.2.1
 
-| Recurso | Como o 3.0 organiza o trabalho |
-|---------|---------------------------------|
-| Conhecimento confiável e produção de conteúdo | Centraliza bases de conhecimento, títulos, palavras-chave, imagens, autores, prompts e modelos de IA. Oferece divisão estruturada, planejamento semântico opcional, busca vetorial e fallback estável. |
-| Controle de qualidade com IA | Verifica evidências de conhecimento, dados e citações, regras de publicidade e contexto de publicação. Salva notas por categoria, posição no texto, referências regulatórias, sugestões e histórico. Artigos pendentes, bloqueados, com falha ou resultado expirado permanecem como rascunhos. |
-| Revisão e colaboração operacional | Gerencia rascunhos, revisão, publicação, lixeira e exportação em lote para Markdown. A área de publicação manual registra identidades, contas, responsáveis, horários, riscos, comprovantes e histórico de auditoria. |
-| Sites empresariais e distribuição multissite | O frontend local gera metadados SEO, Open Graph, Schema, sitemaps e `llms.txt`. Os canais incluem sites hospedados, GEOFlow Agent, WordPress REST e APIs HTTP genéricas. |
-| Análise e operações | Reúne conteúdo, distribuição, tráfego, conteúdos mais acessados, rastreadores de IA e tendências. O Updater independente cuida de atualizações assinadas, backups completos, validação do ambiente e restauração. |
-| Acesso para equipes e desenvolvedores | O Admin UI V3 oferece seis idiomas, layout responsivo, PWA e ajuda ilustrada. API v1, GEOFlow CLI e Agent Skill permitem automação e extensões. |
+| Recurso | Fluxo atual |
+|---------|-------------|
+| Conhecimento e produção de conteúdo | Importa TXT, Markdown, DOCX, PDF e PPTX; gerencia conhecimento, títulos, palavras-chave, imagens, autores, prompts e modelos, com busca vetorial, seleção de imagens e testes de prompts em tempo real. |
+| Controle de qualidade com IA | Verifica fontes, dados, citações, regras publicitárias e contexto; registra notas, posições no texto, sugestões e histórico, com otimização automática, aprovação por nota e revisão humana. |
+| Tópicos e manutenção contínua | Organiza artigos existentes em tópicos com geração por IA, agrupamento, revisão, publicação e manutenção agendada; oferece cartões, guia de leitura e resumo cronológico. |
+| Revisão e colaboração | Gerencia rascunhos, publicação, lixeira e exportações; os canais web de Toutiao, Sohu e NetEase criam tarefas manuais, recebidas pelo assistente do Chrome e concluídas com comprovantes. |
+| Sites e distribuição multissite | Gera metadados SEO, Open Graph, Schema, arquivos de descoberta e URLs canônicas; oferece temas, vídeos curtos, sites hospedados, GEOFlow Agent, WordPress REST e APIs HTTP genéricas. |
+| Links e recomendações | Gerencia links internos e externos verificados para o site principal e os sites próprios hospedados, com campanhas por categoria ou palavra-chave e métricas de saída, visibilidade e cliques. |
+| Visibilidade em IA e operações | Analisa amostras de palavras-chave, tópicos, fontes, concorrentes, nuvens de palavras, tráfego e rastreadores; o Updater cuida de atualizações assinadas, backups completos, validação do ambiente e restauração. |
+| Equipes e desenvolvedores | Admin UI V3 oferece seis idiomas, layout responsivo, PWA e ajuda ilustrada; API v1, CLI e Agent Skill fornecem operações de conteúdo disponíveis, rascunhos remotos de temas e prévias assinadas. |
 
-### Principais mudanças do 3.0
+### Atualizações recentes incluídas na versão 3.2.1
 
-- O Admin UI V3 unifica barra lateral, barra superior, navegação, formulários, diálogos e experiência móvel. Os recursos estáticos são carregados localmente.
-- O espaço de trabalho de IA agora funciona como assistente ilustrado do painel, com 15 temas, 24 capturas anonimizadas e 72 perguntas fixas de avaliação. Os links são gerados conforme as permissões do administrador.
-- A inspeção de qualidade de artigos integra a etapa de publicação e mantém resultados, liberações manuais e mudanças de política em auditoria.
-- Os sites de canal hospedados incluem subdomínios, ciclo de vida, associação de artigos, cotas, pausa após falhas, verificações técnicas, invalidação de cache e conciliação.
-- O assistente do Chrome usa pareamento de dispositivo e um Token com privilégio mínimo para receber tarefas, preencher rascunhos e devolver evidências de execução. Uma pessoa confirma a publicação final.
-- As bibliotecas de títulos geram até 100 mil entradas em lotes, com retomada, cancelamento, repetição e deduplicação. Tarefas excluídas mantêm 90 dias de dados de auditoria.
-- A API v1 e o `bin/geoflow` cobrem catálogos, tarefas, execuções, materiais, artigos e protocolos de operação no navegador.
-- O GEOFlow Updater usa um Unix socket local para atualizações, backups completos, validação do ambiente e retorno a pontos de restauração. Ações de alto risco exigem senha de administrador e código autenticador de seis dígitos.
+- Tópicos e tarefas de IA permitem agrupar, ordenar, criar em lote, revisar, publicar e manter artigos, com módulos na página inicial, navegação, links de retorno e entradas no Sitemap.
+- O conjunto de links inclui verificação de importações, campanhas, controles por site, adaptação e reversão de temas e métricas de saída, visibilidade para leitores e cliques.
+- Os testes de prompts em tempo real executam rascunhos não salvos com conhecimento e títulos selecionados, geram texto em streaming e permitem interromper a execução e localizar observações da IA no texto.
+- Bases de conhecimento e conhecimento empresarial extraem texto de PDF e PPTX, além de TXT, Markdown e DOCX; documentos digitalizados ou compostos por imagens precisam de OCR prévio.
+- A seleção de imagens usa notas e tags da biblioteca, respeita o limite da tarefa e recorre à inserção em intervalos quando o modelo não escolhe imagens.
+- A publicação em Toutiao, Sohu e NetEase usa tarefas manuais, o assistente do Chrome e comprovantes de resultado; uma pessoa confirma a publicação final.
+- A visibilidade em IA inclui classificação por tópicos, evidências de fontes e concorrentes, limpeza de nuvens de palavras e marcação de coletas bem-sucedidas nos últimos sete dias com nova coleta manual.
+- A biblioteca de temas reúne destaques, temas próprios e arquivados e vídeos curtos validados; os pacotes são compatíveis por padrão com 3.x e verificam versões mínimas e dependências.
+- As correções abrangem ações em lote, aprovação por nota da IA, publicação automática e embeddings multimodais da Volcengine, além de proxies de saída opcionais por host e atualizações de segurança.
+
+Consulte [Links e testes de prompts](../operations/link-pool-and-prompt-test.md), [Importação de conhecimento](../knowledge-import.md), [Publicação assistida](../distribution/platform-web-assisted-publishing.md) e [Visibilidade em IA](../ai-visibility-operations.md). CLI e Skill mantêm suas próprias versões de prévia; o [escopo da gestão remota](../api/remote-management-preview.md) descreve os limites da publicação e reversão remotas de temas.
 
 Consulte o [histórico em chinês](../CHANGELOG.md) e o [histórico em inglês](../CHANGELOG_en.md) para ver todas as alterações.
 
@@ -133,7 +138,7 @@ O [guia de implantação](../deployment/DEPLOYMENT.md) e as notas da versão esc
 
 | Componente | Versão ou estado atual do código | Descrição |
 |------------|----------------------------------|-----------|
-| GEOFlow Core | `3.2.0-beta.2` | Aplicação Laravel, painel, frontend, API, filas e distribuição |
+| GEOFlow Core | `3.2.1` | Aplicação Laravel, painel, frontend, API, filas e distribuição |
 | GEOFlow CLI | `0.4.0-preview.2` | Incluído como `bin/geoflow`; compatível com macOS, Linux e WSL |
 | Assistente do Chrome | `0.1.0` | Código e pacote em `browser-extension/` e `dist/browser-extension/` |
 | GEOFlow Updater | Componente independente | Use uma versão assinada compatível com a versão alvo; consulte [geoflow-updater](https://github.com/yaojingang/geoflow-updater) |
