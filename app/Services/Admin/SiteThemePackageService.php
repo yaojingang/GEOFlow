@@ -40,22 +40,32 @@ final class SiteThemePackageService
                 $files = $this->snapshot($id, $source, $snapshot);
                 $manifest = $this->guard->manifest($snapshot, $id);
                 $previous = $source['package'] ?? [];
-                $requirements = $this->guard->exportRequirements($manifest, $previous['requires'] ?? []);
+                $requirements = $this->guard->exportRequirements($manifest, $previous);
+                $contracts = $this->guard->exportContracts($files, $manifest, $requirements);
+                $requirements['contracts'] = array_replace($contracts, $requirements['contracts']);
                 $package = [
                     'format' => SiteThemePackageGuard::FORMAT,
                     'format_version' => 1,
                     'theme' => ['id' => $id, 'name' => (string) ($manifest['name'] ?? $previous['theme']['name'] ?? $id), 'version' => (string) ($manifest['version'] ?? $previous['theme']['version'] ?? '1.0.0')],
                     'created_at' => now()->toIso8601String(),
-                    'exported_with' => ['geoflow' => (string) config('geoflow.app_version'), 'php' => PHP_VERSION, 'laravel' => app()->version(), 'contracts' => SiteThemePackageGuard::CONTRACTS],
+                    'exported_with' => ['geoflow' => (string) config('geoflow.app_version'), 'php' => PHP_VERSION, 'laravel' => app()->version(), 'contracts' => $contracts],
                     'requires' => $requirements,
                     'distribution' => $previous['distribution'] ?? $manifest['distribution'] ?? ['visibility' => (string) ($manifest['visibility'] ?? 'private')],
-                    'pages' => $this->guard->pages($files, $id),
+                    'pages' => $this->guard->pages($files, $id, isset($contracts['topic-view'])),
                     'files' => $files,
                     'content_sha256' => $this->guard->contentHash($files),
                 ];
                 $this->guard->package($package);
                 $resolved = [];
                 $risks = $this->guard->dependencies($package, $snapshot, $manifest, $resolved);
+                $resolvedContracts = $this->guard->exportContracts($files, $manifest, $resolved);
+                if ($resolvedContracts !== $contracts) {
+                    $package['exported_with']['contracts'] = $resolvedContracts;
+                    $package['requires']['contracts'] = array_replace($resolvedContracts, $package['requires']['contracts']);
+                    $package['pages'] = $this->guard->pages($files, $id, isset($resolvedContracts['topic-view']));
+                    $risks = $this->guard->dependencies($package, $snapshot, $manifest, $resolved);
+                }
+                $resolved['contracts'] = array_replace($resolvedContracts, $resolved['contracts']);
                 $package['requires'] = array_replace($package['requires'], $resolved);
                 $path = $this->storage->path($directory.'/theme.zip');
                 $zip = new ZipArchive;
@@ -136,7 +146,7 @@ final class SiteThemePackageService
         });
     }
 
-    /** @return array{token:string,package:array,risks:list<string>,expires_at:string,bytes:int,conflict:?array{code:string,message:string}} */
+    /** @return array{token:string,package:array,requirements:array,risks:list<string>,expires_at:string,bytes:int,conflict:?array{code:string,message:string}} */
     public function inspect(UploadedFile $file, int $adminId): array
     {
         $this->owner($adminId);
@@ -164,6 +174,7 @@ final class SiteThemePackageService
                 $this->assertArchiveHash($archive, $copied['sha256']);
                 $report = [
                     'token' => $token, 'admin_id' => $adminId, 'package' => $checked['package'],
+                    'requirements' => $checked['requirements'],
                     'risks' => $checked['risks'], 'expires_at' => $this->expiry(),
                     'archive_sha256' => $copied['sha256'], 'bytes' => $copied['bytes'],
                 ];
@@ -181,7 +192,7 @@ final class SiteThemePackageService
         });
     }
 
-    /** @return array{token:string,package:array,risks:list<string>,expires_at:string,bytes:int,conflict:?array{code:string,message:string}} */
+    /** @return array{token:string,package:array,requirements:array,risks:list<string>,expires_at:string,bytes:int,conflict:?array{code:string,message:string}} */
     public function inspection(int $adminId, string $token): array
     {
         $this->identity($adminId, $token);

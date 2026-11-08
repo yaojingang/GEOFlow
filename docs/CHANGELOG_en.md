@@ -5,6 +5,12 @@ This document tracks user-facing updates in the public repository. For future Gi
 
 ## Unreleased
 
+### Theme compatibility across versions
+
+- Frontend theme packages default to the entire 3.x series, including 3.1, 3.2, 3.3, patch releases, and previews, while explicit minimum versions and feature dependencies remain enforced.
+- Legacy packages with an automatically generated exact version lock use major-version compatibility during import and re-export, preserving original files and installation receipts.
+- Ordinary themes use the basic compatible package format, topic themes declare their actual interface dependencies, and the inspection page shows the supported range and version mismatch details.
+
 ### AI visibility collection panel
 
 - The keyword collection panel shows the selected count per library and overall, keeps the selection limit aligned with the server validation, and clears the excess selection automatically.
