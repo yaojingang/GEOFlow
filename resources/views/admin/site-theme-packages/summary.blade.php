@@ -1,3 +1,4 @@
+@php($requirements = $inspection['requirements'] ?? $package['requires'])
 <section class="overflow-hidden rounded-lg border border-gray-200 bg-white">
     <div class="flex flex-wrap items-start justify-between gap-4 border-b border-gray-200 bg-gray-50 p-5">
         <div class="min-w-0"><h2 class="break-words text-xl font-semibold text-gray-900">{{ $package['theme']['name'] }}</h2><p class="mt-1 break-all font-mono text-xs text-gray-500">{{ $package['theme']['id'] }}</p></div>
@@ -11,6 +12,7 @@
     @if(!empty($package['distribution']['note']))<p class="border-t border-gray-100 px-5 py-4 text-sm leading-6 text-gray-600">{{ $package['distribution']['note'] }}</p>@endif
     <div class="space-y-3 border-t border-gray-100 px-5 py-4 text-sm text-gray-600">
         <p class="font-medium text-green-700">{{ __('admin.theme_packages.compatibility') }}</p>
+        <p>{{ __('admin.theme_packages.supported_geoflow', ['version' => str_replace('.*', '.x', $requirements['geoflow'])]) }}</p>
         <p>{{ __('admin.theme_packages.exported_with') }}: GEOFlow {{ $package['exported_with']['geoflow'] }} · PHP {{ $package['exported_with']['php'] }} · Laravel {{ $package['exported_with']['laravel'] }}</p>
         <p>{{ __('admin.theme_packages.pages') }}: @foreach($package['pages']['provided'] as $page){{ __('admin.theme_packages.preview.page.'.$page) }}{{ $loop->last ? '' : ' · ' }}@endforeach</p>
         @if(count($package['pages']['fallback']) > 0)<p class="text-xs text-gray-500">{{ __('admin.theme_packages.fallback_pages') }}</p>@endif
@@ -19,7 +21,7 @@
         <summary class="cursor-pointer px-5 py-4 text-sm font-medium text-gray-800">{{ __('admin.theme_packages.requirements') }}</summary>
         <dl class="space-y-4 px-5 pb-5 text-sm">
             @foreach(['geoflow' => 'GEOFlow', 'php' => 'PHP', 'laravel' => 'Laravel'] as $component => $label)
-                <div><dt class="font-medium text-gray-700">{{ $label }}</dt><dd class="mt-1 break-all font-mono text-xs text-gray-600">{{ $package['requires'][$component] }}</dd></div>
+                <div><dt class="font-medium text-gray-700">{{ $label }}</dt><dd class="mt-1 break-all font-mono text-xs text-gray-600">{{ $requirements[$component] }}</dd></div>
             @endforeach
             @foreach(['contracts', 'views', 'routes', 'assets'] as $kind)
                 @if(!empty($package['requires'][$kind]))
