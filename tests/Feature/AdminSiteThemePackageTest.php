@@ -79,6 +79,26 @@ class AdminSiteThemePackageTest extends TestCase
         $this->assertStringContainsString('package_sha256', $logs);
     }
 
+    public function test_legacy_inspection_and_reexport_show_the_effective_major_version_range(): void
+    {
+        $admin = $this->admin();
+        $files = ThemePackageFixture::files();
+        $package = ThemePackageFixture::package($files);
+        $package['exported_with']['geoflow'] = $package['requires']['geoflow'] = '3.1.0';
+        config(['geoflow.app_version' => '3.3.0']);
+        $service = app(SiteThemePackageService::class);
+        $report = $service->inspect(ThemePackageFixture::archive($files, $package), $admin->id);
+
+        $this->actingAs($admin, 'admin')->get($this->url('imports.show', ['token' => $report['token']]))
+            ->assertOk()->assertSee('适用 GEOFlow 3.x')->assertSee('GEOFlow 3.1.0');
+        $this->withSession(['locale' => 'pt_BR'])->get($this->url('imports.show', ['token' => $report['token']]))
+            ->assertOk()->assertSee('Compatível com GEOFlow 3.x');
+        $this->withSession(['locale' => 'zh_CN']);
+        $this->post($this->url('imports.install', ['token' => $report['token']]), ['trusted_source' => '1'])->assertOk();
+        $this->post($this->url('exports.store'), ['theme_id' => 'fixture-theme'])
+            ->assertOk()->assertSee('适用 GEOFlow 3.x')->assertSee('GEOFlow 3.3.0');
+    }
+
     public function test_non_super_admin_cannot_use_any_package_endpoint_or_activate_imported_theme(): void
     {
         $this->install($this->admin());

@@ -29,7 +29,7 @@ public/themes/{theme_id}/...
 `package.json` 的 `format` 为 `geoflow-theme-package`，`format_version` 为 `1`，包含：
 
 - `theme`：`id`、`name`、`version`。
-- `created_at`、`exported_with`：实际 GEOFlow、PHP、Laravel 版本，以及 `contracts`。
+- `created_at`、`exported_with`：实际 GEOFlow、PHP、Laravel 版本，以及本包采用的模板接口 `contracts`。
 - `requires`：版本范围、`contracts: {"site-theme-view-resolver": 1}`，以及 `views`、`routes`、`assets` 运行依赖列表。
 - `distribution`：原有分发范围和客户私有备注。
 - `pages`：六类页面的 `provided` 和 `fallback` 列表。
@@ -38,7 +38,13 @@ public/themes/{theme_id}/...
 
 `manifest.json` 的原始内容保留。`base_template_id` 表示设计来源；实际引用其他内置模板文件时，依赖检查会验证这些文件存在。来自其他已安装包的依赖链暂不支持。公共视图和素材由目标实例提供，检查阶段核验它们是否存在。
 
-导出默认锁定当前 GEOFlow 版本。包作者可以在 manifest 的 `requires` 中声明经过验证的版本范围，并列出动态引用的视图、路由与素材。无法确定且未声明的依赖会阻止导出或检查；已声明的动态依赖在检查报告中保留提示。
+导出默认兼容当前 GEOFlow 主版本，例如在 3.1、3.2 或 3.3 导出的普通模板均声明 `3.*`，覆盖整个 3.x；4.x 需要重新适配。完整导出版本继续保留在 `exported_with.geoflow`。预览版参与同一主版本的范围判断，真实接口与依赖仍须满足。
+
+旧包中与导出版本相同的裸版本要求（例如 `3.1.0`）按历史默认锁定处理，在检查和再次导出时使用对应主版本范围。上传 ZIP、包内文件和安装收据保留原始内容，检查报告单独展示实际使用的兼容要求。manifest 中 `requires.geoflow` 或 `dependencies.geoflow` 的显式声明继续校验；最低版本、排除版本及 `=3.1.0` 形式的精确约束均保留。只有包中裸版本与导出版本一致、且未使用显式等号时，才推断为历史默认限制。
+
+普通模板导出基础接口与六类页面，便于旧版导入器识别；模板声明专题能力、提供专题页面或真实依赖专题路由、视图与素材时，增加专题接口和页面要求。再次导出时清理旧系统自动附加的专题回退要求，并重新扫描模板实际引用。接收端需更新后才能对旧包应用新的默认版本兼容规则。
+
+包作者可以在 manifest 的 `requires` 中声明经过验证的版本范围，并列出动态引用的视图、路由与素材。无法确定且未声明的依赖会阻止导出或检查；已声明的动态依赖在检查报告中保留提示。
 
 依赖扫描支持 `includeIsolated`，忽略 `@verbatim` 与 `@@` 转义指令。`includeIf` 的静态引用可以缺失；`includeFirst` 在每次检查时确认至少一个候选存在，导出不会将单个候选固定为必需依赖。manifest 或包内显式声明的依赖仍必须满足。
 

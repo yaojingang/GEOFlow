@@ -6,6 +6,7 @@ use App\Services\Admin\SiteThemeReplication\ThemeReplicationPackagePathGuard;
 use App\Services\Topics\TopicTemplateCatalog;
 use App\Support\Site\SiteThemePackageStorage;
 use Composer\Semver\Semver;
+use Composer\Semver\VersionParser;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -116,7 +117,7 @@ final class SiteThemePackageGuard
         $this->storage->fail('file_not_allowed', ['path' => $path]);
     }
 
-    /** @return array{package:array,risks:list<string>} */
+    /** @return array{package:array,requirements:array,risks:list<string>} */
     public function unpack(string $archive, string $destination): array
     {
         $this->storage->regular($archive);
@@ -183,7 +184,7 @@ final class SiteThemePackageGuard
             }
             $metadata = $this->readEntry($zip, $entries['package.json'], null, 1024 * 1024, 1024 * 1024);
             $package = json_decode($metadata['contents'], true);
-            $files = $this->package($package);
+            $files = $this->package($package, checkCompatibility: false);
             $id = $package['theme']['id'];
             $actual = [];
             $total = 0;
@@ -219,9 +220,10 @@ final class SiteThemePackageGuard
                     $this->storage->fail('manifest_mismatch');
                 }
             }
-            $risks = $this->dependencies($package, $destination, $manifest);
+            $requirements = [];
+            $risks = $this->dependencies($package, $destination, $manifest, $requirements);
 
-            return ['package' => $package, 'risks' => $risks];
+            return ['package' => $package, 'requirements' => $requirements, 'risks' => $risks];
         } finally {
             $zip->close();
         }
@@ -396,7 +398,76 @@ final class SiteThemePackageGuard
 
     public function exportRequirements(array $manifest, array $previous = []): array
     {
-        return $this->mergeRequirements($this->defaultRequirements(), $previous, $this->manifestRequirements($manifest));
+        $requires = isset($previous['requires']) ? $this->effectiveRequirements($previous) : $previous;
+        $declared = $this->manifestRequirements($manifest);
+        if (($previous['exported_with']['contracts'] ?? null) === self::CONTRACTS
+            && ($requires['contracts'] ?? null) === self::CONTRACTS
+            && ! isset($manifest['topic']) && ! isset($declared['contracts']['topic-view'])) {
+            unset($requires['contracts']['topic-view']);
+            foreach ($previous['pages']['fallback'] ?? [] as $page) {
+                if (isset(self::PAGE_PATHS[$page])) {
+                    $view = 'site.'.str_replace('/', '.', substr(self::PAGE_PATHS[$page], 0, -10));
+                    $requires['views'] = array_values(array_diff($requires['views'] ?? [], [$view]));
+                }
+            }
+        }
+
+        return $this->mergeRequirements($this->defaultRequirements(), $requires, $declared);
+    }
+
+    public function effectiveRequirements(array $package): array
+    {
+        $requires = $package['requires'];
+        $constraint = $requires['geoflow'] ?? null;
+        if (is_string($constraint)
+            && ltrim($constraint, 'v') === ltrim((string) ($package['exported_with']['geoflow'] ?? ''), 'v')) {
+            $requires['geoflow'] = $this->majorVersionConstraint($constraint);
+        }
+
+        return $requires;
+    }
+
+    public function exportContracts(array $files, array $manifest, array $requires): array
+    {
+        if (isset($manifest['topic']) || isset($requires['contracts']['topic-view'])) {
+            return self::CONTRACTS;
+        }
+        foreach ($files as $file) {
+            if (preg_match('~\Aresources/views/theme/[a-zA-Z0-9_-]+/topics/.+\.blade\.php\z~D', $file['path']) === 1) {
+                return self::CONTRACTS;
+            }
+        }
+        foreach (['views', 'routes', 'assets'] as $kind) {
+            foreach ($requires[$kind] ?? [] as $dependency) {
+                $usesTopics = match ($kind) {
+                    'views' => str_starts_with($dependency, 'site.topics.')
+                        || str_starts_with($dependency, 'site.partials.topic-')
+                        || $dependency === 'site.partials.related-topics'
+                        || preg_match('/\Atheme\.[a-zA-Z0-9_-]+\.topics\./D', $dependency) === 1,
+                    'routes' => str_starts_with($dependency, 'site.topics.'),
+                    'assets' => in_array($dependency, ['themes/default/topics.css', 'themes/default/topics.js'], true),
+                };
+                if ($usesTopics) {
+                    return self::CONTRACTS;
+                }
+            }
+        }
+
+        return self::LEGACY_CONTRACTS;
+    }
+
+    private function majorVersionConstraint(string $version): string
+    {
+        if (preg_match('/\Av?([0-9]+)\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\z/D', $version, $match) !== 1) {
+            return $version;
+        }
+        try {
+            (new VersionParser)->normalize($version);
+        } catch (Throwable) {
+            return $version;
+        }
+
+        return $match[1].'.*';
     }
 
     private function manifestRequirements(array $manifest): array
@@ -436,10 +507,10 @@ final class SiteThemePackageGuard
     public function defaultRequirements(): array
     {
         return [
-            'geoflow' => (string) config('geoflow.app_version'),
+            'geoflow' => $this->majorVersionConstraint((string) config('geoflow.app_version')),
             'php' => PHP_MAJOR_VERSION.'.*',
             'laravel' => explode('.', app()->version())[0].'.*',
-            'contracts' => self::CONTRACTS,
+            'contracts' => self::LEGACY_CONTRACTS,
             'views' => [], 'routes' => [], 'assets' => [],
         ];
     }
@@ -454,6 +525,9 @@ final class SiteThemePackageGuard
                 $compatible = false;
             }
             if (! $compatible) {
+                if ($key === 'geoflow' && is_string($constraint)) {
+                    $this->storage->fail('incompatible_geoflow', ['required' => $constraint, 'current' => $version]);
+                }
                 $this->storage->fail('incompatible', ['component' => $key]);
             }
         }
@@ -470,8 +544,9 @@ final class SiteThemePackageGuard
     /** @return list<string> */
     public function dependencies(array $package, string $root, array $manifest, ?array &$resolved = null): array
     {
-        $requires = $package['requires'];
+        $requires = $this->effectiveRequirements($package);
         $declared = $this->manifestRequirements($manifest);
+        $this->compatibility($requires);
         $this->compatibility(array_replace($requires, array_intersect_key($declared, array_flip(['geoflow', 'php', 'laravel', 'contracts']))));
         $dependencies = ['views' => [], 'routes' => [], 'assets' => []];
         foreach ($dependencies as $kind => $_) {
