@@ -2,53 +2,76 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
+## 2026-11-08
 
-## Unreleased
+### v3.2.1
 
-### Theme compatibility across versions
+Core moves to stable `3.2.1`, bringing together the 3.2 preview work and subsequent public repository updates, with synchronized metadata and READMEs in six languages; consult GitHub Releases for published assets and upgrade notes.
+
+#### Topics and content production
+
+- Add topics and AI topic tasks with source grouping, bulk creation, review, publication, scheduled maintenance, and three reading layouts, connected to the homepage, navigation, article backlinks, and Sitemap.
+- Add PDF and PPTX text extraction to knowledge bases and enterprise knowledge alongside TXT, Markdown, and DOCX imports, with OCR required first for scans and image-only documents.
+- Use image library remarks and tags for AI article illustrations, enforce task image limits, and fall back to interval insertion when the model selects none.
+- Improve bulk article actions, score-based AI approval, and automatic publication while preserving manual holds, rejection, and quality blocks and preventing late results from overwriting newer human decisions.
+
+#### Assisted platform publishing and AI visibility
+
+- Connect Toutiao, Sohu, and NetEase web channels to manual work orders and the Chrome assistant, with assignment, result receipts, and exception reconciliation, while operators confirm final publication.
+- Add topic assignment, source and competitor evidence, and word-cloud cleanup to AI visibility, alongside keyword-library collection and source analysis.
+
+#### Runtime and upgrades
+
+- Fix production Redis AOF persistence, AI model connection hints, category filters, and hosted theme access, and add GEO discovery files and validated short theme videos.
+- Back up the database, themes, and configuration, drain old workers in a maintenance window, apply the upgrade-plan migrations, build frontend assets, and restart runtime processes.
+- CLI `0.4.0-preview.2` and Skill `1.2.0-preview.2` retain their preview status, managed upgrades use signed packages and an Updater build explicitly compatible with Core `3.2.1`, and remote theme publication and rollback remain pending.
+
+#### Theme compatibility across versions
 
 - Frontend theme packages default to the entire 3.x series, including 3.1, 3.2, 3.3, patch releases, and previews, while explicit minimum versions and feature dependencies remain enforced.
 - Legacy packages with an automatically generated exact version lock use major-version compatibility during import and re-export, preserving original files and installation receipts.
 - Ordinary themes use the basic compatible package format, topic themes declare their actual interface dependencies, and the inspection page shows the supported range and version mismatch details.
 
-### Dependency security fixes
+#### Dependency security fixes
 
 - Update affected Symfony components in the application and standalone CLI to 7.4.23, fixing upstream issues in request URLs, proxy trust, route matching, filesystem paths, and YAML parsing while keeping dependency declarations and the package set unchanged.
 
 See the [Symfony security advisory](https://symfony.com/cve-2026-118516) and [Filesystem advisory](https://github.com/symfony/symfony/security/advisories/GHSA-6prc-h956-hxjq).
 
-### AI visibility collection panel
+#### AI visibility collection panel
 
 - The keyword collection panel shows the selected count per library and overall, keeps the selection limit aligned with the server validation, and clears the excess selection automatically.
 - Keywords successfully collected in the last 7 days are marked and skipped by Select all. Manual selection allows resampling, failed requests remain retryable, and keyword matching uses the normalization applied to topic assignment.
 
-### Volcengine multimodal embeddings
+#### Volcengine multimodal embeddings
 
 - Fix Volcengine multimodal embedding connection tests, knowledge indexing, and queries, with one official API request and quota/usage record per independent text.
 - Multimodal models using `ep-*` IDs require the full `/embeddings/multimodal` URL; text models keep their existing endpoint, and switching protocols requires a knowledge index resync.
 
 See [Knowledge document import](knowledge-import.md#火山方舟-embedding-配置) for configuration.
 
-### Link pool and live prompt testing
+#### Link pool and live prompt testing
 
 - Distribution management adds internal link placement for the primary site and first-party hosted sites, including a link library, import preflight, campaigns, recommendation previews, site controls, and an emergency stop.
 - Article recommendations support site articles and health-checked external links, selected by source site, category, keywords, and campaign rules. Metrics distinguish server output, reader visibility, and clicks.
 - Site themes can report recommendation support. Super administrators can adapt and roll back themes when shared storage and HTTP readback are available.
 - Prompt editing adds live testing of unsaved drafts, knowledge retrieval, manual or library titles, streamed generation, cancellation, and AI diagnostics linked to source text.
 - Theme adaptation and prompt testing follow administrator model access, quota, and usage auditing. Regression checks cover queue cache refresh, displayed-link metrics, desktop layouts, and mobile layouts.
-- Three link-pool migrations require maintenance mode. Back up the database and themes, build frontend assets, and drain old workers before upgrading. Source versions remain at the current development versions.
+- Three link-pool migrations require maintenance mode. Back up the database and themes, build frontend assets, and drain old workers before upgrading.
 
 See [Link pool and live prompt testing](operations/link-pool-and-prompt-test.md) for configuration, operation, and metric definitions.
 
-### Egress proxy for WAF-protected targets
+#### Egress proxy for WAF-protected targets
 
 - The hardened outbound gateway can route an explicit host allowlist through an egress proxy; direct connections remain the default and the proxy is only enabled when both GEOFLOW_OUTBOUND_PROXY and GEOFLOW_OUTBOUND_PROXY_HOSTS are configured.
 - Proxied connections use the validated target IP while preserving Host and TLS verification; exact private-target exceptions remain direct. Supported proxy schemes are http, https, socks5 and socks5h.
 - Added operator documentation: [Egress proxy for WAF-protected targets](operations/outbound-egress-proxy.md).
 
-### v3.2.0-beta.2 (release preparation)
+## 2026-10-01
 
-This version covers public repository changes since `v3.2.0-beta.1`; source versions have been updated, while the GitHub Release and distribution archives remain unpublished. The latest stable release remains `3.1.0`.
+### v3.2.0-beta.2 (historical preview)
+
+This section preserves preview changes since `v3.2.0-beta.1`, when the GitHub Release and distribution archives were still pending; see `v3.2.1` above for the subsequent stable version.
 
 #### Topics and theme management
 
