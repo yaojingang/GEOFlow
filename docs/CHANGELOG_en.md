@@ -11,6 +11,12 @@ This document tracks user-facing updates in the public repository. For future Gi
 - Legacy packages with an automatically generated exact version lock use major-version compatibility during import and re-export, preserving original files and installation receipts.
 - Ordinary themes use the basic compatible package format, topic themes declare their actual interface dependencies, and the inspection page shows the supported range and version mismatch details.
 
+### Dependency security fixes
+
+- Update affected Symfony components in the application and standalone CLI to 7.4.23, fixing upstream issues in request URLs, proxy trust, route matching, filesystem paths, and YAML parsing while keeping dependency declarations and the package set unchanged.
+
+See the [Symfony security advisory](https://symfony.com/cve-2026-118516) and [Filesystem advisory](https://github.com/symfony/symfony/security/advisories/GHSA-6prc-h956-hxjq).
+
 ### AI visibility collection panel
 
 - The keyword collection panel shows the selected count per library and overall, keeps the selection limit aligned with the server validation, and clears the excess selection automatically.
