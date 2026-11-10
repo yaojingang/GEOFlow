@@ -2,11 +2,14 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
-## 2026-11-08
+## 2026-11-10
 
 ### v3.2.1
 
 Core moves to stable `3.2.1`, bringing together the 3.2 preview work and subsequent public repository updates, with synchronized metadata and READMEs in six languages; consult GitHub Releases for published assets and upgrade notes.
+
+- Production images install locked dependencies from the public npm registry and retain integrity checks. Installation examples use the version document attached to the latest stable GitHub Release.
+- Upgrading from 3.1.0 applies 28 new migrations in a maintenance window. Managed deployments use Updater 0.5.0 with protocol 5. See the [3.2.1 upgrade guide](deployment/GEOFLOW_V3_2_1_UPGRADE_en.md).
 
 #### Topics and content production
 

@@ -7,6 +7,8 @@ use Tests\TestCase;
 
 class SecurityReleaseMetadataTest extends TestCase
 {
+    private const V321_RELEASE_DATE = '2026-11-10';
+
     public function test_v321_manifest_uses_stable_version_and_preserves_upgrade_safety_guidance(): void
     {
         $manifest = json_decode((string) file_get_contents(base_path('version.json')), true, flags: JSON_THROW_ON_ERROR);
@@ -14,7 +16,7 @@ class SecurityReleaseMetadataTest extends TestCase
 
         $this->assertSame('3.2.1', $manifest['version']);
         $this->assertSame('v3.2.1', $manifest['tag']);
-        $this->assertSame('2026-11-08', $manifest['release_date']);
+        $this->assertSame(self::V321_RELEASE_DATE, $manifest['release_date']);
         $this->assertSame('minor', $manifest['release_type']);
         $this->assertTrue(Semver::satisfies($manifest['version'], $manifest['version']));
         $this->assertSame(
@@ -71,8 +73,9 @@ class SecurityReleaseMetadataTest extends TestCase
         $this->assertStringContainsString("## 2026-09-09\n\n### v3.1.0", $en);
         $this->assertStringContainsString('### v3.2.0-beta.1', $zh);
         $this->assertStringContainsString('### v3.2.0-beta.1', $en);
-        $this->assertStringContainsString("## 2026-11-08\n\n### v3.2.1", $zh);
-        $this->assertStringContainsString("## 2026-11-08\n\n### v3.2.1", $en);
+        $heading = '## '.self::V321_RELEASE_DATE."\n\n### v3.2.1";
+        $this->assertStringContainsString($heading, $zh);
+        $this->assertStringContainsString($heading, $en);
     }
 
     public function test_environment_examples_do_not_lock_the_application_version(): void

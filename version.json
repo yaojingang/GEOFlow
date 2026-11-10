@@ -1,7 +1,7 @@
 {
   "version": "3.2.1",
   "tag": "v3.2.1",
-  "release_date": "2026-11-08",
+  "release_date": "2026-11-10",
   "release_type": "minor",
   "archive_url": "https://github.com/yaojingang/GEOFlow/releases/download/v3.2.1/GEOFlow-v3.2.1.zip",
   "payload": {
@@ -9,8 +9,8 @@
     "title_en": "GEOFlow v3.2.1",
     "summary_zh": "GEOFlow 3.2.1 汇总专题管理与 AI 专题任务、链接池、提示词实时测试、PDF/PPTX 知识导入、图片库智能配图、平台人工辅助发布和 AI 可见性分析，完善 3.x 模板兼容、文章发布流程及出站安全。",
     "summary_en": "GEOFlow 3.2.1 brings together topics and AI topic tasks, link campaigns, live prompt testing, PDF/PPTX knowledge imports, library image selection, assisted platform publishing, and AI visibility analytics, with improved 3.x theme compatibility, article publishing, and outbound security.",
-    "upgrade_tip_zh": "升级前备份数据库、模板与配置，在维护窗口排空旧 worker，执行升级计划中的迁移、构建前端资源并重启运行进程。配套 CLI 0.4.0-preview.2、Skill 1.2.0-preview.2 保留各自的预览状态；受管升级须使用明确兼容 Core 3.2.1 的签名发布包和 Updater 构建，发布资产以 GitHub Releases 为准。模板视频需要 ffprobe，PDF 导入需要 PHP CLI 与 proc_open，扫描件和纯图片文档需先完成 OCR。旧质检报告需重新检查，历史保留文章不会自动发布；API/CLI 创建普通文章任务须显式提供 need_review。已受管实例恢复后继续保持恢复限制，先查询原操作收据并完成逐业务对账；响应不确定时不要自动重发。主题草稿编辑与预览已开放，远程主题发布和回滚仍待后续版本。",
-    "upgrade_tip_en": "Back up the database, themes, and configuration before upgrading. Drain old workers during a maintenance window, apply the upgrade-plan migrations, build frontend assets, and restart runtime processes. CLI 0.4.0-preview.2 and Skill 1.2.0-preview.2 retain their preview status; managed upgrades require signed packages and an Updater build explicitly compatible with Core 3.2.1, with published assets listed on GitHub Releases. Theme videos require ffprobe; PDF import requires PHP CLI and proc_open, and scans or image-only documents require OCR first. Recheck older AI quality reports; existing held articles stay held. API/CLI creation of article tasks requires an explicit need_review field. Keep managed instances held after recovery, query the original operation receipt, and reconcile each business domain; do not automatically resend uncertain requests. Theme draft editing and preview are available; remote theme publication and rollback remain pending.",
+    "upgrade_tip_zh": "升级前备份数据库、模板与配置，在维护窗口排空旧 worker，执行升级计划中的迁移、构建前端资源并重启运行进程。配套 CLI 0.4.0-preview.2、Skill 1.2.0-preview.2 保留各自的预览状态；受管升级须使用配套签名发布包和 Updater 0.5.0，发布资产以 GitHub Releases 为准。模板视频需要 ffprobe，PDF 导入需要 PHP CLI 与 proc_open，扫描件和纯图片文档需先完成 OCR。旧质检报告需重新检查，历史保留文章不会自动发布；API/CLI 创建普通文章任务须显式提供 need_review。已受管实例恢复后继续保持恢复限制，先查询原操作收据并完成逐业务对账；响应不确定时不要自动重发。主题草稿编辑与预览已开放，远程主题发布和回滚仍待后续版本。",
+    "upgrade_tip_en": "Back up the database, themes, and configuration before upgrading. Drain old workers during a maintenance window, apply the upgrade-plan migrations, build frontend assets, and restart runtime processes. CLI 0.4.0-preview.2 and Skill 1.2.0-preview.2 retain their preview status; managed upgrades require the paired signed packages and Updater 0.5.0, with published assets listed on GitHub Releases. Theme videos require ffprobe; PDF import requires PHP CLI and proc_open, and scans or image-only documents require OCR first. Recheck older AI quality reports; existing held articles stay held. API/CLI creation of article tasks requires an explicit need_review field. Keep managed instances held after recovery, query the original operation receipt, and reconcile each business domain; do not automatically resend uncertain requests. Theme draft editing and preview are available; remote theme publication and rollback remain pending.",
     "release_url": "https://github.com/yaojingang/GEOFlow/releases/tag/v3.2.1",
     "changelog_url_zh": "https://github.com/yaojingang/GEOFlow/blob/v3.2.1/docs/CHANGELOG.md",
     "changelog_url_en": "https://github.com/yaojingang/GEOFlow/blob/v3.2.1/docs/CHANGELOG_en.md"

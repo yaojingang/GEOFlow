@@ -82,7 +82,7 @@ ENV HTTP_PROXY=${HTTP_PROXY} \
     HTTPS_PROXY=${HTTPS_PROXY} \
     NO_PROXY=${NO_PROXY}
 
-RUN npm config set registry https://registry.npmmirror.com/
+RUN npm config set registry https://registry.npmjs.org/ && npm config set replace-registry-host always
 
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund

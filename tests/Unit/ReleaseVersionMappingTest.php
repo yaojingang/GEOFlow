@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use Dotenv\Dotenv;
 use Tests\TestCase;
 
 class ReleaseVersionMappingTest extends TestCase
@@ -41,6 +42,19 @@ class ReleaseVersionMappingTest extends TestCase
             '/main/version.json',
             (string) config('geoflow.update_metadata_url'),
         );
+    }
+
+    public function test_installation_templates_follow_the_published_release_asset(): void
+    {
+        foreach (['.env.example', '.env.prod.example'] as $template) {
+            $values = Dotenv::parse((string) file_get_contents(base_path($template)));
+
+            $this->assertSame(
+                config('geoflow.update_metadata_url'),
+                $values['GEOFLOW_UPDATE_METADATA_URL'] ?? null,
+                $template,
+            );
+        }
     }
 
     public function test_release_metadata_is_derived_from_the_manifest_tag(): void
