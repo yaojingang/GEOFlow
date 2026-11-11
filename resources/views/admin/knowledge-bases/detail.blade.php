@@ -411,7 +411,7 @@
 
                                     @if ($canEditSystemKnowledge)
                                         <details class="rounded-lg border border-gray-200 bg-gray-50">
-                                            <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-700">{{ __('admin.knowledge_detail.media_manage') }}</summary>
+                                            <summary class="gf-disclosure cursor-pointer px-3 py-2 text-xs font-semibold text-gray-700">{{ __('admin.knowledge_detail.media_manage') }}</summary>
                                             <form method="POST" action="{{ route('admin.knowledge-bases.media.update', ['knowledgeBaseId' => (int) $knowledgeBase->id, 'mediaAsset' => (int) $mediaAsset->id]) }}" class="space-y-3 border-t border-gray-200 bg-white p-3">
                                                 @csrf
                                                 @method('PUT')

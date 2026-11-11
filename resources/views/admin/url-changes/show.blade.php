@@ -29,7 +29,7 @@
         <h1 class="mt-2 text-2xl font-semibold text-gray-900">{{ __('url_change.title') }}</h1>
         <p class="mt-2 break-all text-xs text-gray-500">{{ __('url_change.ui.request_id') }}: {{ $change->id }}</p>
         <p class="mt-2 text-xs leading-6 text-gray-500">{{ __('url_change.ui.report_created', ['time' => $change->created_at->format('Y-m-d H:i:s T')]) }}</p>
-        <details class="mt-2 text-xs text-gray-600"><summary class="cursor-pointer leading-6">{{ __('url_change.ui.report_versions') }}</summary><dl class="mt-2 space-y-1">@foreach ($change->versions as $scope => $version)<div class="flex flex-wrap gap-x-3"><dt class="break-all font-mono">{{ $scope }}</dt><dd>{{ $version }}</dd></div>@endforeach</dl></details>
+        <details class="mt-2 text-xs text-gray-600"><summary class="gf-disclosure cursor-pointer leading-6">{{ __('url_change.ui.report_versions') }}</summary><dl class="mt-2 space-y-1">@foreach ($change->versions as $scope => $version)<div class="flex flex-wrap gap-x-3"><dt class="break-all font-mono">{{ $scope }}</dt><dd>{{ $version }}</dd></div>@endforeach</dl></details>
     </header>
 
     <section class="rounded-lg bg-white p-5 shadow-sm sm:p-6" aria-labelledby="url-change-status-heading">

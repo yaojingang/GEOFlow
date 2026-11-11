@@ -48,7 +48,7 @@ export function renderTaskCard(target, data, { documentRef, labels = {}, safeUrl
     });
     const details = element('details', 'gf-ai-task-card__details');
     details.open = data.status === 'ready' || data.status === 'created';
-    details.append(element('summary', '', labels.details ?? 'Saved settings'));
+    details.append(element('summary', 'gf-disclosure', labels.details ?? 'Saved settings'));
     const list = element('dl', 'gf-ai-task-card__rows');
     data.rows.forEach((row) => {
         const pair = element('div');

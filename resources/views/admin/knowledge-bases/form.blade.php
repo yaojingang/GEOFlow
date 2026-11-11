@@ -33,19 +33,6 @@
 
 @push('styles')
     <style>
-        .admin-knowledge-select {
-            -webkit-appearance: none;
-            appearance: none;
-            background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 20 20' fill='none' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M5 7.5L10 12.5L15 7.5' stroke='%23111827' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3e%3c/svg%3e");
-            background-position: right 1rem center;
-            background-repeat: no-repeat;
-            background-size: 1rem 1rem;
-        }
-
-        .admin-knowledge-select::-ms-expand {
-            display: none;
-        }
-
         .admin-knowledge-evidence-summary {
             list-style: none;
         }

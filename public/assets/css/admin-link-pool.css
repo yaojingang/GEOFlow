@@ -17,16 +17,6 @@
 .link-pool-site-context__description { margin-top: .15rem; color: #475569; font-size: .75rem; line-height: 1.4; }
 .link-pool-site-context__select { width: 100%; min-width: 0; min-height: 2.75rem; padding: .5rem 2.25rem .5rem .75rem; border: 1px solid #93c5fd; border-radius: .625rem; background-color: #fff; color: #172554; font-size: .875rem; font-weight: 600; }
 .link-pool-site-context__select:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
-.link-pool-site-context__select,
-main select:not([multiple]):not([size]) {
-    -webkit-appearance: none;
-    appearance: none;
-    padding-right: 2.75rem;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='m5 7.5 5 5 5-5' stroke='%23334b75' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-    background-position: right 1rem center;
-    background-repeat: no-repeat;
-    background-size: 1rem 1rem;
-}
 .link-pool-site-context__hint { grid-column: 1; margin: 0; color: #475569; font-size: .75rem; line-height: 1.5; }
 .link-pool-site-context__status { grid-column: 2; grid-row: 2; justify-self: start; padding: .25rem .6rem; border-radius: 999px; font-size: .75rem; font-weight: 700; }
 .link-pool-site-context__status--active { background: #dcfce7; color: #166534; }

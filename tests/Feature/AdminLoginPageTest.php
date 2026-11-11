@@ -10,6 +10,19 @@ class AdminLoginPageTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_both_login_layouts_load_shared_dropdown_styles(): void
+    {
+        foreach ([true, false] as $v3Enabled) {
+            config()->set('geoflow.admin_ui_v3_enabled', $v3Enabled);
+
+            $this->get(route('admin.login'))
+                ->assertOk()
+                ->assertSee('assets/css/admin-controls.css', false)
+                ->assertSee('class="gf-admin-controls', false)
+                ->assertSee('onchange="window.location.href=this.value"', false);
+        }
+    }
+
     public function test_login_page_never_exposes_configured_initial_admin_password(): void
     {
         $configuredSecret = 'initial-super-admin-secret';

@@ -263,7 +263,7 @@
                                 <p>{{ (string) ($manualCommand['status_description'] ?? '') }}</p>
                             </div>
                             <details class="mt-3 border-t border-gray-100 pt-3" @if($manualCommandStatus === 'pending') open @endif>
-                                <summary class="cursor-pointer text-sm font-medium text-gray-700 marker:text-gray-400">
+                                <summary class="gf-disclosure cursor-pointer text-sm font-medium text-gray-700 marker:text-gray-400">
                                     {{ $manualCommandStatus === 'pending' ? __('admin.system_updates.manual_commands.command_label') : __('admin.system_updates.manual_commands.show_command') }}
                                 </summary>
                                 <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">

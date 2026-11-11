@@ -27,7 +27,7 @@
                 <label class="text-sm" data-source-scope="keyword" @if(($draftData['scope'] ?? 'all')!=='keyword') hidden @endif>关键词<input name="keyword" value="{{ $draftData['keyword'] ?? '' }}" class="mt-1 block w-full rounded-lg border-gray-300"><span class="mt-1 block text-xs text-gray-500">填写文章的关键词标签，精确匹配其中一项。</span></label>
             </div>
             <details data-source-chooser class="mt-4 rounded-lg border border-gray-200 p-3" @if(($draftData['scope'] ?? 'all')==='articles' || !empty($draftData['exclusion_ids'])) open @endif>
-                <summary class="cursor-pointer text-sm font-medium text-gray-800">选择投放文章或排除文章</summary>
+                <summary class="gf-disclosure cursor-pointer text-sm font-medium text-gray-800">选择投放文章或排除文章</summary>
                 <p class="mt-2 text-xs leading-5 text-gray-500">指定文章时勾选投放；其他范围自动包含符合条件的文章。排除对所有范围生效。</p>
                 <div class="mt-3 flex flex-wrap items-end gap-2">
                     <label class="min-w-40 flex-1 text-sm">查找来源文章<input form="source-search-form" name="source_q" value="{{ $sourceSearch }}" type="search" maxlength="120" class="mt-1 block min-h-10 w-full rounded-lg border-gray-300"></label>

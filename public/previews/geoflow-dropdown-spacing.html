@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>下拉箭头间距预览 · GEOFlow</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --blue: #2563eb;
+            --ink: #111827;
+            --muted: #6b7280;
+            --line: #e5e7eb;
+            --arrow-inset: 16px;
+            --text-reserve: 44px;
+            --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='m6 9 6 6 6-6' stroke='%236b7280' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+        }
+        * { box-sizing: border-box; }
+        [hidden] { display: none !important; }
+        body { margin: 0; background: #f9fafb; color: var(--ink); font: 14px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; -webkit-font-smoothing: antialiased; }
+        button, input, select { font: inherit; }
+        button, select, summary { touch-action: manipulation; }
+        button { cursor: pointer; }
+        button:disabled, select:disabled { cursor: not-allowed; }
+        button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px solid #bfdbfe; outline-offset: 3px; }
+        a { color: inherit; }
+        h1, h2, h3, p { margin: 0; }
+        svg.icon { display: block; flex: 0 0 16px; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+        .topbar { height: 64px; border-bottom: 1px solid var(--line); background: #fff; }
+        .topbar-inner { max-width: 1200px; height: 100%; margin: auto; padding: 0 32px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .brand { font-size: 20px; font-weight: 700; letter-spacing: -.5px; }
+        .brand span { color: var(--blue); }
+        .topbar-meta { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+        .preview-tag { padding: 3px 9px; color: #1d4ed8; background: #eff6ff; border: 1px solid #dbeafe; border-radius: 5px; font-weight: 600; }
+        main { max-width: 1200px; margin: auto; padding: 40px 32px 48px; }
+        .eyebrow { color: var(--blue); font-size: 12px; font-weight: 650; letter-spacing: 1px; }
+        h1 { margin-top: 8px; font-size: clamp(26px, 3vw, 32px); line-height: 1.3; font-weight: 700; letter-spacing: -.8px; }
+        .intro { margin-top: 12px; max-width: 760px; color: var(--muted); line-height: 1.8; }
+        .preferences { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin: 26px 0 24px; padding: 16px 20px; background: #fff; border: 1px solid var(--line); border-radius: 10px; }
+        .preferences-left { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+        .preferences-title { font-weight: 600; }
+        .segmented { display: inline-flex; gap: 3px; padding: 3px; margin: 0; background: #f3f4f6; border: 1px solid var(--line); border-radius: 7px; }
+        .segmented label { position: relative; cursor: pointer; }
+        .segmented span { display: block; padding: 5px 14px; border-radius: 4px; color: var(--muted); font-size: 13px; font-weight: 550; }
+        .segmented input:checked + span { background: #fff; color: #1d4ed8; box-shadow: 0 1px 3px #11182714; }
+        .segmented input:focus-visible + span { outline: 2px solid var(--blue); outline-offset: 2px; }
+        .annotation-toggle { display: flex; align-items: center; gap: 8px; color: var(--muted); cursor: pointer; font-size: 13px; }
+        input[type='checkbox'] { width: 15px; height: 15px; accent-color: var(--blue); }
+        .comparison { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+        .card { min-width: 0; background: #fff; border: 1px solid var(--line); border-radius: 10px; }
+        .card.recommended { border-color: #93b8f8; }
+        .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--line); }
+        .card-head h2 { font-size: 16px; font-weight: 650; }
+        .card-head p { margin-top: 3px; color: var(--muted); font-size: 12px; }
+        .badge { flex-shrink: 0; padding: 3px 8px; border-radius: 5px; background: #f3f4f6; color: var(--muted); font-size: 11px; font-weight: 600; }
+        .badge.blue { color: #1d4ed8; background: #eff6ff; }
+        .comparison-body { padding: 24px; display: grid; gap: 22px; }
+        .field { display: block; min-width: 0; }
+        .field-name { display: block; margin-bottom: 8px; font-size: 13px; color: #374151; font-weight: 550; }
+        .select-shell { position: relative; min-width: 0; }
+        .select {
+            display: block; width: 100%; min-width: 0; height: 40px;
+            padding: 8px var(--text-reserve) 8px 12px;
+            appearance: none; -webkit-appearance: none;
+            border: 1px solid #d1d5db; border-radius: 8px;
+            background-color: #fff; background-image: var(--chevron);
+            background-position: right var(--arrow-inset) center;
+            background-repeat: no-repeat; background-size: 16px 16px;
+            color: #374151; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
+            transition: border-color 120ms, box-shadow 120ms;
+        }
+        .select:hover:not(:disabled) { border-color: #9ca3af; }
+        .select:focus { border-color: var(--blue); outline: none; box-shadow: 0 0 0 3px #2563eb1f; }
+        .select:disabled { background-color: #f9fafb; color: #9ca3af; opacity: .65; }
+        .before { --arrow-inset: 4px; --text-reserve: 24px; }
+        .measure { display: none; position: absolute; right: 1px; top: 1px; bottom: 1px; width: var(--arrow-inset); border-left: 1px dashed #60a5fa; background: #3b82f60d; border-radius: 0 7px 7px 0; pointer-events: none; }
+        body.show-measure .measure { display: block; }
+        .measure-label { display: flex; justify-content: flex-end; min-height: 18px; margin-top: 4px; font-size: 11px; color: #3b82f6; visibility: hidden; }
+        body.show-measure .measure-label { visibility: visible; }
+        .before .measure { border-left-color: #9ca3af; background: #9ca3af0d; }
+        .before .measure-label { color: #9ca3af; }
+        .small-select { max-width: 256px; }
+        .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+        .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; color: #374151; font-weight: 550; font-size: 13px; text-decoration: none; }
+        .button:hover { background: #f9fafb; }
+        .button.primary { color: #fff; border-color: var(--blue); background: var(--blue); }
+        .button.primary:hover { background: #1d4ed8; }
+        .button.compact { min-height: 36px; padding: 6px 12px; }
+        .before .button.compact { padding-right: 4px; }
+        .popover { position: relative; }
+        summary { cursor: pointer; }
+        summary.custom-summary { list-style: none; }
+        summary.custom-summary::-webkit-details-marker { display: none; }
+        .popover[open] > summary .chevron, .fold[open] > summary .chevron { transform: rotate(180deg); }
+        .chevron { transition: transform 150ms; color: var(--muted); }
+        .menu { position: absolute; top: calc(100% + 6px); left: 0; width: 180px; max-width: calc(100vw - 64px); padding: 5px; z-index: 10; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px #11182714; }
+        .menu button { display: block; width: 100%; padding: 8px 10px; border: 0; background: transparent; color: #374151; border-radius: 5px; text-align: left; font-size: 13px; }
+        .menu button:hover { background: #eff6ff; color: var(--blue); }
+        .section-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin: 32px 0 14px; }
+        .section-heading h2 { font-size: 17px; font-weight: 650; }
+        .section-heading p { margin-top: 4px; color: var(--muted); font-size: 13px; }
+        .standards { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 16px 0 0; color: var(--muted); font-size: 12px; }
+        .standards strong { color: #374151; font-weight: 600; }
+        .workbench { padding: 24px; }
+        .workbench-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+        .workbench-head h3 { font-size: 18px; font-weight: 650; }
+        .workbench-head p { color: var(--muted); margin-top: 4px; font-size: 13px; }
+        .filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 16px; align-items: end; }
+        .table-wrap { overflow-x: auto; margin-top: 24px; border: 1px solid var(--line); border-radius: 8px; }
+        table { width: 100%; min-width: 590px; border-collapse: collapse; text-align: left; font-size: 13px; }
+        th { background: #f9fafb; color: var(--muted); font-size: 12px; font-weight: 550; }
+        th, td { padding: 13px 16px; border-bottom: 1px solid #f3f4f6; }
+        tr:last-child td { border-bottom: 0; }
+        td:first-child { width: 52%; }
+        .status { display: inline-flex; align-items: center; gap: 6px; color: #047857; font-size: 12px; }
+        .status::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+        .status.draft { color: #6b7280; }
+        .status.review { color: #b45309; }
+        .muted { color: var(--muted); }
+        .table-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 14px; color: var(--muted); font-size: 12px; }
+        .samples { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+        .sample-body { padding: 24px; display: grid; gap: 18px; }
+        .dark-sample { background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 18px; }
+        .dark-sample h3 { color: #e2e8f0; font-size: 13px; font-weight: 550; margin-bottom: 12px; }
+        .dark-select { color-scheme: dark; --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='m6 9 6 6 6-6' stroke='%23cbd5e1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-color: #1e293b; color: #e2e8f0; border-color: #475569; }
+        .fold { border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+        .fold > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 12px var(--arrow-inset) 12px 16px; color: #374151; font-size: 13px; font-weight: 550; }
+        .fold-content { padding: 16px; border-top: 1px solid var(--line); background: #f9fafb; border-radius: 0 0 8px 8px; }
+        .fold-content p { margin-bottom: 12px; font-size: 12px; color: var(--muted); }
+        .avatar { display: inline-flex; justify-content: center; align-items: center; width: 26px; height: 26px; border-radius: 50%; background: #dbeafe; color: #2563eb; font-size: 11px; font-weight: 650; }
+        .account-button { min-height: 42px; padding: 6px 12px 6px 8px; }
+        .note { margin-top: 22px; padding: 14px 16px; border: 1px solid #dbeafe; background: #eff6ff; border-radius: 8px; color: #1e40af; font-size: 12px; line-height: 1.8; }
+        .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: calc(100vw - 32px); padding: 10px 18px; border-radius: 8px; background: #111827; color: #fff; font-size: 13px; box-shadow: 0 6px 24px #11182726; z-index: 20; }
+        @media (max-width: 900px) { .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+        @media (max-width: 640px) {
+            .topbar-inner { padding: 0 20px; }
+            .topbar-meta > span:last-child { display: none; }
+            main { padding: 28px 20px 36px; }
+            .preferences { padding: 16px; }
+            .comparison, .samples, .filters { grid-template-columns: minmax(0, 1fr); }
+            .card-head, .comparison-body, .workbench, .sample-body { padding: 20px; }
+            .comparison-body { gap: 18px; }
+            .workbench-head { flex-direction: column; }
+            .select, .button { min-height: 44px; }
+            .button.compact { min-height: 44px; }
+            .select { height: 44px; }
+            .small-select { max-width: 100%; }
+        }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+        @media (forced-colors: active) { .select { appearance: auto; -webkit-appearance: auto; background-image: none; } .measure { display: none !important; } .select:disabled { opacity: 1; } }
+    </style>
+</head>
+<body class="show-measure">
+    <header class="topbar">
+        <div class="topbar-inner">
+            <div class="brand">GEO<span>Flow</span></div>
+            <div class="topbar-meta"><span class="preview-tag">样式确认稿</span><span>后台控件预览</span></div>
+        </div>
+    </header>
+    <main>
+        <p class="eyebrow">统一控件样式 / 01</p>
+        <h1>下拉箭头，统一留白</h1>
+        <p class="intro">让倒三角与边框保持舒适的距离，也给文字留足空间。先对比间距，再在下面的文章筛选、菜单与折叠区域中试用。</p>
+
+        <div class="preferences">
+            <div class="preferences-left">
+                <span class="preferences-title">选择右侧留白</span>
+                <fieldset class="segmented">
+                    <legend class="sr-only">预览下拉箭头距右边框的距离</legend>
+                    <label><input class="sr-only" type="radio" name="spacing" value="12"><span>12px</span></label>
+                    <label><input class="sr-only" type="radio" name="spacing" value="16" checked><span>16px · 推荐</span></label>
+                </fieldset>
+            </div>
+            <label class="annotation-toggle"><input id="show-measure" type="checkbox" checked>显示右侧留白标记</label>
+        </div>
+
+        <section class="comparison" aria-label="下拉箭头间距对比">
+            <article class="card before">
+                <header class="card-head"><div><h2>贴边效果</h2><p>以 4px 留白模拟，便于比较。</p></div><span class="badge">对比示意</span></header>
+                <div class="comparison-body">
+                    <div class="field"><label class="field-name" for="before-status">发布状态</label><div class="select-shell"><select class="select" id="before-status"><option>全部状态</option><option>已发布</option><option>草稿</option></select><span class="measure" aria-hidden="true"></span></div><p class="measure-label" aria-hidden="true">4px</p></div>
+                    <div class="field"><label class="field-name" for="before-model">较窄的模型选择框</label><div class="select-shell small-select"><select class="select" id="before-model"><option>DeepSeek · 内容生成与知识库检索专用模型</option><option>通用对话模型</option></select><span class="measure" aria-hidden="true"></span></div><p class="measure-label small-select" aria-hidden="true">右侧空间偏紧</p></div>
+                    <div><span class="field-name">紧凑操作按钮</span><div class="row"><details class="popover"><summary class="button compact custom-summary">分发渠道<svg class="icon chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="menu" role="group" aria-label="贴边效果的分发渠道"><button type="button" data-demo-action="已选择主站渠道">主站</button><button type="button" data-demo-action="已选择托管站点">托管站点</button></div></details></div><p class="measure-label" aria-hidden="true">按钮右侧 4px</p></div>
+                </div>
+            </article>
+            <article class="card recommended">
+                <header class="card-head"><div><h2>统一建议</h2><p>箭头向内收，文字与箭头各有空间。</p></div><span class="badge blue">建议采用</span></header>
+                <div class="comparison-body">
+                    <div class="field"><label class="field-name" for="after-status">发布状态</label><div class="select-shell"><select class="select" id="after-status"><option>全部状态</option><option>已发布</option><option>草稿</option></select><span class="measure" aria-hidden="true"></span></div><p class="measure-label" aria-hidden="true"><span data-gap-label>16px</span></p></div>
+                    <div class="field"><label class="field-name" for="after-model">较窄的模型选择框</label><div class="select-shell small-select"><select class="select" id="after-model"><option>DeepSeek · 内容生成与知识库检索专用模型</option><option>通用对话模型</option></select><span class="measure" aria-hidden="true"></span></div><p class="measure-label small-select" aria-hidden="true">长文本截断，保留箭头空间</p></div>
+                    <div><span class="field-name">紧凑操作按钮</span><div class="row"><details class="popover"><summary class="button compact custom-summary">分发渠道<svg class="icon chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="menu" role="group" aria-label="统一建议的分发渠道"><button type="button" data-demo-action="已选择主站渠道">主站</button><button type="button" data-demo-action="已选择托管站点">托管站点</button></div></details></div><p class="measure-label" aria-hidden="true">紧凑按钮固定留白 12px</p></div>
+                </div>
+            </article>
+        </section>
+        <div class="standards" aria-label="建议样式参数"><span>箭头右侧 <strong data-gap-label>16px</strong></span><span>箭头大小 <strong>16px</strong></span><span>文字右侧预留 <strong id="reserve-label">44px</strong></span><span>桌面控件高度 <strong>40px</strong></span><span>紧凑按钮右侧 <strong>12px</strong></span></div>
+
+        <div class="section-heading"><div><h2>放进后台页面里看</h2><p>模拟文章管理页面，可以切换筛选条件并查询。</p></div><span class="badge">演示数据</span></div>
+        <section class="card workbench" aria-labelledby="articles-heading">
+            <header class="workbench-head"><div><h3 id="articles-heading">文章管理</h3><p>管理内容状态、作者与分发任务。</p></div><details class="popover"><summary class="button compact custom-summary">批量操作<svg class="icon chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="menu" role="group" aria-label="批量操作示例"><button type="button" data-demo-action="批量发布效果预览，演示数据未修改">批量发布</button><button type="button" data-demo-action="批量审核效果预览，演示数据未修改">批量审核</button><button type="button" data-demo-action="导出效果预览">导出文章</button></div></details></header>
+            <form class="filters" id="filter-form">
+                <label class="field" for="filter-status"><span class="field-name">发布状态</span><select class="select" id="filter-status" name="status"><option value="">全部状态</option><option value="published">已发布</option><option value="draft">草稿</option><option value="review">待审核</option></select></label>
+                <label class="field" for="filter-author"><span class="field-name">作者</span><select class="select" id="filter-author" name="author"><option value="">全部作者</option><option>内容团队</option><option>品牌编辑组</option></select></label>
+                <label class="field" for="filter-task"><span class="field-name">来源任务</span><select class="select" id="filter-task" name="task"><option value="">全部任务</option><option value="geo">GEO入门内容</option><option value="brand">品牌知识更新</option></select></label>
+                <div class="row"><button class="button primary" type="submit">查询</button><button class="button" type="reset">重置</button></div>
+            </form>
+            <div class="table-wrap"><table><caption class="sr-only">用于体验筛选控件的演示文章</caption><thead><tr><th scope="col">文章标题</th><th scope="col">作者</th><th scope="col">状态</th><th scope="col">更新时间</th></tr></thead><tbody>
+                <tr data-article data-status="published" data-author="内容团队" data-task="geo"><td>企业如何建立清晰的品牌知识体系</td><td>内容团队</td><td><span class="status">已发布</span></td><td class="muted">今天 14:30</td></tr>
+                <tr data-article data-status="review" data-author="品牌编辑组" data-task="brand"><td>从内容发布到AI引用的完整流程</td><td>品牌编辑组</td><td><span class="status review">待审核</span></td><td class="muted">今天 11:20</td></tr>
+                <tr data-article data-status="draft" data-author="内容团队" data-task="geo"><td>GEO项目常用数据指标与评估方法</td><td>内容团队</td><td><span class="status draft">草稿</span></td><td class="muted">昨天 18:05</td></tr>
+                <tr id="empty-row" hidden><td colspan="4" class="muted">没有符合筛选条件的演示文章。</td></tr>
+            </tbody></table></div>
+            <div class="table-footer"><p id="filter-result" role="status">共 3 篇演示文章</p><span>下拉框保持原生选项交互，可用键盘操作</span></div>
+        </section>
+
+        <div class="section-heading"><div><h2>其他常见场景</h2><p>查看表单、禁用状态、深色筛选，以及展开后的箭头。</p></div></div>
+        <div class="samples">
+            <section class="card" aria-labelledby="form-heading"><header class="card-head"><div><h2 id="form-heading">表单与深色筛选</h2><p>不同背景下，保持相同的箭头位置。</p></div></header><div class="sample-body">
+                <label class="field" for="task-model"><span class="field-name">AI模型</span><select class="select" id="task-model"><option>DeepSeek · 内容生成专用模型</option><option>通用对话模型</option><option>知识库检索模型</option></select></label>
+                <label class="field" for="disabled-author"><span class="field-name">作者（禁用状态）</span><select class="select" id="disabled-author" disabled><option>当前任务使用默认作者</option></select></label>
+                <div class="dark-sample"><h3>采集结果筛选</h3><label class="sr-only" for="dark-authority">采集结果权威等级</label><select class="select dark-select" id="dark-authority"><option>全部权威等级</option><option>非常权威</option><option>正常权威</option></select></div>
+            </div></section>
+            <section class="card" aria-labelledby="other-heading"><header class="card-head"><div><h2 id="other-heading">菜单与折叠区域</h2><p>点击展开，检查图标位置与交互状态。</p></div></header><div class="sample-body">
+                <div><span class="field-name">用户菜单</span><details class="popover"><summary class="button account-button custom-summary"><span class="avatar" aria-hidden="true">管</span>管理员<svg class="icon chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="menu" role="group" aria-label="用户菜单示例"><button type="button" data-demo-action="个人资料菜单效果预览">个人资料</button><button type="button" data-demo-action="站点设置菜单效果预览">站点设置</button></div></details></div>
+                <details class="fold"><summary class="custom-summary">高级设置<svg class="icon chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="fold-content"><p>展开后箭头朝上，右侧距离保持一致。</p><label class="field" for="publish-mode"><span class="field-name">生成后处理</span><select class="select" id="publish-mode"><option>审核后发布</option><option>自动发布</option><option>仅保存草稿</option></select></label></div></details>
+                <details class="fold"><summary class="custom-summary">分发与发布配置<svg class="icon chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="fold-content"><p>较长的标题与箭头之间保留空间。</p><label class="field" for="publish-target"><span class="field-name">目标站点</span><select class="select" id="publish-target"><option>主站</option><option>托管站点</option></select></label></div></details>
+            </div></section>
+        </div>
+        <p class="note">本页为独立交互示例。对比区的贴边样式采用模拟数据；下拉框默认右侧留白16px，紧凑菜单按钮留白12px。确认这版视觉效果后，再应用到已梳理的后台页面。</p>
+    </main>
+    <p class="toast" id="demo-toast" role="status" hidden></p>
+    <script>
+        const root = document.documentElement;
+        const spacingInputs = document.querySelectorAll('input[name="spacing"]');
+        for (const input of spacingInputs) {
+            input.addEventListener('change', () => {
+                const inset = Number(input.value);
+                root.style.setProperty('--arrow-inset', `${inset}px`);
+                root.style.setProperty('--text-reserve', `${inset + 28}px`);
+                for (const label of document.querySelectorAll('[data-gap-label]')) label.textContent = `${inset}px`;
+                document.getElementById('reserve-label').textContent = `${inset + 28}px`;
+            });
+        }
+        document.getElementById('show-measure').addEventListener('change', (event) => {
+            document.body.classList.toggle('show-measure', event.target.checked);
+        });
+
+        const filterForm = document.getElementById('filter-form');
+        const articleRows = [...document.querySelectorAll('[data-article]')];
+        function applyFilters() {
+            const values = new FormData(filterForm);
+            let count = 0;
+            for (const row of articleRows) {
+                const visible = ['status', 'author', 'task'].every((key) => !values.get(key) || values.get(key) === row.dataset[key]);
+                row.hidden = !visible;
+                if (visible) count += 1;
+            }
+            document.getElementById('empty-row').hidden = count > 0;
+            document.getElementById('filter-result').textContent = `共 ${count} 篇演示文章`;
+        }
+        filterForm.addEventListener('submit', (event) => { event.preventDefault(); applyFilters(); });
+        filterForm.addEventListener('reset', () => { setTimeout(applyFilters, 0); });
+
+        const popovers = [...document.querySelectorAll('details.popover')];
+        for (const popover of popovers) {
+            popover.addEventListener('toggle', () => {
+                if (!popover.open) return;
+                for (const other of popovers) if (other !== popover) other.open = false;
+            });
+        }
+        document.addEventListener('click', (event) => {
+            for (const popover of popovers) if (!popover.contains(event.target)) popover.open = false;
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            for (const popover of popovers) {
+                if (!popover.open) continue;
+                popover.open = false;
+                popover.querySelector('summary').focus();
+            }
+        });
+        let toastTimer;
+        for (const action of document.querySelectorAll('[data-demo-action]')) {
+            action.addEventListener('click', () => {
+                const popover = action.closest('details');
+                popover.open = false;
+                popover.querySelector('summary').focus();
+                const toast = document.getElementById('demo-toast');
+                clearTimeout(toastTimer);
+                toast.textContent = action.dataset.demoAction;
+                toast.hidden = false;
+                toastTimer = setTimeout(() => { toast.hidden = true; }, 2400);
+            });
+        }
+    </script>
+</body>
+</html>

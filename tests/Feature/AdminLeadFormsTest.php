@@ -13,16 +13,22 @@ class AdminLeadFormsTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_create_form_selects_use_inset_custom_chevrons(): void
+    public function test_create_form_selects_use_shared_chevrons_without_duplicate_overlays(): void
     {
-        $this->actingAs($this->admin(), 'admin')
+        $html = $this->actingAs($this->admin(), 'admin')
             ->get(route('admin.lead-forms.create'))
             ->assertOk()
-            ->assertSee('h-10', false)
-            ->assertSee('appearance-none', false)
-            ->assertSee('pr-10', false)
-            ->assertSee('data-lucide="chevron-down"', false)
-            ->assertSee('right-3', false);
+            ->assertSee('assets/css/admin-controls.css', false)
+            ->getContent();
+
+        $document = new \DOMDocument;
+        $document->loadHTML($html, LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
+        $xpath = new \DOMXPath($document);
+        $form = $xpath->query('//form[.//select[@name="status"]]')->item(0);
+
+        $this->assertInstanceOf(\DOMElement::class, $form);
+        $this->assertSame(9, $xpath->query('.//select', $form)->length);
+        $this->assertSame(0, $xpath->query('.//*[@data-lucide="chevron-down"]', $form)->length);
     }
 
     public function test_form_management_uses_permission_appropriate_parent_module(): void

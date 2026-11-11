@@ -153,7 +153,7 @@
 
                                         @if($isSuperAdmin)
                                         <details class="mt-3 border-t border-gray-200 pt-3">
-                                            <summary class="cursor-pointer text-xs font-semibold text-blue-700">{{ __('admin.security.edit_rule') }}</summary>
+                                            <summary class="gf-disclosure cursor-pointer text-xs font-semibold text-blue-700">{{ __('admin.security.edit_rule') }}</summary>
                                             <form method="POST" action="{{ route('admin.site-settings.sensitive-words.update', ['wordId' => $word['id']]) }}" class="mt-4 space-y-3">
                                                 @csrf
                                                 @method('PUT')

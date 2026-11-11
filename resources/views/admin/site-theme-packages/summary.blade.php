@@ -18,7 +18,7 @@
         @if(count($package['pages']['fallback']) > 0)<p class="text-xs text-gray-500">{{ __('admin.theme_packages.fallback_pages') }}</p>@endif
     </div>
     <details class="border-t border-gray-200">
-        <summary class="cursor-pointer px-5 py-4 text-sm font-medium text-gray-800">{{ __('admin.theme_packages.requirements') }}</summary>
+        <summary class="gf-disclosure cursor-pointer px-5 py-4 text-sm font-medium text-gray-800">{{ __('admin.theme_packages.requirements') }}</summary>
         <dl class="space-y-4 px-5 pb-5 text-sm">
             @foreach(['geoflow' => 'GEOFlow', 'php' => 'PHP', 'laravel' => 'Laravel'] as $component => $label)
                 <div><dt class="font-medium text-gray-700">{{ $label }}</dt><dd class="mt-1 break-all font-mono text-xs text-gray-600">{{ $requirements[$component] }}</dd></div>
@@ -31,7 +31,7 @@
         </dl>
     </details>
     <details class="border-t border-gray-200">
-        <summary class="cursor-pointer px-5 py-4 text-sm font-medium text-gray-800">{{ __('admin.theme_packages.file_details') }}</summary>
+        <summary class="gf-disclosure cursor-pointer px-5 py-4 text-sm font-medium text-gray-800">{{ __('admin.theme_packages.file_details') }}</summary>
         <div class="overflow-x-auto px-5 pb-5">
             <table class="w-full table-fixed text-left text-xs"><thead><tr class="border-b border-gray-200 text-gray-500"><th scope="col" class="py-2 font-medium">{{ __('admin.theme_packages.file_path') }}</th><th scope="col" class="w-24 py-2 text-right font-medium">{{ __('admin.theme_packages.bytes') }}</th></tr></thead><tbody>@foreach($package['files'] as $file)<tr class="border-b border-gray-100"><td class="break-all py-2 pr-4 font-mono text-gray-700"><span class="block">{{ $file['path'] }}</span>@if(isset($inspection))<a class="mt-1 flex min-h-11 items-center font-sans text-xs font-medium text-blue-700 underline hover:text-blue-900" href="{{ route('admin.site-settings.theme-packages.imports.file', ['token' => $inspection['token'], 'fileIndex' => $loop->index]) }}" aria-label="{{ __('admin.theme_packages.file_view') }}: {{ $file['path'] }}">{{ __('admin.theme_packages.file_view') }}</a>@endif<span class="mt-1 block text-[10px] text-gray-400">SHA-256: {{ $file['sha256'] }}</span></td><td class="py-2 text-right text-gray-500">{{ number_format($file['bytes']) }}</td></tr>@endforeach</tbody></table>
         </div>

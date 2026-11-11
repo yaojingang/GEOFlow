@@ -23,6 +23,8 @@ class AdminUiV3ShellTest extends TestCase
             ->get(route('admin.dashboard'))
             ->assertOk()
             ->assertSee('class="gf-admin-v3', false)
+            ->assertSee('gf-admin-controls', false)
+            ->assertSee('assets/css/admin-controls.css', false)
             ->assertSee('data-gf-shell', false)
             ->assertDontSee('gf-topbar__context', false)
             ->assertSee(AdminWeb::routePath('admin.ai-workspace'), false)
@@ -33,6 +35,8 @@ class AdminUiV3ShellTest extends TestCase
         $this->get(route('admin.dashboard'))
             ->assertOk()
             ->assertDontSee('data-gf-shell', false)
+            ->assertSee('gf-admin-controls', false)
+            ->assertSee('assets/css/admin-controls.css', false)
             ->assertSeeInOrder([
                 'href="'.route('admin.distribution.index').'"',
                 'href="'.route('admin.articles.index').'"',

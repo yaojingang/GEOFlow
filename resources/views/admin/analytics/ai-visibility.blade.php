@@ -208,7 +208,7 @@
                 </section>
 
                 <details class="rounded-lg border border-gray-200 bg-white shadow-sm" data-ai-visibility-metric-definitions>
-                    <summary class="flex min-h-10 cursor-pointer items-center px-5 py-3 text-sm font-semibold text-gray-800" data-ai-visibility-metric-toggle>{{ __('admin.growth_center.ai_visibility.definition_toggle') }}</summary>
+                    <summary class="gf-disclosure flex min-h-10 cursor-pointer items-center px-5 py-3 text-sm font-semibold text-gray-800" data-ai-visibility-metric-toggle>{{ __('admin.growth_center.ai_visibility.definition_toggle') }}</summary>
                     <div class="border-t border-gray-100 p-5">
                         <p class="text-sm leading-6 text-gray-600">{{ __('admin.growth_center.ai_visibility.definition_intro') }}</p>
                         <div class="mt-4 grid gap-3 md:grid-cols-2">
@@ -364,7 +364,7 @@
                         <div class="grid gap-3 md:grid-cols-2" data-doubao-custom-only hidden><div><label for="doubao-sites" class="mb-1 block text-xs font-semibold text-gray-600">信源白名单</label><textarea id="doubao-sites" name="sites" rows="2" class="block w-full rounded-md border-gray-300 text-sm" placeholder="每行或 | 分隔域名"></textarea></div><div><label for="doubao-block" class="mb-1 block text-xs font-semibold text-gray-600">站点黑名单</label><textarea id="doubao-block" name="block_hosts" rows="2" class="block w-full rounded-md border-gray-300 text-sm" placeholder="每行或 | 分隔域名"></textarea></div></div>
                         <button type="submit" class="inline-flex min-h-10 w-full items-center justify-center rounded-md bg-violet-600 px-5 text-sm font-semibold text-white hover:bg-violet-700"><i data-lucide="search" class="mr-2 h-4 w-4"></i>开始搜索</button>
                     </div>
-                    <div class="rounded-lg border border-slate-200 bg-slate-950 p-4 text-slate-100" data-doubao-results>
+                    <div class="rounded-lg border border-slate-200 bg-slate-950 p-4 text-slate-100" data-doubao-results data-gf-control-tone="dark">
                         <div class="flex items-center justify-between gap-3"><div><h3 class="text-sm font-semibold">搜索结果</h3><p class="mt-1 text-xs text-slate-400">按信源渠道与权威等级筛选</p></div><div class="flex gap-2"><select id="result-site-filter" class="min-h-9 rounded-md border-slate-700 bg-slate-900 text-xs"><option value="">全部信源</option>@if($selectedRun) @foreach($selectedRun->sources->pluck('site_name')->filter()->unique() as $site)<option value="{{ $site }}">{{ $site }}</option>@endforeach @endif</select><select id="result-auth-filter" class="min-h-9 rounded-md border-slate-700 bg-slate-900 text-xs"><option value="">全部权威</option><option value="非常权威">非常权威</option><option value="正常权威">正常权威</option><option value="一般权威">一般权威</option></select></div></div>
                         <div class="mt-4 max-h-[28rem] space-y-3 overflow-y-auto pr-1" data-result-list>
                             @forelse (($selectedRun?->sources ?? collect()) as $source)

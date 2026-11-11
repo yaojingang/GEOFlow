@@ -69,7 +69,7 @@
         </div>
         @if ($isEdit && auth('admin')->user()?->isSuperAdmin())
             <details class="mt-6 rounded-lg bg-white p-6 shadow-sm" @if($errors->has('value') || session('url_change_draft_restored')) open @endif>
-                <summary class="min-h-10 cursor-pointer text-sm font-semibold text-blue-700">{{ __('url_change.ui.edit_slug') }}</summary>
+                <summary class="gf-disclosure min-h-10 cursor-pointer text-sm font-semibold text-blue-700">{{ __('url_change.ui.edit_slug') }}</summary>
                 <p class="mt-2 text-sm leading-6 text-gray-600">{{ __('url_change.ui.save_first') }}</p>
                 <form method="POST" action="{{ route('admin.url-changes.store') }}" class="mt-4 space-y-3" data-url-separate-check>
                     @csrf<input type="hidden" name="operation" value="category"><input type="hidden" name="target_id" value="{{ (int) $categoryId }}">

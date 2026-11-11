@@ -440,7 +440,7 @@ function init(root) {
         container.append(scores);
         for (const [key, dimension] of Object.entries(result.dimensions)) {
             const details = element('details', '', 'prompt-test-criteria');
-            details.append(element('summary', labels.dimensions[key]));
+            details.append(element('summary', labels.dimensions[key], 'gf-disclosure'));
             for (const criterion of dimension.criteria) {
                 const item = element('div', '', 'prompt-test-criterion');
                 item.append(element('strong', `${labels.criteria[criterion.id]} · ${criterion.level === null ? labels.pending_evidence : `${criterion.level} / 4`}`));

@@ -50,9 +50,10 @@
     @endif
     <script src="{{ asset('js/lucide.min.js') }}" data-lucide-runtime defer></script>
     @stack('styles')
+    <link rel="stylesheet" href="{{ asset('assets/css/admin-controls.css') }}?v=20261111-1">
 </head>
 @if ($adminUiV3Enabled && $currentAdmin instanceof \App\Models\Admin)
-    <body class="gf-admin-v3 @if(request()->routeIs('admin.ai-workspace')) gf-page--ai @endif">
+    <body class="gf-admin-v3 gf-admin-controls @if(request()->routeIs('admin.ai-workspace')) gf-page--ai @endif">
         <a class="gf-skip-link" href="#main-content">{{ __('admin.ui_v3.skip_to_content') }}</a>
         <div class="gf-shell" data-gf-shell>
             <button class="gf-sidebar-overlay" type="button" aria-label="{{ __('admin.ui_v3.close_sidebar') }}" data-sidebar-close></button>
@@ -101,7 +102,7 @@
         @stack('scripts')
     </body>
 @else
-    <body class="flex min-h-screen flex-col bg-gray-50">
+    <body class="gf-admin-controls flex min-h-screen flex-col bg-gray-50">
         @include('admin.partials.header', [
             'adminBrandName' => $adminBrandName,
             'adminSiteName' => $adminSiteName ?? $adminBrandName,

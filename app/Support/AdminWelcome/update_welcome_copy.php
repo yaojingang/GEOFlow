@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 return static function (array $welcomeState): array {
     $updateState = $welcomeState['update'] ?? [];
-    $defaultVersion = (string) config('geoflow.welcome_intro_version', '3.0');
+    $defaultVersion = (string) config('geoflow.app_version', '0.0.0-dev');
     $currentVersion = (string) ($updateState['current_version'] ?? $defaultVersion);
     $latestVersion = (string) ($updateState['latest_version'] ?? '');
     $payload = is_array($updateState['payload'] ?? null) ? $updateState['payload'] : [];
@@ -17,15 +17,23 @@ return static function (array $welcomeState): array {
     $summaryEn = trim((string) ($payload['summary_en'] ?? ''));
     $tipZh = trim((string) ($payload['upgrade_tip_zh'] ?? ''));
     $tipEn = trim((string) ($payload['upgrade_tip_en'] ?? ''));
-    $releaseDate = trim((string) ($payload['release_date'] ?? ''));
-    $releaseType = trim((string) ($payload['release_type'] ?? 'feature'));
+    $releaseDate = trim((string) ($updateState['release_date'] ?? ''));
+    $releaseDate = $releaseDate !== '' ? $releaseDate : trim((string) ($payload['release_date'] ?? ''));
+    $releaseType = trim((string) ($updateState['release_type'] ?? ''));
+    $releaseType = $releaseType !== '' ? $releaseType : trim((string) ($payload['release_type'] ?? ''));
 
     $releaseTypeMapZh = [
+        'major' => '重大更新',
+        'minor' => '功能更新',
+        'patch' => '问题修复',
         'feature' => '功能更新',
         'fix' => '问题修复',
         'security' => '安全更新',
     ];
     $releaseTypeMapEn = [
+        'major' => 'Major update',
+        'minor' => 'Feature update',
+        'patch' => 'Bug fix',
         'feature' => 'Feature update',
         'fix' => 'Bug fix',
         'security' => 'Security update',
@@ -59,7 +67,7 @@ return static function (array $welcomeState): array {
                         'items' => [
                             '当前版本：v'.$currentVersion,
                             '最新版本：v'.$latestVersion,
-                            '发布类型：'.($releaseTypeMapZh[$releaseType] ?? $releaseTypeMapZh['feature']),
+                            '发布类型：'.($releaseTypeMapZh[$releaseType] ?? '版本更新'),
                             '发布日期：'.($releaseDate !== '' ? $releaseDate : '暂未标注'),
                         ],
                     ],
@@ -97,7 +105,7 @@ return static function (array $welcomeState): array {
                         'items' => [
                             'Current version: v'.$currentVersion,
                             'Latest version: v'.$latestVersion,
-                            'Release type: '.($releaseTypeMapEn[$releaseType] ?? $releaseTypeMapEn['feature']),
+                            'Release type: '.($releaseTypeMapEn[$releaseType] ?? 'Release update'),
                             'Release date: '.($releaseDate !== '' ? $releaseDate : 'Not specified'),
                         ],
                     ],

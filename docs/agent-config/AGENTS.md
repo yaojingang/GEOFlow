@@ -38,3 +38,9 @@ Tool-specific configuration files are kept at their default discovery paths in t
 - Apply host proxy policy after target validation in `SafeOutboundHttpClient::resolveTarget()` so dynamic SDK calls and fixed requests share the same decision.
 - Proxy connections must use the validated numeric target IP while preserving the original Host, TLS SNI, certificate checks and response limits; discard caller overrides and environment proxy bypasses.
 - Exact `outbound_private_targets` exceptions remain direct. Test real local proxy handshakes when changing proxy transport or IP pinning.
+
+## Admin Controls and Version Notices
+
+- Load `public/assets/css/admin-controls.css` after page styles in both admin layouts and on the login page. Keep dropdown styling scoped to `.gf-admin-controls`; single-select arrows use a 16px inset and 44px text reserve. Preserve native multi-select/listbox and forced-color behavior.
+- Use the shared select arrow instead of adding an overlay chevron. Apply `gf-disclosure` only to ordinary disclosure headings; existing editor traces and custom icon menus keep their own indicators. Account for outer padding in composite controls.
+- Software update comparisons and displayed installed versions must use the local version manifest through `geoflow.app_version`. `geoflow.welcome_intro_version` is only an introduction acknowledgement revision. Reuse validated release links from `AdminUpdateMetadataService` and read release date/type from the manifest root.

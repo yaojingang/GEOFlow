@@ -107,7 +107,7 @@
                 </div>
 
                 <p class="mt-3 text-sm leading-6 text-gray-600">{{ __('url_change.ui.stable') }}</p>
-                <details class="mt-5" @if($errors->has('pattern') || session('url_change_draft_restored')) open @endif><summary class="min-h-10 cursor-pointer text-sm font-semibold text-blue-700">{{ __('url_change.ui.edit_rule') }}</summary>
+                <details class="mt-5" @if($errors->has('pattern') || session('url_change_draft_restored')) open @endif><summary class="gf-disclosure min-h-10 cursor-pointer text-sm font-semibold text-blue-700">{{ __('url_change.ui.edit_rule') }}</summary>
                 <form method="POST" action="{{ route('admin.distribution.hosted-sites.article-permalink.preview', $channel) }}" class="mt-5 space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4" data-url-separate-check>
                     @csrf
                     <fieldset @disabled(! auth('admin')->user()?->isSuperAdmin()) class="space-y-4">

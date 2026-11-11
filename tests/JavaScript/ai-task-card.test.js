@@ -41,6 +41,7 @@ test('task confirmation binds the rendered revision, preserves literal text, and
     const { root, data, actions, card } = surface();
     assert.equal(card.querySelectorAll('dd')[0].textContent, '<script>never execute</script>');
     assert.equal(card.querySelectorAll('a').length, 1);
+    assert.equal(card.querySelectorAll('summary')[0].className, 'gf-disclosure');
     const buttons = card.querySelectorAll('button');
     buttons.find((button) => button.textContent === 'Create task').listeners.click();
     assert.deepEqual(actions[0], { task_draft_id: data.id, task_draft_revision: 3 });
