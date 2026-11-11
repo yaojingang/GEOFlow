@@ -35,8 +35,9 @@
         }
     </style>
     @endunless
+    <link rel="stylesheet" href="{{ asset('assets/css/admin-controls.css') }}?v=20261111-1">
 </head>
-<body class="overflow-hidden @if($adminUiV3Enabled) gf-login-v3 @endif">
+<body class="gf-admin-controls overflow-hidden @if($adminUiV3Enabled) gf-login-v3 @endif">
 <div class="fixed right-4 top-4 z-50">
     <select aria-label="{{ __('admin.auth.language_label') }}" onchange="window.location.href=this.value" class="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-600 shadow-sm">
         @foreach (\App\Support\AdminWeb::supportedLocales() as $localeCode => $localeLabel)

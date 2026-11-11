@@ -230,7 +230,7 @@
                     </select>
                 </div>
                 <div class="relative">
-                    <button onclick="toggleUserMenu()" class="flex items-center space-x-1 text-sm text-gray-600 hover:text-gray-900 transition-colors duration-200" type="button">
+                    <button onclick="toggleUserMenu()" class="gf-user-button flex items-center text-sm text-gray-600 hover:text-gray-900 transition-colors duration-200" type="button">
                         <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
                             <i data-lucide="user" class="w-4 h-4 text-blue-600"></i>
                         </div>
@@ -294,15 +294,6 @@
         <i data-lucide="menu" class="w-5 h-5 text-gray-600"></i>
     </button>
 </div>
-
-<style>
-    .admin-locale-select {
-        background-image: linear-gradient(45deg, transparent 50%, #6b7280 50%), linear-gradient(135deg, #6b7280 50%, transparent 50%);
-        background-position: calc(100% - 8px) 52%, calc(100% - 4px) 52%;
-        background-size: 4px 4px, 4px 4px;
-        background-repeat: no-repeat;
-    }
-</style>
 
 <script>
     function toggleUserMenu() {

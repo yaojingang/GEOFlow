@@ -549,7 +549,7 @@
 
                     <p class="mt-4 text-sm leading-6 text-gray-600">{{ __('url_change.ui.stable') }}</p>
                     <details class="mt-5" @if($errors->has('pattern') || session('url_change_draft_restored')) open @endif>
-                        <summary class="min-h-10 cursor-pointer text-sm font-semibold text-blue-700 focus-visible:outline-2 focus-visible:outline-blue-600">{{ __('url_change.ui.edit_rule') }}</summary>
+                        <summary class="gf-disclosure min-h-10 cursor-pointer text-sm font-semibold text-blue-700 focus-visible:outline-2 focus-visible:outline-blue-600">{{ __('url_change.ui.edit_rule') }}</summary>
                     <form method="POST" action="{{ route('admin.site-settings.article-permalink.preview') }}" class="mt-5 rounded-lg border border-gray-200 bg-gray-50/70 p-5" data-url-separate-check>
                         @csrf
                 <input type="hidden" name="appearance_revision" value="{{ $appearanceRevision }}">
@@ -829,7 +829,7 @@
                                     </div>
                                 </div>
                                 <details class="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-                                    <summary class="cursor-pointer text-sm font-semibold text-gray-700">{{ __('admin.site_settings.homepage.module_style_title') }}</summary>
+                                    <summary class="gf-disclosure cursor-pointer text-sm font-semibold text-gray-700">{{ __('admin.site_settings.homepage.module_style_title') }}</summary>
                                     <p class="mt-2 text-xs text-gray-500">{{ __('admin.site_settings.homepage.module_style_desc') }}</p>
                                     <div class="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-5">
                                         <div>
@@ -1307,7 +1307,7 @@
                 </div>
             </div>
             <details class="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-                <summary class="cursor-pointer text-sm font-semibold text-gray-700">{{ __('admin.site_settings.homepage.module_style_title') }}</summary>
+                <summary class="gf-disclosure cursor-pointer text-sm font-semibold text-gray-700">{{ __('admin.site_settings.homepage.module_style_title') }}</summary>
                 <p class="mt-2 text-xs text-gray-500">{{ __('admin.site_settings.homepage.module_style_desc') }}</p>
                 <div class="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-5">
                     <div>

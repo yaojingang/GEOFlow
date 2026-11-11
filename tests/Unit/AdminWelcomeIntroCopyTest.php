@@ -8,14 +8,15 @@ class AdminWelcomeIntroCopyTest extends TestCase
 {
     public function test_intro_copy_presents_version_three_positioning_capabilities_and_use_cases(): void
     {
+        config(['geoflow.app_version' => '3.2.1', 'geoflow.welcome_intro_version' => '2.1']);
         /** @var array<string, array<string, mixed>> $copy */
         $copy = require app_path('Support/AdminWelcome/intro_copy.php');
 
         $zhBlocks = $this->flattenCopy($copy['zh-CN']['letter']['blocks']);
         $enBlocks = $this->flattenCopy($copy['en']['letter']['blocks']);
 
-        $this->assertSame('欢迎使用 GEOFlow 3.0', $copy['zh-CN']['letter']['title']);
-        $this->assertSame('Welcome to GEOFlow 3.0', $copy['en']['letter']['title']);
+        $this->assertSame('欢迎使用 GEOFlow 3.2.1', $copy['zh-CN']['letter']['title']);
+        $this->assertSame('Welcome to GEOFlow 3.2.1', $copy['en']['letter']['title']);
         $this->assertStringContainsString('企业官网、行业信源平台和内部内容运营', $copy['zh-CN']['letter']['subtitle']);
         $this->assertStringContainsString('corporate websites, vertical source platforms, and internal content operations', $copy['en']['letter']['subtitle']);
         $this->assertStringContainsString('内部内容管理系统', $zhBlocks);
@@ -29,8 +30,10 @@ class AdminWelcomeIntroCopyTest extends TestCase
         $this->assertStringContainsString('Chrome 运营助手', $zhBlocks);
         $this->assertStringContainsString('PWA', $enBlocks);
         $this->assertStringContainsString('article AI quality inspection', $enBlocks);
-        $this->assertSame('GEOFlow 3.0', $copy['zh-CN']['meta']['badge']);
-        $this->assertSame('GEOFlow 3.0', $copy['en']['meta']['badge']);
+        $this->assertStringContainsString('AI 专题任务', $zhBlocks);
+        $this->assertStringContainsString('PDF、PPTX', $zhBlocks);
+        $this->assertSame('GEOFlow 3.2.1', $copy['zh-CN']['meta']['badge']);
+        $this->assertSame('GEOFlow 3.2.1', $copy['en']['meta']['badge']);
         $this->assertSame(array_keys($copy['zh-CN']['meta']), array_keys($copy['en']['meta']));
         $this->assertSame(
             array_column($copy['zh-CN']['letter']['blocks'], 'type'),

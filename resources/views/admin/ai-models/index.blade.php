@@ -242,7 +242,7 @@
                                     @endif
                                     @if ($model['model_type'] === 'chat')
                                         <details class="mt-2 max-w-xs whitespace-normal text-xs text-slate-600" data-workspace-readiness>
-                                            <summary class="cursor-pointer font-medium text-slate-700">
+                                            <summary class="gf-disclosure cursor-pointer font-medium text-slate-700">
                                                 {{ __('admin.ai_models.readiness_title') }}
                                                 @if ($model['workspace_readiness_status'] !== '')
                                                     · {{ __('admin.ai_models.readiness_status.'.$model['workspace_readiness_status']) }}
@@ -457,7 +457,7 @@
                             <ol class="mt-3 space-y-2 text-sm leading-6 text-gray-700" data-ai-model-test-steps></ol>
                         </div>
                         <details class="mt-5 rounded-xl border border-gray-200 bg-gray-50" open>
-                            <summary class="cursor-pointer px-4 py-3 text-sm font-semibold text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500">{{ __('admin.ai_models.test_dialog.technical_log') }}</summary>
+                            <summary class="gf-disclosure cursor-pointer px-4 py-3 text-sm font-semibold text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500">{{ __('admin.ai_models.test_dialog.technical_log') }}</summary>
                             <div class="border-t border-gray-200 px-4 py-3">
                                 <p class="text-xs leading-5 text-gray-500">{{ __('admin.ai_models.test_dialog.log_hint') }}</p>
                                 <pre class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-900 p-3 font-mono text-xs leading-5 text-slate-100" data-ai-model-test-log></pre>

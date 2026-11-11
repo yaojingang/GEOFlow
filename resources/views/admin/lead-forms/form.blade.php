@@ -52,7 +52,6 @@
                                     <option value="{{ $status }}" @selected(old('status', $leadForm?->status ?? 'active') === $status)>{{ __('admin.lead_forms.status.'.$status) }}</option>
                                 @endforeach
                             </select>
-                            <i data-lucide="chevron-down" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"></i>
                         </div>
                     </div>
                     <div>
@@ -95,7 +94,6 @@
                                                 <option value="{{ $type }}" @selected(($field['type'] ?? 'text') === $type)>{{ __('admin.lead_forms.type.'.$type) }}</option>
                                             @endforeach
                                         </select>
-                                        <i data-lucide="chevron-down" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"></i>
                                     </div>
                                 </div>
                                 <div class="lg:col-span-4">

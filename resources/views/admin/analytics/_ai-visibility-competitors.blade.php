@@ -71,7 +71,7 @@
 
     @if (auth('admin')->user()?->isSuperAdmin())
     <details class="mt-4 rounded-md border border-gray-200">
-        <summary class="flex min-h-10 cursor-pointer items-center px-4 text-sm font-semibold text-gray-700">{{ __('admin.analytics.ai_visibility.competitors.manage_toggle') }}</summary>
+        <summary class="gf-disclosure flex min-h-10 cursor-pointer items-center px-4 text-sm font-semibold text-gray-700">{{ __('admin.analytics.ai_visibility.competitors.manage_toggle') }}</summary>
         <div class="border-t border-gray-100 p-4">
             <form method="POST" action="{{ route('admin.analytics.ai-visibility.competitors.store') }}" class="grid grid-cols-1 items-end gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto]">
                 @csrf

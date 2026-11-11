@@ -461,7 +461,6 @@
                                                     <option value="{{ $modelOption['id'] }}">{{ $modelOption['name'] }}</option>
                                                 @endforeach
                                             </select>
-                                            <i data-lucide="chevron-down" aria-hidden="true" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"></i>
                                         </div>
                                     </div>
                                 @endif
@@ -1026,7 +1025,7 @@
 
                                     @if(($aiQualityHistory ?? collect())->count() > 1)
                                         <details class="rounded-lg border border-gray-200 bg-white px-4 py-3">
-                                            <summary class="cursor-pointer text-sm font-semibold text-gray-800">{{ __('admin.articles.ai_quality.history') }}</summary>
+                                            <summary class="gf-disclosure cursor-pointer text-sm font-semibold text-gray-800">{{ __('admin.articles.ai_quality.history') }}</summary>
                                             <div class="mt-3 grid gap-3">
                                                 @foreach($aiQualityHistory as $historyCheck)
                                                     @continue((int) $historyCheck->id === (int) $aiQualityCheck->id)
@@ -1035,7 +1034,7 @@
                                                         $historySnapshot = is_array($historyCheck->article_snapshot) ? $historyCheck->article_snapshot : [];
                                                     @endphp
                                                     <details data-ai-quality-history-check="{{ $historyCheck->id }}" class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-                                                        <summary class="cursor-pointer text-sm font-medium text-gray-800">
+                                                        <summary class="gf-disclosure cursor-pointer text-sm font-medium text-gray-800">
                                                             {{ __('admin.articles.ai_quality.history_item', [
                                                                 'id' => $historyCheck->id,
                                                                 'status' => __('admin.articles.ai_quality.status_'.$historyCheck->status),
@@ -1221,7 +1220,6 @@
                                                         <option value="{{ $knowledgeBaseOption['id'] }}">{{ $knowledgeBaseOption['name'] }}</option>
                                                     @endforeach
                                                 </select>
-                                                <i data-lucide="chevron-down" aria-hidden="true" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"></i>
                                             </div>
                                         </div>
                                         <div class="min-w-0">
@@ -1233,7 +1231,6 @@
                                                         <option value="{{ $promptOption['id'] }}">{{ $promptOption['name'] }}</option>
                                                     @endforeach
                                                 </select>
-                                                <i data-lucide="chevron-down" aria-hidden="true" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"></i>
                                             </div>
                                         </div>
                                         <div class="min-w-0">
@@ -1245,7 +1242,6 @@
                                                         <option value="{{ $modelOption['id'] }}">{{ $modelOption['name'] }}</option>
                                                     @endforeach
                                                 </select>
-                                                <i data-lucide="chevron-down" aria-hidden="true" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"></i>
                                             </div>
                                         </div>
                                         <div class="flex items-end md:col-span-3 xl:col-span-1">

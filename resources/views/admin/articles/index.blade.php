@@ -391,7 +391,7 @@
 
                 @if(session('article_batch_results'))
                     <details open class="px-6 py-3" data-article-batch-results>
-                        <summary>{{ __('article_workflow.results') }}</summary>
+                        <summary class="gf-disclosure">{{ __('article_workflow.results') }}</summary>
                         <ul>
                             @foreach(session('article_batch_results.results', []) as $result)
                                 <li>

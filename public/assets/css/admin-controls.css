@@ -1,0 +1,130 @@
+.gf-admin-controls {
+    --gf-control-arrow-inset: 1rem;
+    --gf-control-arrow-size: 1rem;
+    --gf-control-text-reserve: 2.75rem;
+    --gf-control-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='m6 9 6 6 6-6' stroke='%236b7280' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* Keep native option lists and keyboard interaction; only replace the closed arrow. */
+.gf-admin-controls select:not([multiple]):is(:not([size]), [size='1']) {
+    -webkit-appearance: none;
+    appearance: none;
+    min-width: 0;
+    max-width: 100%;
+    padding-right: var(--gf-control-text-reserve);
+    background-image: var(--gf-control-chevron);
+    background-position: right var(--gf-control-arrow-inset) center;
+    background-repeat: no-repeat;
+    background-size: var(--gf-control-arrow-size) var(--gf-control-arrow-size);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gf-admin-controls select:not([multiple]):is(:not([size]), [size='1']):disabled {
+    --gf-control-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='m6 9 6 6 6-6' stroke='%239ca3af' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    cursor: not-allowed;
+}
+
+.gf-admin-controls [data-gf-control-tone='dark'] {
+    --gf-control-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='m6 9 6 6 6-6' stroke='%23cbd5e1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    color-scheme: dark;
+}
+
+.gf-admin-controls .gf-user-button {
+    min-height: 40px;
+    gap: 8px;
+    padding: 4px 12px 4px 8px;
+    border-radius: 8px;
+}
+
+.gf-admin-controls .gf-language {
+    padding-right: 12px;
+}
+
+/* The legacy language control already has an 8px padded outer border. */
+.gf-admin-controls .admin-locale-select {
+    --gf-control-arrow-inset: .5rem;
+    --gf-control-text-reserve: 2.25rem;
+}
+
+.gf-admin-controls .prompt-test-picker > summary {
+    gap: 12px;
+    padding-right: var(--gf-control-arrow-inset);
+}
+
+.gf-admin-controls .prompt-test-picker > summary > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gf-admin-controls .prompt-test-picker > summary::after {
+    width: var(--gf-control-arrow-size);
+    height: var(--gf-control-arrow-size);
+    flex: 0 0 var(--gf-control-arrow-size);
+    margin: 0;
+    border: 0;
+    background-image: var(--gf-control-chevron);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: contain;
+    transform: none;
+}
+
+.gf-admin-controls .prompt-test-picker[open] > summary::after {
+    transform: rotate(180deg);
+}
+
+/* Explicit opt-in keeps editor/tool trace disclosures and icon-only menus intact. */
+.gf-admin-controls .gf-disclosure {
+    padding-inline: 1rem;
+    list-style: none;
+    overflow-wrap: anywhere;
+}
+
+.gf-admin-controls .gf-disclosure::-webkit-details-marker {
+    display: none;
+}
+
+.gf-admin-controls .gf-disclosure::before {
+    content: '';
+    display: inline-block;
+    flex: 0 0 var(--gf-control-arrow-size);
+    width: var(--gf-control-arrow-size);
+    height: var(--gf-control-arrow-size);
+    margin-inline-end: .5rem;
+    vertical-align: -.1875rem;
+    background-color: currentColor;
+    -webkit-mask: var(--gf-control-chevron) center / contain no-repeat;
+    mask: var(--gf-control-chevron) center / contain no-repeat;
+    transform: rotate(-90deg);
+}
+
+.gf-admin-controls .gf-disclosure:is(.flex, .inline-flex)::before {
+    margin-inline-end: 0;
+}
+
+.gf-admin-controls details[open] > .gf-disclosure::before {
+    transform: none;
+}
+
+@media (max-width: 767px) {
+    .gf-admin-controls.gf-admin-v3 .gf-language {
+        padding: 0;
+    }
+}
+
+@media (forced-colors: active) {
+    .gf-admin-controls select:not([multiple]):is(:not([size]), [size='1']) {
+        -webkit-appearance: auto;
+        appearance: auto;
+        background-image: none;
+    }
+
+    .gf-admin-controls .gf-disclosure::before {
+        background-color: CanvasText;
+        forced-color-adjust: none;
+    }
+}

@@ -29,7 +29,7 @@
 
         @if ($showTechnical)
             <details class="mt-3 text-xs text-gray-500">
-                <summary class="w-fit cursor-pointer rounded text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ __('admin.tasks.monitoring.technical_details') }}</summary>
+                <summary class="gf-disclosure w-fit cursor-pointer rounded text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ __('admin.tasks.monitoring.technical_details') }}</summary>
                 <div class="mt-2 grid gap-1 rounded-lg bg-gray-50 px-3 py-2.5 font-mono leading-5">
                     <span>Job #{{ (int) ($job['id'] ?? 0) }} · {{ __('admin.tasks.jobs.task_prefix') }} #{{ (int) ($job['task_id'] ?? 0) }}</span>
                     <span>{{ __('admin.tasks.jobs.started_at') }}: {{ $job['started_at'] ?: '-' }}</span>

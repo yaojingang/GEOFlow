@@ -77,7 +77,7 @@
                     <p class="text-xs text-gray-500">{{ __('theme_library.'.($theme['private'] ? 'private' : $theme['source'])) }}@if($theme['version']) · v{{ $theme['version'] }}@endif</p>
                     <div class="mt-auto pt-1">@include('admin.site-settings.partials.theme-actions', ['item' => $theme])</div>
                     @if(count($theme['versions']) > 1)
-                        <details class="border-t border-gray-100 pt-2"><summary class="cursor-pointer text-xs font-medium text-blue-700">{{ __('theme_library.versions', ['count' => count($theme['versions'])]) }}</summary>
+                        <details class="border-t border-gray-100 pt-2"><summary class="gf-disclosure cursor-pointer text-xs font-medium text-blue-700">{{ __('theme_library.versions', ['count' => count($theme['versions'])]) }}</summary>
                             <div class="mt-3 space-y-3">
                                 @foreach($theme['versions'] as $version)
                                     @if($version['id'] !== $theme['id'])
@@ -105,7 +105,7 @@
     </div>
     @if($themeLibrary['items']->hasPages())<div>{{ $themeLibrary['items']->links() }}</div>@endif
     @if($canManageProtectedWorkflows && ($recentThemeReplications ?? collect())->isNotEmpty())
-        <details class="border-t border-gray-200 pt-4"><summary class="cursor-pointer text-sm text-gray-600">{{ __('theme_library.recent_tasks') }} · {{ $recentThemeReplications->count() }}</summary><p class="mt-2 text-xs text-gray-500">{{ __('theme_library.replication_hint') }}</p><div class="mt-3 divide-y divide-gray-100">@foreach($recentThemeReplications as $replication)<a href="{{ route('admin.site-settings.theme-replications.show', ['replicationId' => (int) $replication->id]) }}" class="flex min-h-11 items-center justify-between gap-3 py-2 text-sm text-gray-700"><span>{{ $replication->name }}</span><span class="text-xs text-gray-500">{{ __('admin.theme_replication.status.'.$replication->status) }}</span></a>@endforeach</div></details>
+        <details class="border-t border-gray-200 pt-4"><summary class="gf-disclosure cursor-pointer text-sm text-gray-600">{{ __('theme_library.recent_tasks') }} · {{ $recentThemeReplications->count() }}</summary><p class="mt-2 text-xs text-gray-500">{{ __('theme_library.replication_hint') }}</p><div class="mt-3 divide-y divide-gray-100">@foreach($recentThemeReplications as $replication)<a href="{{ route('admin.site-settings.theme-replications.show', ['replicationId' => (int) $replication->id]) }}" class="flex min-h-11 items-center justify-between gap-3 py-2 text-sm text-gray-700"><span>{{ $replication->name }}</span><span class="text-xs text-gray-500">{{ __('admin.theme_replication.status.'.$replication->status) }}</span></a>@endforeach</div></details>
     @endif
     <script src="{{ asset('js/site-theme-library.js') }}" defer></script>
 </div>

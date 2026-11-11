@@ -38,11 +38,8 @@ class AdminWelcomeModalService
                 'csrfToken' => csrf_token(),
                 'links' => [
                     'x' => 'https://x.com/yaojingang',
-                    'github' => 'https://github.com/yaojingang/GEOFlow',
-                    'changelog' => [
-                        'zh-CN' => 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md',
-                        'en' => 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG_en.md',
-                    ],
+                    'github' => $welcomeState['links']['github'],
+                    'changelog' => $welcomeState['links']['changelog'],
                 ],
             ],
         ];
@@ -62,13 +59,15 @@ class AdminWelcomeModalService
     private function resolveWelcomeState(): array
     {
         $introVersion = (string) config('geoflow.welcome_intro_version', '3.0');
-        $updateState = $this->updateMetadataService->fetchState($introVersion);
+        $notification = $this->updateMetadataService->buildNotificationPayload();
+        $updateState = $notification['state'];
 
         if (! empty($updateState['is_update_available']) && empty($updateState['is_ignored'])) {
             return [
                 'mode' => 'update',
                 'version' => 'update:'.(string) ($updateState['latest_version'] ?? ''),
                 'update' => $updateState,
+                'links' => $notification['links'],
             ];
         }
 
@@ -76,6 +75,7 @@ class AdminWelcomeModalService
             'mode' => 'intro',
             'version' => 'intro:'.$introVersion,
             'update' => $updateState,
+            'links' => $notification['links'],
         ];
     }
 
