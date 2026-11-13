@@ -98,7 +98,7 @@ final class FinalOutboundSecurityPolicy
         $this->assertPinnableTransport($target);
         $limitExceeded = false;
         $policyFailureReason = null;
-        $timeout = $this->safeTimeout($trustedOptions['timeout'] ?? 30, 30, 300);
+        $timeout = $this->safeTimeout($trustedOptions['timeout'] ?? 30, 30, 600);
         $connectTimeout = $this->safeTimeout($trustedOptions['connect_timeout'] ?? 10, 10, 60);
         $callerOnHeaders = is_callable($trustedOptions['on_headers'] ?? null) ? $trustedOptions['on_headers'] : null;
         $callerProgress = is_callable($trustedOptions['progress'] ?? null) ? $trustedOptions['progress'] : null;

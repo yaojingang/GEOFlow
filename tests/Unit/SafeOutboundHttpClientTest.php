@@ -50,6 +50,37 @@ class SafeOutboundHttpClientTest extends TestCase
         $this->assertInstanceOf(SafeOutboundHttpClient::class, app(SafeOutboundHttpClient::class));
     }
 
+    /** @return array<string, array{int, int}> */
+    public static function longRequestTimeouts(): array
+    {
+        return [
+            'ordinary request' => [240, 240],
+            'long thinking model' => [600, 600],
+            'bounded request' => [900, 600],
+            'invalid timeout' => [0, 30],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('longRequestTimeouts')]
+    public function final_security_preserves_bounded_long_request_timeouts(int $requested, int $expected): void
+    {
+        $captured = [];
+        $this->swapSecureHttpFactory(
+            static function (RequestInterface $request, array $options) use (&$captured): PromiseInterface {
+                $captured = $options;
+
+                return new FulfilledPromise(new PsrResponse(200, [], 'ok'));
+            }
+        );
+
+        $response = Http::timeout($requested)->connectTimeout(3)->get('https://public.test/long-request');
+
+        $this->assertSame('ok', $response->body());
+        $this->assertSame($expected, $captured['timeout']);
+        $this->assertSame(3, $captured['connect_timeout']);
+    }
+
     #[Test]
     public function a_before_transport_domain_exception_is_not_wrapped_or_sent(): void
     {
