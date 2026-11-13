@@ -74,6 +74,11 @@ final readonly class WorkerAiModelInvocationGateway
                         sourceId: $executionContext->sourceId,
                     );
                 },
+                diagnosticContext: [
+                    'task_run_id' => $executionContext->taskRunId,
+                    'task_id' => $executionContext->sourceId,
+                    'request_id' => $usageRequestId,
+                ],
             );
             $providerReturned = true;
             $currentModel = $this->assertReceiptCurrent($executionContext, $receipt);
