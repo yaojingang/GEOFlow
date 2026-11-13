@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Ai\Agents\MarkdownContentWriterAgent;
 use App\Data\Ai\AiExecutionContext;
+use App\Jobs\ProcessGeoFlowTaskJob;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiModelUsageEvent;
@@ -17,6 +18,7 @@ use App\Services\Admin\AdminAiModelMutationService;
 use App\Services\AiWorkspace\AiModelInvocationLock;
 use App\Services\GeoFlow\AiExecutionContextFactory;
 use App\Services\GeoFlow\ArticleContentGenerationService;
+use App\Services\GeoFlow\JobQueueService;
 use App\Services\GeoFlow\WorkerAiModelInvocationGateway;
 use App\Services\GeoFlow\WorkerExecutionService;
 use App\Support\GeoFlow\ApiKeyCrypto;
@@ -60,7 +62,13 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
         $leaseSeconds = $providerTimeout + WorkerAiModelInvocationGateway::PERSISTENCE_MARGIN_SECONDS;
 
         $this->assertSame(MarkdownContentWriterAgent::PROVIDER_TIMEOUT_SECONDS, $timeoutAttribute->value);
-        $this->assertSame(240, $providerTimeout);
+        $this->assertSame(600, $providerTimeout);
+        $jobTimeout = (new ProcessGeoFlowTaskJob(1))->timeout;
+        $recoveryTimeout = (new ReflectionMethod(JobQueueService::class, 'recoverStaleJobs'))
+            ->getParameters()[0]->getDefaultValue();
+        $this->assertGreaterThan($providerTimeout, $jobTimeout);
+        $this->assertGreaterThan($jobTimeout, $recoveryTimeout);
+        $this->assertGreaterThan($jobTimeout, config('queue.connections.redis.retry_after'));
         $this->assertGreaterThanOrEqual($providerTimeout + 60, $leaseSeconds);
 
         $locks = app(AiModelInvocationLock::class);

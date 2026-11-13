@@ -16,7 +16,7 @@ concurrency:
 jobs:
   application:
     name: PHP, JavaScript, build, and dependency gates
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:

@@ -27,7 +27,7 @@ class MarkdownContentWriterAgent implements Agent, Conversational, HasProviderOp
 {
     use Promptable;
 
-    public const PROVIDER_TIMEOUT_SECONDS = 240;
+    public const PROVIDER_TIMEOUT_SECONDS = 600;
 
     /**
      * @param  iterable<int, mixed>  $messages
