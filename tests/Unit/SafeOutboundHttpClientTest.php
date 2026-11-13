@@ -16,11 +16,13 @@ use App\Services\Outbound\SecurePendingRequest;
 use App\Services\Outbound\SystemHostResolver;
 use Closure;
 use GuzzleHttp\Client as GuzzleClient;
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Middleware as GuzzleMiddleware;
 use GuzzleHttp\Promise\FulfilledPromise;
 use GuzzleHttp\Promise\PromiseInterface;
 use GuzzleHttp\Psr7\PumpStream;
+use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Pool;
@@ -1858,6 +1860,26 @@ class SafeOutboundHttpClientTest extends TestCase
         $this->assertSame('timeout', $exception->transportCategory);
         $this->assertStringNotContainsString('super-secret', $exception->getMessage());
         $this->assertStringNotContainsString('super-secret', (string) $exception->getPrevious()?->getMessage());
+    }
+
+    #[Test]
+    public function transport_failures_retain_only_bounded_numeric_curl_diagnostics(): void
+    {
+        $original = new ConnectException(
+            'cURL error 28: private-secret',
+            new Request('POST', 'https://ai.test/private-secret'),
+            null,
+            ['errno' => 28, 'total_time' => 240.005, 'connect_time' => 0.2, 'starttransfer_time' => INF, 'url' => 'private-secret', 'error' => 'private-secret'],
+        );
+        $exception = new OutboundRequestFailedException(new \RuntimeException('wrapper', 0, $original));
+
+        $this->assertStringContainsString('private-secret', $original->getMessage());
+        $this->assertSame(28, $exception->curlErrno);
+        $this->assertSame(['total_time' => 240.005, 'connect_time' => 0.2], $exception->transferStats);
+        $this->assertStringNotContainsString('private-secret', json_encode(get_object_vars($exception)));
+        $wrapped = new OutboundRequestFailedException($exception);
+        $this->assertSame($exception->transferStats, $wrapped->transferStats);
+        $this->assertSame(28, $wrapped->curlErrno);
     }
 
     #[Test]

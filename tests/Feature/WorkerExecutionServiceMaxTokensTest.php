@@ -21,8 +21,11 @@ use App\Services\GeoFlow\ArticleContentGenerationService;
 use App\Services\GeoFlow\JobQueueService;
 use App\Services\GeoFlow\WorkerAiModelInvocationGateway;
 use App\Services\GeoFlow\WorkerExecutionService;
+use App\Services\Outbound\OutboundRequestFailedException;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\Site\ArticleHtmlPresenter;
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Psr7\Request;
 use Illuminate\Cache\Lock;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -572,6 +575,198 @@ class WorkerExecutionServiceMaxTokensTest extends TestCase
         $this->assertSame(AiModelUsageEvent::MODEL_SOURCE_SHARED, $events[1]->model_source);
         $this->assertSame($provider->id, $events[1]->config_owner_admin_id);
         $this->assertSame($admin->id, $events[1]->execution_admin_id);
+    }
+
+    #[DataProvider('emptyReasoningContents')]
+    public function test_generation_diagnostics_identify_reasoning_only_output_at_the_token_limit_without_logging_content(?string $providerContent): void
+    {
+        Log::spy();
+        Log::shouldReceive('channel')->with('article_generation')->andReturnSelf();
+        Http::preventStrayRequests();
+        $payload = $this->completion('');
+        $payload['choices'][0]['message']['content'] = $providerContent;
+        $payload['id'] = 'provider-request-123';
+        $payload['choices'][0]['message']['reasoning_content'] = 'private-reasoning';
+        $payload['choices'][0]['finish_reason'] = 'length';
+        $payload['usage'] = ['prompt_tokens' => 3387, 'completion_tokens' => 16384];
+        Http::fake(['https://ai.test/v1/chat/completions' => Http::response($payload)]);
+        $model = $this->createChatModel();
+
+        try {
+            $this->generateContent($model, 'private-prompt');
+            $this->fail('Expected empty content to fail.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('AI返回空正文', $exception->getMessage());
+        }
+
+        Log::shouldHaveReceived('info')->once()->withArgs(function (string $message, array $context) use ($model, $providerContent): bool {
+            $this->assertSame('GeoFlow article generation response.', $message);
+            $this->assertSame((int) $model->id, $context['ai_model_id']);
+            $this->assertSame(600, $context['configured_timeout_seconds']);
+            $this->assertSame(16384, $context['max_output_tokens']);
+            $this->assertSame(200, $context['http_status']);
+            $this->assertSame('length', $context['finish_reason']);
+            $this->assertSame(16384, $context['completion_tokens']);
+            $this->assertNull($context['reasoning_tokens']);
+            $this->assertSame($providerContent === null ? null : 0, $context['provider_content_chars']);
+            $this->assertSame(17, $context['provider_reasoning_chars']);
+            $this->assertSame(0, $context['clean_content_chars']);
+            $this->assertTrue($context['reasoning_budget_exhausted']);
+            $this->assertGreaterThan(0, $context['task_run_id']);
+            $this->assertGreaterThan(0, $context['task_id']);
+            $this->assertSame('provider-request-123', $context['provider_request_id']);
+            $this->assertStringStartsWith(gethostname().':queue:', $context['worker_id']);
+            $this->assertStringNotContainsString('private-', json_encode($context));
+            $this->assertStringNotContainsString('test-api-key', json_encode($context));
+
+            return true;
+        });
+        $this->assertSame(0, (int) $model->fresh()->total_used);
+    }
+
+    public static function emptyReasoningContents(): array
+    {
+        return ['empty' => [''], 'null' => [null]];
+    }
+
+    #[DataProvider('generationTransportFailures')]
+    public function test_generation_diagnostics_distinguish_curl_timeout_and_gateway_failure(string $kind, string $category, ?int $status, ?int $errno): void
+    {
+        Log::spy();
+        Log::shouldReceive('channel')->with('article_generation')->andReturnSelf();
+        Http::preventStrayRequests();
+        Http::fake(function () use ($kind) {
+            if ($kind === 'curl') {
+                throw new OutboundRequestFailedException(new ConnectException(
+                    'cURL error 28: timed out private-secret',
+                    new Request('POST', 'https://ai.test/private-secret'),
+                    null,
+                    ['errno' => 28, 'total_time' => 240.005, 'connect_time' => 0.2, 'url' => 'private-secret', 'error' => 'private-secret'],
+                ));
+            }
+
+            return Http::response(['error' => ['message' => 'private-secret', 'type' => 'gateway_error']], 504);
+        });
+        $model = $this->createChatModel();
+        try {
+            $this->generateContent($model, 'private-prompt');
+            $this->fail('Expected transport failure.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringStartsWith('AI 生成失败:', $exception->getMessage());
+        }
+
+        Log::shouldHaveReceived('warning')->once()->withArgs(function (string $message, array $context) use ($category, $status, $errno): bool {
+            $this->assertSame('GeoFlow article generation transport failed.', $message);
+            $this->assertSame($category, $context['transport_category']);
+            $this->assertSame($status, $context['http_status']);
+            $this->assertSame($errno, $context['curl_errno']);
+            if ($errno === 28) {
+                $this->assertSame(240005, $context['http_total_ms']);
+                $this->assertSame(200, $context['http_connect_ms']);
+            }
+            $this->assertStringNotContainsString('private-', json_encode($context));
+
+            return true;
+        });
+        $this->assertSame(0, (int) $model->fresh()->total_used);
+        $this->assertSame('ai_provider_request_failed', AiModelUsageEvent::query()->sole()->error_code);
+    }
+
+    public static function generationTransportFailures(): array
+    {
+        return ['curl timeout' => ['curl', 'timeout', null, 28], 'gateway timeout' => ['gateway', 'gateway', 504, null]];
+    }
+
+    public function test_diagnostic_logger_failure_preserves_generated_content_and_quota_accounting(): void
+    {
+        Log::shouldReceive('channel')->with('article_generation')->andReturnSelf();
+        Log::shouldReceive('info')->once()->andThrow(new \RuntimeException('diagnostic sink unavailable'));
+        Http::preventStrayRequests();
+        Http::fake(['https://ai.test/v1/chat/completions' => Http::response($this->completion('文章正文。'))]);
+        $model = $this->createChatModel();
+
+        $this->assertSame('文章正文。', $this->generateContent($model, '写一篇文章。'));
+        $this->assertSame(1, (int) $model->fresh()->total_used);
+        $this->assertSame(AiModelUsageEvent::STATUS_SUCCEEDED, AiModelUsageEvent::query()->sole()->status);
+    }
+
+    public function test_generation_diagnostics_are_persisted_when_the_default_logger_filters_info(): void
+    {
+        $prefix = sys_get_temp_dir().'/geoflow-generation-'.Str::uuid();
+        config(['logging.channels.daily.level' => 'warning', 'logging.default' => 'daily']);
+        config(['logging.channels.article_generation' => [
+            'driver' => 'daily', 'path' => $prefix.'.log', 'level' => 'info', 'days' => 14,
+        ]]);
+        Http::preventStrayRequests();
+        Http::fake(['https://ai.test/v1/chat/completions' => Http::response($this->completion('private-article'))]);
+
+        try {
+            $this->generateContent($this->createChatModel(), 'private-prompt');
+
+            $files = glob($prefix.'*.log');
+            $this->assertCount(1, $files);
+            $log = file_get_contents($files[0]);
+            $this->assertStringContainsString('GeoFlow article generation response.', $log);
+            $this->assertStringContainsString('"http_status":200', $log);
+            $this->assertStringNotContainsString('private-', $log);
+            $this->assertStringNotContainsString('test-api-key', $log);
+        } finally {
+            Log::forgetChannel('article_generation');
+            foreach (glob($prefix.'*.log') as $file) {
+                unlink($file);
+            }
+        }
+    }
+
+    #[DataProvider('glmPreviewBudgets')]
+    public function test_glm_preview_output_budget_reaches_the_provider_and_preserves_explicit_model_limits(string $url, string $modelId, ?int $configured, int $expected, int $global = 16384): void
+    {
+        config(['geoflow.content_max_tokens' => $global]);
+        Http::preventStrayRequests();
+        Http::fake(['*' => Http::response($this->completion('文章正文。'))]);
+        $model = $this->createChatModel(['api_url' => $url, 'model_id' => $modelId, 'max_tokens' => $configured]);
+
+        $this->assertSame('文章正文。', $this->generateContent($model, '写一篇文章。'));
+
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request): bool => ($request['max_tokens'] ?? null) === $expected);
+    }
+
+    public static function glmPreviewBudgets(): array
+    {
+        return [
+            'verified official preview' => ['https://open.bigmodel.cn/api/coding/paas/v4/chat/completions', 'glm-x-preview-f', null, 32768],
+            'explicit smaller limit' => ['https://open.bigmodel.cn/api/coding/paas/v4/chat/completions', 'glm-x-preview-f', 8192, 8192],
+            'explicit larger limit' => ['https://open.bigmodel.cn/api/coding/paas/v4/chat/completions', 'glm-x-preview-f', 65536, 65536],
+            'larger global default' => ['https://open.bigmodel.cn/api/coding/paas/v4/chat/completions', 'glm-x-preview-f', null, 65536, 65536],
+            'other model' => ['https://open.bigmodel.cn/api/coding/paas/v4/chat/completions', 'glm-4-flash', null, 16384],
+            'other provider' => ['https://ai.test', 'glm-x-preview-f', null, 16384],
+            'lookalike provider' => ['https://open.bigmodel.cn.untrusted.test', 'glm-x-preview-f', null, 16384],
+        ];
+    }
+
+    public function test_generation_diagnostics_keep_successful_content_and_reasoning_token_counts_separate(): void
+    {
+        Log::spy();
+        Log::shouldReceive('channel')->with('article_generation')->andReturnSelf();
+        Http::preventStrayRequests();
+        $payload = $this->completion('private-article');
+        $payload['choices'][0]['message']['reasoning_content'] = 'private-reasoning';
+        $payload['usage']['completion_tokens_details'] = ['reasoning_tokens' => 12];
+        Http::fake(['https://ai.test/v1/chat/completions' => Http::response($payload)]);
+
+        $this->assertSame('private-article', $this->generateContent($this->createChatModel(), 'private-prompt'));
+
+        Log::shouldHaveReceived('info')->once()->withArgs(function (string $message, array $context): bool {
+            $this->assertSame('GeoFlow article generation response.', $message);
+            $this->assertSame('stop', $context['finish_reason']);
+            $this->assertSame(12, $context['reasoning_tokens']);
+            $this->assertSame(15, $context['clean_content_chars']);
+            $this->assertFalse($context['reasoning_budget_exhausted']);
+            $this->assertStringNotContainsString('private-', json_encode($context));
+
+            return true;
+        });
     }
 
     /**

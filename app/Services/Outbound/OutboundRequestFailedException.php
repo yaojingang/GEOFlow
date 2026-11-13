@@ -2,6 +2,7 @@
 
 namespace App\Services\Outbound;
 
+use Illuminate\Http\Client\RequestException;
 use RuntimeException;
 use Throwable;
 
@@ -21,6 +22,11 @@ final class OutboundRequestFailedException extends RuntimeException
 
     public readonly ?int $retryAfterSeconds;
 
+    public readonly ?int $curlErrno;
+
+    /** @var array<string,int|float> */
+    public readonly array $transferStats;
+
     public function __construct(
         ?Throwable $previous = null,
         ?int $httpStatus = null,
@@ -29,6 +35,7 @@ final class OutboundRequestFailedException extends RuntimeException
         [$derivedStatus, $derivedProviderCode, $providerCategory] = $this->providerFailureContext($previous);
         $this->httpStatus = $httpStatus ?? $derivedStatus;
         $this->retryAfterSeconds = self::retryAfterSeconds($previous);
+        [$this->curlErrno, $this->transferStats] = $this->transportStats($previous);
         $this->providerCode = $this->safeProviderCode($providerCode ?? $derivedProviderCode);
         $this->reasonCode = 'outbound_request_failed';
         $this->causeType = $previous?->getPrevious() instanceof OutboundRequestCauseException
@@ -43,6 +50,33 @@ final class OutboundRequestFailedException extends RuntimeException
             : ($previous ? new OutboundRequestCauseException($previous::class) : null);
 
         parent::__construct('Outbound request failed.', 0, $redactedPrevious);
+    }
+
+    /** @return array{?int,array<string,int|float>} */
+    private function transportStats(?Throwable $exception): array
+    {
+        for ($depth = 0; $depth < 8 && $exception; $depth++, $exception = $exception->getPrevious()) {
+            if ($exception instanceof self) {
+                return [$exception->curlErrno, $exception->transferStats];
+            }
+            $context = method_exists($exception, 'getHandlerContext') ? $exception->getHandlerContext()
+                : ($exception instanceof RequestException ? $exception->response->handlerStats() : []);
+            if (! is_array($context) || $context === []) {
+                continue;
+            }
+            $errno = $context['errno'] ?? null;
+            $stats = [];
+            foreach (['total_time', 'connect_time', 'starttransfer_time'] as $key) {
+                $value = $context[$key] ?? null;
+                if ((is_int($value) || is_float($value)) && is_finite((float) $value) && $value >= 0 && $value <= 86400) {
+                    $stats[$key] = $value;
+                }
+            }
+
+            return [is_int($errno) && $errno >= 0 && $errno <= 999 ? $errno : null, $stats];
+        }
+
+        return [null, []];
     }
 
     private function classifyTransportFailure(?Throwable $exception, ?int $httpStatus): string
