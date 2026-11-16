@@ -1,6 +1,10 @@
 #!/usr/bin/env sh
 set -eu
 
+# php-fpm 工作进程是 www-data，队列和调度以 root 执行。
+# 组可写能避免 root 新建的按日日志变成 0644 后，Web 请求无法再写入。
+umask 0002
+
 cd /var/www/html
 
 if [ ! -f .env ]; then
@@ -37,7 +41,8 @@ if [ "${AUTO_FIX_STORAGE_PERMISSIONS:-true}" = "true" ]; then
 
     echo "[entrypoint-prod] fixing storage permissions for ${RUNTIME_USER}:${RUNTIME_GROUP}"
     chown -R "${RUNTIME_USER}:${RUNTIME_GROUP}" storage bootstrap/cache
-    find storage bootstrap/cache -type d -exec chmod 775 {} +
+    # 2775 带 setgid：root 之后新建的日志仍继承 www-data 组。
+    find storage bootstrap/cache -type d -exec chmod 2775 {} +
     find storage bootstrap/cache -type f -exec chmod 664 {} +
   else
     echo "[entrypoint-prod] skip permission fix: container is not running as root"
@@ -75,8 +80,23 @@ if [ "${AUTO_INSTALL_ONCE:-false}" = "true" ]; then
 fi
 
 if [ "${AUTO_OPTIMIZE:-true}" = "true" ]; then
-  echo "[entrypoint-prod] php artisan optimize"
-  php artisan optimize --no-interaction
+  # config/event/route 缓存在容器本地的 bootstrap/cache，每个容器都要写自己的一份。
+  # 编译视图在共享 storage 卷上，view:cache 会先清空目录。多个容器同时清空时，
+  # 会删掉对方 tempnam 生成的临时文件，rename 随后报 No such file or directory。
+  echo "[entrypoint-prod] php artisan optimize --except=views"
+  php artisan optimize --except=views --no-interaction
+
+  if [ "${AUTO_CACHE_VIEWS:-true}" = "true" ]; then
+    echo "[entrypoint-prod] php artisan view:cache"
+    mkdir -p storage/framework
+    if command -v flock >/dev/null 2>&1; then
+      flock storage/framework/view-compile.lock php artisan view:cache --no-interaction
+    else
+      php artisan view:cache --no-interaction
+    fi
+  else
+    echo "[entrypoint-prod] skip shared view:cache"
+  fi
 fi
 
 exec "$@"
