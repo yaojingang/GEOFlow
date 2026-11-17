@@ -902,6 +902,21 @@
       "name": "2026_10_02_000120_add_topic_review_records",
       "sha256": "8052384dddceda28c692652d3c059c18bccdaf6774986c6d3dbb5c0d478dce7c",
       "online": false
+    },
+    {
+      "name": "2026_11_17_000100_add_locale_to_articles_table",
+      "sha256": "71ecfbedc27195e028f7d90504f8643ea37eab80b7dc0681ab8d76724ee9c832",
+      "online": false
+    },
+    {
+      "name": "2026_11_17_000200_create_article_translations_table",
+      "sha256": "c94e3c41b18c2f949dff618c882fc999ac19832dd251ff4ce32990e33eb8e705",
+      "online": false
+    },
+    {
+      "name": "2026_11_17_000300_add_locale_to_distribution_channels_table",
+      "sha256": "d67768e3b0a191361206708227be5f9795d225d0a940d8557f7035a46564e3b6",
+      "online": false
     }
   ],
   "compatibility": {
