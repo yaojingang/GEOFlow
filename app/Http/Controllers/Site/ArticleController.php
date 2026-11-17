@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Site;
 
 use App\Http\Controllers\Controller;
 use App\Models\Article;
+use App\Services\GeoFlow\ArticleTranslationService;
 use App\Services\Site\ArticlePermalinkService;
 use App\Services\Site\LinkPoolRecommendationService;
 use App\Services\Site\SiteScopedArticleQuery;
@@ -30,6 +31,7 @@ class ArticleController extends Controller
         private readonly SiteUrlGenerator $urls,
         private readonly ArticlePermalinkService $articlePermalinks,
         private readonly LinkPoolRecommendationService $recommendations,
+        private readonly ArticleTranslationService $translations,
     ) {}
 
     public function resolve(Request $request): View|RedirectResponse
@@ -73,11 +75,20 @@ class ArticleController extends Controller
         $siteDescription = (string) ($map['site_description'] ?? config('geoflow.site_description', ''));
         $siteKeywords = (string) ($map['site_keywords'] ?? config('geoflow.site_keywords', ''));
 
-        $rawContent = (string) $article->content;
-        $body = ArticleHtmlPresenter::stripLeadingTitleHeading($rawContent, (string) $article->title);
-        $excerpt = trim((string) $article->excerpt);
+        // 前台按当前站点语言展示：原文是中文，命中译文时渲染译文。
+        $translation = $this->translations->resolve($article, app()->getLocale());
+        $displayTitle = $translation instanceof \App\Models\ArticleTranslation
+            ? (string) $translation->title
+            : (string) $article->title;
+        $rawContent = $translation instanceof \App\Models\ArticleTranslation
+            ? (string) $translation->content
+            : (string) $article->content;
+        $body = ArticleHtmlPresenter::stripLeadingTitleHeading($rawContent, $displayTitle);
+        $excerpt = $translation instanceof \App\Models\ArticleTranslation
+            ? trim((string) ($translation->excerpt ?? ''))
+            : trim((string) $article->excerpt);
         if ($excerpt !== '') {
-            $excerpt = ArticleHtmlPresenter::stripLeadingTitleHeading($excerpt, (string) $article->title);
+            $excerpt = ArticleHtmlPresenter::stripLeadingTitleHeading($excerpt, $displayTitle);
         }
 
         $contentHtml = ArticleTextAdPicker::injectIntoContentHtml(
@@ -106,8 +117,14 @@ class ArticleController extends Controller
             $recommendationBlock = null;
         }
 
-        $pageTitle = (string) $article->title;
-        $pageDescription = $excerptPlain !== '' ? $excerptPlain : ArticleHtmlPresenter::cardSummary($article, 160);
+        $pageTitle = $displayTitle;
+        // 优先使用编辑维护的 meta_description（已按搜索摘要长度撰写），缺失时才回落到摘要截断。
+        $metaDescription = $translation instanceof \App\Models\ArticleTranslation
+            ? trim((string) ($translation->meta_description ?? ''))
+            : trim((string) $article->meta_description);
+        $pageDescription = $metaDescription !== ''
+            ? $metaDescription
+            : ($excerptPlain !== '' ? $excerptPlain : ArticleHtmlPresenter::cardSummary($article, 160));
         $pageKeywords = implode(',', $tags);
 
         $stickyAd = ArticleStickyAdPicker::firstEnabled();
@@ -117,6 +134,7 @@ class ArticleController extends Controller
         return SiteThemeViewResolver::first('article', [
             'activeNav' => 'article',
             'article' => $article,
+            'displayTitle' => $displayTitle,
             'contentHtml' => $contentHtml,
             'excerptPlain' => $excerptPlain,
             'tags' => $tags,

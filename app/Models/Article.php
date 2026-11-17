@@ -52,6 +52,7 @@ class Article extends Model
         'slug',
         'excerpt',
         'content',
+        'locale',
         'category_id',
         'author_id',
         'task_id',
@@ -133,6 +134,29 @@ class Article extends Model
     public function reviews(): HasMany
     {
         return $this->hasMany(ArticleReview::class, 'article_id');
+    }
+
+    public function translations(): HasMany
+    {
+        return $this->hasMany(ArticleTranslation::class, 'article_id');
+    }
+
+    /**
+     * 取指定语言译文；与原文语言一致或译文缺失时返回 null，调用方回落原文。
+     */
+    public function translationFor(?string $locale): ?ArticleTranslation
+    {
+        $locale = trim((string) $locale);
+        $sourceLocale = trim((string) ($this->locale ?? 'zh'));
+        if ($locale === '' || $locale === $sourceLocale) {
+            return null;
+        }
+
+        if ($this->relationLoaded('translations')) {
+            return $this->translations->firstWhere('locale', $locale);
+        }
+
+        return $this->translations()->where('locale', $locale)->first();
     }
 
     public function riskScans(): HasMany

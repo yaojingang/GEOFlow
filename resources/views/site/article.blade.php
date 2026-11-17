@@ -4,10 +4,11 @@
     @php
         $schemaAtContext = chr(64).'context';
         $schemaAtType = chr(64).'type';
+        $displayTitle = $displayTitle ?? $article->title;
         $articleSchema = [
             $schemaAtContext => 'https://schema.org',
             $schemaAtType => 'Article',
-            'headline' => $article->title,
+            'headline' => $displayTitle,
             'description' => $pageDescription,
             'datePublished' => optional($article->published_at ?? $article->created_at)->toAtomString(),
             'dateModified' => optional($article->updated_at ?? $article->published_at ?? $article->created_at)->toAtomString(),
@@ -39,7 +40,7 @@
                 <a href="{{ route('site.category', $article->category->slug) }}" class="hover:text-gray-700">{{ $article->category->name }}</a>
                 <span class="article-breadcrumb-separator" aria-hidden="true">/</span>
             @endif
-            <span class="text-gray-900 article-breadcrumb-current">{{ $article->title }}</span>
+            <span class="text-gray-900 article-breadcrumb-current">{{ $displayTitle ?? $article->title }}</span>
         </nav>
 
         <article class="article-shell article-detail-shell mb-8">
@@ -55,7 +56,7 @@
                     @endif
 
                     <h1 class="article-hero-title font-semibold text-gray-900 mb-4 leading-tight">
-                        {{ $article->title }}
+                        {{ $displayTitle ?? $article->title }}
                     </h1>
 
                     <div class="entry-meta article-meta-row flex flex-wrap items-center gap-3 mb-6">

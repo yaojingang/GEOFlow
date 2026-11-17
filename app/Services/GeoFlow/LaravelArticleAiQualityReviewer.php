@@ -340,7 +340,15 @@ final readonly class LaravelArticleAiQualityReviewer implements ProviderAttemptA
     private function qualityProviderOptions(AiModel $model, string $driver, string $baseUrl): array
     {
         if ($driver === 'deepseek') {
-            return ['thinking' => ['type' => 'disabled']];
+            $options = ['thinking' => ['type' => 'disabled']];
+            // 兼容网关只识别 reasoning_effort，忽略 thinking 关闭参数，
+            // 推理会耗尽 max_tokens 导致 JSON 被截断；官方端点仍保持原有参数。
+            $host = strtolower((string) parse_url($baseUrl, PHP_URL_HOST));
+            if ($host !== '' && $host !== 'api.deepseek.com') {
+                $options['reasoning_effort'] = 'none';
+            }
+
+            return $options;
         }
         if ($driver !== 'openai-compatible') {
             return [];

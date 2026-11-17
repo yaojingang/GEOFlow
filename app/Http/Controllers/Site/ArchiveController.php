@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Site;
 
 use App\Http\Controllers\Controller;
 use App\Models\Article;
+use App\Services\GeoFlow\ArticleTranslationService;
 use App\Services\Site\SiteScopedArticleQuery;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\SiteSettingsBag;
@@ -18,7 +19,10 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 class ArchiveController extends Controller
 {
-    public function __construct(private readonly SiteScopedArticleQuery $siteArticles) {}
+    public function __construct(
+        private readonly SiteScopedArticleQuery $siteArticles,
+        private readonly ArticleTranslationService $translations,
+    ) {}
 
     public function index(): View
     {
@@ -117,6 +121,14 @@ class ArchiveController extends Controller
             }
         }
 
+        $translations = $this->translations->translationsFor($articles, app()->getLocale());
+        $cardTitles = [];
+        foreach ($articles as $article) {
+            if ($article instanceof Article) {
+                $cardTitles[$article->id] = $this->translations->displayTitle($article, $translations);
+            }
+        }
+
         $periodLabel = app()->getLocale() === 'en'
             ? $start->translatedFormat('F Y')
             : $year.'年'.$month.'月';
@@ -129,6 +141,7 @@ class ArchiveController extends Controller
             'periodLabel' => $periodLabel,
             'articles' => $articles,
             'cardSummaries' => $summaries,
+            'cardTitles' => $cardTitles,
             'siteTitle' => $siteTitle,
             'siteDescription' => $siteDescription,
             'siteKeywords' => $siteKeywords,

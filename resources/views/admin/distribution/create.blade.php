@@ -47,6 +47,16 @@
                         <input id="name" name="name" type="text" required value="{{ old('name') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="{{ __('admin.distribution.placeholder.name') }}">
                     </div>
 
+                    <div>
+                        <label for="locale" class="block text-sm font-medium text-gray-700">内容语言</label>
+                        <select id="locale" name="locale" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            @foreach (\App\Support\AdminWeb::supportedLocales() as $localeKey => $localeLabel)
+                                <option value="{{ $localeKey }}" @selected(old('locale', 'zh') === $localeKey)>{{ $localeLabel }}（{{ $localeKey }}）</option>
+                            @endforeach
+                        </select>
+                        <p class="mt-1 text-sm text-gray-500">文章以中文生成和审查，分发到该渠道时自动翻译为此语言。</p>
+                    </div>
+
                     <fieldset class="rounded-lg border border-gray-200 bg-gray-50 p-4">
                         <legend class="text-sm font-medium text-gray-900">{{ __('admin.distribution.field.channel_type') }}</legend>
                         <p class="mt-1 text-sm text-gray-600">{{ __('admin.distribution.help.channel_type') }}</p>

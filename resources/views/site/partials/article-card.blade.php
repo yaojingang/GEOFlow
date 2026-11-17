@@ -1,6 +1,7 @@
 @php
     /** @var \App\Models\Article $article */
     $summary = $cardSummaries[$article->id] ?? '';
+    $cardTitle = $cardTitles[$article->id] ?? $article->title;
     $pub = $article->published_at ?? $article->created_at;
 @endphp
 <article class="article-shell entry-card">
@@ -26,7 +27,7 @@
 
         <h2 class="entry-title font-semibold text-gray-900 mb-3">
             <a href="{{ $siteUrls->article($article) }}" class="hover:text-blue-600">
-                {{ $article->title }}
+                {{ $cardTitle }}
             </a>
         </h2>
 

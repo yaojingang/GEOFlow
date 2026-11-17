@@ -184,6 +184,7 @@ class WorkerExecutionService
                         'slug' => ArticleWorkflow::generateUniqueSlug((string) $titleRow->title),
                         'excerpt' => $excerpt,
                         'content' => $content,
+                        'locale' => $this->contentLocale(),
                         'category_id' => $category?->id,
                         'author_id' => $author?->id,
                         'task_id' => (int) $task->id,
@@ -660,6 +661,14 @@ class WorkerExecutionService
         }
 
         return '智能模型切换已尝试：'.implode('；', $summaries).'。最终失败：'.$lastMessage;
+    }
+
+    /**
+     * 生成内容的原文语言。系统统一以中文生成和审查，译文在分发阶段按渠道语言产生。
+     */
+    private function contentLocale(): string
+    {
+        return 'zh';
     }
 
     private function pickTitle(Task $task): Title

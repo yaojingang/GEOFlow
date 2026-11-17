@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\Category;
 use App\Models\LeadForm;
+use App\Services\GeoFlow\ArticleTranslationService;
 use App\Services\Site\SiteScopedArticleQuery;
 use App\Services\Site\SiteUrlGenerator;
 use App\Services\Topics\TopicReadModel;
@@ -31,6 +32,7 @@ class HomeController extends Controller
         private readonly SiteUrlGenerator $urls,
         private readonly CurrentSite $currentSite,
         private readonly FriendLinkSettings $friendLinkSettings,
+        private readonly ArticleTranslationService $translations,
     ) {}
 
     public function index(Request $request): View
@@ -153,6 +155,18 @@ class HomeController extends Controller
             }
         }
 
+        // 列表标题按站点语言展示：命中译文用译文，否则回落中文原文。
+        $listArticles = collect()
+            ->merge($articles instanceof \Traversable ? $articles : [])
+            ->merge($featuredArticles ?? [])
+            ->merge($hotArticles ?? [])
+            ->filter(static fn ($row): bool => $row instanceof Article);
+        $translations = $this->translations->translationsFor($listArticles, app()->getLocale());
+        $cardTitles = [];
+        foreach ($listArticles as $row) {
+            $cardTitles[$row->id] = $this->translations->displayTitle($row, $translations);
+        }
+
         $canonicalUrl = $this->urls->home();
         if ($search !== '') {
             $canonicalUrl = $this->urls->home(['search' => $search]);
@@ -174,6 +188,7 @@ class HomeController extends Controller
             'featuredArticles' => $featuredArticles,
             'hotArticles' => $hotArticles,
             'cardSummaries' => $summaries,
+            'cardTitles' => $cardTitles,
             'siteTitle' => $siteTitle,
             'siteSubtitle' => $siteSubtitle,
             'siteDescription' => $siteDescription,

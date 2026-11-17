@@ -175,6 +175,10 @@ services:
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
+      - ./resources/views:/var/www/html/resources/views
+      - ./app:/var/www/html/app
+      - ./lang:/var/www/html/lang
+      - ./routes:/var/www/html/routes
     depends_on:
       init:
         condition: service_completed_successfully
@@ -200,6 +204,10 @@ services:
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
+      - ./resources/views:/var/www/html/resources/views
+      - ./app:/var/www/html/app
+      - ./lang:/var/www/html/lang
+      - ./routes:/var/www/html/routes
     depends_on:
       init:
         condition: service_completed_successfully
@@ -223,6 +231,10 @@ services:
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
+      - ./resources/views:/var/www/html/resources/views
+      - ./app:/var/www/html/app
+      - ./lang:/var/www/html/lang
+      - ./routes:/var/www/html/routes
     depends_on:
       init:
         condition: service_completed_successfully
@@ -246,6 +258,10 @@ services:
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
+      - ./resources/views:/var/www/html/resources/views
+      - ./app:/var/www/html/app
+      - ./lang:/var/www/html/lang
+      - ./routes:/var/www/html/routes
     depends_on:
       init:
         condition: service_completed_successfully
@@ -289,6 +305,10 @@ services:
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
+      - ./resources/views:/var/www/html/resources/views
+      - ./app:/var/www/html/app
+      - ./lang:/var/www/html/lang
+      - ./routes:/var/www/html/routes
     depends_on:
       init:
         condition: service_completed_successfully

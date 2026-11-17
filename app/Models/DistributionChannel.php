@@ -57,6 +57,7 @@ class DistributionChannel extends Model
         'domain',
         'endpoint_url',
         'channel_type',
+        'locale',
         'front_mode',
         'template_key',
         'site_settings',

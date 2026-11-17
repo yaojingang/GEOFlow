@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow;
 
 use App\Models\Article;
+use App\Models\ArticleTranslation;
 use App\Support\GeoFlow\ImageUrlNormalizer;
 use App\Support\Site\ArticleHtmlPresenter;
 
@@ -10,12 +11,16 @@ class DistributionPayloadBuilder
 {
     private const MAX_EMBEDDED_IMAGE_BYTES = 5 * 1024 * 1024;
 
+    public function __construct(private readonly ArticleTranslationService $translations) {}
+
     /**
      * 构造目标站 Agent 可稳定消费的文章分发载荷。
      *
+     * 原文始终是中文；传 $targetLocale 时优先使用该语言译文，译文不可用时回落原文。
+     *
      * @return array<string,mixed>
      */
-    public function build(Article $article): array
+    public function build(Article $article, ?string $targetLocale = null): array
     {
         $article->loadMissing([
             'category:id,name,slug',
@@ -23,8 +28,25 @@ class DistributionPayloadBuilder
             'task:id,name',
             'articleImages.image',
         ]);
+
+        $sourceLocale = (string) ($article->locale ?? 'zh');
+        $contentLocale = $sourceLocale;
         $title = (string) $article->title;
         $content = (string) $article->content;
+        $excerptText = (string) ($article->excerpt ?? '');
+        $metaDescription = (string) ($article->meta_description ?? '');
+
+        if ($this->translations->needsTranslation($article, $targetLocale)) {
+            $translation = $this->translations->resolve($article, $targetLocale);
+            if ($translation instanceof ArticleTranslation && trim((string) $translation->content) !== '') {
+                $title = (string) $translation->title;
+                $content = (string) $translation->content;
+                $excerptText = (string) ($translation->excerpt ?? '');
+                $metaDescription = (string) ($translation->meta_description ?? '');
+                $contentLocale = (string) $translation->locale;
+            }
+        }
+
         $body = ArticleHtmlPresenter::stripLeadingTitleHeading($content, $title);
         $contentHtml = ArticleHtmlPresenter::markdownToHtml($body);
         $heroImageUrl = $this->heroImageUrl($article);
@@ -37,19 +59,22 @@ class DistributionPayloadBuilder
                 'id' => (int) $article->id,
                 'title' => $title,
                 'slug' => (string) $article->slug,
-                'excerpt' => (string) ($article->excerpt ?? ''),
+                'excerpt' => $excerptText,
                 'content' => $content,
                 'content_format' => 'markdown',
                 'content_html' => $contentHtml,
                 'hero_image_url' => $heroImageUrl,
                 'keywords' => (string) ($article->keywords ?? ''),
-                'meta_description' => (string) ($article->meta_description ?? ''),
+                'meta_description' => $metaDescription,
                 'status' => (string) $article->status,
                 'is_featured' => (bool) $article->is_featured,
                 'is_hot' => (bool) $article->is_hot,
                 'published_at' => $article->published_at?->toISOString(),
                 'created_at' => $article->created_at?->toISOString(),
                 'updated_at' => $article->updated_at?->toISOString(),
+                'source_lang' => $contentLocale,
+                'content_locale' => $contentLocale,
+                'default_locale' => $sourceLocale,
                 'category' => $article->category ? [
                     'id' => (int) $article->category->id,
                     'name' => (string) $article->category->name,

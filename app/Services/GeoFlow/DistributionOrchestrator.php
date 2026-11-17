@@ -423,19 +423,32 @@ class DistributionOrchestrator
                 return [];
             }
 
-            $payload = $action === 'delete'
+            $basePayload = $action === 'delete'
                 ? $this->payloadBuilder->build($articleModel)
                 : $this->buildVerifiedPayload($articleModel, 'distribution_enqueue');
             if ($aiWorkspaceGuard !== []) {
                 $expectedDigest = (string) ($aiWorkspaceGuard['expected_payload_digest'] ?? '');
-                if ($expectedDigest === '' || ! hash_equals($expectedDigest, AiPayloadDigest::make($payload))) {
+                if ($expectedDigest === '' || ! hash_equals($expectedDigest, AiPayloadDigest::make($basePayload))) {
                     throw new \RuntimeException('AI 工作台分发载荷在审批后已变化。');
                 }
             }
-            $payloadHash = AiPayloadDigest::make($payload);
+
+            // 每个渠道按其内容语言构建独立载荷：译文必须在入队前确定，
+            // 否则发送阶段重建载荷会与已落库的 payload_hash 不一致。
+            // 翻译（可能触发模型调用）在事务外完成。
+            $channelPayloads = [];
+            foreach ($channels as $channel) {
+                $channelId = (int) $channel->id;
+                $targetLocale = (string) ($channel->locale ?? 'zh');
+                $channelPayloads[$channelId] = $action === 'delete'
+                    ? $basePayload
+                    : $this->buildVerifiedPayload($articleModel, 'distribution_enqueue', $targetLocale);
+            }
 
             $queuedDistributionIds = [];
             foreach ($channels as $channel) {
+                $payload = $channelPayloads[(int) $channel->id] ?? $basePayload;
+                $payloadHash = AiPayloadDigest::make($payload);
                 $distributionId = DB::transaction(function () use ($channel, $articleModel, $action, $payload, $payloadHash, $aiWorkspaceGuard, $qualityCheck, $exactTargets, $workflowFence): ?int {
                     $lockedChannel = DistributionChannel::query()
                         ->whereKey((int) $channel->id)
@@ -806,6 +819,18 @@ class DistributionOrchestrator
     }
 
     /**
+     * 分发记录所属渠道的内容语言；渠道缺失时回落中文原文。
+     */
+    private function channelLocale(ArticleDistribution $distribution): string
+    {
+        $locale = $distribution->relationLoaded('channel')
+            ? $distribution->channel?->locale
+            : $distribution->channel()->value('locale');
+
+        return (string) ($locale ?? 'zh');
+    }
+
+    /**
      * @return array<string,mixed>
      */
     public function healthCheck(DistributionChannel $channel): array
@@ -875,7 +900,7 @@ class DistributionOrchestrator
         if (! is_array($immutablePayload)) {
             $immutablePayload = (string) $currentDistribution->action === 'delete'
                 ? []
-                : $this->buildVerifiedPayload($article, 'distribution_send');
+                : $this->buildVerifiedPayload($article, 'distribution_send', $this->channelLocale($currentDistribution));
             $currentDistribution = $this->persistPayloadSnapshot(
                 $currentDistribution,
                 $immutablePayload,
@@ -1352,6 +1377,7 @@ class DistributionOrchestrator
             return 0;
         }
         $channelId = (int) $channel->id;
+        $channelLocale = (string) ($channel->locale ?? 'zh');
         $count = 0;
         ArticleDistribution::query()
             ->where('distribution_channel_id', $channelId)
@@ -1361,7 +1387,7 @@ class DistributionOrchestrator
                 $query->whereIn('status', ['published', 'private']);
             })
             ->orderBy('id')
-            ->chunkById(100, function ($candidates) use (&$count, $channelId): void {
+            ->chunkById(100, function ($candidates) use (&$count, $channelId, $channelLocale): void {
                 foreach ($candidates as $candidate) {
                     if (! $candidate instanceof ArticleDistribution) {
                         continue;
@@ -1373,7 +1399,7 @@ class DistributionOrchestrator
                     }
                     try {
                         $qualityCheck = $this->publicationQualityGate->check($snapshotArticle, 'distribution_enqueue');
-                        $payload = $this->buildVerifiedPayload($snapshotArticle, 'distribution_enqueue');
+                        $payload = $this->buildVerifiedPayload($snapshotArticle, 'distribution_enqueue', $channelLocale);
                     } catch (Throwable) {
                         continue;
                     }
@@ -1560,7 +1586,9 @@ class DistributionOrchestrator
             return $distribution;
         }
 
-        $payload = $action === 'delete' ? [] : $this->buildVerifiedPayload($article, 'distribution_send');
+        $payload = $action === 'delete'
+            ? []
+            : $this->buildVerifiedPayload($article, 'distribution_send', (string) ($channel->locale ?? 'zh'));
         if ($action === 'update') {
             $payload['event'] = 'article.update';
         }
@@ -1623,7 +1651,10 @@ class DistributionOrchestrator
                         $locked->setRelation('article', $article);
                         $locked->setRelation('channel', $lockedChannel);
                         if ($action !== 'delete') {
-                            $currentPayload = $this->payloadBuilder->build($article->load(['category:id,name,slug', 'author:id,name', 'articleImages.image']));
+                            $currentPayload = $this->payloadBuilder->build(
+                                $article->load(['category:id,name,slug', 'author:id,name', 'articleImages.image']),
+                                (string) ($lockedChannel->locale ?? 'zh'),
+                            );
                             $currentPayload['event'] = 'article.update';
                             if (! $this->workflowFenceMatches($article, data_get($locked->remote_meta, 'workflow_fence'))
                                 || ! $this->isDistributableSnapshot($article)
@@ -1907,7 +1938,7 @@ class DistributionOrchestrator
      *
      * @return array<string, mixed>
      */
-    private function buildVerifiedPayload(Article $article, string $trigger): array
+    private function buildVerifiedPayload(Article $article, string $trigger, ?string $targetLocale = null): array
     {
         $result = DB::transaction(function () use ($article, $trigger): Article {
             $lockedArticle = $this->lockWorkflowArticle((int) $article->id) ?? throw new \RuntimeException('article_unavailable');
@@ -1926,7 +1957,7 @@ class DistributionOrchestrator
             return clone $lockedArticle;
         });
 
-        return $this->payloadBuilder->build($result);
+        return $this->payloadBuilder->build($result, $targetLocale);
     }
 
     public function platformWorkOrderExecutable(ArticleDistribution $distribution, Article $article): bool

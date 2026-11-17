@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\Category;
 use App\Models\CategorySlugHistory;
+use App\Services\GeoFlow\ArticleTranslationService;
 use App\Services\Site\SiteScopedArticleQuery;
 use App\Services\Site\SiteUrlGenerator;
 use App\Support\Site\ArticleHtmlPresenter;
@@ -25,6 +26,7 @@ class CategoryController extends Controller
     public function __construct(
         private readonly SiteScopedArticleQuery $siteArticles,
         private readonly SiteUrlGenerator $urls,
+        private readonly ArticleTranslationService $translations,
     ) {}
 
     public function show(Request $request, string $slug): View|RedirectResponse
@@ -132,12 +134,24 @@ class CategoryController extends Controller
             ? (string) $category->description
             : $category->name.' - '.$siteDescription;
 
+        // 列表标题按站点语言展示：命中译文用译文，否则回落中文原文。
+        $listArticles = collect()
+            ->merge($articles instanceof \Traversable ? $articles : [])
+            ->merge($hotArticles)
+            ->filter(static fn ($row): bool => $row instanceof Article);
+        $translations = $this->translations->translationsFor($listArticles, app()->getLocale());
+        $cardTitles = [];
+        foreach ($listArticles as $row) {
+            $cardTitles[$row->id] = $this->translations->displayTitle($row, $translations);
+        }
+
         return SiteThemeViewResolver::first('category', [
             'activeNav' => 'category',
             'category' => $category,
             'articles' => $articles,
             'hotArticles' => $hotArticles,
             'cardSummaries' => $summaries,
+            'cardTitles' => $cardTitles,
             'yearOptions' => $years,
             'selectedYear' => $selectedYear,
             'siteTitle' => $siteTitle,
