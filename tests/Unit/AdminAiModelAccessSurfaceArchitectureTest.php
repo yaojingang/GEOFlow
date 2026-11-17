@@ -14,9 +14,9 @@ final class AdminAiModelAccessSurfaceArchitectureTest extends TestCase
     {
         $manifest = $this->manifest();
 
-        self::assertSame(35, $manifest['baseline']['file_count']);
-        self::assertSame(83, $manifest['baseline']['call_count']);
-        self::assertCount(35, $manifest['baseline']['files']);
+        self::assertSame(36, $manifest['baseline']['file_count']);
+        self::assertSame(86, $manifest['baseline']['call_count']);
+        self::assertCount(36, $manifest['baseline']['files']);
         foreach ($manifest['baseline']['files'] as $file => $category) {
             self::assertContains($category, $this->allowedCategories(), $file);
         }

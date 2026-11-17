@@ -3,8 +3,8 @@
 return [
     'baseline' => [
         'captured_at' => '2026-09-01',
-        'file_count' => 35,
-        'call_count' => 83,
+        'file_count' => 36,
+        'call_count' => 86,
         'files' => [
             'app/Console/Commands/EvaluateArticleAiQualityCommand.php' => 'user_content',
             'app/Http/Controllers/Admin/AiModelController.php' => 'governance',
@@ -32,6 +32,7 @@ return [
             'app/Services/GeoFlow/ArticleAiQualityInspectionService.php' => 'user_content',
             'app/Services/GeoFlow/ArticleAiQualityPolicyResolver.php' => 'user_content',
             'app/Services/GeoFlow/ArticleAiQualityReadinessRecorder.php' => 'user_content',
+            'app/Services/GeoFlow/ArticleTranslationService.php' => 'user_content',
             'app/Services/GeoFlow/CatalogGeoFlowService.php' => 'user_content',
             'app/Services/GeoFlow/EnterpriseKnowledgeDraftService.php' => 'user_content',
             'app/Services/GeoFlow/KnowledgeChunkSyncService.php' => 'system',
@@ -91,6 +92,7 @@ return [
         'app/Services/GeoFlow/ArticleAiQualityInspectionService.php' => ['category' => 'user_content', 'owner' => 'quality frozen execution identity', 'calls' => 3],
         'app/Services/GeoFlow/ArticleAiQualityPolicyResolver.php' => ['category' => 'user_content', 'owner' => 'quality scoped candidate resolver', 'calls' => 3],
         'app/Services/GeoFlow/ArticleAiQualityReadinessRecorder.php' => ['category' => 'user_content', 'owner' => 'quality model readiness persistence', 'calls' => 1],
+        'app/Services/GeoFlow/ArticleTranslationService.php' => ['category' => 'user_content', 'owner' => 'article translation model resolution', 'calls' => 3],
         'app/Services/GeoFlow/EnterpriseKnowledgeAiExecutionGuard.php' => ['category' => 'user_content', 'owner' => 'enterprise knowledge frozen execution identity', 'calls' => 3],
         'app/Services/GeoFlow/EnterpriseKnowledgeDraftService.php' => ['category' => 'user_content', 'owner' => 'enterprise knowledge provider usage session', 'calls' => 1],
         'app/Services/GeoFlow/KnowledgeChunkSyncService.php' => ['category' => 'system', 'owner' => 'system index and scoped query embedding boundaries', 'calls' => 4],
