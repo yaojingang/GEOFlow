@@ -8,6 +8,7 @@ use App\Exceptions\ArticleAiQualityGateException;
 use App\Exceptions\DistributionAcknowledgedResponseException;
 use App\Exceptions\DistributionTaskRevisionMismatch;
 use App\Jobs\ProcessArticleDistributionJob;
+use App\Jobs\RetryDistributionQueueSubmissionJob;
 use App\Models\Article;
 use App\Models\ArticleAiQualityCheck;
 use App\Models\ArticleDistribution;
@@ -27,6 +28,8 @@ use App\Support\GeoFlow\DistributionErrorSanitizer;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -90,33 +93,23 @@ class DistributionOrchestrator
             ->where(fn ($query) => $query->whereNull('remote_meta->queue_submit_attempts')->orWhere('remote_meta->queue_submit_attempts', '<', 3))
             ->where(fn ($query) => $query->whereNull('remote_meta->queue_submit_retry_at')->orWhere('remote_meta->queue_submit_retry_at', '<=', now()->toIso8601String()))
             ->where(fn ($query) => $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', now()))
-            ->orderBy('id')->limit(max(1, min(100, $limit)))->get();
+            ->orderBy('id')->limit(max(1, min(100, $limit)))->get(['id']);
         foreach ($candidates as $candidate) {
-            try {
-                $recovered += (int) DB::transaction(function () use ($candidate): bool {
-                    $channel = DistributionChannel::query()->whereKey($candidate->distribution_channel_id)->lockForUpdate()->first();
-                    $article = $this->lockWorkflowArticle((int) $candidate->article_id);
-                    $delivery = ArticleDistribution::query()->whereKey($candidate->id)->lockForUpdate()->first();
-                    if (! $delivery || $delivery->status !== 'queued' || data_get($delivery->remote_meta, 'queue_dispatched_at')) {
-                        return false;
-                    }
-                    if (! $channel || $channel->status !== DistributionChannel::STATUS_ACTIVE || ! $article
-                        || ($delivery->action !== 'delete' && (! $this->workflowFenceMatches($article, data_get($delivery->remote_meta, 'workflow_fence'))
-                            || ! $this->isDistributableSnapshot($article) || ! $this->currentChannelAllowsDelivery($article, $delivery)))) {
-                        $delivery->update(['status' => 'cancelled', 'next_retry_at' => null, 'last_error_message' => 'distribution_workflow_superseded']);
-
-                        return false;
-                    }
-                    $this->dispatchDeliveryAfterCommit((int) $delivery->id);
-
-                    return true;
-                });
-            } catch (Throwable $exception) {
-                report($exception);
-            }
+            $recovered += (int) $this->retryUndispatched((int) $candidate->id);
         }
 
         return $recovered;
+    }
+
+    public function retryUndispatched(int $distributionId, ?string $expectedRetryAt = null): bool
+    {
+        try {
+            return $this->submitDelivery($distributionId, recovering: true, expectedRetryAt: $expectedRetryAt);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return false;
+        }
     }
 
     public function __construct(
@@ -1973,37 +1966,96 @@ class DistributionOrchestrator
 
     public function dispatchDeliveryAfterCommit(int $distributionId): void
     {
-        DB::afterCommit(static function () use ($distributionId): void {
-            $delivery = ArticleDistribution::query()->find($distributionId);
-            if (! $delivery || $delivery->status !== 'queued') {
-                return;
-            }
-            try {
-                Bus::dispatch((new ProcessArticleDistributionJob($distributionId))->onQueue('distribution')->delay($delivery->next_retry_at)->beforeCommit());
-            } catch (Throwable $exception) {
-                $attempts = (int) data_get($delivery->remote_meta, 'queue_submit_attempts', 0) + 1;
-                self::recordQueueSubmission($distributionId, [
-                    'queue_submit_attempts' => $attempts,
-                    'queue_submit_retry_at' => now()->addSeconds($attempts === 1 ? 60 : 300)->toIso8601String(),
-                ], $attempts >= 3 ? 'distribution_queue_retry_exhausted' : 'distribution_queue_submission_failed');
-
-                throw $exception;
-            }
-            self::recordQueueSubmission($distributionId, [
-                'queue_dispatched_at' => now()->toIso8601String(),
-                'queue_submit_attempts' => 0, 'queue_submit_retry_at' => null,
-            ]);
-        });
+        DB::afterCommit(fn () => $this->submitDelivery($distributionId));
     }
 
-    private static function recordQueueSubmission(int $id, array $submission, ?string $error = null): void
+    private function submitDelivery(int $distributionId, bool $recovering = false, ?string $expectedRetryAt = null): bool
     {
-        DB::transaction(static function () use ($id, $submission, $error): void {
-            $delivery = ArticleDistribution::query()->whereKey($id)->lockForUpdate()->first();
-            if (! $delivery || $delivery->status !== 'queued') {
-                return;
+        return (bool) Cache::lock('geoflow:distribution:queue-submit:'.$distributionId, 90)
+            ->get(function () use ($distributionId, $recovering, $expectedRetryAt): bool {
+                $delivery = ArticleDistribution::query()->find($distributionId);
+                if (! $delivery || $delivery->status !== 'queued' || data_get($delivery->remote_meta, 'queue_dispatched_at')) {
+                    return false;
+                }
+                if ($recovering) {
+                    $delivery = $this->eligibleUndispatchedDelivery($delivery, $expectedRetryAt);
+                    if ($delivery === null) {
+                        return false;
+                    }
+                }
+
+                try {
+                    Bus::dispatch((new ProcessArticleDistributionJob($distributionId))->onQueue('distribution')->delay($delivery->next_retry_at)->beforeCommit());
+                } catch (Throwable $exception) {
+                    $attempts = (int) data_get($delivery->remote_meta, 'queue_submit_attempts', 0) + 1;
+                    $retryAt = now()->addSeconds($attempts === 1 ? 60 : 300);
+                    $recorded = self::recordQueueSubmission($delivery, [
+                        'queue_submit_attempts' => $attempts,
+                        'queue_submit_retry_at' => $retryAt->toIso8601String(),
+                    ], $attempts >= 3 ? 'distribution_queue_retry_exhausted' : 'distribution_queue_submission_failed');
+                    if ($recorded && $attempts < 3) {
+                        try {
+                            RetryDistributionQueueSubmissionJob::dispatch($distributionId, $retryAt->toIso8601String())->delay($retryAt);
+                        } catch (Throwable $dispatchException) {
+                            report($dispatchException);
+                        }
+                    }
+
+                    throw $exception;
+                }
+
+                self::recordQueueSubmission($delivery, [
+                    'queue_dispatched_at' => now()->toIso8601String(),
+                    'queue_submit_attempts' => 0, 'queue_submit_retry_at' => null,
+                ]);
+
+                return true;
+            });
+    }
+
+    private function eligibleUndispatchedDelivery(ArticleDistribution $candidate, ?string $expectedRetryAt): ?ArticleDistribution
+    {
+        return DB::transaction(function () use ($candidate, $expectedRetryAt): ?ArticleDistribution {
+            $channel = DistributionChannel::query()->whereKey($candidate->distribution_channel_id)->lockForUpdate()->first();
+            $article = $this->lockWorkflowArticle((int) $candidate->article_id);
+            $delivery = ArticleDistribution::query()->whereKey($candidate->id)->lockForUpdate()->first();
+            $retryAt = data_get($delivery?->remote_meta, 'queue_submit_retry_at');
+
+            if (! $delivery || $delivery->status !== 'queued' || data_get($delivery->remote_meta, 'queue_dispatched_at')
+                || (int) data_get($delivery->remote_meta, 'queue_submit_attempts', 0) >= 3
+                || ($expectedRetryAt !== null && $retryAt !== $expectedRetryAt)
+                || ($retryAt && Date::parse($retryAt)->isFuture())
+                || $delivery->next_retry_at?->isFuture()) {
+                return null;
             }
-            $delivery->update([
+            if (! $channel || $channel->status !== DistributionChannel::STATUS_ACTIVE || ! $article
+                || ($delivery->action !== 'delete' && (! $this->workflowFenceMatches($article, data_get($delivery->remote_meta, 'workflow_fence'))
+                    || ! $this->isDistributableSnapshot($article) || ! $this->currentChannelAllowsDelivery($article, $delivery)))) {
+                $delivery->update(['status' => 'cancelled', 'next_retry_at' => null, 'last_error_message' => 'distribution_workflow_superseded']);
+
+                return null;
+            }
+
+            return $delivery;
+        }, 3);
+    }
+
+    private static function recordQueueSubmission(ArticleDistribution $submitted, array $submission, ?string $error = null): bool
+    {
+        return DB::transaction(static function () use ($submitted, $submission, $error): bool {
+            $delivery = ArticleDistribution::query()->whereKey($submitted->id)->lockForUpdate()->first();
+            // The worker may have consumed the message and created a newer attempt before push returned.
+            if (! $delivery || $delivery->status !== 'queued'
+                || $delivery->attempt_count !== $submitted->attempt_count
+                || $delivery->getRawOriginal('last_attempt_at') !== $submitted->getRawOriginal('last_attempt_at')
+                || $delivery->getRawOriginal('next_retry_at') !== $submitted->getRawOriginal('next_retry_at')
+                || data_get($delivery->remote_meta, 'workflow_fence') !== data_get($submitted->remote_meta, 'workflow_fence')
+                || data_get($delivery->remote_meta, 'queue_submit_retry_at') !== data_get($submitted->remote_meta, 'queue_submit_retry_at')
+                || data_get($delivery->remote_meta, 'queue_dispatched_at')) {
+                return false;
+            }
+
+            return $delivery->update([
                 'remote_meta' => array_replace((array) $delivery->remote_meta, $submission),
                 'last_error_message' => $error,
             ]);

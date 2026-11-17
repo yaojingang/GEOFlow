@@ -211,6 +211,31 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  ai-quality-deadlines-queue:
+    image: ${GEOFLOW_APP_IMAGE:-${COMPOSE_PROJECT_NAME:-geoflow-laravel-prod}-app}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+      network: ${DOCKER_BUILD_NETWORK:-default}
+      args: *prod_app_build_args
+    working_dir: /var/www/html
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_OPTIMIZE: "false"
+      AUTO_CACHE_VIEWS: "false"
+    command: ["php", "-d", "memory_limit=128M", "artisan", "geoflow:work-ai-quality", "deadlines"]
+    mem_limit: 192m
+    stop_grace_period: 40s
+    volumes:
+      - ./.env.prod:/var/www/html/.env
+      - ./storage:/var/www/html/storage
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   ai-optimization-queue:
     image: ${GEOFLOW_APP_IMAGE:-${COMPOSE_PROJECT_NAME:-geoflow-laravel-prod}-app}
     build:

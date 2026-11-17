@@ -158,6 +158,26 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  ai-quality-deadlines-queue:
+    image: geoflow-app:latest
+    container_name: geoflow-ai-quality-deadlines-queue
+    working_dir: /var/www/html
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_OPTIMIZE: "false"
+      AUTO_CACHE_VIEWS: "false"
+      COMPOSER_ON_START: "false"
+      AUTO_MIGRATE: "false"
+    command: ["php", "-d", "memory_limit=128M", "artisan", "geoflow:work-ai-quality", "deadlines"]
+    mem_limit: 192m
+    stop_grace_period: 40s
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   ai-optimization-queue:
     image: geoflow-app:latest
     container_name: geoflow-ai-optimization-queue

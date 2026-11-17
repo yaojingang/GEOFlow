@@ -175,6 +175,27 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  ai-quality-deadlines-queue:
+    image: ${GEOFLOW_APP_IMAGE:?GEOFLOW_APP_IMAGE is required for prebuilt deployment}
+    container_name: geoflow-ai-quality-deadlines-queue-prod
+    working_dir: /var/www/html
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_OPTIMIZE: "false"
+      AUTO_CACHE_VIEWS: "false"
+    command: ["php", "-d", "memory_limit=128M", "artisan", "geoflow:work-ai-quality", "deadlines"]
+    mem_limit: 192m
+    stop_grace_period: 40s
+    volumes:
+      - ./.env.prod:/var/www/html/.env
+      - ./storage:/var/www/html/storage
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   ai-optimization-queue:
     image: ${GEOFLOW_APP_IMAGE:?GEOFLOW_APP_IMAGE is required for prebuilt deployment}
     container_name: geoflow-ai-optimization-queue-prod

@@ -247,11 +247,13 @@ dc run --rm --no-deps app php artisan geoflow:sync-system-knowledge --key=ai_wor
 普通生产 Compose 在完成迁移和回填后执行以下命令。已受管实例用 `gfm` 替换 `dc`，保持原受管配置。`--no-deps` 避免重跑初始化服务或重建数据库服务；此时 PostgreSQL 与 Redis 应已运行。
 
 ```bash
-dc up -d --no-deps app queue ai-quality-queue ai-quality-backfill-queue \
+dc up -d --no-deps --wait ai-quality-deadlines-queue
+dc up -d --no-deps app queue ai-quality-queue ai-quality-backfill-queue ai-quality-deadlines-queue \
   ai-optimization-queue knowledge-queue scheduler reverb web
 dc exec -T app php artisan migrate:status
 dc exec -T app php artisan geoflow:work-ai-quality front --validate
 dc exec -T app php artisan geoflow:work-ai-quality backfill --validate
+dc exec -T app php artisan geoflow:work-ai-quality deadlines --validate
 dc exec -T app php artisan geoflow:work-ai-optimization --validate
 dc exec -T app php artisan geoflow:admin-ai-shadow-report --hours=24
 dc ps --all

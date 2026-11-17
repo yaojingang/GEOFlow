@@ -10,6 +10,7 @@ use App\Services\GeoFlow\ArticleAiQualityPolicyResolver;
 use App\Services\GeoFlow\ArticleAiQualityReconciliationService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -34,21 +35,35 @@ class ReconcileArticleAiQualityJob implements ShouldQueue
 
     public function handle(ArticleAiQualityInspectionService $inspection): void
     {
-        $reconciliation = app(ArticleAiQualityReconciliationService::class);
-        $reconciliation->retryFailedChecks($this->limit, $this->articleIds);
-        if ($this->articleIds === []) {
-            $reconciliation->recoverCompletedWorkflows($this->limit);
-        } else {
-            $reconciliation->recoverCompletedWorkflowsForArticles($this->articleIds, $this->limit);
+        if ($this->isFullBackfill()) {
+            Cache::lock('geoflow:ai-quality:full-backfill', 90)->get(fn () => $this->reconcileBatch($inspection));
+
+            return;
         }
+
+        $this->reconcileBatch($inspection);
+    }
+
+    private function reconcileBatch(ArticleAiQualityInspectionService $inspection): void
+    {
+        $reconciliation = app(ArticleAiQualityReconciliationService::class);
         $guard = app(ArticleAiQualityBackfillGuard::class);
+        if ($this->articleIds !== []) {
+            $reconciliation->retryFailedChecks($this->limit, $this->articleIds);
+            $reconciliation->recoverCompletedWorkflowsForArticles($this->articleIds, $this->limit);
+        } else {
+            $range = $this->maximumArticleId > 0 ? [max(1, $this->minimumArticleId), $this->maximumArticleId] : null;
+            $reconciliation->retryFailedChecks($this->limit, articleRange: $range);
+            $reconciliation->recoverCompletedWorkflows($this->limit, articleRange: $range);
+        }
+
+        $minimumArticleId = $this->isFullBackfill() ? $guard->resumeCursor() : $this->minimumArticleId;
         $ruleVersion = (string) ($inspection->rules()['version'] ?? '');
         $ruleVersionExpression = $this->ruleVersionExpression();
         $batchLimit = max(1, min(25, $this->limit));
         $articles = Article::query()
-            ->with('latestAiQualityCheck')
             ->when($this->articleIds !== [], fn ($query) => $query->whereIn('id', $this->articleIds))
-            ->when($this->minimumArticleId > 0, fn ($query) => $query->where('id', '>=', $this->minimumArticleId))
+            ->when($minimumArticleId > 0, fn ($query) => $query->where('id', '>=', $minimumArticleId))
             ->when($this->maximumArticleId > 0, fn ($query) => $query->where('id', '<=', $this->maximumArticleId))
             ->whereIn('status', ['draft', 'private', 'published'])
             ->where(function ($query): void {
@@ -86,18 +101,17 @@ class ReconcileArticleAiQualityJob implements ShouldQueue
         }
 
         $lastArticleId = (int) ($articles->last()?->id ?? 0);
-        if ($this->articleIds === []
-            && $articles->count() === $batchLimit
-            && $lastArticleId > 0
-            && ($this->maximumArticleId === 0 || $lastArticleId < $this->maximumArticleId)) {
+        if ($this->isFullBackfill()) {
+            if ($articles->count() === $batchLimit && $lastArticleId > 0) {
+                $guard->preserveCursor($lastArticleId + 1);
+            } else {
+                $guard->clearCursor();
+            }
+        } elseif ($this->articleIds === [] && $articles->count() === $batchLimit
+            && $lastArticleId > 0 && $lastArticleId < $this->maximumArticleId) {
             self::dispatch($lastArticleId + 1, $this->maximumArticleId, $batchLimit)
                 ->onConnection('redis')
                 ->onQueue((string) config('geoflow.ai_quality_backfill_queue', 'ai-quality-backfill'));
-            if ($this->isFullBackfill()) {
-                $guard->preserveCursor($lastArticleId + 1);
-            }
-        } elseif ($this->isFullBackfill()) {
-            $guard->clearCursor();
         }
     }
 

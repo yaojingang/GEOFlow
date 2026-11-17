@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Ai\Workspace\AiPlanCompiler;
 use App\Exceptions\ArticleRiskGateException;
 use App\Jobs\ProcessArticleDistributionJob;
+use App\Jobs\RetryDistributionQueueSubmissionJob;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleDistribution;
@@ -1031,14 +1032,14 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         }
         $delivery = ArticleDistribution::query()->firstOrFail();
         $this->assertSame('queued', $delivery->status);
-        $this->assertSame(1, $adapter->pushAttempts);
+        $this->assertSame(2, $adapter->pushAttempts);
         $this->assertSame(0, $delivery->attempt_count);
         $adapter->failPush = false;
         $this->assertSame([], $orchestrator->enqueueForArticle($article->fresh(), throwOnFailure: true));
-        $this->assertSame(2, $adapter->pushAttempts, 'Retry must re-dispatch the committed queued delivery.');
+        $this->assertSame(3, $adapter->pushAttempts, 'Retry must re-dispatch the committed queued delivery.');
         $this->assertNotNull(data_get($delivery->fresh()->remote_meta, 'queue_dispatched_at'));
         $this->assertSame([], $orchestrator->enqueueForArticle($article->fresh(), throwOnFailure: true));
-        $this->assertSame(2, $adapter->pushAttempts, 'Successful queue submission must suppress duplicate submission.');
+        $this->assertSame(3, $adapter->pushAttempts, 'Successful queue submission must suppress duplicate submission.');
         $this->assertSame('queued', $delivery->fresh()->status);
         Http::assertNothingSent();
     }
@@ -1057,7 +1058,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         $adapter = $this->installFailingDistributionQueue();
 
         $this->resumeDistributionTask($task);
-        $this->assertSame(1, $adapter->pushAttempts);
+        $this->assertSame(2, $adapter->pushAttempts);
         $this->assertSame('queued', $delivery->fresh()->status);
         $this->assertSame(1, data_get($delivery->fresh()->remote_meta, 'queue_submit_attempts'));
         $this->assertNull(data_get($delivery->fresh()->remote_meta, 'queue_dispatched_at'));
@@ -1068,7 +1069,7 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         $this->assertNotNull(data_get($delivery->fresh()->remote_meta, 'queue_dispatched_at'));
         $this->assertSame(0, $orchestrator->resumeUnsentForTask($task->id));
         $this->assertSame([], $orchestrator->enqueueForArticle($article->fresh(), throwOnFailure: true));
-        $this->assertSame(2, $adapter->pushAttempts, 'Current-cycle retry must submit exactly once after recovering from the queue failure.');
+        $this->assertSame(3, $adapter->pushAttempts, 'Current-cycle retry must submit exactly once after recovering from the queue failure.');
         Http::assertNothingSent();
     }
 
@@ -1192,20 +1193,85 @@ class DistributionArticleRiskWorkflowTest extends TestCase
             $orchestrator->enqueueForArticle($article, throwOnFailure: true);
             $this->fail('The unavailable queue must report failure.');
         } catch (RuntimeException) {
-            $this->assertSame(1, $adapter->pushAttempts);
+            $this->assertSame(1, $adapter->processPushAttempts);
         }
+
         $delivery = ArticleDistribution::query()->sole();
+        $firstRetry = $adapter->retryJobs[0];
         $this->travel(61)->seconds();
-        $this->assertSame(0, $orchestrator->recoverUndispatched());
-        $this->assertSame(2, $adapter->pushAttempts);
+        $firstRetry->handle($orchestrator);
+        $this->assertSame(2, $adapter->processPushAttempts);
+        $this->assertCount(2, $adapter->retryJobs);
+        $secondRetry = $adapter->retryJobs[1];
+        $this->assertNotSame($firstRetry->expectedRetryAt, $secondRetry->expectedRetryAt);
+
+        $this->travel(301)->seconds();
+        $firstRetry->handle($orchestrator);
+        $this->assertSame(2, $adapter->processPushAttempts, 'An old retry moves no state.');
+        $secondRetry->handle($orchestrator);
+        $this->assertSame(3, $adapter->processPushAttempts);
         $this->travel(301)->seconds();
         $this->assertSame(0, $orchestrator->recoverUndispatched());
-        $this->assertSame(3, $adapter->pushAttempts);
-        $this->travel(301)->seconds();
-        $this->assertSame(0, $orchestrator->recoverUndispatched());
-        $this->assertSame(3, $adapter->pushAttempts);
+        $this->assertSame(3, $adapter->processPushAttempts);
         $this->assertSame('distribution_queue_retry_exhausted', $delivery->fresh()->last_error_message);
         $this->assertSame(0, $delivery->fresh()->attempt_count);
+    }
+
+    public function test_retry_job_and_minute_sweep_cannot_submit_the_same_delivery_concurrently(): void
+    {
+        [$article] = $this->createDistributionArticle('Safe content for concurrent retry.');
+        $adapter = $this->installFailingDistributionQueue();
+        $orchestrator = app(DistributionOrchestrator::class);
+        try {
+            $orchestrator->enqueueForArticle($article, throwOnFailure: true);
+            $this->fail('The unavailable queue must report failure.');
+        } catch (RuntimeException) {
+            $this->assertSame(1, $adapter->processPushAttempts);
+        }
+
+        $adapter->failPush = false;
+        $this->travel(61)->seconds();
+        $retry = $adapter->retryJobs[0];
+        $adapter->onNextProcessPush = fn () => $retry->handle($orchestrator);
+
+        $this->assertSame(1, $orchestrator->recoverUndispatched());
+        $this->assertSame(2, $adapter->processPushAttempts);
+        $this->assertNotNull(data_get(ArticleDistribution::query()->sole()->remote_meta, 'queue_dispatched_at'));
+    }
+
+    public function test_successful_push_does_not_hide_a_retry_created_by_a_fast_consumer(): void
+    {
+        [$article] = $this->createDistributionArticle('Safe content for a fast distribution consumer.');
+        $adapter = $this->installFailingDistributionQueue();
+        $adapter->failPush = false;
+        $orchestrator = app(DistributionOrchestrator::class);
+        $adapter->onNextProcessPush = function () use ($orchestrator): void {
+            $delivery = ArticleDistribution::query()->sole();
+            $retryAt = now()->addMinute();
+            $delivery->update([
+                'attempt_count' => 1,
+                'last_attempt_at' => now(),
+                'next_retry_at' => $retryAt,
+                'last_error_message' => 'Transient delivery failure',
+                'remote_meta' => array_replace((array) $delivery->remote_meta, [
+                    'safe_retry_at' => $retryAt->toIso8601String(),
+                    'queue_dispatched_at' => null,
+                ]),
+            ]);
+            $orchestrator->dispatchDeliveryAfterCommit($delivery->id);
+        };
+
+        $orchestrator->enqueueForArticle($article, throwOnFailure: true);
+        $delivery = ArticleDistribution::query()->sole();
+        $this->assertSame(1, $adapter->processPushAttempts);
+        $this->assertNull(data_get($delivery->remote_meta, 'queue_dispatched_at'));
+        $this->assertSame('Transient delivery failure', $delivery->last_error_message);
+        $this->assertSame(0, $orchestrator->recoverUndispatched());
+
+        $this->travel(61)->seconds();
+        $this->assertSame(1, $orchestrator->recoverUndispatched());
+        $this->assertSame(2, $adapter->processPushAttempts);
+        $this->assertNotNull(data_get($delivery->fresh()->remote_meta, 'queue_dispatched_at'));
     }
 
     public function test_task_resume_attempts_other_recoveries_when_one_service_fails(): void
@@ -1260,11 +1326,28 @@ class DistributionArticleRiskWorkflowTest extends TestCase
         {
             public int $pushAttempts = 0;
 
+            public int $processPushAttempts = 0;
+
+            /** @var list<RetryDistributionQueueSubmissionJob> */
+            public array $retryJobs = [];
+
+            public ?\Closure $onNextProcessPush = null;
+
             public bool $failPush = true;
 
             protected function executeJob($job, $data = '', $queue = null)
             {
                 $this->pushAttempts++;
+                if ($job instanceof RetryDistributionQueueSubmissionJob) {
+                    $this->retryJobs[] = $job;
+                }
+                if ($job instanceof ProcessArticleDistributionJob) {
+                    $this->processPushAttempts++;
+                    if ($callback = $this->onNextProcessPush) {
+                        $this->onNextProcessPush = null;
+                        $callback();
+                    }
+                }
                 if ($this->failPush) {
                     throw new RuntimeException('Simulated queue connection unavailable after database commit');
                 }

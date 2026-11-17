@@ -7,10 +7,13 @@ use App\Exceptions\ArticleAiQualityGateException;
 use App\Exceptions\ArticleAiQualityRuntimeException;
 use App\Jobs\ProcessArticleAiQualityJob;
 use App\Jobs\ReconcileArticleAiQualityJob;
+use App\Jobs\ReconcileScheduledArticleAiQualityJob;
+use App\Jobs\RetryArticleAiQualityCheckJob;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleAiOptimizationRun;
+use App\Models\ArticleAiQualityCheck;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\KnowledgeBase;
@@ -598,7 +601,8 @@ class ArticleAiQualityGateTest extends TestCase
         $this->assertSame('failed', $check->fresh()->status);
         $this->assertSame('failed', $check->segments()->firstOrFail()->status);
         $this->assertSame('worker_interrupted', $check->segments()->firstOrFail()->error_code);
-        Queue::assertNothingPushed();
+        Queue::assertNotPushed(ProcessArticleAiQualityJob::class);
+        Queue::assertPushed(RetryArticleAiQualityCheckJob::class, fn ($job) => $check->id === $job->checkId);
     }
 
     public function test_reconciliation_continues_after_one_article_has_an_invalid_model_configuration(): void
@@ -1203,6 +1207,76 @@ class ArticleAiQualityGateTest extends TestCase
         $this->assertSame(2, $ready->aiQualityChecks()->count());
         $this->assertSame(0, $retry->retryFailedChecks(1, [$ready->id]));
         $this->assertSame(2, $ready->aiQualityChecks()->count());
+    }
+
+    public function test_retry_scan_advances_past_a_full_batch_of_ineligible_failures(): void
+    {
+        Queue::fake();
+        [$held, $failed] = $this->failedReviewArticle();
+        app(ArticleWorkflowTransitionService::class)->humanAction($held, 'hold');
+        $failed->refresh();
+        for ($i = 0; $i < 99; $i++) {
+            $failed->replicate()->forceFill(['request_key' => (string) Str::uuid()])->save();
+        }
+        [$ready] = $this->failedReviewArticle();
+
+        $this->travel(91)->seconds();
+        $reconciliation = app(ArticleAiQualityReconciliationService::class);
+        $this->assertSame(0, $reconciliation->retryFailedChecks());
+        $this->assertSame(1, $reconciliation->retryFailedChecks());
+        $this->assertSame(2, $ready->aiQualityChecks()->count());
+    }
+
+    public function test_delayed_retry_uses_its_exact_check_when_the_article_has_older_failures(): void
+    {
+        Queue::fake();
+        [$article, $first] = $this->failedReviewArticle();
+        $inspection = app(ArticleAiQualityInspectionService::class);
+        $latest = $inspection->createOrReuse($article->fresh(), dispatch: false, force: true);
+        $inspection->markFailed($latest, new ArticleAiQualityRuntimeException('provider_gateway_error', true));
+
+        $this->travel(91)->seconds();
+        $retry = new RetryArticleAiQualityCheckJob($latest->id);
+        $retry->handle(app(ArticleAiQualityReconciliationService::class));
+        $retry->handle(app(ArticleAiQualityReconciliationService::class));
+
+        $this->assertNull(data_get($first->fresh()->execution_meta, 'technical_retry.replacement_id'));
+        $this->assertNotNull(data_get($latest->fresh()->execution_meta, 'technical_retry.replacement_id'));
+        $this->assertSame(3, $article->aiQualityChecks()->count());
+    }
+
+    public function test_full_backfill_queues_one_batch_and_saves_the_next_page(): void
+    {
+        Queue::fake();
+        $first = $this->qualityArticle();
+        for ($i = 0; $i < 25; $i++) {
+            $first->replicate()->forceFill(['slug' => 'backfill-page-'.$i])->save();
+        }
+
+        $this->artisan('geoflow:reconcile-ai-quality')->assertSuccessful();
+        $this->artisan('geoflow:reconcile-ai-quality')->assertSuccessful();
+        Queue::assertPushed(ReconcileScheduledArticleAiQualityJob::class, 1);
+        Queue::pushed(ReconcileScheduledArticleAiQualityJob::class)->sole()->handle(app(ArticleAiQualityInspectionService::class));
+
+        $this->assertSame(25, ArticleAiQualityCheck::query()->count());
+        $this->assertSame((int) Article::query()->max('id'), app(ArticleAiQualityBackfillGuard::class)->resumeCursor());
+        Queue::assertNotPushed(ReconcileArticleAiQualityJob::class);
+    }
+
+    public function test_bounded_backfill_recovers_due_retries_only_for_articles_in_its_range(): void
+    {
+        Queue::fake();
+        [$outside, $outsideCheck] = $this->failedReviewArticle();
+        [$inside, $insideCheck] = $this->failedReviewArticle();
+        $this->travel(91)->seconds();
+
+        (new ReconcileArticleAiQualityJob($inside->id, $inside->id))
+            ->handle(app(ArticleAiQualityInspectionService::class));
+
+        $this->assertNull(data_get($outsideCheck->fresh()->execution_meta, 'technical_retry.replacement_id'));
+        $this->assertNotNull(data_get($insideCheck->fresh()->execution_meta, 'technical_retry.replacement_id'));
+        $this->assertSame(1, $outside->aiQualityChecks()->count());
+        $this->assertSame(2, $inside->aiQualityChecks()->count());
     }
 
     public function test_disabled_old_optimization_does_not_hide_quality_dispatch_from_worker_preflight(): void

@@ -64,7 +64,7 @@ class ArticleAiQualityQueueConfigurationTest extends TestCase
         $this->assertSame(60, $horizon['waits']['redis:ai-content-optimization-bulk']);
     }
 
-    public function test_local_and_container_runtimes_consume_both_quality_queues(): void
+    public function test_local_and_container_runtimes_consume_all_quality_queues(): void
     {
         $root = dirname(__DIR__, 2);
         $composer = json_decode((string) file_get_contents($root.'/composer.json'), true, flags: JSON_THROW_ON_ERROR);
@@ -76,10 +76,13 @@ class ArticleAiQualityQueueConfigurationTest extends TestCase
         $this->assertStringContainsString('--queue=system-updates,geoflow,distribution,theme-replication,default --tries=1 --timeout=930', $dev);
         $this->assertStringContainsString('geoflow:work-ai-quality front', $dev);
         $this->assertStringContainsString('geoflow:work-ai-quality backfill', $dev);
+        $this->assertStringContainsString('geoflow:work-ai-quality deadlines', $dev);
         $this->assertStringContainsString('geoflow:work-ai-optimization', $dev);
         foreach ([$localCompose, $productionCompose, $prebuiltCompose] as $compose) {
             $this->assertStringContainsString('ai-quality-queue:', $compose);
             $this->assertStringContainsString('ai-quality-backfill-queue:', $compose);
+            $this->assertStringContainsString('ai-quality-deadlines-queue:', $compose);
+            $this->assertStringContainsString('"geoflow:work-ai-quality", "deadlines"', $compose);
             $this->assertStringContainsString('"geoflow:work-ai-quality", "front"', $compose);
             $this->assertStringContainsString('"geoflow:work-ai-quality", "backfill"', $compose);
             $this->assertStringContainsString('ai-optimization-queue:', $compose);
@@ -109,7 +112,7 @@ class ArticleAiQualityQueueConfigurationTest extends TestCase
         $deploymentGuide = (string) file_get_contents($root.'/docs/deployment/DEPLOYMENT.md');
 
         $this->assertStringContainsString(
-            'up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb',
+            'up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue ai-quality-deadlines-queue ai-optimization-queue knowledge-queue scheduler reverb',
             $deploy,
         );
         $this->assertStringContainsString(
@@ -121,13 +124,16 @@ class ArticleAiQualityQueueConfigurationTest extends TestCase
             $deploy,
         );
         $this->assertStringContainsString(
-            'required=(postgres redis app web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb)',
+            'required=(postgres redis app web queue ai-quality-queue ai-quality-backfill-queue ai-quality-deadlines-queue ai-optimization-queue knowledge-queue scheduler reverb)',
             $healthcheck,
         );
         $this->assertStringContainsString(
-            'logs --tail=80 app queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler web',
+            'logs --tail=80 app queue ai-quality-queue ai-quality-backfill-queue ai-quality-deadlines-queue ai-optimization-queue knowledge-queue scheduler web',
             $healthcheck,
         );
+        $this->assertStringContainsString('up -d --wait ai-quality-deadlines-queue', $deploy);
+        $this->assertStringContainsString('config --services | grep -qx ai-quality-deadlines-queue', $deploymentGuide);
+        $this->assertSame(['ai-quality-deadlines'], config('horizon.defaults.supervisor-ai-quality-deadlines.queue'));
         $this->assertStringContainsString('read_env_value AI_QUALITY_QUEUE_REPLICAS', $healthcheck);
         $this->assertStringContainsString('ps --status running -q ai-quality-queue', $healthcheck);
         $this->assertStringContainsString('geoflow:ai-quality-health --json --probe --wait=10', $healthcheck);
@@ -138,13 +144,15 @@ class ArticleAiQualityQueueConfigurationTest extends TestCase
         );
 
         $routes = (string) file_get_contents($root.'/routes/console.php');
-        $this->assertStringContainsString("Schedule::command('geoflow:converge-ai-quality')", $routes);
-        $this->assertStringContainsString('->everyFiveSeconds()', $routes);
+        $this->assertStringContainsString(<<<'PHP'
+Schedule::command('geoflow:converge-ai-quality --deadlines-only')
+    ->everyMinute()
+PHP, $routes);
 
         foreach (['README_en.md', 'README_es.md', 'README_ja.md', 'README_ru.md'] as $readme) {
             $contents = (string) file_get_contents($root.'/docs/readme/'.$readme);
             $this->assertStringContainsString(
-                'up -d app web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb',
+                'up -d app web queue ai-quality-queue ai-quality-backfill-queue ai-quality-deadlines-queue ai-optimization-queue knowledge-queue scheduler reverb',
                 $contents,
             );
         }
