@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Site;
 
 use App\Http\Controllers\Controller;
 use App\Models\Article;
+use App\Models\ArticleTranslation;
 use App\Services\GeoFlow\ArticleTranslationService;
 use App\Services\Site\ArticlePermalinkService;
 use App\Services\Site\LinkPoolRecommendationService;
@@ -77,14 +78,14 @@ class ArticleController extends Controller
 
         // 前台按当前站点语言展示：原文是中文，命中译文时渲染译文。
         $translation = $this->translations->resolve($article, app()->getLocale());
-        $displayTitle = $translation instanceof \App\Models\ArticleTranslation
+        $displayTitle = $translation instanceof ArticleTranslation
             ? (string) $translation->title
             : (string) $article->title;
-        $rawContent = $translation instanceof \App\Models\ArticleTranslation
+        $rawContent = $translation instanceof ArticleTranslation
             ? (string) $translation->content
             : (string) $article->content;
         $body = ArticleHtmlPresenter::stripLeadingTitleHeading($rawContent, $displayTitle);
-        $excerpt = $translation instanceof \App\Models\ArticleTranslation
+        $excerpt = $translation instanceof ArticleTranslation
             ? trim((string) ($translation->excerpt ?? ''))
             : trim((string) $article->excerpt);
         if ($excerpt !== '') {
@@ -119,7 +120,7 @@ class ArticleController extends Controller
 
         $pageTitle = $displayTitle;
         // 优先使用编辑维护的 meta_description（已按搜索摘要长度撰写），缺失时才回落到摘要截断。
-        $metaDescription = $translation instanceof \App\Models\ArticleTranslation
+        $metaDescription = $translation instanceof ArticleTranslation
             ? trim((string) ($translation->meta_description ?? ''))
             : trim((string) $article->meta_description);
         $pageDescription = $metaDescription !== ''
