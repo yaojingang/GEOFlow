@@ -10,7 +10,9 @@ use App\Data\Ai\AiExecutionContext;
 use App\Exceptions\AiModelAccessException;
 use App\Exceptions\ApiException;
 use App\Exceptions\ArticleAiQualityRuntimeException;
+use App\Jobs\ConvergeArticleAiQualityDeadlineJob;
 use App\Jobs\ProcessArticleAiQualityJob;
+use App\Jobs\RetryArticleAiQualityCheckJob;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\AiModelUsageEvent;
@@ -189,7 +191,7 @@ class ArticleAiQualityInspectionService
             return;
         }
 
-        $this->dispatchCheck($checkId);
+        $this->dispatchCheck($checkId, registerDeadline: true);
     }
 
     public function createOrReuse(
@@ -445,7 +447,7 @@ class ArticleAiQualityInspectionService
             }
 
             if ($dispatch && $check->status === 'queued') {
-                DB::afterCommit(fn () => $this->dispatchCheck((int) $check->id));
+                DB::afterCommit(fn () => $this->dispatchCheck((int) $check->id, registerDeadline: true));
             }
 
             return $check;
@@ -697,7 +699,7 @@ class ArticleAiQualityInspectionService
         });
 
         if ($dispatch && (string) $check->status === 'queued') {
-            DB::afterCommit(fn () => $this->dispatchCheck((int) $check->id));
+            DB::afterCommit(fn () => $this->dispatchCheck((int) $check->id, registerDeadline: true));
         }
 
         return $check;
@@ -1376,10 +1378,7 @@ class ArticleAiQualityInspectionService
             if (in_array((string) $latest->status, ['queued', 'running'], true)
                 && (string) $latest->inspection_scope === 'full'
                 && $this->remainingDeadlineSeconds($this->primaryDeadlineAt($latest)) <= 0) {
-                $exception = new ArticleAiQualityRuntimeException('inspection_primary_deadline_exceeded', false);
-                if (! $this->tryStartSampledFallback($latest, $exception)) {
-                    $this->markFailed($latest, $exception);
-                }
+                $this->convergeDueCheck($checkId, 'primary');
 
                 return $this->latestCheck($checkId);
             }
@@ -1442,95 +1441,106 @@ class ArticleAiQualityInspectionService
         }
 
         return DB::transaction(function () use ($checkId, $errorCode, $dispatch): bool {
-            $taskId = (int) (ArticleAiQualityCheck::query()->whereKey($checkId)->value('task_id') ?? 0);
-            $task = $taskId > 0
-                ? Task::query()->whereKey($taskId)->lockForUpdate()->first()
-                : null;
-            $check = ArticleAiQualityCheck::query()->whereKey($checkId)->lockForUpdate()->first();
-            $executionMeta = is_array($check?->execution_meta) ? $check->execution_meta : [];
-            [$aiExecutionSnapshot, $invalidExecutionSnapshot] = $this->qualityExecutionSnapshotForCheck($executionMeta);
-            if ($check instanceof ArticleAiQualityCheck
-                && ($invalidExecutionSnapshot
-                    || ($aiExecutionSnapshot === null && $this->aiExecutionContextFactory->identityRequired()))) {
-                $check->forceFill([
-                    'status' => 'stale',
-                    'decision' => null,
-                    'active_dedupe_key' => null,
-                    'error_code' => AiModelAccessException::AI_CONFIG_ACCESS_REVOKED,
-                    'error_message' => 'AI 执行身份已失效。',
-                    'finished_at' => now(),
-                ])->save();
+            [$task, $check] = $this->lockDeadlineCheck($checkId);
 
-                return false;
-            }
-            if ($check instanceof ArticleAiQualityCheck && $aiExecutionSnapshot !== null) {
-                $this->aiExecutionAccessGuard->assertPersistedAdminSnapshot(
-                    $aiExecutionSnapshot,
-                    $check->task_id ? (int) $check->task_id : null,
-                );
-            }
-            $policySnapshot = is_array($executionMeta['policy_snapshot'] ?? null)
-                ? $executionMeta['policy_snapshot']
-                : [];
-            if (! $check
-                || ! in_array((string) $check->status, ['queued', 'running'], true)
-                || (string) $check->inspection_scope !== 'full'
-                || ! (bool) ($policySnapshot['timeout_sampling_enabled'] ?? false)
-                || ! $task instanceof Task
-                || ! (bool) $task->ai_quality_enabled
-                || ! (bool) $task->ai_quality_timeout_sampling_enabled
-                || $this->remainingDeadlineSeconds($this->deadlineAt($check)) <= 0) {
-                return false;
-            }
+            return $check !== null && $this->startLockedSampledFallback($task, $check, $errorCode, $dispatch);
+        });
+    }
 
-            $startedAt = now();
-            $sampledDeadlineAt = $startedAt->copy()->addSeconds(
-                (int) config('geoflow.ai_quality_sampled_fallback_seconds', 45)
-                + (int) config('geoflow.ai_quality_persistence_reserve_seconds', 10),
-            );
-            $finalDeadlineAt = $this->deadlineAt($check);
-            if ($sampledDeadlineAt->gt($finalDeadlineAt)) {
-                $sampledDeadlineAt = $finalDeadlineAt->copy();
-            }
-            ArticleAiQualitySegment::query()
-                ->where('article_ai_quality_check_id', $checkId)
-                ->whereIn('status', ['queued', 'running', 'failed'])
-                ->update([
-                    'status' => 'cancelled',
-                    'error_code' => 'sampled_fallback_started',
-                    'error_message' => '完整质检未完成，本分段已因抽样降级而取消。',
-                    'finished_at' => $startedAt,
-                    'updated_at' => $startedAt,
-                ]);
+    /** @return array{?Task, ?ArticleAiQualityCheck} */
+    private function lockDeadlineCheck(int $checkId): array
+    {
+        $taskId = (int) ArticleAiQualityCheck::query()->whereKey($checkId)->value('task_id');
+        $task = $taskId > 0 ? Task::query()->whereKey($taskId)->lockForUpdate()->first() : null;
+        $check = ArticleAiQualityCheck::query()->whereKey($checkId)->lockForUpdate()->first();
 
-            $executionMeta['current_phase'] = 'sampling_queued';
-            $executionMeta['fallback'] = [
-                'trigger_code' => $errorCode,
-                'started_at' => $startedAt->toIso8601String(),
-                'algorithm_version' => ArticleAiQualitySampleBuilder::ALGORITHM_VERSION,
-            ];
+        return [$task, $check];
+    }
+
+    private function startLockedSampledFallback(?Task $task, ArticleAiQualityCheck $check, string $errorCode, bool $dispatch): bool
+    {
+        $checkId = (int) $check->id;
+        $executionMeta = is_array($check->execution_meta) ? $check->execution_meta : [];
+        [$aiExecutionSnapshot, $invalidExecutionSnapshot] = $this->qualityExecutionSnapshotForCheck($executionMeta);
+        if ($invalidExecutionSnapshot
+            || ($aiExecutionSnapshot === null && $this->aiExecutionContextFactory->identityRequired())) {
             $check->forceFill([
-                'status' => 'queued',
+                'status' => 'stale',
                 'decision' => null,
-                'score' => null,
-                'dimension_scores' => null,
-                'inspection_scope' => 'fallback_sampled',
-                'fallback_trigger_code' => $errorCode,
-                'sampled_deadline_at' => $sampledDeadlineAt,
-                'coverage_meta' => null,
-                'error_code' => null,
-                'error_message' => null,
-                'execution_meta' => $executionMeta,
-                'finished_at' => null,
-                'updated_at' => $startedAt,
+                'active_dedupe_key' => null,
+                'error_code' => AiModelAccessException::AI_CONFIG_ACCESS_REVOKED,
+                'error_message' => 'AI 执行身份已失效。',
+                'finished_at' => now(),
             ])->save();
 
-            if ($dispatch) {
-                DB::afterCommit(fn () => $this->dispatchCheck($checkId));
-            }
+            return false;
+        }
+        if ($aiExecutionSnapshot !== null) {
+            $this->aiExecutionAccessGuard->assertPersistedAdminSnapshot(
+                $aiExecutionSnapshot,
+                $check->task_id ? (int) $check->task_id : null,
+            );
+        }
+        $policySnapshot = is_array($executionMeta['policy_snapshot'] ?? null)
+            ? $executionMeta['policy_snapshot']
+            : [];
+        if (! in_array((string) $check->status, ['queued', 'running'], true)
+            || (string) $check->inspection_scope !== 'full'
+            || ! (bool) ($policySnapshot['timeout_sampling_enabled'] ?? false)
+            || ! $task instanceof Task
+            || ! (bool) $task->ai_quality_enabled
+            || ! (bool) $task->ai_quality_timeout_sampling_enabled
+            || $this->remainingDeadlineSeconds($this->deadlineAt($check)) <= 0) {
+            return false;
+        }
 
-            return true;
-        });
+        $startedAt = now();
+        $sampledDeadlineAt = $startedAt->copy()->addSeconds(
+            (int) config('geoflow.ai_quality_sampled_fallback_seconds', 45)
+            + (int) config('geoflow.ai_quality_persistence_reserve_seconds', 10),
+        );
+        $finalDeadlineAt = $this->deadlineAt($check);
+        if ($sampledDeadlineAt->gt($finalDeadlineAt)) {
+            $sampledDeadlineAt = $finalDeadlineAt->copy();
+        }
+        ArticleAiQualitySegment::query()
+            ->where('article_ai_quality_check_id', $checkId)
+            ->whereIn('status', ['queued', 'running', 'failed'])
+            ->update([
+                'status' => 'cancelled',
+                'error_code' => 'sampled_fallback_started',
+                'error_message' => '完整质检未完成，本分段已因抽样降级而取消。',
+                'finished_at' => $startedAt,
+                'updated_at' => $startedAt,
+            ]);
+
+        $executionMeta['current_phase'] = 'sampling_queued';
+        $executionMeta['fallback'] = [
+            'trigger_code' => $errorCode,
+            'started_at' => $startedAt->toIso8601String(),
+            'algorithm_version' => ArticleAiQualitySampleBuilder::ALGORITHM_VERSION,
+        ];
+        $check->forceFill([
+            'status' => 'queued',
+            'decision' => null,
+            'score' => null,
+            'dimension_scores' => null,
+            'inspection_scope' => 'fallback_sampled',
+            'fallback_trigger_code' => $errorCode,
+            'sampled_deadline_at' => $sampledDeadlineAt,
+            'coverage_meta' => null,
+            'error_code' => null,
+            'error_message' => null,
+            'execution_meta' => $executionMeta,
+            'finished_at' => null,
+            'updated_at' => $startedAt,
+        ])->save();
+
+        if ($dispatch) {
+            DB::afterCommit(fn () => $this->dispatchCheck($checkId, registerDeadline: true));
+        }
+
+        return true;
     }
 
     /** @param array<string,mixed>|null $aiExecutionSnapshot */
@@ -2035,11 +2045,8 @@ class ArticleAiQualityInspectionService
         }
 
         $checkId = $check instanceof ArticleAiQualityCheck ? (int) $check->id : $check;
-        $errorCode = $this->safeErrorCode($exception);
-        $retryable = $this->retryableFailure($exception, $errorCode);
-        $failureContext = $this->safeFailureContext($exception, $errorCode, $retryable);
 
-        return DB::transaction(function () use ($checkId, $errorCode, $retryable, $failureContext, $expectedScope): bool {
+        return DB::transaction(function () use ($checkId, $exception, $expectedScope): bool {
             $check = ArticleAiQualityCheck::query()->whereKey($checkId)->lockForUpdate()->first();
             if (! $check
                 || ! in_array((string) $check->status, ['queued', 'running'], true)
@@ -2047,53 +2054,110 @@ class ArticleAiQualityInspectionService
                 return false;
             }
 
-            ArticleAiQualitySegment::query()
-                ->where('article_ai_quality_check_id', $checkId)
-                ->whereIn('status', ['queued', 'running', 'failed'])
-                ->update([
-                    'status' => 'failed',
-                    'error_code' => $errorCode,
-                    'error_message' => 'AI 质检分段执行失败。',
-                    'finished_at' => now(),
-                    'updated_at' => now(),
-                ]);
-            [$executionMeta, $usageMeta] = $this->terminalTelemetry($check);
-            $executionMeta['retryable_failure'] = $retryable;
-            $executionMeta['failure'] = $failureContext;
-            $executionMeta['failure']['check_id'] = (int) $check->id;
-            $executionMeta['failure']['stage'] = (string) ($executionMeta['current_phase'] ?? 'unknown');
-            $executionMeta['failure']['model_id'] = (int) $check->ai_model_id;
-            $executionMeta['failure']['attempt'] = (int) data_get($executionMeta, 'technical_retry.attempt', 0) + 1;
-            $attempt = (int) data_get($executionMeta, 'technical_retry.attempt', 0);
-            if ($retryable && $attempt < 2 && $check->inspection_scope === 'full'
-                && ArticleAiQualityReconciliationService::isTransientFailure($errorCode)) {
-                $executionMeta['technical_retry'] = array_replace($executionMeta['technical_retry'] ?? [], [
-                    'attempt' => $attempt,
-                    'root_check_id' => (int) data_get($executionMeta, 'technical_retry.root_check_id', $check->id),
-                    'next_at' => now()->addSeconds(max($attempt === 0 ? 60 : 300, (int) ($failureContext['retry_after_seconds'] ?? 0)))->toIso8601String(),
-                ]);
-            }
-            $executionMeta['current_phase'] = 'finished';
-            $check->forceFill([
-                'status' => 'failed',
-                'decision' => 'error',
-                'score' => null,
-                'dimension_scores' => null,
-                'summary' => null,
-                'issues' => null,
-                'uncertainties' => null,
-                'confidence' => null,
-                'gate_reasons' => null,
-                'active_dedupe_key' => null,
-                'error_code' => $errorCode,
-                'error_message' => 'AI 质检执行失败，请稍后重试或联系管理员检查模型配置。',
-                'execution_meta' => $executionMeta,
-                'usage_meta' => $usageMeta,
-                'finished_at' => now(),
-            ])->save();
+            $this->failLockedCheck($check, $exception);
 
             return true;
         });
+    }
+
+    /** Both a delayed job and the sweep confirm the current deadline under the same locks. */
+    public function convergeDueCheck(int $checkId, string $phase, ?string $expectedScope = null, ?int $expectedAt = null): ?string
+    {
+        if (! in_array($phase, ['primary', 'final'], true)
+            || ! ArticleAiQualityCheck::query()->whereKey($checkId)->whereIn('status', ['queued', 'running'])->exists()) {
+            return null;
+        }
+
+        return DB::transaction(function () use ($checkId, $phase, $expectedScope, $expectedAt): ?string {
+            [$task, $check] = $this->lockDeadlineCheck($checkId);
+            if (! $check || ! in_array((string) $check->status, ['queued', 'running'], true)
+                || ($expectedScope !== null && $check->inspection_scope !== $expectedScope)
+                || ($phase === 'primary' && $check->inspection_scope !== 'full')) {
+                return null;
+            }
+
+            $finalAt = $check->inspection_scope === 'fallback_sampled' ? $this->sampledDeadlineAt($check) : $this->deadlineAt($check);
+            $dueAt = $phase === 'primary' ? $this->primaryDeadlineAt($check) : $finalAt;
+            if ($dueAt->isFuture() || ($expectedAt !== null && $dueAt->getTimestamp() !== $expectedAt)) {
+                return null;
+            }
+
+            if ($phase === 'primary' && $finalAt->isFuture()) {
+                $code = 'inspection_primary_deadline_exceeded';
+                if ($this->startLockedSampledFallback($task, $check, $code, true)) {
+                    return 'degraded';
+                }
+                if (! in_array((string) $check->status, ['queued', 'running'], true)) {
+                    return null;
+                }
+                $failure = new ArticleAiQualityRuntimeException($code, false);
+            } else {
+                $failure = new ArticleAiQualityRuntimeException($this->workerLiveness->expirationCode($check), true);
+            }
+            $this->failLockedCheck($check, $failure);
+
+            return 'expired';
+        }, 3);
+    }
+
+    private function failLockedCheck(ArticleAiQualityCheck $check, Throwable $exception): void
+    {
+        $checkId = (int) $check->id;
+        $errorCode = $this->safeErrorCode($exception);
+        $retryable = $this->retryableFailure($exception, $errorCode);
+        $failureContext = $this->safeFailureContext($exception, $errorCode, $retryable);
+
+        ArticleAiQualitySegment::query()
+            ->where('article_ai_quality_check_id', $checkId)
+            ->whereIn('status', ['queued', 'running', 'failed'])
+            ->update([
+                'status' => 'failed',
+                'error_code' => $errorCode,
+                'error_message' => 'AI 质检分段执行失败。',
+                'finished_at' => now(),
+                'updated_at' => now(),
+            ]);
+        [$executionMeta, $usageMeta] = $this->terminalTelemetry($check);
+        $executionMeta['retryable_failure'] = $retryable;
+        $executionMeta['failure'] = $failureContext;
+        $executionMeta['failure']['check_id'] = (int) $check->id;
+        $executionMeta['failure']['stage'] = (string) ($executionMeta['current_phase'] ?? 'unknown');
+        $executionMeta['failure']['model_id'] = (int) $check->ai_model_id;
+        $executionMeta['failure']['attempt'] = (int) data_get($executionMeta, 'technical_retry.attempt', 0) + 1;
+        $attempt = (int) data_get($executionMeta, 'technical_retry.attempt', 0);
+        if ($retryable && $attempt < 2 && $check->inspection_scope === 'full'
+            && ArticleAiQualityReconciliationService::isTransientFailure($errorCode)) {
+            $executionMeta['technical_retry'] = array_replace($executionMeta['technical_retry'] ?? [], [
+                'attempt' => $attempt,
+                'root_check_id' => (int) data_get($executionMeta, 'technical_retry.root_check_id', $check->id),
+                'next_at' => now()->addSeconds(max($attempt === 0 ? 60 : 300, (int) ($failureContext['retry_after_seconds'] ?? 0)))->toIso8601String(),
+            ]);
+        }
+        $executionMeta['current_phase'] = 'finished';
+        $check->forceFill([
+            'status' => 'failed',
+            'decision' => 'error',
+            'score' => null,
+            'dimension_scores' => null,
+            'summary' => null,
+            'issues' => null,
+            'uncertainties' => null,
+            'confidence' => null,
+            'gate_reasons' => null,
+            'active_dedupe_key' => null,
+            'error_code' => $errorCode,
+            'error_message' => 'AI 质检执行失败，请稍后重试或联系管理员检查模型配置。',
+            'execution_meta' => $executionMeta,
+            'usage_meta' => $usageMeta,
+            'finished_at' => now(),
+        ])->save();
+        $nextAt = data_get($executionMeta, 'technical_retry.next_at');
+        if (is_string($nextAt) && $nextAt !== '') {
+            $retryCheckId = (int) $check->id;
+            DB::afterCommit(function () use ($retryCheckId, $nextAt): void {
+                $this->scheduleTechnicalRetry($retryCheckId, $nextAt);
+            });
+        }
     }
 
     public function markRetryPending(ArticleAiQualityCheck|int $check, Throwable $exception): void
@@ -2137,21 +2201,21 @@ class ArticleAiQualityInspectionService
     public function recoverStuckCheck(ArticleAiQualityCheck|int $check): bool
     {
         $checkId = $check instanceof ArticleAiQualityCheck ? (int) $check->id : $check;
-        $candidate = ArticleAiQualityCheck::query()->find($checkId);
-        if ($candidate
-            && in_array((string) $candidate->status, ['queued', 'running'], true)
-            && $this->remainingDeadlineSeconds($this->deadlineAt($candidate)) <= 0) {
-            return $this->markFailed(
-                $candidate,
-                new ArticleAiQualityRuntimeException($this->workerLiveness->expirationCode($candidate), true),
-            );
+        $candidate = ArticleAiQualityCheck::query()->whereIn('status', ['queued', 'running'])
+            ->find($checkId, ['id', 'inspection_scope', 'created_at', 'deadline_at', 'sampled_deadline_at']);
+        if (! $candidate) {
+            return false;
+        }
+        $deadline = $candidate->inspection_scope === 'fallback_sampled' ? $this->sampledDeadlineAt($candidate) : $this->deadlineAt($candidate);
+        if (! $deadline->isFuture()) {
+            return $this->convergeDueCheck($checkId, 'final') !== null;
         }
 
         return DB::transaction(function () use ($checkId): bool {
             $check = ArticleAiQualityCheck::query()->whereKey($checkId)->lockForUpdate()->first();
             if (! $check
                 || ! in_array((string) $check->status, ['queued', 'running'], true)
-                || $this->remainingDeadlineSeconds($this->deadlineAt($check)) <= 0
+                || ($check->inspection_scope === 'fallback_sampled' ? $this->sampledDeadlineAt($check) : $this->deadlineAt($check))->isPast()
                 || $check->updated_at?->isAfter(now()->subSeconds(
                     (int) config('geoflow.ai_quality_recovery_stale_seconds', 60),
                 ))) {
@@ -2383,10 +2447,7 @@ class ArticleAiQualityInspectionService
             if (in_array((string) $latest->status, ['queued', 'running'], true)
                 && (string) $latest->inspection_scope === 'full'
                 && $this->remainingDeadlineSeconds($this->primaryDeadlineAt($latest)) <= 0) {
-                $exception = new ArticleAiQualityRuntimeException('inspection_primary_deadline_exceeded', false);
-                if (! $this->tryStartSampledFallback($latest, $exception)) {
-                    $this->markFailed($latest, $exception);
-                }
+                $this->convergeDueCheck($checkId, 'primary');
             }
         }
 
@@ -3441,7 +3502,52 @@ class ArticleAiQualityInspectionService
         return $article;
     }
 
-    private function dispatchCheck(int $checkId, int $delaySeconds = 0): void
+    public function scheduleDeadlineConvergence(int $checkId): void
+    {
+        try {
+            $check = ArticleAiQualityCheck::query()->find($checkId, [
+                'id', 'status', 'inspection_scope', 'created_at', 'primary_deadline_at', 'sampled_deadline_at', 'deadline_at',
+            ]);
+            if (! $check || ! in_array((string) $check->status, ['queued', 'running'], true)) {
+                return;
+            }
+
+            $scope = (string) $check->inspection_scope;
+            $finalAt = $scope === 'fallback_sampled' ? $this->sampledDeadlineAt($check) : $this->deadlineAt($check);
+            $primaryAt = $this->primaryDeadlineAt($check);
+            if ($scope === 'full' && $primaryAt->lt($finalAt)) {
+                $this->dispatchDeadline($checkId, 'primary', $scope, $primaryAt);
+            }
+            $this->dispatchDeadline($checkId, 'final', $scope, $finalAt);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    private function dispatchDeadline(int $checkId, string $phase, string $scope, CarbonInterface $dueAt): void
+    {
+        ConvergeArticleAiQualityDeadlineJob::dispatch($checkId, $phase, $scope, $dueAt->getTimestamp())
+            ->delay($this->delayUntil($dueAt));
+    }
+
+    public function scheduleTechnicalRetry(int $checkId, string $nextAt): void
+    {
+        try {
+            RetryArticleAiQualityCheckJob::dispatch($checkId)->delay($this->delayUntil(Date::parse($nextAt)));
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    /**
+     * 截止时间已过时立即投递，否则等到该时间。
+     */
+    private function delayUntil(\DateTimeInterface $moment): \DateTimeInterface
+    {
+        return $moment > now() ? $moment : now();
+    }
+
+    private function dispatchCheck(int $checkId, int $delaySeconds = 0, bool $registerDeadline = false): void
     {
         try {
             $check = ArticleAiQualityCheck::query()->find($checkId, ['execution_meta', 'inspection_scope']);
@@ -3468,6 +3574,10 @@ class ArticleAiQualityInspectionService
             );
 
             throw $exception;
+        }
+
+        if ($registerDeadline) {
+            $this->scheduleDeadlineConvergence($checkId);
         }
     }
 

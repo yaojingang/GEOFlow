@@ -359,6 +359,9 @@ deploy_stack() {
   log "Entering maintenance mode and draining existing application services."
   enter_maintenance_mode
   MAINTENANCE_MODE_ENTERED=1
+  if [ -n "$("${COMPOSE[@]}" ps -q ai-quality-deadlines-queue)" ]; then
+    "${COMPOSE[@]}" stop ai-quality-deadlines-queue
+  fi
   "${COMPOSE[@]}" stop web app queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb
 
   log "Running initialization and database migrations."
@@ -368,8 +371,10 @@ deploy_stack() {
   "${COMPOSE[@]}" run --rm app php artisan optimize:clear
   "${COMPOSE[@]}" run --rm app php artisan optimize
 
+  log "Starting the AI quality deadline consumer."
+  "${COMPOSE[@]}" up -d --wait ai-quality-deadlines-queue
   log "Starting GEOFlow services."
-  "${COMPOSE[@]}" up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb
+  "${COMPOSE[@]}" up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue ai-quality-deadlines-queue ai-optimization-queue knowledge-queue scheduler reverb
 
 }
 

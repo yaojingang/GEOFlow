@@ -115,7 +115,8 @@ export COMPOSE_PROD='docker compose --env-file .env.prod -f docker-compose.prod.
 $COMPOSE_PROD build
 $COMPOSE_PROD up -d postgres redis
 $COMPOSE_PROD up -d init
-$COMPOSE_PROD up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb
+$COMPOSE_PROD up -d --wait ai-quality-deadlines-queue
+$COMPOSE_PROD up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue ai-quality-deadlines-queue ai-optimization-queue knowledge-queue scheduler reverb
 ```
 
 `init` 服务会把 `GEOFLOW_SECURITY_FRESH_INSTALL_CONFIRMED=true` 仅注入该一次性容器。迁移只在单一 fresh migration batch 且业务表为空时接受此标志；已有部署仍需下一节的 drain confirmation。
@@ -129,6 +130,9 @@ $COMPOSE_PROD up -d --remove-orphans app web queue ai-quality-queue ai-quality-b
 ```bash
 # 1. 先进入维护模式，再停止入口和所有旧版常驻进程。
 $COMPOSE_PROD exec app php artisan down
+if $COMPOSE_PROD config --services | grep -qx ai-quality-deadlines-queue; then
+  $COMPOSE_PROD stop ai-quality-deadlines-queue
+fi
 $COMPOSE_PROD stop web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb
 docker stop --time 900 geoflow-system-update-queue-prod 2>/dev/null || true
 
@@ -153,7 +157,8 @@ $COMPOSE_PROD run --rm app php artisan geoflow:backfill-ai-quality-retrieval --d
 
 # 6. 最后一次 dry-run 的 tasks、tasks_deferred、checks、checks_staled、sources、knowledge_bases、
 # readiness_projections、atomic_fact_counts 必须全部为 0，再启动全部新版本进程。
-$COMPOSE_PROD up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb
+$COMPOSE_PROD up -d --wait ai-quality-deadlines-queue
+$COMPOSE_PROD up -d --remove-orphans app web queue ai-quality-queue ai-quality-backfill-queue ai-quality-deadlines-queue ai-optimization-queue knowledge-queue scheduler reverb
 
 # 7. 回填并检查受管图片身份；remaining、terminal、registry_failed 必须都为 0。
 $COMPOSE_PROD run --rm app php artisan geoflow:managed-images:readiness
@@ -184,7 +189,7 @@ $COMPOSE_PROD run --rm app php artisan geoflow:security-audit --json
 完成审计处理，再次确认运行中的容器全部来自新镜像，然后将 `GEOFLOW_MANAGED_IMAGE_DELETION_ENABLED=true` 写入生产环境配置，并重新创建会执行图片清理的新版本进程：
 
 ```bash
-$COMPOSE_PROD up -d --force-recreate app queue ai-quality-queue ai-quality-backfill-queue knowledge-queue scheduler
+$COMPOSE_PROD up -d --force-recreate app queue ai-quality-queue ai-quality-backfill-queue ai-quality-deadlines-queue knowledge-queue scheduler
 ```
 
 门禁关闭或回填未完成时，数据库记录仍可删除，物理图片文件会安全保留并记录清理失败日志。

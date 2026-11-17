@@ -185,7 +185,8 @@ cp .env.prod.example .env.prod
 docker compose --env-file .env.prod -f docker-compose.prod.yml build
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d postgres redis
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d init
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web queue ai-quality-queue ai-quality-backfill-queue ai-optimization-queue knowledge-queue scheduler reverb
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --wait ai-quality-deadlines-queue
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web queue ai-quality-queue ai-quality-backfill-queue ai-quality-deadlines-queue ai-optimization-queue knowledge-queue scheduler reverb
 ```
 
 本番構成、ヘルスチェック、リバースプロキシ、復旧方法は [`docs/deployment/DEPLOYMENT.md`](../deployment/DEPLOYMENT.md) を参照してください。

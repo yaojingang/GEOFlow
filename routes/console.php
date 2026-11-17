@@ -161,10 +161,10 @@ Schedule::command('geoflow:reconcile-ai-optimization')
     ->onOneServer()
     ->withoutOverlapping(2);
 
-Schedule::command('geoflow:converge-ai-quality')
-    ->everyFiveSeconds()
+Schedule::command('geoflow:converge-ai-quality --deadlines-only')
+    ->everyMinute()
     ->onOneServer()
-    ->withoutOverlapping(1);
+    ->withoutOverlapping(2);
 
 Schedule::command('geoflow:ai-quality-health --json')
     ->everyMinute()

@@ -2,10 +2,12 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Jobs\RecoverPublicationHandoffJob;
 use App\Models\Article;
 use App\Models\DistributionLog;
 use App\Models\Task;
 use App\Support\GeoFlow\DistributionErrorSanitizer;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -74,18 +76,24 @@ class ArticlePublicationDeliveryService
             ->whereIn('context->status', ['pending', 'sending'])
             ->where(fn ($query) => $query->whereNull('context->next_at')->orWhere('context->next_at', '<=', now()->toIso8601String()))
             ->orderBy('id')->limit(max(1, min(100, $limit)))->get() as $receipt) {
-            $recovered += (int) $this->attempt((int) $receipt->id);
+            try {
+                $recovered += (int) $this->attempt((int) $receipt->id);
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
         }
 
         return $recovered;
     }
 
-    public function attempt(int $receiptId): bool
+    public function attempt(int $receiptId, ?string $expectedRetryAt = null): bool
     {
-        $claim = DB::transaction(function () use ($receiptId): ?array {
+        $claim = DB::transaction(function () use ($receiptId, $expectedRetryAt): ?array {
             $receipt = DistributionLog::query()->whereKey($receiptId)->lockForUpdate()->first();
             $context = (array) $receipt?->context;
-            if (! $receipt || ! in_array($context['status'] ?? '', ['pending', 'sending'], true)
+            if (! $receipt || $receipt->event !== self::EVENT
+                || ! in_array($context['status'] ?? '', ['pending', 'sending'], true)
+                || ($expectedRetryAt !== null && ($context['next_at'] ?? null) !== $expectedRetryAt)
                 || (! empty($context['next_at']) && now()->lt($context['next_at']))) {
                 return null;
             }
@@ -123,9 +131,25 @@ class ArticlePublicationDeliveryService
                 ? now()->addSeconds($context['attempts'] === 1 ? 60 : 300)->toIso8601String() : null;
             report($exception);
         }
-        DistributionLog::query()->whereKey($receiptId)->where('context->lease', $context['lease'])
+        $updated = DistributionLog::query()->whereKey($receiptId)->where('context->lease', $context['lease'])
             ->update(['context' => json_encode($context, JSON_THROW_ON_ERROR), 'level' => $context['status'] === 'completed' ? 'info' : 'warning']);
+        if ($updated && $context['status'] === 'pending') {
+            $this->scheduleHandoffRetry($receiptId, $context['next_at']);
+        }
 
-        return $context['status'] === 'completed';
+        return $updated > 0 && $context['status'] === 'completed';
+    }
+
+    /**
+     * 等到交接回执的 next_at 再重试这一条，避免周期扫描全部回执。
+     */
+    public function scheduleHandoffRetry(int $receiptId, string $nextAt): void
+    {
+        try {
+            $moment = Date::parse($nextAt);
+            RecoverPublicationHandoffJob::dispatch($receiptId, $nextAt)->delay($moment > now() ? $moment : now());
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
     }
 }

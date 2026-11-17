@@ -70,6 +70,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_CACHE_VIEWS: "false"
       TRUSTED_PROXIES: "${TRUSTED_PROXIES:-REMOTE_ADDR}"
       PHP_CLI_SERVER_WORKERS: "4"
     command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080", "--no-reload"]
@@ -105,6 +106,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_CACHE_VIEWS: "false"
       COMPOSER_ON_START: "false"
       AUTO_MIGRATE: "false"
     command: ["php", "-d", "memory_limit=256M", "artisan", "queue:work", "redis", "--queue=system-updates,geoflow,distribution,theme-replication,default", "--sleep=1", "--tries=1", "--timeout=930", "--memory=128", "--max-jobs=100", "--max-time=3600"]
@@ -122,6 +124,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_CACHE_VIEWS: "false"
       COMPOSER_ON_START: "false"
       AUTO_MIGRATE: "false"
     command: ["php", "-d", "memory_limit=256M", "artisan", "geoflow:work-ai-quality", "front"]
@@ -142,11 +145,32 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_CACHE_VIEWS: "false"
       COMPOSER_ON_START: "false"
       AUTO_MIGRATE: "false"
     command: ["php", "-d", "memory_limit=192M", "artisan", "geoflow:work-ai-quality", "backfill"]
     mem_limit: ${AI_QUALITY_BACKFILL_QUEUE_CONTAINER_MEMORY_LIMIT:-256m}
     stop_grace_period: ${GEOFLOW_AI_QUALITY_STOP_GRACE_PERIOD:-260s}
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  ai-quality-deadlines-queue:
+    image: geoflow-app:latest
+    container_name: geoflow-ai-quality-deadlines-queue
+    working_dir: /var/www/html
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_OPTIMIZE: "false"
+      AUTO_CACHE_VIEWS: "false"
+      COMPOSER_ON_START: "false"
+      AUTO_MIGRATE: "false"
+    command: ["php", "-d", "memory_limit=128M", "artisan", "geoflow:work-ai-quality", "deadlines"]
+    mem_limit: 192m
+    stop_grace_period: 40s
     volumes:
       - ./:/var/www/html
     depends_on:
@@ -160,6 +184,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_CACHE_VIEWS: "false"
       COMPOSER_ON_START: "false"
       AUTO_MIGRATE: "false"
     command: ["php", "-d", "memory_limit=256M", "artisan", "geoflow:work-ai-optimization"]
@@ -178,6 +203,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_CACHE_VIEWS: "false"
       COMPOSER_ON_START: "false"
       AUTO_MIGRATE: "false"
     command: ["php", "-d", "memory_limit=160M", "artisan", "queue:work", "redis", "--queue=knowledge", "--sleep=1", "--tries=1", "--timeout=210", "--memory=128", "--max-jobs=20", "--max-time=1800"]
@@ -196,6 +222,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_CACHE_VIEWS: "false"
       COMPOSER_ON_START: "false"
       AUTO_MIGRATE: "false"
     command: ["php", "artisan", "schedule:work"]
@@ -212,6 +239,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_CACHE_VIEWS: "false"
       COMPOSER_ON_START: "false"
       AUTO_MIGRATE: "false"
     command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]

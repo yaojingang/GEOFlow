@@ -75,6 +75,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_CACHE_VIEWS: "false"
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
@@ -119,6 +120,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_CACHE_VIEWS: "false"
     command: ["php", "-d", "memory_limit=256M", "artisan", "queue:work", "redis", "--queue=system-updates,geoflow,distribution,theme-replication,default", "--sleep=1", "--tries=1", "--timeout=930", "--memory=128", "--max-jobs=100", "--max-time=3600"]
     mem_limit: ${QUEUE_CONTAINER_MEMORY_LIMIT:-384m}
     stop_grace_period: 960s
@@ -137,6 +139,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_CACHE_VIEWS: "false"
     command: ["php", "-d", "memory_limit=256M", "artisan", "geoflow:work-ai-quality", "front"]
     mem_limit: ${AI_QUALITY_QUEUE_CONTAINER_MEMORY_LIMIT:-384m}
     stop_grace_period: ${GEOFLOW_AI_QUALITY_STOP_GRACE_PERIOD:-260s}
@@ -158,9 +161,31 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_CACHE_VIEWS: "false"
     command: ["php", "-d", "memory_limit=192M", "artisan", "geoflow:work-ai-quality", "backfill"]
     mem_limit: ${AI_QUALITY_BACKFILL_QUEUE_CONTAINER_MEMORY_LIMIT:-256m}
     stop_grace_period: ${GEOFLOW_AI_QUALITY_STOP_GRACE_PERIOD:-260s}
+    volumes:
+      - ./.env.prod:/var/www/html/.env
+      - ./storage:/var/www/html/storage
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ai-quality-deadlines-queue:
+    image: ${GEOFLOW_APP_IMAGE:?GEOFLOW_APP_IMAGE is required for prebuilt deployment}
+    container_name: geoflow-ai-quality-deadlines-queue-prod
+    working_dir: /var/www/html
+    environment:
+      AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_OPTIMIZE: "false"
+      AUTO_CACHE_VIEWS: "false"
+    command: ["php", "-d", "memory_limit=128M", "artisan", "geoflow:work-ai-quality", "deadlines"]
+    mem_limit: 192m
+    stop_grace_period: 40s
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
@@ -177,6 +202,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_CACHE_VIEWS: "false"
     command: ["php", "-d", "memory_limit=256M", "artisan", "geoflow:work-ai-optimization"]
     mem_limit: ${AI_OPTIMIZATION_QUEUE_CONTAINER_MEMORY_LIMIT:-384m}
     stop_grace_period: ${GEOFLOW_AI_QUALITY_OPTIMIZATION_STOP_GRACE_PERIOD:-910s}
@@ -196,6 +222,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_CACHE_VIEWS: "false"
     command: ["php", "-d", "memory_limit=160M", "artisan", "queue:work", "redis", "--queue=knowledge", "--sleep=1", "--tries=1", "--timeout=210", "--memory=128", "--max-jobs=20", "--max-time=1800"]
     mem_limit: ${KNOWLEDGE_QUEUE_CONTAINER_MEMORY_LIMIT:-256m}
     stop_grace_period: 240s
@@ -215,6 +242,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_CACHE_VIEWS: "false"
     command: ["php", "artisan", "schedule:work"]
     volumes:
       - ./.env.prod:/var/www/html/.env
@@ -230,6 +258,7 @@ services:
     working_dir: /var/www/html
     environment:
       AUTO_FIX_STORAGE_PERMISSIONS: "false"
+      AUTO_CACHE_VIEWS: "false"
     # 阶段一的 Nginx /reverb 内部反代固定使用 18080，应用启动时会校验该约束。
     command: ["php", "artisan", "reverb:start", "--host=0.0.0.0"]
     expose:

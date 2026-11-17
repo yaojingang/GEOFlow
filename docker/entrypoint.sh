@@ -1,6 +1,10 @@
 #!/usr/bin/env sh
 set -eu
 
+# php-fpm 工作进程是 www-data，队列和调度以 root 执行。
+# 组可写能避免 root 新建的按日日志变成 0644 后，Web 请求无法再写入。
+umask 0002
+
 cd /var/www/html
 
 if [ ! -f .env ] && [ -f .env.example ]; then
@@ -68,7 +72,8 @@ if [ "${AUTO_FIX_STORAGE_PERMISSIONS:-true}" = "true" ]; then
 
     echo "[entrypoint] fixing storage permissions for ${RUNTIME_USER}:${RUNTIME_GROUP}"
     chown -R "${RUNTIME_USER}:${RUNTIME_GROUP}" storage bootstrap/cache
-    find storage bootstrap/cache -type d -exec chmod 775 {} +
+    # 2775 带 setgid：root 之后新建的日志仍继承 www-data 组。
+    find storage bootstrap/cache -type d -exec chmod 2775 {} +
     find storage bootstrap/cache -type f -exec chmod 664 {} +
   else
     echo "[entrypoint] skip permission fix: container is not running as root"
@@ -116,11 +121,23 @@ if [ "${AUTO_MIGRATE:-true}" = "true" ] && [ "${INIT_RAN_MIGRATE}" != "true" ]; 
   php artisan migrate --force --no-interaction
 fi
 
-# 缓存 config / events / routes / views（需有效 APP_KEY；设为 false 可跳过，便于本地排障）
+# 缓存 config / events / routes / views（需有效 APP_KEY；设为 false 可跳过，便于本地排障）。
+# 编译视图在共享目录，只允许一个容器清空；锁放在 views 目录外，避免被 view:clear 删掉。
 if [ "${AUTO_OPTIMIZE:-false}" = "true" ]; then
   if [ -n "${APP_KEY:-}" ] || grep -Eq '^APP_KEY=base64:' .env 2>/dev/null; then
-    echo "[entrypoint] php artisan optimize"
-    php artisan optimize --no-interaction || echo "[entrypoint] warning: php artisan optimize failed, continuing"
+    echo "[entrypoint] php artisan optimize --except=views"
+    php artisan optimize --except=views --no-interaction || echo "[entrypoint] warning: php artisan optimize failed, continuing"
+    if [ "${AUTO_CACHE_VIEWS:-true}" = "true" ]; then
+      echo "[entrypoint] php artisan view:cache"
+      mkdir -p storage/framework
+      if command -v flock >/dev/null 2>&1; then
+        flock storage/framework/view-compile.lock php artisan view:cache --no-interaction || echo "[entrypoint] warning: php artisan view:cache failed, continuing"
+      else
+        php artisan view:cache --no-interaction || echo "[entrypoint] warning: php artisan view:cache failed, continuing"
+      fi
+    else
+      echo "[entrypoint] skip shared view:cache"
+    fi
   else
     echo "[entrypoint] skip php artisan optimize (no valid APP_KEY in .env)"
   fi

@@ -49,12 +49,17 @@ AI 质检覆盖知识一致性、数据与引文、广告合规风险和内容�
 | --- | ---: | --- | ---: |
 | `ai-quality` | 2 | 人工质检、发布门禁和在线请求 | 10 秒 |
 | `ai-quality-backfill` | 1 | 历史补算、异常恢复和版本回填 | 45 秒 |
+| `ai-quality-deadlines` | 1 | 全文与抽样截止状态收口 | 到期后的启动 P95 目标为 5 秒 |
 | `ai-content-optimization` | 1 | 单篇文章 AI 优化 | 15 秒 |
 | `ai-content-optimization-bulk` | 1，共用优化 Worker | 任务自动优化、恢复和对账 | 60 秒 |
 
-回填每批最多处理 25 篇。前台检查等待超过 10 秒、当前模型熔断或模型当日额度接近保留水位时，回填暂停并保存文章游标。调度器每 5 秒同步执行一次过期状态收敛，不经过回填队列；全文记录到达 `primary_deadline_at` 后按策略快照进入抽样或失败，到达最终 `deadline_at` 后统一进入失败终态。每分钟对账只处理历史补算、版本变化、缺失记录及已完成质检的发布流程补偿。页面通过 `retryable` 提示是否适合人工重检，避免供应商持续故障时形成无限请求循环。
+调度器每分钟投递一批全量回填，最多处理 25 篇并保存文章游标。前台检查等待超过 10 秒、当前模型熔断或模型当日额度接近保留水位时，回填暂停。失败质检按 ID 延时重试，每轮兜底最多检查 100 条已到期记录，扫描游标越过不符合重试条件的记录。
 
-本地 `composer dev`、源码构建 Compose 和预构建镜像 Compose 均包含在线与回填两个独立消费者。普通业务队列继续使用自己的长任务超时，AI 质检消费者使用 250 秒安全超时，Job 使用 245 秒安全超时，队列 `retry_after` 保持 960 秒。生产 Compose 默认启动两个在线质检副本；健康检查会核对 `AI_QUALITY_QUEUE_REPLICAS` 对应的运行副本数。生产环境使用 Horizon 时确认两个 Supervisor 均处于运行状态。
+初次投递全文质检时，按主截止和最终截止登记延时任务。两者相同时合为一个。切换到抽样后按抽样截止时间重新登记。截止任务由独立的 `ai-quality-deadlines` worker 处理，调度器每分钟运行 `geoflow:converge-ai-quality --deadlines-only`，补偿卡住或已到期的质检及发布交接。
+
+本地 `composer dev`、源码构建 Compose 和预构建镜像 Compose 都启动独立截止 worker。使用 Horizon 时启用 `supervisor-ai-quality-deadlines`。截止任务超时为 30 秒，worker 超时为 35 秒，Redis `retry_after` 保持 960 秒。上线时先启动截止 worker，再切换应用、质检消费者和调度器。回滚时先停止新版本的任务生产者，再用当前版本的消费者处理 `ai-quality-deadlines`、`ai-quality-backfill` 和 `distribution` 中已入队的新类型消息。确认待执行、延时和保留中的新消息都已排空后，才切回旧版消费者。
+
+上线验收时，可在截止 worker 临时启用 debug 日志，取同一段 10 分钟窗口中 `article_ai_quality_deadline.started` 的 `lag_ms` 计算 P95。用同一个窗口比较在线队列等待时间、PostgreSQL CPU 和按前台请求量归一的分类计数 SQL 调用次数。
 
 ## 超时自动抽样
 
@@ -297,7 +302,7 @@ php artisan geoflow:evaluate-ai-quality --live --model=MODEL_ID
 2. 检查 `ai-quality` Worker、Horizon 进程和 Redis。
 3. 检查 `jobs` 与 `failed_jobs` 中的 `ProcessArticleAiQualityJob`。
 4. 执行 `php artisan geoflow:ai-quality-health --probe --wait=10 --json`，检查消费者心跳、超时链、积压和前台探针。
-5. 确认 Laravel 调度器每 5 秒执行 `geoflow:converge-ai-quality`，每分钟执行健康检查和 `geoflow:reconcile-ai-quality`。
+5. 确认 Laravel 调度器每分钟执行 `geoflow:converge-ai-quality --deadlines-only`、健康检查和 `geoflow:reconcile-ai-quality`。单条质检的截止时间由创建时投入的延时任务收口。
 6. 手动执行 `php artisan geoflow:converge-ai-quality --json` 收敛过期状态；历史补算或版本重算再执行 `php artisan geoflow:reconcile-ai-quality --limit=25`。
 7. 排队或运行记录到达固定截止时间后会进入失败终态；页面兜底会在截止时间后 5 秒内退出等待。
 

@@ -14,10 +14,19 @@ use App\Models\Task;
 use App\Models\ThemeRelease;
 use App\Services\Api\ThemeRevisionStorage;
 use App\Support\Site\ArticlePermalinkPolicy;
+use App\Support\Site\CurrentSite;
+use App\Support\Site\SiteThemePreviewContext;
+use App\View\Composers\SiteLayoutComposer;
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\Repository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Tests\TestCase;
 
 class HostedSitePublicRenderingTest extends TestCase
@@ -74,6 +83,79 @@ class HostedSitePublicRenderingTest extends TestCase
         ]);
         $this->assertNotNull($primaryArticle->id);
         $this->assertNotNull($betaArticle->id);
+    }
+
+    public function test_navigation_cache_isolates_hosts_and_refreshes_only_after_one_minute(): void
+    {
+        $this->freezeSecond();
+        [$alpha, $alphaArticle] = $this->siteFixture('alpha', 'Alpha Site', 'Alpha article');
+        [$beta, $betaArticle] = $this->siteFixture('beta', 'Beta Site', 'Beta article');
+        $mainArticle = $this->articleFixture('Main article', 'main-article', 'published', 'local_only');
+        foreach (['alpha' => $alphaArticle, 'beta' => $betaArticle, 'main' => $mainArticle] as $slug => $article) {
+            $article->update(['category_id' => Category::query()->create(['slug' => $slug, 'name' => $slug])->id]);
+        }
+        $site = app(CurrentSite::class);
+        $renderNav = function (): array {
+            $view = View::make('site.layout');
+            app(SiteLayoutComposer::class)->compose($view);
+
+            return $view->getData()['navCategories']->pluck('published_count', 'slug')->all();
+        };
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        try {
+            $site->setPrimary('primary.test');
+            $this->assertSame(['main' => 1], $renderNav());
+            $site->setHosted($alpha);
+            $this->assertSame(['alpha' => 1], $renderNav());
+            $site->setHosted($beta);
+            $this->assertSame(['beta' => 1], $renderNav());
+
+            $betaArticle->delete();
+            $this->assertSame(['beta' => 1], $renderNav());
+            $this->assertSame([], app(SiteThemePreviewContext::class)->run('preview', '/preview', $renderNav));
+            $this->assertSame(['beta' => 1], $renderNav());
+            $this->travel(60)->seconds();
+            $this->assertSame([], $renderNav());
+            $this->assertSame([], $renderNav());
+
+            $navQueries = array_filter(DB::getQueryLog(), fn (array $query): bool => str_contains($query['query'], 'as "published_count"'));
+            $this->assertCount(5, $navQueries);
+        } finally {
+            DB::disableQueryLog();
+        }
+    }
+
+    public function test_navigation_queries_the_current_site_when_its_cache_is_unavailable(): void
+    {
+        Exceptions::fake();
+        [$alpha] = $this->siteFixture('alpha', 'Alpha Site', 'Alpha article');
+        app(CurrentSite::class)->setHosted($alpha);
+        $failure = new RuntimeException('Navigation cache unavailable');
+        Cache::extend('navigation-failure-test', fn () => new Repository(new class($failure) extends ArrayStore
+        {
+            public function __construct(private readonly RuntimeException $failure)
+            {
+                parent::__construct();
+            }
+
+            public function get($key)
+            {
+                if (str_starts_with($key, 'geoflow:site:navigation:')) {
+                    throw $this->failure;
+                }
+
+                return parent::get($key);
+            }
+        }));
+        config(['cache.default' => 'navigation-failure-test', 'cache.stores.navigation-failure-test' => ['driver' => 'navigation-failure-test']]);
+        $view = View::make('site.layout');
+
+        app(SiteLayoutComposer::class)->compose($view);
+
+        $this->assertSame(['ai' => 1], $view->getData()['navCategories']->pluck('published_count', 'slug')->all());
+        Exceptions::assertReported(fn (RuntimeException $exception) => $exception === $failure);
     }
 
     public function test_primary_site_excludes_distribution_only_articles_from_every_public_entry(): void

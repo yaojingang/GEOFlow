@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\RecoverPublicationHandoffJob;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
@@ -235,5 +236,25 @@ class ArticlePublicationDeliveryTest extends TestCase
         app(ArticleWorkflowTransitionService::class)->humanAction($article->fresh(), 'publish');
         $this->assertSame('completed', data_get($receipt->fresh()->context, 'status'));
         $this->assertSame(1, data_get($receipt->fresh()->context, 'attempts'));
+    }
+
+    public function test_handoff_retries_schedule_the_next_round_before_the_current_job_releases_uniqueness(): void
+    {
+        Queue::fake();
+        [, $receipt] = $this->failedHandoff();
+        $first = Queue::pushed(RecoverPublicationHandoffJob::class)->sole();
+        $orchestrator = \Mockery::mock(DistributionOrchestrator::class);
+        $orchestrator->shouldReceive('enqueueForArticle')->once()->andThrow(new \RuntimeException('still_failing'));
+        $this->app->instance(DistributionOrchestrator::class, $orchestrator);
+
+        $this->travel(61)->seconds();
+        $first->handle(app(ArticlePublicationDeliveryService::class));
+        $nextAt = data_get($receipt->fresh()->context, 'next_at');
+
+        Queue::assertPushed(RecoverPublicationHandoffJob::class, fn ($job) => $job->receiptId === $receipt->id && $job->expectedRetryAt === $nextAt);
+        $this->assertNotSame($first->expectedRetryAt, $nextAt);
+        $this->travel(301)->seconds();
+        $first->handle(app(ArticlePublicationDeliveryService::class));
+        $this->assertSame(2, data_get($receipt->fresh()->context, 'attempts'));
     }
 }

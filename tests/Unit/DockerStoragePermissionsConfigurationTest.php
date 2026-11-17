@@ -17,9 +17,14 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
 
             $this->assertIsString($entrypoint);
             $this->assertStringContainsString(
-                'find storage bootstrap/cache -type d -exec chmod 775 {} +',
+                'umask 0002',
                 $entrypoint,
-                $entrypointFile.' must batch directory permission changes.'
+                $entrypointFile.' must create group-writable files for the php-fpm user.'
+            );
+            $this->assertStringContainsString(
+                'find storage bootstrap/cache -type d -exec chmod 2775 {} +',
+                $entrypoint,
+                $entrypointFile.' must batch directory permission changes and keep the www-data group on new files.'
             );
             $this->assertStringContainsString(
                 'find storage bootstrap/cache -type f -exec chmod 664 {} +',
@@ -37,6 +42,14 @@ class DockerStoragePermissionsConfigurationTest extends TestCase
                 $entrypointFile.' must not spawn chmod once per file.'
             );
         }
+    }
+
+    public function test_file_logs_stay_group_writable_for_the_php_fpm_user(): void
+    {
+        $logging = file_get_contents(dirname(__DIR__, 2).'/config/logging.php');
+
+        $this->assertIsString($logging);
+        $this->assertSame(2, substr_count($logging, "'permission' => 0664"));
     }
 
     public function test_only_init_can_automatically_fix_storage_permissions(): void
@@ -389,6 +402,54 @@ SH;
                     );
                 }
             }
+        }
+    }
+
+    /**
+     * 共享 storage 上的 Blade 编译只能由 init 清空并重写。
+     */
+    public function test_only_init_compiles_shared_blade_views(): void
+    {
+        $root = dirname(__DIR__, 2);
+
+        foreach (['docker/entrypoint.sh', 'docker/entrypoint.prod.sh'] as $entrypointFile) {
+            $entrypoint = file_get_contents($root.'/'.$entrypointFile);
+
+            $this->assertIsString($entrypoint);
+            $this->assertStringContainsString('php artisan optimize --except=views', $entrypoint);
+            $this->assertStringContainsString('AUTO_CACHE_VIEWS:-true', $entrypoint);
+            $this->assertStringContainsString('flock storage/framework/view-compile.lock php artisan view:cache', $entrypoint);
+            $this->assertStringNotContainsString('flock storage/framework/views', $entrypoint);
+        }
+
+        foreach (['docker-compose.yml', 'docker-compose.prod.yml', 'docker-compose.prebuilt.yml'] as $composeFile) {
+            $compose = file_get_contents($root.'/'.$composeFile);
+
+            $this->assertIsString($compose);
+            $services = $this->serviceBlocks($compose);
+            $runtimeServices = array_filter(
+                $services,
+                fn (string $block, string $service): bool => $service !== 'init'
+                    && $this->usesApplicationImage($block),
+                ARRAY_FILTER_USE_BOTH
+            );
+
+            $this->assertNotEmpty($runtimeServices, $composeFile.' must define application runtime services.');
+            $this->assertStringNotContainsString(
+                'AUTO_CACHE_VIEWS',
+                $services['init'],
+                $composeFile.' must let init compile shared Blade views.'
+            );
+
+            foreach ($runtimeServices as $service => $block) {
+                $this->assertStringContainsString(
+                    'AUTO_CACHE_VIEWS: "false"',
+                    $block,
+                    sprintf('%s must not clear shared compiled views from %s.', $composeFile, $service)
+                );
+            }
+
+            $this->assertSame(count($runtimeServices), substr_count($compose, 'AUTO_CACHE_VIEWS: "false"'));
         }
     }
 
