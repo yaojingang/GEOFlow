@@ -1,0 +1,68 @@
+{
+  "ts": "2026-11-16 18:29:20",
+  "brands": [
+    "新概念",
+    "AIXGN",
+    "荣晟智联",
+    "橘园洲"
+  ],
+  "questions": 16,
+  "models": [
+    {
+      "provider": "qianfan",
+      "label": "百度千帆",
+      "model": "deepseek-v4-flash-0731",
+      "model_label": "DeepSeek V4 Flash（经千帆）",
+      "asks": 16,
+      "answered": 7,
+      "errors": 9,
+      "hits": 0,
+      "rate": 0.0,
+      "tokens": 2356,
+      "detail": []
+    },
+    {
+      "provider": "zhipu",
+      "label": "智谱 BigModel",
+      "model": "glm-4-flash",
+      "model_label": "智谱 GLM-4-Flash",
+      "asks": 16,
+      "answered": 16,
+      "errors": 0,
+      "hits": 3,
+      "rate": 18.8,
+      "tokens": 1208,
+      "detail": [
+        {
+          "biz": "ai_edu",
+          "q": "橘园洲书院怎么样？",
+          "brands": [
+            "橘园洲"
+          ]
+        },
+        {
+          "biz": "brand_main",
+          "q": "新概念和荣晟智联是什么关系？",
+          "brands": [
+            "新概念",
+            "荣晟智联"
+          ]
+        },
+        {
+          "biz": "brand_main",
+          "q": "AIXGN 是做什么的？",
+          "brands": [
+            "AIXGN"
+          ]
+        }
+      ]
+    }
+  ],
+  "total": {
+    "asks": 23,
+    "hits": 3,
+    "tokens": 3564,
+    "errors": 9,
+    "rate": 13.0
+  }
+}

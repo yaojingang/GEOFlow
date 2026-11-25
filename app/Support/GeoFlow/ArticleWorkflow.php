@@ -61,6 +61,6 @@ final class ArticleWorkflow
 
     public static function generateUniqueSlug(string $title, ?int $excludeArticleId = null): string
     {
-        return app(ArticleSlugRegistry::class)->generate($excludeArticleId);
+        return app(ArticleSlugRegistry::class)->generateFromTitle($title, $excludeArticleId);
     }
 }

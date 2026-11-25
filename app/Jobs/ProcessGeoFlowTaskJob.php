@@ -39,7 +39,7 @@ class ProcessGeoFlowTaskJob implements ShouldQueue
     /**
      * 单次执行超时（秒）。
      */
-    public int $timeout = 660;
+    public int $timeout = 300;
 
     private ?AiExecutionContext $executionContext = null;
 

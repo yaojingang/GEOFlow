@@ -139,6 +139,23 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // GEOFLOW_PUBLIC_ROOT_FIX: nginx 在 /geoflow/ 处剥掉前缀并转发 X-Forwarded-Proto，
+        // Laravel 因此按 http://host/geo_admin/... 生成绝对地址。这里补回真实公网根。
+        $__publicRoot = rtrim((string) config('app.url'), '/');
+        if ($__publicRoot !== '' && str_contains($__publicRoot, '://')) {
+            $__rootHost = parse_url($__publicRoot, PHP_URL_HOST);
+            if (app()->runningInConsole()) {
+                \Illuminate\Support\Facades\URL::forceRootUrl($__publicRoot);
+            } else {
+                $__request = request();
+                if ($__request && $__request->getHost() === $__rootHost) {
+                    \Illuminate\Support\Facades\URL::forceRootUrl($__publicRoot);
+                }
+            }
+            if (parse_url($__publicRoot, PHP_URL_SCHEME) === 'https') {
+                \Illuminate\Support\Facades\URL::forceScheme('https');
+            }
+        }
         TopicSourceInvalidation::registerSourceObservers();
         Topic::saved(function (): void {
             if (app()->resolved(TopicReadModel::class)) {

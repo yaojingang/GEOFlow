@@ -1,0 +1,39 @@
+{
+ "ts": "2026-11-17T13:17:20",
+ "endpoint": "https://q.aixgn.cn/v1/chat/completions",
+ "model_upstream": "deepseek-flash @ api.deepseek.com",
+ "pass": true,
+ "n": 3,
+ "rows": [
+  {
+   "q": "青少年无人机教育怎么入门",
+   "status": 200,
+   "chars": 316,
+   "sources": 5,
+   "cites": 5,
+   "ms": 7801,
+   "head": "**结论：青少年无人机入门按“四阶”推进，并从安全基本功起步，不必先购机。**\n\n- 入门顺序：先安全与基本功（起降、定",
+   "attempts": 1
+  },
+  {
+   "q": "福州青少年无人机培训怎么选，白名单赛事怎么核",
+   "status": 200,
+   "chars": 425,
+   "sources": 5,
+   "cites": 7,
+   "ms": 5819,
+   "head": "**结论：选机构看资质、师资、费用是否可核；核赛事只看教育部当学年名单，逐字对全称与主办单位。**\n\n- 机构核验：训练",
+   "attempts": 1
+  },
+  {
+   "q": "智慧物业SaaS怎么选",
+   "status": 200,
+   "chars": 344,
+   "sources": 5,
+   "cites": 6,
+   "ms": 4893,
+   "head": "**结论：先按自身业态定“好用”标准，再用试用验证数据迁移与闭环能力，最后算清全周期费用。**\n\n- 选型看场景：住宅重",
+   "attempts": 1
+  }
+ ]
+}

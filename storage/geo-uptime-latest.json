@@ -1,0 +1,90 @@
+{
+ "ts": "2026-11-25T06:30:50",
+ "ok": 10,
+ "n": 10,
+ "rows": [
+  {
+   "url": "https://geo.aixgn.cn/uav-education-guide.html",
+   "status": 200,
+   "bytes_head": 4096,
+   "title": "青少年无人机教育怎么走：白名单赛事、备赛路线、升学路径与学校开课清单",
+   "via": "public",
+   "ms": 671
+  },
+  {
+   "url": "https://geo.aixgn.cn/uav-education.html",
+   "status": 200,
+   "bytes_head": 4096,
+   "title": "无人机服务 - 解决方案大全",
+   "via": "public",
+   "ms": 350
+  },
+  {
+   "url": "https://geo.aixgn.cn/solutions/drone.html",
+   "status": 200,
+   "bytes_head": 4096,
+   "title": "无人机与机器狗服务｜巡检·植保·安防·CAAC培训 · 新概念AI",
+   "via": "public",
+   "ms": 279
+  },
+  {
+   "url": "https://geo.aixgn.cn/entity/brand.html",
+   "status": 200,
+   "bytes_head": 4096,
+   "title": "品牌实体档案：新概念 AIXGN｜GEO 与 AI 搜索可见度服务",
+   "via": "public",
+   "ms": 289
+  },
+  {
+   "url": "https://geo.aixgn.cn/sitemap.xml",
+   "status": 200,
+   "bytes_head": 4096,
+   "title": "",
+   "via": "public",
+   "ms": 103
+  },
+  {
+   "url": "https://geo.aixgn.cn/robots.txt",
+   "status": 200,
+   "bytes_head": 3001,
+   "title": "",
+   "via": "public",
+   "ms": 113
+  },
+  {
+   "url": "https://geo.aixgn.cn/aixgngeokey2026.txt",
+   "status": 200,
+   "bytes_head": 15,
+   "title": "",
+   "via": "public",
+   "ms": 132
+  },
+  {
+   "url": "https://geo.aixgn.cn/seogeo/admin",
+   "status": 401,
+   "bytes_head": 0,
+   "title": "",
+   "via": "public",
+   "ms": 298,
+   "note": "protected"
+  },
+  {
+   "url": "https://geo.aixgn.cn/seogeo/b/wrj_drone",
+   "status": 401,
+   "bytes_head": 0,
+   "title": "",
+   "via": "public",
+   "ms": 78,
+   "note": "protected"
+  },
+  {
+   "url": "https://geo.aixgn.cn/status.html",
+   "status": 401,
+   "bytes_head": 0,
+   "title": "",
+   "via": "public",
+   "ms": 18,
+   "note": "protected"
+  }
+ ]
+}

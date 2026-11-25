@@ -1,0 +1,87 @@
+{
+ "ts": "2026-11-16T18:28:21",
+ "rows": [
+  {
+   "id": "zhipu",
+   "label": "智谱 BigModel",
+   "base": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+   "model": "glm-4-flash",
+   "ok": true,
+   "http": 200,
+   "ms": 1043,
+   "sample": "我是一个致力于提供帮助和解答的人工智能助手。"
+  },
+  {
+   "id": "ark",
+   "label": "火山方舟",
+   "base": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+   "model": "doubao-seed-2-1-pro-260915",
+   "ok": false,
+   "http": 404,
+   "ms": 366,
+   "sample": "{\"error\":{\"code\":\"ModelNotOpen\",\"message\":\"Your account 2134114102 has not activated the model doubao-seed-2-1-pro-260915. Please activate t"
+  },
+  {
+   "id": "minimax",
+   "label": "MiniMax",
+   "base": "https://api.minimax.chat/v1/text/chatcompletion_v2",
+   "model": "MiniMax-M3.1-Flash",
+   "ok": true,
+   "http": 200,
+   "ms": 282,
+   "sample": "{\"id\":\"074a0dbe4034bda1683b6b68c81c68fb\",\"choices\":null,\"cre"
+  },
+  {
+   "id": "siliconflow",
+   "label": "硅基流动",
+   "base": "https://api.siliconflow.cn/v1/chat/completions",
+   "model": "Qwen/Qwen2.5-7B-Instruct",
+   "ok": false,
+   "http": 402,
+   "ms": 121,
+   "sample": "{\"code\":30001,\"message\":\"Sorry, your account balance is insufficient\",\"data\":null}"
+  },
+  {
+   "id": "longcat",
+   "label": "美团 LongCat",
+   "base": "https://api.longcat.chat/openai/v1/chat/completions",
+   "model": "LongCat-2.5",
+   "ok": false,
+   "http": 402,
+   "ms": 163,
+   "sample": "{\"error\":{\"code\":\"too_many_requests\",\"message\":\"AppId:**ZP4A Usage limit reached.\",\"type\":\"rate_limit_error\"}}"
+  },
+  {
+   "id": "dashscope",
+   "label": "阿里云百炼",
+   "base": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+   "model": "qwen-plus",
+   "ok": false,
+   "http": 401,
+   "ms": 26,
+   "sample": "{\"error\":{\"message\":\"Incorrect API key provided. For details, see: https://help.aliyun.com/zh/model-studio/error-code#apikey-error\",\"type\":\""
+  },
+  {
+   "id": "qianfan",
+   "label": "百度千帆",
+   "base": "https://qianfan.baidubce.com/v2/chat/completions",
+   "model": "deepseek-v4-flash-0731",
+   "ok": true,
+   "http": 200,
+   "ms": 1034,
+   "sample": "我是 DeepSeek，一个由深度求索公司创造的 AI 助手，乐于为你答疑解惑。"
+  },
+  {
+   "id": "hunyuan",
+   "label": "腾讯混元",
+   "base": "https://api.hunyuan.cloud.tencent.com/v1/chat/completions",
+   "model": "hunyuan-turbos-latest",
+   "ok": false,
+   "http": 401,
+   "ms": 1200,
+   "sample": "{\"error\":{\"id\":\"99be0851a796e1838c642de43122fc46\",\"message\":\"Incorrect API key provided: sk-e7Ejx************************************9zdTv1B"
+  }
+ ],
+ "ok": 3,
+ "n": 8
+}

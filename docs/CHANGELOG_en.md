@@ -2,23 +2,11 @@
 
 This document tracks user-facing updates in the public repository. For future GitHub pushes, update this file together with the Chinese version in `CHANGELOG.md`.
 
-## 2026-11-12
-
-### Admin controls and version notices (unreleased)
-
-- Standardize single-select arrows with a 16px trailing inset and 44px text reserve across both admin layouts, login, dialogs, and dynamically added fields; preserve dark filters, disabled states, listboxes, and forced-color controls.
-- Align user menus and disclosure spacing, remove duplicate arrows from article and lead-form editors, and add a standalone spacing comparison page.
-- Fix update notices comparing the introduction revision instead of the installed application version. Matching or newer local versions no longer advertise an upgrade; the introduction displays the installed version and covers topics, link campaigns, and live prompt testing.
-- Read release dates and types correctly and link changelogs to the release tag, preserving administrator acknowledgement and one-time notices for genuinely newer releases.
-
-## 2026-11-10
+## 2026-11-08
 
 ### v3.2.1
 
 Core moves to stable `3.2.1`, bringing together the 3.2 preview work and subsequent public repository updates, with synchronized metadata and READMEs in six languages; consult GitHub Releases for published assets and upgrade notes.
-
-- Production images install locked dependencies from the public npm registry and retain integrity checks. Installation examples use the version document attached to the latest stable GitHub Release.
-- Upgrading from 3.1.0 applies 28 new migrations in a maintenance window. Managed deployments use Updater 0.5.0 with protocol 5. See the [3.2.1 upgrade guide](deployment/GEOFLOW_V3_2_1_UPGRADE_en.md).
 
 #### Topics and content production
 

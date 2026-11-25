@@ -92,9 +92,21 @@ class AnalyticsLogFilter
             return [$today->copy()->subDays($presetDays[$preset] - 1), $today->copy()];
         }
 
+        $rawFrom = trim((string) ($input['log_date_from'] ?? ''));
+        $rawTo = trim((string) ($input['log_date_to'] ?? ''));
+
+        // 非空但解析不了的日期：整段忽略并回退到 7 天，
+        // 否则会与另一端对调出用户没要求过的畸形区间。
+        if (($rawFrom !== '' && self::parseDate($rawFrom) === null)
+            || ($rawTo !== '' && self::parseDate($rawTo) === null)) {
+            $preset = '7d';
+
+            return [$today->copy()->subDays(6), $today->copy()];
+        }
+
         $preset = 'custom';
-        $dateFrom = self::parseDate((string) ($input['log_date_from'] ?? '')) ?? $today->copy()->subDays(6);
-        $dateTo = self::parseDate((string) ($input['log_date_to'] ?? '')) ?? $today->copy();
+        $dateFrom = self::parseDate($rawFrom) ?? $today->copy()->subDays(6);
+        $dateTo = self::parseDate($rawTo) ?? $today->copy();
 
         return AnalyticsDateRange::normalize($dateFrom, $dateTo, $today);
     }

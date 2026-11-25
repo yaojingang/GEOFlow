@@ -1,0 +1,107 @@
+{
+ "ts": "2026-11-23 05:40:20",
+ "engine": "DeepSeek API（外部模型，非自有引擎）",
+ "total": {
+  "n": 16,
+  "hit": 0
+ },
+ "tokens": 0,
+ "results": [
+  {
+   "topic": "geo_service",
+   "q": "福州有哪些做 SEO/GEO 优化服务的公司？",
+   "brand_hit": false,
+   "err": "HTTP Error 503: Service Unavailable"
+  },
+  {
+   "topic": "geo_service",
+   "q": "福建本地有没有做 AI 搜索优化（GEO）的服务商？",
+   "brand_hit": false,
+   "err": "HTTP Error 503: Service Unavailable"
+  },
+  {
+   "topic": "wrj_drone",
+   "q": "福州无人机培训机构哪家比较靠谱？",
+   "brand_hit": false,
+   "err": "HTTP Error 503: Service Unavailable"
+  },
+  {
+   "topic": "wrj_drone",
+   "q": "福建有没有做教育部白名单无人机赛事的培训机构？",
+   "brand_hit": false,
+   "err": "HTTP Error 503: Service Unavailable"
+  },
+  {
+   "topic": "ai_edu",
+   "q": "福州有哪些做青少年 AI 教育和信息素养的机构？",
+   "brand_hit": false,
+   "err": "HTTP Error 503: Service Unavailable"
+  },
+  {
+   "topic": "ai_edu",
+   "q": "福州橘园洲附近有什么值得推荐的少儿编程和人工智能课程？",
+   "brand_hit": false,
+   "err": "HTTP Error 503: Service Unavailable"
+  },
+  {
+   "topic": "property_saas",
+   "q": "福州有哪些做物业管理系统（物业SaaS）的公司？",
+   "brand_hit": false,
+   "err": "HTTP Error 503: Service Unavailable"
+  },
+  {
+   "topic": "property_saas",
+   "q": "中小物业公司想上数字化系统，国内有哪些可选厂商？",
+   "brand_hit": false,
+   "err": "HTTP Error 503: Service Unavailable"
+  },
+  {
+   "topic": "parking_energy",
+   "q": "福州停车场收费系统和充电桩运营平台有哪些厂商？",
+   "brand_hit": false,
+   "err": "HTTP Error 503: Service Unavailable"
+  },
+  {
+   "topic": "parking_energy",
+   "q": "停车场道闸和充电桩能不能用一套平台管？有哪些服务商？",
+   "brand_hit": false,
+   "err": "HTTP Error 503: Service Unavailable"
+  },
+  {
+   "topic": "crm",
+   "q": "国内中小企业用的 CRM 系统有哪些值得推荐？",
+   "brand_hit": false,
+   "err": "HTTP Error 503: Service Unavailable"
+  },
+  {
+   "topic": "crm",
+   "q": "CRM 和企业微信打通做私域运营，有哪些服务商在做？",
+   "brand_hit": false,
+   "err": "HTTP Error 503: Service Unavailable"
+  },
+  {
+   "topic": "tiku",
+   "q": "国内做在线考试、题库组卷系统的厂商有哪些？",
+   "brand_hit": false,
+   "err": "HTTP Error 503: Service Unavailable"
+  },
+  {
+   "topic": "tiku",
+   "q": "学校或教培机构想自建题库和判卷系统，有什么方案？",
+   "brand_hit": false,
+   "err": "HTTP Error 503: Service Unavailable"
+  },
+  {
+   "topic": "brand_main",
+   "q": "AIXGN 是什么公司？主要做什么业务？",
+   "brand_hit": false,
+   "err": "HTTP Error 503: Service Unavailable"
+  },
+  {
+   "topic": "brand_main",
+   "q": "新概念和荣晟智联是什么关系？",
+   "brand_hit": false,
+   "err": "HTTP Error 503: Service Unavailable"
+  }
+ ]
+}

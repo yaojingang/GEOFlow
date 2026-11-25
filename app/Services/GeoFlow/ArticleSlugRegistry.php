@@ -22,6 +22,28 @@ class ArticleSlugRegistry
         return $slug;
     }
 
+    public function generateFromTitle(string $title, ?int $excludeArticleId = null): string
+    {
+        $latin = @transliterator_transliterate('Any-Latin; Latin-ASCII', $title) ?: $title;
+        $base = trim(preg_replace('/[^a-z0-9]+/', '-', strtolower($latin)), '-');
+        $base = substr($base, 0, 60);
+        $base = rtrim($base, '-');
+        if ($base === '') {
+            return $this->generate($excludeArticleId);
+        }
+        $candidate = $base;
+        $i = 2;
+        while (! $this->isAvailable($candidate, $excludeArticleId)) {
+            $candidate = $base.'-'.$i;
+            $i++;
+            if ($i > 60) {
+                return $this->generate($excludeArticleId);
+            }
+        }
+
+        return $candidate;
+    }
+
     public function isAvailable(string $slug, ?int $excludeArticleId = null): bool
     {
         $articleQuery = Article::withTrashed()->where('slug', $slug);

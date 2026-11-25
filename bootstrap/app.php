@@ -84,6 +84,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prependToGroup('web', GuardRecoveryTraffic::class);
         $middleware->prependToGroup('api', GuardRecoveryTraffic::class);
         $middleware->appendToGroup('web', AssignApiRequestId::class);
+        // 控制台内部调用走 Bearer 共享密钥，不走后台会话，故跳过 CSRF
+        $middleware->validateCsrfTokens(except: ['seo-console/distribute']);
 
         $middleware->alias([
             // 生成/透传 X-Request-Id，并写入响应头

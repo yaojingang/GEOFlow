@@ -9,7 +9,8 @@ final class AiProviderEndpointPolicy
      */
     private const MODEL_HOSTS = [
         'ark' => ['volces.com'],
-        'deepseek' => ['deepseek.com'],
+        // 2026-11-11：deepseek 绑定为通用 OpenAI 兼容分析槽位，硅基流动为当前唯一实测可用上游
+        'deepseek' => ['deepseek.com', 'siliconflow.cn', 'geo.aixgn.cn'],
     ];
 
     public function acceptsModelApi(string $bindingType, string $url): bool
@@ -21,7 +22,7 @@ final class AiProviderEndpointPolicy
 
     public function acceptsSearchApi(string $url): bool
     {
-        return $this->isTrustedHttpsUrl($url, ['feedcoopapi.com']);
+        return $this->isTrustedHttpsUrl($url, ['feedcoopapi.com', 'volcengineapi.com']);
     }
 
     public function sameOrigin(string $firstUrl, string $secondUrl): bool
