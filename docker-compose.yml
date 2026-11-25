@@ -2,7 +2,7 @@ name: geoflow-laravel
 
 services:
   postgres:
-    image: ${PGVECTOR_IMAGE:-pgvector/pgvector:pg16}
+    image: ${PGVECTOR_IMAGE:-docker.m.daocloud.io/pgvector/pgvector:pg16}
     container_name: geoflow-postgres
     environment:
       POSTGRES_DB: ${DB_DATABASE:-geo_flow}

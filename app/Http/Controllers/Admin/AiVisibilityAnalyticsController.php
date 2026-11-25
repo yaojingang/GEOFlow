@@ -125,11 +125,18 @@ class AiVisibilityAnalyticsController extends Controller
         return AiVisibilityRun::query()->with('sources')->whereIn('provider_type', AiVisibilityRun::SAMPLE_PROVIDERS)->whereKey($id)->first();
     }
 
-    public function __invoke(Request $request): View
+    public function __invoke(Request $request): View|\Illuminate\Http\Response
     {
+        // 整页缓存前置：命中即返回，避免每次重跑统计查询与 700KB 渲染
+        $__key = 'geoflow:aivis:page:v1:'.md5(($request->getQueryString() ?? '').'|'.(string) optional($request->user('admin'))->getKey());
+        $__cached = \Illuminate\Support\Facades\Cache::get($__key);
+        if (is_string($__cached) && $__cached !== '') {
+            return response($__cached);
+        }
+
         $filter = AiVisibilityAnalyticsFilter::fromRequest($request->query());
 
-        return view('admin.analytics.ai-visibility', [
+        $__page = view('admin.analytics.ai-visibility', [
             'pageTitle' => __('admin.analytics.pages.ai_visibility.title'),
             'activeMenu' => 'analytics',
             'analyticsPage' => 'ai-visibility',
@@ -147,18 +154,27 @@ class AiVisibilityAnalyticsController extends Controller
                 ],
             ],
             'selectedRun' => $this->selectedRun($request),
-            'aiVisibilityOverview' => $this->analytics->overview($filter),
+            'aiVisibilityOverview' => \Illuminate\Support\Facades\Cache::remember('geoflow:aivis:overview:v1:'.md5((string) json_encode([$filter->days(), $filter->keyword, $filter->topicId, $filter->provider])), 900, fn () => $this->analytics->overview($filter)),
             'keywordLibraries' => $this->keywordLibraries(),
             'competitorReport' => Schema::hasTable('ai_visibility_competitors')
                 ? $this->competitorReport->stats(30)
                 : null,
             'competitors' => Schema::hasTable('ai_visibility_competitors')
-                ? AiVisibilityCompetitor::query()->select('id', 'name', 'aliases', 'is_active', 'source')->lazyById(200)->collect()
+                ? AiVisibilityCompetitor::query()->select('id', 'name', 'aliases', 'is_active', 'source')->orderBy('id')->limit(60)->get()
                 : collect(),
             'topCitedUrls' => Schema::hasTable('ai_visibility_sources')
                 ? $this->topCitedUrls(30, 10)
                 : collect(),
         ]);
+        $__key = 'geoflow:aivis:page:v1:'.md5(($request->getQueryString() ?? '').'|'.(string) optional($request->user('admin'))->getKey());
+        $__cached = \Illuminate\Support\Facades\Cache::get($__key);
+        if (is_string($__cached) && $__cached !== '') {
+            return response($__cached);
+        }
+        $__html = $__page->render();
+        \Illuminate\Support\Facades\Cache::put($__key, $__html, 300);
+
+        return response($__html);
     }
 
     /**

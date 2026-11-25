@@ -30,3 +30,15 @@ __pycache__/
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# M0: 本地备份与密钥备份不入库
+*.bak-*
+.env.bak*
+
+# 2026-11-25 公开快照排除：含明文密钥，不得入库
+config/keys.json
+config/llm_keys.json
+keys_vault_probe.py
+llm_probe.py
+storage/geo-keys-status.json
+.env

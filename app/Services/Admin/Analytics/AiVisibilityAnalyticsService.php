@@ -109,8 +109,35 @@ class AiVisibilityAnalyticsService
 
         $brandAliases = $this->brandAliases();
         $ownedHosts = $this->ownedHosts();
+        // 2026-11-24 性能：单 run 分析结果落 ai_visibility_analysis_cache，按
+        // run 指纹（id + updated_at + 信源数 + 信源最新更新时间）失效，避免每次
+        // 打开页面重算全部历史样本（原实现 1835 条约 120 秒）。
         $analyzedRuns = $sampledRuns
-            ->map(fn (AiVisibilityRun $run): array => $this->analyzeRun($run, $brandAliases, $ownedHosts))
+            ->map(function (AiVisibilityRun $run) use ($brandAliases, $ownedHosts): array {
+                $fingerprint = md5($run->id.'|'.($run->updated_at?->timestamp ?? 0).'|'.$run->sources->count().'|'.($run->sources->max(static fn ($source): string => (string) ($source->updated_at ?? '')) ?? ''));
+                try {
+                    $cached = DB::table('ai_visibility_analysis_cache')->where('run_id', $run->id)->where('fingerprint', $fingerprint)->value('payload');
+                    if (is_string($cached)) {
+                        $decoded = json_decode($cached, true);
+                        if (is_array($decoded)) {
+                            return $decoded;
+                        }
+                    }
+                } catch (\Throwable) {
+                    $cached = null;
+                }
+
+                $result = $this->analyzeRun($run, $brandAliases, $ownedHosts);
+                try {
+                    DB::table('ai_visibility_analysis_cache')->updateOrInsert(
+                        ['run_id' => $run->id],
+                        ['fingerprint' => $fingerprint, 'payload' => json_encode($result, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE), 'computed_at' => now()],
+                    );
+                } catch (\Throwable) {
+                }
+
+                return $result;
+            })
             ->values();
 
         $dailyKeywordMetrics = $this->dailyKeywordMetrics($analyzedRuns);
@@ -978,10 +1005,12 @@ class AiVisibilityAnalyticsService
         $terms = array_merge($terms, $matches[0] ?? []);
         $terms = array_merge($terms, $this->chineseTerms($text));
 
+        $stopMap = array_fill_keys($stopWords, true);
+
         return collect($terms)
             ->map(fn (string $term): string => $this->normalizeTerm($term, $domainTerms))
-            ->filter(function (string $term) use ($stopWords, $brandAliasSet): bool {
-                if ($term === '' || in_array($term, $stopWords, true)) {
+            ->filter(function (string $term) use ($stopMap, $brandAliasSet): bool {
+                if ($term === '' || isset($stopMap[$term])) {
                     return false;
                 }
 
@@ -1040,27 +1069,33 @@ class AiVisibilityAnalyticsService
             '相关', '包括', '结果', '信息', '数据', '内容', '分析', '选择', '建议', '问题', '使用', '提供', '支持', '发展',
         ];
 
+        // 2026-11-24 性能修复：原实现逐字 mb_substr 生成 2/3/4-gram，1835 条 run
+        // 全量分析要跑 188 秒并触发 30 秒执行上限。改为一次 mb_str_split 后按数组
+        // 下标拼接，长文本按 3000 字截断，输出与原实现保持等价。
         preg_match_all('/\p{Han}{2,}/u', $text, $matches);
         $candidates = [];
 
         foreach ($matches[0] ?? [] as $run) {
-            $length = mb_strlen($run, 'UTF-8');
-            if ($length <= 6) {
+            if (mb_strlen($run, 'UTF-8') <= 6) {
                 $candidates[] = $run;
 
                 continue;
             }
 
-            for ($offset = 0; $offset + 2 <= $length; $offset++) {
-                $candidates[] = mb_substr($run, $offset, 2, 'UTF-8');
+            $chars = mb_str_split(mb_substr($run, 0, 3000, 'UTF-8'), 1, 'UTF-8');
+            $length = count($chars);
+
+            for ($i = 0; $i + 1 < $length; $i++) {
+                $candidates[] = $chars[$i].$chars[$i + 1];
             }
 
             $counts = [];
-            for ($size = 3; $size <= 4; $size++) {
-                for ($offset = 0; $offset + $size <= $length; $offset++) {
-                    $gram = mb_substr($run, $offset, $size, 'UTF-8');
-                    $counts[$gram] = ($counts[$gram] ?? 0) + 1;
-                }
+            for ($i = 0; $i + 2 < $length; $i++) {
+                $counts[$chars[$i].$chars[$i + 1].$chars[$i + 2]] = ($counts[$chars[$i].$chars[$i + 1].$chars[$i + 2]] ?? 0) + 1;
+            }
+            for ($i = 0; $i + 3 < $length; $i++) {
+                $g = $chars[$i].$chars[$i + 1].$chars[$i + 2].$chars[$i + 3];
+                $counts[$g] = ($counts[$g] ?? 0) + 1;
             }
 
             foreach ($counts as $gram => $count) {
@@ -1077,16 +1112,21 @@ class AiVisibilityAnalyticsService
             ->all();
     }
 
-    /**
-     * @param  list<string>  $domainTerms
-     */
-    private function normalizeTerm(string $term, array $domainTerms): string
+    private function normalizeTerm(string $term, array $domainTerms, ?array $domainMap = null): string
     {
         $term = trim($term);
 
-        foreach ($domainTerms as $domainTerm) {
-            if (Str::lower($term) === Str::lower($domainTerm)) {
-                return $domainTerm;
+        static $map = null;
+        if ($domainMap === null) {
+            if ($map === null) {
+                $map = [];
+                foreach ($domainTerms as $domainTerm) {
+                    $map[Str::lower($domainTerm)] = $domainTerm;
+                }
+            }
+            $lower = Str::lower($term);
+            if (isset($map[$lower])) {
+                return $map[$lower];
             }
         }
 

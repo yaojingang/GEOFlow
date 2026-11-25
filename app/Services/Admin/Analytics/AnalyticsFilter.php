@@ -74,42 +74,68 @@ class AnalyticsFilter
     private static function resolveDates(array $input, string &$preset): array
     {
         $today = Carbon::today();
-
-        if ($preset === 'today') {
-            return [$today->copy(), $today->copy()];
-        }
-
-        if ($preset === 'yesterday') {
-            $yesterday = $today->copy()->subDay();
-
-            return [$yesterday, $yesterday->copy()];
-        }
-
-        if ($preset === '30d') {
-            return [$today->copy()->subDays(29), $today->copy()];
-        }
-
-        if ($preset === '90d') {
-            return [$today->copy()->subDays(89), $today->copy()];
-        }
-
-        if ($preset === '7d') {
-            return [$today->copy()->subDays(6), $today->copy()];
-        }
+        $rollingRange = self::rollingRange($preset, $today);
 
         $rawFrom = trim((string) ($input['date_from'] ?? ''));
         $rawTo = trim((string) ($input['date_to'] ?? ''));
-        if ($preset === 'custom' || $rawFrom !== '' || $rawTo !== '') {
-            $preset = 'custom';
-            $from = self::parseDate($rawFrom) ?? $today->copy()->subDays(6);
-            $to = self::parseDate($rawTo) ?? $today->copy();
 
-            return AnalyticsDateRange::normalize($from, $to, $today);
+        // 非空但解析不了的日期：整段忽略并回退到 7 天。
+        // 旧逻辑会把它当成“今天减 6 天”，再与另一端对调，生成用户没要求过的畸形区间。
+        $hasInvalidDate = ($rawFrom !== '' && self::parseDate($rawFrom) === null)
+            || ($rawTo !== '' && self::parseDate($rawTo) === null);
+
+        if ($hasInvalidDate) {
+            $preset = '7d';
+
+            return [$today->copy()->subDays(6), $today->copy()];
         }
 
-        $preset = '7d';
+        if ($rollingRange !== null && $rawFrom === '' && $rawTo === '') {
+            return $rollingRange;
+        }
 
-        return [$today->copy()->subDays(6), $today->copy()];
+        $from = self::parseDate($rawFrom);
+        $to = self::parseDate($rawTo);
+
+        // 显式日期与预设窗口一致时保留预设（预设按钮继续高亮）；
+        // 不一致时才以显式日期为准，避免 preset 静默吞掉用户传进来的区间。
+        if ($rollingRange !== null
+            && $from !== null && $to !== null
+            && $from->toDateString() === $rollingRange[0]->toDateString()
+            && $to->toDateString() === $rollingRange[1]->toDateString()) {
+            return $rollingRange;
+        }
+
+        if ($rollingRange === null && $from === null && $to === null) {
+            $preset = '7d';
+
+            return [$today->copy()->subDays(6), $today->copy()];
+        }
+
+        $preset = 'custom';
+
+        return AnalyticsDateRange::normalize(
+            $from ?? $today->copy()->subDays(6),
+            $to ?? $today->copy(),
+            $today,
+        );
+    }
+
+    /**
+     * 滚动预设对应的固定窗口；custom 返回 null。
+     *
+     * @return array{0: Carbon, 1: Carbon}|null
+     */
+    private static function rollingRange(string $preset, Carbon $today): ?array
+    {
+        return match ($preset) {
+            'today' => [$today->copy(), $today->copy()],
+            'yesterday' => [$today->copy()->subDay(), $today->copy()->subDay()],
+            '7d' => [$today->copy()->subDays(6), $today->copy()],
+            '30d' => [$today->copy()->subDays(29), $today->copy()],
+            '90d' => [$today->copy()->subDays(89), $today->copy()],
+            default => null,
+        };
     }
 
     private static function parseDate(string $value): ?Carbon

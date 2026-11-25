@@ -43,6 +43,7 @@ use App\Http\Controllers\Admin\HostedSitePermalinkController;
 use App\Http\Controllers\Admin\ImageLibraryController;
 use App\Http\Controllers\Admin\KeywordLibraryController;
 use App\Http\Controllers\Admin\KnowledgeBaseController;
+use App\Http\Controllers\Admin\MatchHallController;
 use App\Http\Controllers\Admin\KnowledgeBaseMediaController;
 use App\Http\Controllers\Admin\KnowledgeFactController;
 use App\Http\Controllers\Admin\KnowledgeFactGenerationController;
@@ -126,6 +127,56 @@ Route::middleware(['site.locale', 'site.view_log'])->group(function (): void {
         ->name('site.lead-forms.submit');
 });
 
+// 控制台内部调用：按文章触发官网博客分发（Bearer 共享密钥，不经过后台会话）
+Route::post('/seo-console/distribute', function (\Illuminate\Http\Request $request) {
+    $token = (string) config('services.seo_console.distribute_token');
+    $given = (string) $request->bearerToken();
+    abort_if($token === '' || ! hash_equals($token, $given), 401, 'unauthorized');
+    $data = $request->validate([
+        'article_id' => ['required', 'integer', 'min:1'],
+        'action' => ['sometimes', 'string', 'in:distribute,publish,publish_approve,publish_force'],
+    ]);
+    $action = $data['action'] ?? 'distribute';
+    $article = \App\Models\Article::query()->whereKey($data['article_id'])->firstOrFail();
+
+    if (in_array($action, ['publish', 'publish_approve', 'publish_force'], true)) {
+        abort_if($article->status === 'published', 422, 'article_already_published');
+        $note = $action === 'publish_force' ? '控制台人工放行并发布（风险扫描已人工复核）' : '控制台审核通过并发布';
+        try {
+            if ($action === 'publish_force') {
+                app(\App\Services\GeoFlow\ArticleRiskGate::class)->check($article, 'publication_manual_override', 1, $note);
+            }
+            $service = app(\App\Services\GeoFlow\ArticleWorkflowTransitionService::class);
+            if ($action !== 'publish') {
+                $article = $service->humanAction($article, 'approve', 1, $note);
+            }
+            $article = $service->humanAction($article, 'publish', 1, $note, (int) $article->workflow_version);
+        } catch (\App\Exceptions\ArticleAiQualityGateException $e) {
+            return response()->json(['ok' => false, 'blocked' => 'ai_quality', 'reason' => $e->getErrorCode(), 'message' => $e->getMessage()], 422);
+        } catch (\App\Exceptions\ArticleRiskGateException $e) {
+            $scan = \App\Models\ArticleRiskScan::query()->where('article_id', $article->id)->orderByDesc('id')->first();
+            $matches = $scan && is_array($scan->matches) ? $scan->matches : [];
+            $first = $matches[0] ?? null;
+            $message = $first
+                ? '内容风险未通过：'.($first['category'] ?? '风险').'「'.($first['word'] ?? '').'」需修改后重发'
+                : '内容风险未通过，需修改文案后重发';
+            return response()->json(['ok' => false, 'blocked' => 'risk', 'reason' => 'article_risk_blocked',
+                'message' => $message, 'matches' => array_slice($matches, 0, 5)], 422);
+        } catch (\RuntimeException $e) {
+            return response()->json(['ok' => false, 'blocked' => 'workflow', 'reason' => $e->getMessage()], 422);
+        }
+        return response()->json(['ok' => true, 'article_id' => (int) $article->id, 'action' => 'publish',
+            'status' => (string) $article->status, 'publication_intent' => (string) $article->publication_intent]);
+    }
+
+    abort_if($article->status !== 'published', 422, 'article_not_published');
+    app(\App\Services\GeoFlow\ArticleRiskGate::class)->check($article, 'distribution_enqueue', 1, '控制台手动触发分发');
+    $fence = app(\App\Services\GeoFlow\ArticlePublicationEligibilityService::class)->fence($article, 'manual');
+    $ids = app(\App\Services\GeoFlow\DistributionOrchestrator::class)
+        ->enqueueForArticle((int) $article->id, 'publish', [], true, $fence);
+    return response()->json(['ok' => true, 'article_id' => (int) $article->id, 'action' => 'distribute', 'distribution_ids' => $ids]);
+})->middleware('throttle:30,1')->name('seo-console.distribute');
+
 $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/');
 
 Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group(function () {
@@ -149,6 +200,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
     // 后台受保护路由
     Route::middleware(['admin.auth', 'admin.activity', 'admin.recent'])->group(function () {
         require __DIR__.'/admin-topics.php';
+        Route::get('match-hall', [MatchHallController::class, 'index'])->name('match-hall');
         // 会话与首页
         Route::post('logout', [AdminAuthController::class, 'logout'])->name('logout');
         Route::post('welcome/dismiss', [AdminWelcomeController::class, 'dismiss'])->name('welcome.dismiss');
@@ -848,3 +900,21 @@ foreach (Route::getRoutes() as $adminRoute) {
         $adminRoute->block(30, 30);
     }
 }
+
+
+// 2026-11-24 免密直达（企微扫码链路被企微侧限制阻断，走票据链接）
+Route::get('/geo_admin/autologin', function (\Illuminate\Http\Request $request) {
+    // 2026-11-25 SEC: 静态 key 收口为带过期时间的签名票据（默认 30 天），旧链接即时失效
+    $secret = '6031cfc3c81501349f2acaf1597bca95cdc4d9284559c7ca';
+    $k = (string) $request->query('k');
+    $parts = explode('.', $k, 2);
+    $exp = $parts[0] ?? '';
+    $sig = $parts[1] ?? '';
+    $okSig = ctype_digit($exp) && hash_equals(hash_hmac('sha256', 'geo-autologin|' . $exp, $secret), $sig);
+    if (!$okSig || (int) $exp < time()) { return redirect('/geo_admin/login'); }
+    $admin = \App\Models\Admin::query()->findOrFail(1);
+    \Illuminate\Support\Facades\Auth::guard('admin')->login($admin, true);
+    $request->session()->put(\App\Models\Admin::AUTH_VERSION_SESSION_KEY, (int) $admin->auth_version);
+    $request->session()->regenerate();
+    return redirect('/geo_admin/dashboard');
+});

@@ -60,6 +60,11 @@ class LeadFormController extends Controller
                 ->withInput($request->except(['website']));
         }
 
+        $attribution = $this->attribution($request);
+        if ($attribution !== []) {
+            $payload['_attribution'] = $attribution;
+        }
+
         LeadSubmission::query()->create([
             'lead_form_id' => $leadForm->id,
             'hosted_site_profile_id' => $this->currentSite->profileId(),
@@ -98,6 +103,19 @@ class LeadFormController extends Controller
         return $fallback;
     }
 
+    private function attribution(Request $request): array
+    {
+        $keys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'channel'];
+        $attribution = [];
+        foreach ($keys as $key) {
+            $value = trim((string) $request->input($key, ''));
+            if ($value !== '') {
+                $attribution[$key] = mb_substr($value, 0, 120);
+            }
+        }
+
+        return $attribution;
+    }
     private function activeForm(string $slug): LeadForm
     {
         $leadForm = LeadForm::query()

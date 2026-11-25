@@ -21,10 +21,9 @@ final class ArticleContentGenerationService
     public function __construct(
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly AiUsageQuotaService $usageQuota,
-        private readonly ArticleGenerationDiagnostics $diagnostics,
     ) {}
 
-    public function generate(AiModel $aiModel, string $prompt, ?Closure $beforeProvider = null, ?string $instructions = null, ?int $providerTimeout = null, array $diagnosticContext = []): AgentResponse
+    public function generate(AiModel $aiModel, string $prompt, ?Closure $beforeProvider = null, ?string $instructions = null, ?int $providerTimeout = null): AgentResponse
     {
         [$agent, $providerName, $modelId, $providerUrl] = $this->resolveRuntime($aiModel, 'article_content', $instructions);
 
@@ -33,16 +32,11 @@ final class ArticleContentGenerationService
             throw new RuntimeException('AI 模型不可用或已达到今日调用上限');
         }
 
-        $startedAt = null;
         try {
             $beforeProvider?->__invoke($aiModel);
-            $startedAt = hrtime(true);
             $response = $agent->prompt($prompt, [], $providerName, $modelId, $providerTimeout);
         } catch (Throwable $exception) {
             $this->releaseDailyUsage($reservation);
-            if ($startedAt !== null) {
-                $this->diagnostics->failure($aiModel, $exception, $this->maxTokens($aiModel), $providerTimeout ?? $this->providerTimeoutSeconds(), $startedAt, $diagnosticContext);
-            }
 
             throw new RuntimeException(
                 'AI 生成失败: '.OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl),
@@ -53,7 +47,6 @@ final class ArticleContentGenerationService
 
         $normalized = OpenAiRuntimeProvider::normalizeGeneratedText($response->text);
         $content = ArticleReasoningFilter::clean($normalized);
-        $this->diagnostics->response($aiModel, $response, $response->text, $content, $this->maxTokens($aiModel), $providerTimeout ?? $this->providerTimeoutSeconds(), $startedAt, $diagnosticContext);
         if ($content !== $normalized) {
             $response->text = $content;
         }
@@ -216,14 +209,7 @@ final class ArticleContentGenerationService
             return $configured;
         }
 
-        $default = max(256, (int) config('geoflow.content_max_tokens', 16384));
-        $host = strtolower((string) parse_url((string) $aiModel->api_url, PHP_URL_HOST));
-        if ($host === 'open.bigmodel.cn' && trim((string) $aiModel->model_id) === 'glm-x-preview-f') {
-            // Preview reasoning can consume the 16K budget before any article content is returned.
-            return max(32768, $default);
-        }
-
-        return $default;
+        return max(256, (int) config('geoflow.content_max_tokens', 16384));
     }
 
     public function providerTimeoutSeconds(): int

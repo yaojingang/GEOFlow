@@ -69,6 +69,8 @@
             @foreach (['preset', 'date_from', 'date_to', 'channel_id'] as $name)
                 <input type="hidden" name="{{ $name }}" value="{{ $contentFilterData[$name] ?? '' }}">
             @endforeach
+            {{-- LOG_PRESET_ENTER_FIX: 回车提交时默认走自定义日期，避免落到第一个“近 7 天”按钮；点预设按钮时以按钮值为准（同名参数后者覆盖前者） --}}
+            <input type="hidden" name="log_preset" value="custom">
 
             <div class="flex flex-wrap gap-2">
                 @foreach ($logPresetOptions as $preset)

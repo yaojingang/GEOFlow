@@ -39,4 +39,8 @@ return [
         ],
     ],
 
+    'seo_console' => [
+        'distribute_token' => env('SEO_CONSOLE_DISTRIBUTE_TOKEN'),
+    ],
+
 ];

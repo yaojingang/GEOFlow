@@ -170,7 +170,7 @@
                     <h3 class="text-lg font-semibold text-gray-950">{{ __('admin.growth_center.ai_visibility.keyword_title') }}</h3>
                     <p class="mt-1 text-sm text-gray-500">{{ __('admin.growth_center.ai_visibility.keyword_desc') }}</p>
                     <div class="mt-4 overflow-x-auto"><table class="min-w-full divide-y divide-gray-200 text-sm"><thead class="bg-gray-50"><tr><th class="px-5 py-3 text-left">{{ __('admin.growth_center.ai_visibility.table.keyword') }}</th><th class="px-5 py-3 text-right">{{ __('admin.growth_center.ai_visibility.table.samples') }}</th><th class="px-5 py-3 text-right">{{ __('admin.growth_center.ai_visibility.table.visibility') }}</th><th class="px-5 py-3 text-right">{{ __('admin.growth_center.ai_visibility.table.top3') }}</th></tr></thead><tbody class="divide-y divide-gray-100">
-                        @forelse (($ai['keywords'] ?? []) as $row)<tr><td class="px-5 py-3 font-medium text-gray-900"><a href="{{ request()->fullUrlWithQuery(['ai_preset' => 'custom', 'ai_keyword' => $row['keyword']]) }}" class="underline-offset-4 hover:text-violet-700 hover:underline">{{ $row['keyword'] }}</a></td><td class="px-5 py-3 text-right font-mono tabular-nums">{{ $row['samples'] }}</td><td class="px-5 py-3 text-right font-mono tabular-nums">{{ number_format($row['brand_visibility'], 1) }}%</td><td class="px-5 py-3 text-right font-mono tabular-nums">{{ number_format($row['top3_rate'], 1) }}%</td></tr>@empty<tr><td colspan="4" class="px-5 py-8 text-center text-gray-500">{{ __('admin.growth_center.ai_visibility.no_keywords') }}</td></tr>@endforelse
+                        @forelse (collect($ai['keywords'] ?? [])->take(80) as $row)<tr><td class="px-5 py-3 font-medium text-gray-900"><a href="{{ request()->fullUrlWithQuery(['ai_preset' => 'custom', 'ai_keyword' => $row['keyword']]) }}" class="underline-offset-4 hover:text-violet-700 hover:underline">{{ $row['keyword'] }}</a></td><td class="px-5 py-3 text-right font-mono tabular-nums">{{ $row['samples'] }}</td><td class="px-5 py-3 text-right font-mono tabular-nums">{{ number_format($row['brand_visibility'], 1) }}%</td><td class="px-5 py-3 text-right font-mono tabular-nums">{{ number_format($row['top3_rate'], 1) }}%</td></tr>@empty<tr><td colspan="4" class="px-5 py-8 text-center text-gray-500">{{ __('admin.growth_center.ai_visibility.no_keywords') }}</td></tr>@endforelse
                     </tbody></table></div>
                 </section>
 
@@ -208,7 +208,7 @@
                 </section>
 
                 <details class="rounded-lg border border-gray-200 bg-white shadow-sm" data-ai-visibility-metric-definitions>
-                    <summary class="gf-disclosure flex min-h-10 cursor-pointer items-center px-5 py-3 text-sm font-semibold text-gray-800" data-ai-visibility-metric-toggle>{{ __('admin.growth_center.ai_visibility.definition_toggle') }}</summary>
+                    <summary class="flex min-h-10 cursor-pointer items-center px-5 py-3 text-sm font-semibold text-gray-800" data-ai-visibility-metric-toggle>{{ __('admin.growth_center.ai_visibility.definition_toggle') }}</summary>
                     <div class="border-t border-gray-100 p-5">
                         <p class="text-sm leading-6 text-gray-600">{{ __('admin.growth_center.ai_visibility.definition_intro') }}</p>
                         <div class="mt-4 grid gap-3 md:grid-cols-2">
@@ -284,7 +284,7 @@
                     <h3 class="text-lg font-semibold text-gray-950">{{ __('admin.growth_center.ai_visibility.source_title') }}</h3>
                     <p class="mt-1 text-sm text-gray-500">{{ __('admin.growth_center.ai_visibility.source_desc') }}</p>
                     <div class="mt-4 space-y-3">
-                        @forelse (($ai['sources'] ?? []) as $source)
+                        @forelse (collect($ai['sources'] ?? [])->take(60) as $source)
                             <article class="rounded-lg border border-gray-100 p-4"><div class="flex items-center justify-between gap-3"><strong class="truncate text-sm text-gray-900">{{ $source['domain'] }}</strong><span class="font-mono text-sm tabular-nums text-gray-600">{{ __('admin.growth_center.ai_visibility.source_mentions', ['count' => $source['mentions']]) }}</span></div><div class="mt-2 flex gap-4 text-xs text-gray-500"><span>{{ __('admin.growth_center.ai_visibility.source_avg_rank', ['rank' => $source['avg_rank']]) }}</span><span>{{ __('admin.growth_center.ai_visibility.source_brand_coverage', ['rate' => number_format($source['brand_coverage'], 1)]) }}</span></div></article>
                         @empty
                             <p class="rounded-lg bg-gray-50 p-4 text-sm text-gray-500">{{ __('admin.growth_center.ai_visibility.no_sources') }}</p>
@@ -364,7 +364,7 @@
                         <div class="grid gap-3 md:grid-cols-2" data-doubao-custom-only hidden><div><label for="doubao-sites" class="mb-1 block text-xs font-semibold text-gray-600">信源白名单</label><textarea id="doubao-sites" name="sites" rows="2" class="block w-full rounded-md border-gray-300 text-sm" placeholder="每行或 | 分隔域名"></textarea></div><div><label for="doubao-block" class="mb-1 block text-xs font-semibold text-gray-600">站点黑名单</label><textarea id="doubao-block" name="block_hosts" rows="2" class="block w-full rounded-md border-gray-300 text-sm" placeholder="每行或 | 分隔域名"></textarea></div></div>
                         <button type="submit" class="inline-flex min-h-10 w-full items-center justify-center rounded-md bg-violet-600 px-5 text-sm font-semibold text-white hover:bg-violet-700"><i data-lucide="search" class="mr-2 h-4 w-4"></i>开始搜索</button>
                     </div>
-                    <div class="rounded-lg border border-slate-200 bg-slate-950 p-4 text-slate-100" data-doubao-results data-gf-control-tone="dark">
+                    <div class="rounded-lg border border-slate-200 bg-slate-950 p-4 text-slate-100" data-doubao-results>
                         <div class="flex items-center justify-between gap-3"><div><h3 class="text-sm font-semibold">搜索结果</h3><p class="mt-1 text-xs text-slate-400">按信源渠道与权威等级筛选</p></div><div class="flex gap-2"><select id="result-site-filter" class="min-h-9 rounded-md border-slate-700 bg-slate-900 text-xs"><option value="">全部信源</option>@if($selectedRun) @foreach($selectedRun->sources->pluck('site_name')->filter()->unique() as $site)<option value="{{ $site }}">{{ $site }}</option>@endforeach @endif</select><select id="result-auth-filter" class="min-h-9 rounded-md border-slate-700 bg-slate-900 text-xs"><option value="">全部权威</option><option value="非常权威">非常权威</option><option value="正常权威">正常权威</option><option value="一般权威">一般权威</option></select></div></div>
                         <div class="mt-4 max-h-[28rem] space-y-3 overflow-y-auto pr-1" data-result-list>
                             @forelse (($selectedRun?->sources ?? collect()) as $source)

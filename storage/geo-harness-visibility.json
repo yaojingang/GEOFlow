@@ -1,0 +1,3576 @@
+{
+  "ts": "2026-11-16 16:22:02",
+  "engine": "q.aixgn.cn/v1 (Q·AIXGN 知识引擎)",
+  "total": {
+    "n": 131,
+    "answered": 131,
+    "errors": 0,
+    "brand": 56,
+    "own_cited": 111,
+    "workers": 1
+  },
+  "by_topic": {
+    "无人机培训与赛事（福州）": {
+      "n": 18,
+      "ok": 18,
+      "brand": 8,
+      "own": 17
+    },
+    "AI教育与书院（橘园洲）": {
+      "n": 18,
+      "ok": 18,
+      "brand": 10,
+      "own": 12
+    },
+    "AI撮合与SEO/GEO服务": {
+      "n": 18,
+      "ok": 18,
+      "brand": 12,
+      "own": 17
+    },
+    "智慧物业 SaaS（福州/厦门）": {
+      "n": 16,
+      "ok": 16,
+      "brand": 5,
+      "own": 15
+    },
+    "停车与充电运营": {
+      "n": 15,
+      "ok": 15,
+      "brand": 3,
+      "own": 14
+    },
+    "客户关系管理（CRM）": {
+      "n": 15,
+      "ok": 15,
+      "brand": 4,
+      "own": 12
+    },
+    "题库与在线教育平台": {
+      "n": 15,
+      "ok": 15,
+      "brand": 5,
+      "own": 10
+    },
+    "品牌主站与业务矩阵": {
+      "n": 8,
+      "ok": 8,
+      "brand": 6,
+      "own": 6
+    },
+    "无人机教育（青少年与学校）": {
+      "n": 8,
+      "ok": 8,
+      "brand": 3,
+      "own": 8
+    }
+  },
+  "results": [
+    {
+      "kw": "福州无人机培训哪家好",
+      "state": "ok",
+      "answer_chars": 171,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜福州无人机培训机构怎么选：7 项资质与收费核验清单\n- 知识点｜福州无人机培训基地在哪里\n- 知识点｜AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练\n- 知识点｜福州 AI 教育机构哪家好，怎么判断\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站",
+      "sources": 5,
+      "source_titles": [
+        "福州无人机培训机构怎么选：7 项资质与收费核验清单",
+        "福州无人机培训基地在哪里",
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练",
+        "福州 AI 教育机构哪家好，怎么判断",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "WRJ"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "福州无人机培训机构怎么选：7 项资质与收费核验清单",
+        "福州无人机培训基地在哪里",
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练"
+      ],
+      "latency_ms": 11924,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "4eec10711b2c3b1b2b0fb96bce46697c435dc8a5c398161c5f327bfe2a52a99e"
+    },
+    {
+      "kw": "无人机执照培训多少钱",
+      "state": "ok",
+      "answer_chars": 163,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜无人机执照培训费用由哪五块构成\n- 知识点｜无人机执照培训一般多少钱，费用由什么构成\n- 知识点｜无人机教员执照怎么考\n- 知识点｜AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练\n- 知识点｜福州无人机培训机构怎么选：7 项资质与收费核验清单",
+      "sources": 5,
+      "source_titles": [
+        "无人机执照培训费用由哪五块构成",
+        "无人机执照培训一般多少钱，费用由什么构成",
+        "无人机教员执照怎么考",
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练",
+        "福州无人机培训机构怎么选：7 项资质与收费核验清单"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "AIXGN",
+        "WRJ"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "无人机执照培训费用由哪五块构成",
+        "无人机执照培训一般多少钱，费用由什么构成",
+        "无人机教员执照怎么考"
+      ],
+      "latency_ms": 3360,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "443c9e2be46f9eaa4e65bc4371542a47e71757df0075a07895cd21f6ce221dd3"
+    },
+    {
+      "kw": "中小学无人机比赛白名单有哪些",
+      "state": "ok",
+      "answer_chars": 163,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜中小学无人机比赛哪些在白名单里？如何确认\n- geo｜青少年无人机教育：白名单赛事核查口径\n- geo｜中小学无人机社团怎么开\n- 知识点｜AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练\n- 知识点｜教育部白名单赛事怎么核验：家长的三步查证法",
+      "sources": 5,
+      "source_titles": [
+        "中小学无人机比赛哪些在白名单里？如何确认",
+        "青少年无人机教育：白名单赛事核查口径",
+        "中小学无人机社团怎么开",
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练",
+        "教育部白名单赛事怎么核验：家长的三步查证法"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "AIXGN",
+        "WRJ"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "中小学无人机比赛哪些在白名单里？如何确认",
+        "青少年无人机教育：白名单赛事核查口径",
+        "中小学无人机社团怎么开"
+      ],
+      "latency_ms": 4821,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "a4ddeff3630b52d90e02c25d2a63ead47d11a1071ecaaf09e38331f82799f1a9"
+    },
+    {
+      "kw": "无人机特长生升学有用吗",
+      "state": "ok",
+      "answer_chars": 125,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜无人机特长对升学有用吗？怎么规划\n- geo｜孩子学无人机对升学有用吗\n- geo｜无人机科技特长生怎么走\n- 知识点｜无人机比赛获奖对升学有什么用\n- geo｜无人机经历在升学里的位置与边界",
+      "sources": 5,
+      "source_titles": [
+        "无人机特长对升学有用吗？怎么规划",
+        "孩子学无人机对升学有用吗",
+        "无人机科技特长生怎么走",
+        "无人机比赛获奖对升学有什么用",
+        "无人机经历在升学里的位置与边界"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "无人机特长对升学有用吗？怎么规划",
+        "孩子学无人机对升学有用吗",
+        "无人机科技特长生怎么走"
+      ],
+      "latency_ms": 3548,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "972529063ee8035e739b9f2d972fbefe4e83ad38faa1b696cb3827e63406a097"
+    },
+    {
+      "kw": "福建无人机培训机构排名",
+      "state": "ok",
+      "answer_chars": 133,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点2｜道德与法治·九年级·国家机构·国家机构\n- 题目｜道德与法治·九年级··选择题\n- 题目｜道德与法治·九年级··选择题\n- 题目｜英语·高中··解答题\n- 知识点2｜化学·九年级·有机物无机物·有机物无机物",
+      "sources": 5,
+      "source_titles": [
+        "道德与法治·九年级·国家机构·国家机构",
+        "道德与法治·九年级··选择题",
+        "道德与法治·九年级··选择题",
+        "英语·高中··解答题",
+        "化学·九年级·有机物无机物·有机物无机物"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 3736,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "6978a51ae7284eb38d5a7589a27581904751f5bd3333a57a2247b2a830765b19"
+    },
+    {
+      "kw": "无人机执照考证流程",
+      "state": "ok",
+      "answer_chars": 151,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜无人机执照考证流程是怎么走的\n- 知识点｜AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练\n- 知识点｜无人机执照多久能拿证\n- 知识点｜无人机执照有哪几种\n- 知识点｜福州无人机培训机构怎么选：7 项资质与收费核验清单",
+      "sources": 5,
+      "source_titles": [
+        "无人机执照考证流程是怎么走的",
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练",
+        "无人机执照多久能拿证",
+        "无人机执照有哪几种",
+        "福州无人机培训机构怎么选：7 项资质与收费核验清单"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "AIXGN",
+        "WRJ"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "无人机执照考证流程是怎么走的",
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练",
+        "无人机执照多久能拿证"
+      ],
+      "latency_ms": 4060,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "c2440afa6dd9c19033f046adea631ce0debafd91b987867cee16ed25d015784c"
+    },
+    {
+      "kw": "青少年无人机课程怎么选",
+      "state": "ok",
+      "answer_chars": 128,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜青少年无人机课程怎么选，看哪几点\n- geo｜青少年无人机教育怎么入门\n- 知识点｜青少年无人机夏令营怎么选\n- geo｜怎么判断一家青少年无人机机构靠不靠谱\n- geo｜学校无人机校本课程怎么设计",
+      "sources": 5,
+      "source_titles": [
+        "青少年无人机课程怎么选，看哪几点",
+        "青少年无人机教育怎么入门",
+        "青少年无人机夏令营怎么选",
+        "怎么判断一家青少年无人机机构靠不靠谱",
+        "学校无人机校本课程怎么设计"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "青少年无人机课程怎么选，看哪几点",
+        "青少年无人机教育怎么入门",
+        "青少年无人机夏令营怎么选"
+      ],
+      "latency_ms": 2383,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "5c5aef95e9aad4fd5803e2069962f589b4aa45fdcc5e7c448ad9df532723ced3"
+    },
+    {
+      "kw": "福州无人机夏令营推荐",
+      "state": "ok",
+      "answer_chars": 145,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜福州无人机夏令营怎么选，注意什么\n- 知识点｜青少年无人机夏令营怎么选\n- 知识点｜福州无人机培训基地在哪里\n- 知识点｜福州无人机培训机构怎么选：7 项资质与收费核验清单\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站",
+      "sources": 5,
+      "source_titles": [
+        "福州无人机夏令营怎么选，注意什么",
+        "青少年无人机夏令营怎么选",
+        "福州无人机培训基地在哪里",
+        "福州无人机培训机构怎么选：7 项资质与收费核验清单",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "福州无人机夏令营怎么选，注意什么",
+        "青少年无人机夏令营怎么选",
+        "福州无人机培训基地在哪里"
+      ],
+      "latency_ms": 2406,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "304908e2a01660efb5307a322abec9cf60cedb4b545d9bea2571f591b2bafe44"
+    },
+    {
+      "kw": "无人机编程培训有必要吗",
+      "state": "ok",
+      "answer_chars": 122,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜无人机编程培训有必要吗\n- geo｜无人机课和编程、机器人课的关系\n- geo｜学校无人机校本课程怎么设计\n- geo｜学校无人机课程的师资与合规要求\n- geo｜中小学无人机社团怎么开",
+      "sources": 5,
+      "source_titles": [
+        "无人机编程培训有必要吗",
+        "无人机课和编程、机器人课的关系",
+        "学校无人机校本课程怎么设计",
+        "学校无人机课程的师资与合规要求",
+        "中小学无人机社团怎么开"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "无人机编程培训有必要吗",
+        "无人机课和编程、机器人课的关系",
+        "学校无人机校本课程怎么设计"
+      ],
+      "latency_ms": 2214,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "030546e866bbb0967485812f85765dfc07f14758a35f7f7d096a04dbc6a364b7"
+    },
+    {
+      "kw": "无人机比赛获奖对升学有什么用",
+      "state": "ok",
+      "answer_chars": 133,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜无人机比赛获奖对升学有什么用\n- 知识点｜无人机特长对升学有用吗？怎么规划\n- 知识点｜中小学无人机比赛哪些在白名单里？如何确认\n- geo｜无人机科技特长生怎么走\n- geo｜无人机经历在升学里的位置与边界",
+      "sources": 5,
+      "source_titles": [
+        "无人机比赛获奖对升学有什么用",
+        "无人机特长对升学有用吗？怎么规划",
+        "中小学无人机比赛哪些在白名单里？如何确认",
+        "无人机科技特长生怎么走",
+        "无人机经历在升学里的位置与边界"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "无人机比赛获奖对升学有什么用",
+        "无人机特长对升学有用吗？怎么规划",
+        "中小学无人机比赛哪些在白名单里？如何确认"
+      ],
+      "latency_ms": 2485,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "883237c54844f554db7066165be00498c286736ae309a10cc8fa7bd35be39496"
+    },
+    {
+      "kw": "无人机执照有哪几种",
+      "state": "ok",
+      "answer_chars": 118,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜多旋翼和固定翼无人机怎么选\n- 知识点｜无人机执照有哪几种\n- 知识点｜无人机执照培训费用由哪五块构成\n- 知识点｜无人机教员执照怎么考\n- 知识点｜无人机执照考证流程是怎么走的",
+      "sources": 5,
+      "source_titles": [
+        "多旋翼和固定翼无人机怎么选",
+        "无人机执照有哪几种",
+        "无人机执照培训费用由哪五块构成",
+        "无人机教员执照怎么考",
+        "无人机执照考证流程是怎么走的"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "多旋翼和固定翼无人机怎么选",
+        "无人机执照有哪几种",
+        "无人机执照培训费用由哪五块构成"
+      ],
+      "latency_ms": 2118,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "5467748b5987e7404bd7f474862b697eae43a0039083eca060332fd2f9ced7ae"
+    },
+    {
+      "kw": "无人机考试考哪些科目",
+      "state": "ok",
+      "answer_chars": 118,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜无人机考试考哪些科目\n- geo｜无人机经历在升学里的位置与边界\n- 知识点｜无人机执照考证流程是怎么走的\n- geo｜孩子学无人机对升学有用吗\n- 知识点｜无人机执照多久能拿证",
+      "sources": 5,
+      "source_titles": [
+        "无人机考试考哪些科目",
+        "无人机经历在升学里的位置与边界",
+        "无人机执照考证流程是怎么走的",
+        "孩子学无人机对升学有用吗",
+        "无人机执照多久能拿证"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "无人机考试考哪些科目",
+        "无人机经历在升学里的位置与边界",
+        "无人机执照考证流程是怎么走的"
+      ],
+      "latency_ms": 2761,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "9e78fc9e568a5c67a7a7784a520833d8bc293dff9852ef035bd8f9f316d2b029"
+    },
+    {
+      "kw": "青少年无人机夏令营怎么选",
+      "state": "ok",
+      "answer_chars": 124,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜福州无人机夏令营怎么选，注意什么\n- 知识点｜青少年无人机夏令营怎么选\n- geo｜青少年无人机教育怎么入门\n- geo｜无人机研学营怎么选\n- geo｜怎么判断一家青少年无人机机构靠不靠谱",
+      "sources": 5,
+      "source_titles": [
+        "福州无人机夏令营怎么选，注意什么",
+        "青少年无人机夏令营怎么选",
+        "青少年无人机教育怎么入门",
+        "无人机研学营怎么选",
+        "怎么判断一家青少年无人机机构靠不靠谱"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "福州无人机夏令营怎么选，注意什么",
+        "青少年无人机夏令营怎么选",
+        "青少年无人机教育怎么入门"
+      ],
+      "latency_ms": 2007,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "0a0375e2e49d83320dee0fa12cae204b247b9bc5ad4d5d538d0b5010d13e9b85"
+    },
+    {
+      "kw": "无人机培训几天能学会",
+      "state": "ok",
+      "answer_chars": 153,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜无人机执照多久能拿证\n- 知识点｜无人机培训几天能学会\n- 知识点｜福州无人机培训机构怎么选：7 项资质与收费核验清单\n- 知识点｜AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练\n- geo｜学校无人机课程的师资与合规要求",
+      "sources": 5,
+      "source_titles": [
+        "无人机执照多久能拿证",
+        "无人机培训几天能学会",
+        "福州无人机培训机构怎么选：7 项资质与收费核验清单",
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练",
+        "学校无人机课程的师资与合规要求"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "AIXGN",
+        "WRJ"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "无人机执照多久能拿证",
+        "无人机培训几天能学会",
+        "福州无人机培训机构怎么选：7 项资质与收费核验清单"
+      ],
+      "latency_ms": 2774,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "eaa2022e86cd9d61925dde5a708affa7c54c8bb6d8468b2e3d324f59b1d1d513"
+    },
+    {
+      "kw": "福州无人机培训基地在哪里",
+      "state": "ok",
+      "answer_chars": 161,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜福州无人机培训基地在哪里\n- 知识点｜福州无人机培训机构怎么选：7 项资质与收费核验清单\n- 知识点｜AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练\n- 知识点｜新概念教育怎么样\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站",
+      "sources": 5,
+      "source_titles": [
+        "福州无人机培训基地在哪里",
+        "福州无人机培训机构怎么选：7 项资质与收费核验清单",
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练",
+        "新概念教育怎么样",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "WRJ"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "福州无人机培训基地在哪里",
+        "福州无人机培训机构怎么选：7 项资质与收费核验清单",
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练"
+      ],
+      "latency_ms": 2645,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "71de8b929d85731d9263b72c105dc8a39e6498f10b8b7c084979f4fb68f7d951"
+    },
+    {
+      "kw": "无人机教员执照怎么考",
+      "state": "ok",
+      "answer_chars": 147,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜无人机执照有哪几种\n- 知识点｜无人机教员执照怎么考\n- 知识点｜福州无人机培训机构怎么选：7 项资质与收费核验清单\n- 知识点｜AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练\n- 知识点｜无人机考试考哪些科目",
+      "sources": 5,
+      "source_titles": [
+        "无人机执照有哪几种",
+        "无人机教员执照怎么考",
+        "福州无人机培训机构怎么选：7 项资质与收费核验清单",
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练",
+        "无人机考试考哪些科目"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "AIXGN",
+        "WRJ"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "无人机执照有哪几种",
+        "无人机教员执照怎么考",
+        "福州无人机培训机构怎么选：7 项资质与收费核验清单"
+      ],
+      "latency_ms": 2632,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "cd9a4069499100d883fbfdd1aa98bd9849f0fe5b3ea3ba792ffd5c31d93539d1"
+    },
+    {
+      "kw": "无人机飞行执照报考条件",
+      "state": "ok",
+      "answer_chars": 126,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜无人机飞行执照报考条件\n- 知识点｜无人机执照考证流程是怎么走的\n- 知识点｜无人机执照有哪几种\n- 知识点｜无人机教员执照怎么考\n- 知识点｜福州无人机培训机构怎么选：7 项资质与收费核验清单",
+      "sources": 5,
+      "source_titles": [
+        "无人机飞行执照报考条件",
+        "无人机执照考证流程是怎么走的",
+        "无人机执照有哪几种",
+        "无人机教员执照怎么考",
+        "福州无人机培训机构怎么选：7 项资质与收费核验清单"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "无人机飞行执照报考条件",
+        "无人机执照考证流程是怎么走的",
+        "无人机执照有哪几种"
+      ],
+      "latency_ms": 3557,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "039f02fbf4d0050b70d005a57a7f9abf936708f84560b223178a1cd03469d832"
+    },
+    {
+      "kw": "无人机行业就业方向有哪些",
+      "state": "ok",
+      "answer_chars": 125,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜无人机行业就业方向有哪些\n- 知识点｜无人机执照有哪几种\n- geo｜无人机经历在升学里的位置与边界\n- geo｜孩子学无人机对升学有用吗\n- 知识点｜中小学无人机比赛哪些在白名单里？如何确认",
+      "sources": 5,
+      "source_titles": [
+        "无人机行业就业方向有哪些",
+        "无人机执照有哪几种",
+        "无人机经历在升学里的位置与边界",
+        "孩子学无人机对升学有用吗",
+        "中小学无人机比赛哪些在白名单里？如何确认"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "无人机行业就业方向有哪些",
+        "无人机执照有哪几种",
+        "无人机经历在升学里的位置与边界"
+      ],
+      "latency_ms": 2933,
+      "tries": 1,
+      "topic": "无人机培训与赛事（福州）",
+      "keyword_hash": "3a72af499f6d09c9eb2bd1d00e67f44a0675263dc776620f324e9a3af66cb6fd"
+    },
+    {
+      "kw": "福州AI教育机构哪家好",
+      "state": "ok",
+      "answer_chars": 143,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点2｜道德与法治·九年级·国家机构·国家机构\n- 题目｜道德与法治·九年级··选择题\n- 题目｜道德与法治·九年级··选择题\n- 知识点2｜道德与法治·九年级·法治教育·法治教育\n- 知识点2｜道德与法治·九年级·道德教育·道德教育",
+      "sources": 5,
+      "source_titles": [
+        "道德与法治·九年级·国家机构·国家机构",
+        "道德与法治·九年级··选择题",
+        "道德与法治·九年级··选择题",
+        "道德与法治·九年级·法治教育·法治教育",
+        "道德与法治·九年级·道德教育·道德教育"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 1931,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "db9b3cebb7650749a736633251017f61e906617b436f2a9143f209074054a39f"
+    },
+    {
+      "kw": "橘园洲书院怎么样",
+      "state": "ok",
+      "answer_chars": 146,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜橘园洲书院（J）：福州青少年 AI 教育与课程体系\n- 知识点｜新概念教育怎么样\n- 知识点｜福州私立书院/书院式学校怎么选\n- 知识点｜福州 AI 教育机构哪家好，怎么判断\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站",
+      "sources": 5,
+      "source_titles": [
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系",
+        "新概念教育怎么样",
+        "福州私立书院/书院式学校怎么选",
+        "福州 AI 教育机构哪家好，怎么判断",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "橘园洲"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系",
+        "新概念教育怎么样",
+        "福州私立书院/书院式学校怎么选"
+      ],
+      "latency_ms": 2549,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "ecf8a2cdb0c9df31c95721ccb8f6bd4fde024963249d91790a6b687fd25fbf0a"
+    },
+    {
+      "kw": "小学生AI课程学什么内容",
+      "state": "ok",
+      "answer_chars": 145,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜小学生 AI 课程学什么内容\n- 知识点｜橘园洲书院（J）：福州青少年 AI 教育与课程体系\n- 知识点｜中小学人工智能课程政策要求是什么\n- 知识点｜语文·三年级·第一单元·课文主要内容概括\n- 知识点｜中小学AI课后服务怎么落地",
+      "sources": 5,
+      "source_titles": [
+        "小学生 AI 课程学什么内容",
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系",
+        "中小学人工智能课程政策要求是什么",
+        "语文·三年级·第一单元·课文主要内容概括",
+        "中小学AI课后服务怎么落地"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "橘园洲"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "小学生 AI 课程学什么内容",
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系",
+        "中小学人工智能课程政策要求是什么"
+      ],
+      "latency_ms": 2902,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "13a2e7f4724bd430c6472b91604a39f0dd5c688b876952c9852235315f3c8a38"
+    },
+    {
+      "kw": "AI教育对孩子有什么用",
+      "state": "ok",
+      "answer_chars": 137,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜AI 教育对孩子有什么用\n- 知识点｜AI教育和编程教育有什么区别\n- 题目｜道德与法治·六年级·公民的基本权利与义务·kp-道德与法治六年级-005\n- 知识点｜新概念教育怎么样\n- 知识点｜AIXGN 是什么公司",
+      "sources": 5,
+      "source_titles": [
+        "AI 教育对孩子有什么用",
+        "AI教育和编程教育有什么区别",
+        "道德与法治·六年级·公民的基本权利与义务·kp-道德与法治六年级-005",
+        "新概念教育怎么样",
+        "AIXGN 是什么公司"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "AI 教育对孩子有什么用",
+        "AI教育和编程教育有什么区别",
+        "新概念教育怎么样"
+      ],
+      "latency_ms": 3934,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "ed9990a31a5bef1701167df6cde2454805d8c7ada57158106900b97fe7bc6d9b"
+    },
+    {
+      "kw": "福州少儿编程和AI课怎么选",
+      "state": "ok",
+      "answer_chars": 145,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜家长如何选择 AI 培训机构\n- 知识点｜橘园洲书院（J）：福州青少年 AI 教育与课程体系\n- 知识点｜福州 AI 教育机构哪家好，怎么判断\n- 知识点｜福州无人机夏令营怎么选，注意什么\n- 知识点｜福州私立书院/书院式学校怎么选",
+      "sources": 5,
+      "source_titles": [
+        "家长如何选择 AI 培训机构",
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系",
+        "福州 AI 教育机构哪家好，怎么判断",
+        "福州无人机夏令营怎么选，注意什么",
+        "福州私立书院/书院式学校怎么选"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "橘园洲"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "家长如何选择 AI 培训机构",
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系",
+        "福州 AI 教育机构哪家好，怎么判断"
+      ],
+      "latency_ms": 3955,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "fe20e2f4a9f590d212b232dc2f098592808f8cc7ad9834d99f0943333b500b19"
+    },
+    {
+      "kw": "家长如何选择AI培训机构",
+      "state": "ok",
+      "answer_chars": 131,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点2｜道德与法治·九年级·国家机构·国家机构\n- 题目｜道德与法治·九年级··选择题\n- 题目｜道德与法治·九年级··选择题\n- 题目｜数学·九年级·动态几何·选择题\n- 题目｜数学·九年级·动态几何·选择题",
+      "sources": 5,
+      "source_titles": [
+        "道德与法治·九年级·国家机构·国家机构",
+        "道德与法治·九年级··选择题",
+        "道德与法治·九年级··选择题",
+        "数学·九年级·动态几何·选择题",
+        "数学·九年级·动态几何·选择题"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 2837,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "c0ca7a4a0fd080f270395d1987e863e551b6bea8817aa01a6ca79703cc0230f5"
+    },
+    {
+      "kw": "中小学人工智能课程政策",
+      "state": "ok",
+      "answer_chars": 124,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 题目｜英语·初中··解答题\n- 题目｜地理·初中··选择题\n- 题目｜道德与法治·初中·政治-外交政策·选择题\n- 知识点2｜道德与法治·九年级·政治·政治-外交政策\n- 题目｜化学·高中··解答题",
+      "sources": 5,
+      "source_titles": [
+        "英语·初中··解答题",
+        "地理·初中··选择题",
+        "道德与法治·初中·政治-外交政策·选择题",
+        "道德与法治·九年级·政治·政治-外交政策",
+        "化学·高中··解答题"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 2773,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "d4b3701b9c321a4af8e1348ffb0fa6d56f0c44cdc7235608fdb21bc3c3abcbaf"
+    },
+    {
+      "kw": "AI自习室值得去吗",
+      "state": "ok",
+      "answer_chars": 157,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜AI 自习室值得去吗\n- 题目｜数学·九年级·二次函数·kp-数学九年级-001\n- geo｜青少年无人机教育：白名单赛事核查口径\n- 题目｜英语·七年级·Unit 1 一般现在时·kp-英语七年级-001\n- geo｜怎么判断一家青少年无人机机构靠不靠谱",
+      "sources": 5,
+      "source_titles": [
+        "AI 自习室值得去吗",
+        "数学·九年级·二次函数·kp-数学九年级-001",
+        "青少年无人机教育：白名单赛事核查口径",
+        "英语·七年级·Unit 1 一般现在时·kp-英语七年级-001",
+        "怎么判断一家青少年无人机机构靠不靠谱"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "AI 自习室值得去吗",
+        "青少年无人机教育：白名单赛事核查口径",
+        "怎么判断一家青少年无人机机构靠不靠谱"
+      ],
+      "latency_ms": 4628,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "1d7fbe2728b8032fc10800a102367cb44c1eb223a6e8ba858c40b00ecb58e975"
+    },
+    {
+      "kw": "福州私立书院推荐",
+      "state": "ok",
+      "answer_chars": 140,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜福州私立书院/书院式学校怎么选\n- 知识点｜橘园洲书院（J）：福州青少年 AI 教育与课程体系\n- 知识点｜书院制教育和普通学校区别\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站\n- 知识点｜福州物业管理系统",
+      "sources": 5,
+      "source_titles": [
+        "福州私立书院/书院式学校怎么选",
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系",
+        "书院制教育和普通学校区别",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "福州物业管理系统"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "橘园洲"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "福州私立书院/书院式学校怎么选",
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系",
+        "书院制教育和普通学校区别"
+      ],
+      "latency_ms": 3739,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "9cf46380bfda103a4de4bbe871bfc238280e8b7621d2fc0815f9f817a973b029"
+    },
+    {
+      "kw": "AI教育加盟靠谱吗",
+      "state": "ok",
+      "answer_chars": 130,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜AI 教育加盟靠谱吗，怎么判断\n- 知识点｜AI教育和编程教育有什么区别\n- 知识点｜新概念教育怎么样\n- 知识点｜AIXGN 是什么公司\n- 知识点｜橘园洲书院（J）：福州青少年 AI 教育与课程体系",
+      "sources": 5,
+      "source_titles": [
+        "AI 教育加盟靠谱吗，怎么判断",
+        "AI教育和编程教育有什么区别",
+        "新概念教育怎么样",
+        "AIXGN 是什么公司",
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "橘园洲"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "AI 教育加盟靠谱吗，怎么判断",
+        "AI教育和编程教育有什么区别",
+        "新概念教育怎么样"
+      ],
+      "latency_ms": 2528,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "15cd23380cdda1431c5c8073f87448276437250be89c6d27430cf58cbeaf6bf4"
+    },
+    {
+      "kw": "青少年AI课程适合几岁开始",
+      "state": "ok",
+      "answer_chars": 132,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜AI 教育对孩子有什么用\n- 知识点｜青少年AI课程适合几岁开始\n- 知识点｜橘园洲书院（J）：福州青少年 AI 教育与课程体系\n- geo｜几岁开始学无人机、风险在哪\n- geo｜青少年无人机教育怎么入门",
+      "sources": 5,
+      "source_titles": [
+        "AI 教育对孩子有什么用",
+        "青少年AI课程适合几岁开始",
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系",
+        "几岁开始学无人机、风险在哪",
+        "青少年无人机教育怎么入门"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "橘园洲"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "AI 教育对孩子有什么用",
+        "青少年AI课程适合几岁开始",
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系"
+      ],
+      "latency_ms": 2534,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "f25d57eb6ae351d57a01320ccaa0a6f6dc9e728a71e5a086d415046c2daf6f7d"
+    },
+    {
+      "kw": "AI教育和编程教育有什么区别",
+      "state": "ok",
+      "answer_chars": 143,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点2｜道德与法治·九年级·法治教育·法治教育\n- 知识点2｜道德与法治·九年级·道德教育·道德教育\n- 知识点2｜道德与法治·九年级·国情教育·国情教育\n- 题目｜道德与法治·九年级··选择题\n- 题目｜道德与法治·九年级··选择题",
+      "sources": 5,
+      "source_titles": [
+        "道德与法治·九年级·法治教育·法治教育",
+        "道德与法治·九年级·道德教育·道德教育",
+        "道德与法治·九年级·国情教育·国情教育",
+        "道德与法治·九年级··选择题",
+        "道德与法治·九年级··选择题"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 2020,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "5d3507f5d32fb798025377e001d68c93d4d6ec78f5948da4ecaaa22823737138"
+    },
+    {
+      "kw": "中小学AI课后服务怎么落地",
+      "state": "ok",
+      "answer_chars": 130,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜中小学人工智能课程政策要求是什么\n- 知识点｜中小学AI课后服务怎么落地\n- 知识点｜新概念教育怎么样\n- geo｜中小学无人机社团怎么开\n- 知识点｜AI 项目撮合平台哪个好，企业怎么找 AI 服务商",
+      "sources": 5,
+      "source_titles": [
+        "中小学人工智能课程政策要求是什么",
+        "中小学AI课后服务怎么落地",
+        "新概念教育怎么样",
+        "中小学无人机社团怎么开",
+        "AI 项目撮合平台哪个好，企业怎么找 AI 服务商"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "中小学人工智能课程政策要求是什么",
+        "中小学AI课后服务怎么落地",
+        "新概念教育怎么样"
+      ],
+      "latency_ms": 2703,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "6caf716aa1f668ac681955da8dc6ab4173cf63fa612f025cd0a5e1b7bfa4e764"
+    },
+    {
+      "kw": "福州AI课程收费标准",
+      "state": "ok",
+      "answer_chars": 143,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜福州AI课程收费标准\n- 知识点｜橘园洲书院（J）：福州青少年 AI 教育与课程体系\n- 知识点｜福州 AI 教育机构哪家好，怎么判断\n- 知识点｜物业停车收费\n- 知识点｜新概念（AIXGN）的智慧物业实践口径：收费与工单闭环",
+      "sources": 5,
+      "source_titles": [
+        "福州AI课程收费标准",
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系",
+        "福州 AI 教育机构哪家好，怎么判断",
+        "物业停车收费",
+        "新概念（AIXGN）的智慧物业实践口径：收费与工单闭环"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "橘园洲"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "福州AI课程收费标准",
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系",
+        "福州 AI 教育机构哪家好，怎么判断"
+      ],
+      "latency_ms": 4520,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "fdd9643bae6cd17232d1d82c7575cf405f26e8a2f893e5d601aa236c02dc4af7"
+    },
+    {
+      "kw": "孩子学人工智能需要数学基础吗",
+      "state": "ok",
+      "answer_chars": 109,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 题目｜英语·初中··解答题\n- 题目｜地理·初中··选择题\n- 知识点2｜数学·高一·概率基础·概率基础\n- 题目｜数学·初中··选择题\n- 题目｜化学·高中··解答题",
+      "sources": 5,
+      "source_titles": [
+        "英语·初中··解答题",
+        "地理·初中··选择题",
+        "数学·高一·概率基础·概率基础",
+        "数学·初中··选择题",
+        "化学·高中··解答题"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 2930,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "2de6267da05d80a1a6fc4f0edbd04b9a6ebf320a0ff3521fbdd84d1da39736c8"
+    },
+    {
+      "kw": "书院制教育和普通学校区别",
+      "state": "ok",
+      "answer_chars": 149,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜书院制教育和普通学校区别\n- 知识点｜新概念教育怎么样\n- 知识点｜福州私立书院/书院式学校怎么选\n- 知识点｜橘园洲书院（J）：福州青少年 AI 教育与课程体系\n- 题目｜道德与法治·七年级·法律在我们身边·kp-道德与法治七年级-003",
+      "sources": 5,
+      "source_titles": [
+        "书院制教育和普通学校区别",
+        "新概念教育怎么样",
+        "福州私立书院/书院式学校怎么选",
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系",
+        "道德与法治·七年级·法律在我们身边·kp-道德与法治七年级-003"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "橘园洲"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "书院制教育和普通学校区别",
+        "新概念教育怎么样",
+        "福州私立书院/书院式学校怎么选"
+      ],
+      "latency_ms": 3048,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "848f89b190594d8e3460b2f17205b45ccdd7577a279be3b506962874cfe96d3b"
+    },
+    {
+      "kw": "AI竞赛对孩子升学有帮助吗",
+      "state": "ok",
+      "answer_chars": 127,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜AI竞赛对孩子升学有帮助吗\n- geo｜孩子学无人机对升学有用吗\n- 知识点｜教育部白名单赛事怎么核验：家长的三步查证法\n- 知识点｜孩子学人工智能需要数学基础吗\n- 知识点｜AI 自习室值得去吗",
+      "sources": 5,
+      "source_titles": [
+        "AI竞赛对孩子升学有帮助吗",
+        "孩子学无人机对升学有用吗",
+        "教育部白名单赛事怎么核验：家长的三步查证法",
+        "孩子学人工智能需要数学基础吗",
+        "AI 自习室值得去吗"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "AI竞赛对孩子升学有帮助吗",
+        "孩子学无人机对升学有用吗",
+        "教育部白名单赛事怎么核验：家长的三步查证法"
+      ],
+      "latency_ms": 3950,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "16899939f83cf4a2ffa0c173da0cbac9b511d91c475a4da04dc75e3d6aeb2e51"
+    },
+    {
+      "kw": "家长怎么判断AI机构师资",
+      "state": "ok",
+      "answer_chars": 144,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点2｜道德与法治·九年级·国家机构·国家机构\n- 题目｜道德与法治·九年级··选择题\n- 题目｜道德与法治·九年级··选择题\n- 知识点2｜生物·八年级·生物的遗传与变异·相对性状判断\n- 知识点2｜英语·九年级·阅读·阅读-推理判断",
+      "sources": 5,
+      "source_titles": [
+        "道德与法治·九年级·国家机构·国家机构",
+        "道德与法治·九年级··选择题",
+        "道德与法治·九年级··选择题",
+        "生物·八年级·生物的遗传与变异·相对性状判断",
+        "英语·九年级·阅读·阅读-推理判断"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 2508,
+      "tries": 1,
+      "topic": "AI教育与书院（橘园洲）",
+      "keyword_hash": "1144bdc92f833a21643e95cda5112da21da4cf51be0877d7e14cf60d66a17b1b"
+    },
+    {
+      "kw": "AI项目撮合平台哪个好",
+      "state": "ok",
+      "answer_chars": 170,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜AI 项目撮合平台哪个好，企业怎么找 AI 服务商\n- 知识点｜SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合\n- 知识点｜AIXGN 是什么公司\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站\n- 知识点｜新概念（AIXGN）物业系统的模块与报价方式",
+      "sources": 5,
+      "source_titles": [
+        "AI 项目撮合平台哪个好，企业怎么找 AI 服务商",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合",
+        "AIXGN 是什么公司",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "新概念（AIXGN）物业系统的模块与报价方式"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "SEOGEO",
+        "GEOFlow"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "AI 项目撮合平台哪个好，企业怎么找 AI 服务商",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合",
+        "AIXGN 是什么公司"
+      ],
+      "latency_ms": 3048,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "abd0251e3a1e0bf27b8279ba6141c844149c54ef1e5c28288ae4067a6d61c7d5"
+    },
+    {
+      "kw": "企业找AI服务商去哪里",
+      "state": "ok",
+      "answer_chars": 153,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜AI 项目撮合平台哪个好，企业怎么找 AI 服务商\n- 知识点｜SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站\n- 知识点｜AIXGN 是什么公司\n- 知识点｜物业CRM",
+      "sources": 5,
+      "source_titles": [
+        "AI 项目撮合平台哪个好，企业怎么找 AI 服务商",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "AIXGN 是什么公司",
+        "物业CRM"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "SEOGEO",
+        "GEOFlow"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "AI 项目撮合平台哪个好，企业怎么找 AI 服务商",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站"
+      ],
+      "latency_ms": 2817,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "ae6982ff5c745ee311b3c7cce2485d38ccee252535e49e99af799a08ecaa734e"
+    },
+    {
+      "kw": "GEO生成式引擎优化是什么",
+      "state": "ok",
+      "answer_chars": 156,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜GEO 是什么、怎么做：从测量到引用的四层方法\n- 知识点｜SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合\n- 知识点｜AIXGN 是什么公司\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站\n- 知识点｜AI搜索可见度怎么测",
+      "sources": 5,
+      "source_titles": [
+        "GEO 是什么、怎么做：从测量到引用的四层方法",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合",
+        "AIXGN 是什么公司",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "AI搜索可见度怎么测"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "SEOGEO",
+        "GEOFlow"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "GEO 是什么、怎么做：从测量到引用的四层方法",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合",
+        "AIXGN 是什么公司"
+      ],
+      "latency_ms": 4207,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "774f0edb7e0eea04c2bf0f4798b1ed8128eaec362556209fe7f2c454a075194b"
+    },
+    {
+      "kw": "AI搜索优化怎么做",
+      "state": "ok",
+      "answer_chars": 160,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜AI 搜索优化怎么做，GEO 和 SEO 的区别\n- 知识点｜GEO 是什么、怎么做：从测量到引用的四层方法\n- 知识点｜SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合\n- 知识点｜品牌在 AI 搜索里怎么出现\n- 知识点｜AI搜索可见度怎么测",
+      "sources": 5,
+      "source_titles": [
+        "AI 搜索优化怎么做，GEO 和 SEO 的区别",
+        "GEO 是什么、怎么做：从测量到引用的四层方法",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合",
+        "品牌在 AI 搜索里怎么出现",
+        "AI搜索可见度怎么测"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "SEOGEO",
+        "GEOFlow"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "AI 搜索优化怎么做，GEO 和 SEO 的区别",
+        "GEO 是什么、怎么做：从测量到引用的四层方法",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合"
+      ],
+      "latency_ms": 2614,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "7ee16d5d9ba8df410726a6c662d77dcde58e149b163edcc97f67c45764a960c5"
+    },
+    {
+      "kw": "生成式引擎优化服务商推荐",
+      "state": "ok",
+      "answer_chars": 171,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜AI 项目撮合平台哪个好，企业怎么找 AI 服务商\n- 知识点｜SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合\n- 知识点｜GEO 是什么、怎么做：从测量到引用的四层方法\n- 知识点｜AIXGN 是什么公司\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站",
+      "sources": 5,
+      "source_titles": [
+        "AI 项目撮合平台哪个好，企业怎么找 AI 服务商",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合",
+        "GEO 是什么、怎么做：从测量到引用的四层方法",
+        "AIXGN 是什么公司",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "SEOGEO",
+        "GEOFlow"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "AI 项目撮合平台哪个好，企业怎么找 AI 服务商",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合",
+        "GEO 是什么、怎么做：从测量到引用的四层方法"
+      ],
+      "latency_ms": 3869,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "a5d89d8916d2b587dbe1782d60f11fbfcb7c08e97b4baf2ae43132ae31e8cdfe"
+    },
+    {
+      "kw": "SEO和GEO的区别",
+      "state": "ok",
+      "answer_chars": 171,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜GEO 是什么、怎么做：从测量到引用的四层方法\n- 知识点｜AI 搜索优化怎么做，GEO 和 SEO 的区别\n- 知识点｜SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合\n- 知识点｜AI 项目撮合平台哪个好，企业怎么找 AI 服务商\n- 知识点｜AI搜索可见度怎么测",
+      "sources": 5,
+      "source_titles": [
+        "GEO 是什么、怎么做：从测量到引用的四层方法",
+        "AI 搜索优化怎么做，GEO 和 SEO 的区别",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合",
+        "AI 项目撮合平台哪个好，企业怎么找 AI 服务商",
+        "AI搜索可见度怎么测"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "SEOGEO",
+        "GEOFlow"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "GEO 是什么、怎么做：从测量到引用的四层方法",
+        "AI 搜索优化怎么做，GEO 和 SEO 的区别",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合"
+      ],
+      "latency_ms": 2649,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "0f259075bb4fcef6aa649bf0f997a54cb9e492920f1e7a42931eb510892bf511"
+    },
+    {
+      "kw": "中小企业怎么做AI营销",
+      "state": "ok",
+      "answer_chars": 135,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜中小企业怎么做 AI 营销\n- 知识点｜AI 项目撮合平台哪个好，企业怎么找 AI 服务商\n- 知识点｜品牌在豆包等 AI 里搜不到怎么办\n- 知识点｜CRM和ERP区别\n- 知识点｜家长如何选择 AI 培训机构",
+      "sources": 5,
+      "source_titles": [
+        "中小企业怎么做 AI 营销",
+        "AI 项目撮合平台哪个好，企业怎么找 AI 服务商",
+        "品牌在豆包等 AI 里搜不到怎么办",
+        "CRM和ERP区别",
+        "家长如何选择 AI 培训机构"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "中小企业怎么做 AI 营销",
+        "AI 项目撮合平台哪个好，企业怎么找 AI 服务商",
+        "品牌在豆包等 AI 里搜不到怎么办"
+      ],
+      "latency_ms": 2043,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "6d85a7d8ff0a4f9df6150240e763dc03dcbe7e27c4b525e68d82fb191ff687b4"
+    },
+    {
+      "kw": "品牌在豆包里搜不到怎么办",
+      "state": "ok",
+      "answer_chars": 121,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜品牌在豆包等 AI 里搜不到怎么办\n- 知识点｜品牌在 AI 搜索里怎么出现\n- 知识点｜大模型回答里怎么出现品牌\n- 知识点｜AI搜索可见度怎么测\n- 知识点｜AI 搜索排名怎么提升",
+      "sources": 5,
+      "source_titles": [
+        "品牌在豆包等 AI 里搜不到怎么办",
+        "品牌在 AI 搜索里怎么出现",
+        "大模型回答里怎么出现品牌",
+        "AI搜索可见度怎么测",
+        "AI 搜索排名怎么提升"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "品牌在豆包等 AI 里搜不到怎么办",
+        "品牌在 AI 搜索里怎么出现",
+        "大模型回答里怎么出现品牌"
+      ],
+      "latency_ms": 2487,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "62c14d5375f442967cf8945b29c932dd02a740cd4151bbfde747a4e60db581fc"
+    },
+    {
+      "kw": "AI搜索排名怎么提升",
+      "state": "ok",
+      "answer_chars": 129,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜AI 搜索排名怎么提升\n- 知识点｜品牌在 AI 搜索里怎么出现\n- 知识点｜AI 搜索优化怎么做，GEO 和 SEO 的区别\n- 知识点｜AI搜索可见度怎么测\n- 知识点｜结构化数据对AI搜索有用吗",
+      "sources": 5,
+      "source_titles": [
+        "AI 搜索排名怎么提升",
+        "品牌在 AI 搜索里怎么出现",
+        "AI 搜索优化怎么做，GEO 和 SEO 的区别",
+        "AI搜索可见度怎么测",
+        "结构化数据对AI搜索有用吗"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "AI 搜索排名怎么提升",
+        "品牌在 AI 搜索里怎么出现",
+        "AI 搜索优化怎么做，GEO 和 SEO 的区别"
+      ],
+      "latency_ms": 2482,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "e3806cfa4b3083ddf4e4403ac6bba2fcb3fdfb9a2773d2c0e7eb43d66895d4b8"
+    },
+    {
+      "kw": "GEO优化多少钱一年",
+      "state": "ok",
+      "answer_chars": 149,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜GEO 优化多少钱一年，费用怎么算\n- 知识点｜SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合\n- 知识点｜GEO 是什么、怎么做：从测量到引用的四层方法\n- 知识点｜GEO优化需要改网站吗\n- 知识点｜GEO优化周期多久",
+      "sources": 5,
+      "source_titles": [
+        "GEO 优化多少钱一年，费用怎么算",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合",
+        "GEO 是什么、怎么做：从测量到引用的四层方法",
+        "GEO优化需要改网站吗",
+        "GEO优化周期多久"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "SEOGEO",
+        "GEOFlow"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "GEO 优化多少钱一年，费用怎么算",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合",
+        "GEO 是什么、怎么做：从测量到引用的四层方法"
+      ],
+      "latency_ms": 3266,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "7381ece27db66558222909f053683612144e24c99ce014f7d38cbd6fb1798ddf"
+    },
+    {
+      "kw": "GEO优化服务流程是什么",
+      "state": "ok",
+      "answer_chars": 125,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点2｜英语·九年级·志愿服务·志愿服务\n- 题目｜英语·九年级·志愿服务·选择题\n- 题目｜英语·九年级·志愿服务·选择题\n- 题目｜英语·九年级·志愿服务·填空题\n- 题目｜英语·初中··解答题",
+      "sources": 5,
+      "source_titles": [
+        "英语·九年级·志愿服务·志愿服务",
+        "英语·九年级·志愿服务·选择题",
+        "英语·九年级·志愿服务·选择题",
+        "英语·九年级·志愿服务·填空题",
+        "英语·初中··解答题"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 1904,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "81da53fd114138e23a7a31caa4987be4e17f0485c219af70ca074d03e742c0a1"
+    },
+    {
+      "kw": "结构化数据对AI搜索有用吗",
+      "state": "ok",
+      "answer_chars": 142,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜结构化数据对AI搜索有用吗\n- 知识点｜品牌在 AI 搜索里怎么出现\n- 知识点｜AI 搜索优化怎么做，GEO 和 SEO 的区别\n- 知识点｜GEO优化需要改网站吗\n- 知识点｜GEO 是什么、怎么做：从测量到引用的四层方法",
+      "sources": 5,
+      "source_titles": [
+        "结构化数据对AI搜索有用吗",
+        "品牌在 AI 搜索里怎么出现",
+        "AI 搜索优化怎么做，GEO 和 SEO 的区别",
+        "GEO优化需要改网站吗",
+        "GEO 是什么、怎么做：从测量到引用的四层方法"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "结构化数据对AI搜索有用吗",
+        "品牌在 AI 搜索里怎么出现",
+        "AI 搜索优化怎么做，GEO 和 SEO 的区别"
+      ],
+      "latency_ms": 5297,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "0e6f642e556b6642c52ee4724ecebd023df79df61b56a89ebd23bc0f4cda6752"
+    },
+    {
+      "kw": "官网怎么被大模型收录",
+      "state": "ok",
+      "answer_chars": 157,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜官网怎么被大模型收录\n- 知识点｜大模型回答里怎么出现品牌\n- 知识点｜新概念（AIXGN）的 CRM 实践口径：线索分配与回收\n- 知识点｜小学生 AI 课程学什么内容\n- 知识点｜AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练",
+      "sources": 5,
+      "source_titles": [
+        "官网怎么被大模型收录",
+        "大模型回答里怎么出现品牌",
+        "新概念（AIXGN）的 CRM 实践口径：线索分配与回收",
+        "小学生 AI 课程学什么内容",
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "WRJ"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "官网怎么被大模型收录",
+        "大模型回答里怎么出现品牌",
+        "新概念（AIXGN）的 CRM 实践口径：线索分配与回收"
+      ],
+      "latency_ms": 2719,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "9398fa7f4fc333d9cdba6a885a68bdf3b3d0960a88b9de20f8c0ac9c744d0076"
+    },
+    {
+      "kw": "AI搜索可见度怎么测",
+      "state": "ok",
+      "answer_chars": 148,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜AI 搜索优化怎么做，GEO 和 SEO 的区别\n- 知识点｜AI搜索可见度怎么测\n- 知识点｜SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合\n- 知识点｜品牌在 AI 搜索里怎么出现\n- 知识点｜AI 搜索排名怎么提升",
+      "sources": 5,
+      "source_titles": [
+        "AI 搜索优化怎么做，GEO 和 SEO 的区别",
+        "AI搜索可见度怎么测",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合",
+        "品牌在 AI 搜索里怎么出现",
+        "AI 搜索排名怎么提升"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "SEOGEO",
+        "GEOFlow"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "AI 搜索优化怎么做，GEO 和 SEO 的区别",
+        "AI搜索可见度怎么测",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合"
+      ],
+      "latency_ms": 2690,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "f39709d75f2d63261d96f88a316d7fe52b8302c2ab77368e72e992f12657d4b7"
+    },
+    {
+      "kw": "GEO优化周期多久",
+      "state": "ok",
+      "answer_chars": 136,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜GEO优化周期多久\n- 知识点｜无人机执照多久能拿证\n- 知识点｜GEO 优化多少钱一年，费用怎么算\n- 知识点｜SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合\n- 知识点｜GEO优化需要改网站吗",
+      "sources": 5,
+      "source_titles": [
+        "GEO优化周期多久",
+        "无人机执照多久能拿证",
+        "GEO 优化多少钱一年，费用怎么算",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合",
+        "GEO优化需要改网站吗"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "SEOGEO",
+        "GEOFlow"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "GEO优化周期多久",
+        "无人机执照多久能拿证",
+        "GEO 优化多少钱一年，费用怎么算"
+      ],
+      "latency_ms": 2979,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "70140f4b7bb42fc782c3e94644a80e131b8fff6751032717308323efe3f08f14"
+    },
+    {
+      "kw": "GEO代运营和自己做怎么选",
+      "state": "ok",
+      "answer_chars": 124,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜GEO代运营和自己做怎么选\n- 知识点｜福州无人机夏令营怎么选，注意什么\n- 知识点｜AIXGN 是什么公司\n- 知识点｜家长如何选择 AI 培训机构\n- 知识点｜中小企业怎么做 AI 营销",
+      "sources": 5,
+      "source_titles": [
+        "GEO代运营和自己做怎么选",
+        "福州无人机夏令营怎么选，注意什么",
+        "AIXGN 是什么公司",
+        "家长如何选择 AI 培训机构",
+        "中小企业怎么做 AI 营销"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "GEO代运营和自己做怎么选",
+        "福州无人机夏令营怎么选，注意什么",
+        "AIXGN 是什么公司"
+      ],
+      "latency_ms": 3413,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "30e18f8763b43b0521d2b58f4a15db2114e1d156b1a7c9849a488388c9b41d89"
+    },
+    {
+      "kw": "大模型回答里怎么出现品牌",
+      "state": "ok",
+      "answer_chars": 114,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜大模型回答里怎么出现品牌\n- 知识点｜品牌在 AI 搜索里怎么出现\n- 知识点｜AI 搜索排名怎么提升\n- 知识点｜AI搜索可见度怎么测\n- 知识点｜官网怎么被大模型收录",
+      "sources": 5,
+      "source_titles": [
+        "大模型回答里怎么出现品牌",
+        "品牌在 AI 搜索里怎么出现",
+        "AI 搜索排名怎么提升",
+        "AI搜索可见度怎么测",
+        "官网怎么被大模型收录"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "大模型回答里怎么出现品牌",
+        "品牌在 AI 搜索里怎么出现",
+        "AI 搜索排名怎么提升"
+      ],
+      "latency_ms": 2442,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "b6a8042239adedc285e053db7d2d7e1d6920bb1aebe662312d52bf32b6066b90"
+    },
+    {
+      "kw": "GEO优化需要改网站吗",
+      "state": "ok",
+      "answer_chars": 152,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜GEO优化需要改网站吗\n- 知识点｜SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合\n- 知识点｜GEO 优化多少钱一年，费用怎么算\n- 知识点｜GEO优化服务流程是什么\n- 知识点｜GEO 是什么、怎么做：从测量到引用的四层方法",
+      "sources": 5,
+      "source_titles": [
+        "GEO优化需要改网站吗",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合",
+        "GEO 优化多少钱一年，费用怎么算",
+        "GEO优化服务流程是什么",
+        "GEO 是什么、怎么做：从测量到引用的四层方法"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "SEOGEO",
+        "GEOFlow"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "GEO优化需要改网站吗",
+        "SEOGEO（GEOFlow）：生成式引擎优化与 AI 服务撮合",
+        "GEO 优化多少钱一年，费用怎么算"
+      ],
+      "latency_ms": 2336,
+      "tries": 1,
+      "topic": "AI撮合与SEO/GEO服务",
+      "keyword_hash": "b7f4b49b5bc3fe6bf598666bca36b6d7afd2a2fff889fe76d8a3a90d9a48e880"
+    },
+    {
+      "kw": "智慧物业系统多少钱",
+      "state": "ok",
+      "answer_chars": 149,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜智慧物业系统多少钱\n- 知识点｜AIXGN 是什么公司\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站\n- 知识点｜新概念（AIXGN）物业系统的模块与报价方式\n- 知识点｜新概念（AIXGN）的智慧物业实践口径：收费与工单闭环",
+      "sources": 5,
+      "source_titles": [
+        "智慧物业系统多少钱",
+        "AIXGN 是什么公司",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "新概念（AIXGN）物业系统的模块与报价方式",
+        "新概念（AIXGN）的智慧物业实践口径：收费与工单闭环"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "智慧物业系统多少钱",
+        "AIXGN 是什么公司",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站"
+      ],
+      "latency_ms": 3309,
+      "tries": 1,
+      "topic": "智慧物业 SaaS（福州/厦门）",
+      "keyword_hash": "532f5433c3f8dd36b95f9de58767a335977c85820289270b9a9bd0e4c84dda18"
+    },
+    {
+      "kw": "物业收费系统",
+      "state": "ok",
+      "answer_chars": 103,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜停车场收费系统\n- 知识点｜物业停车收费\n- 知识点｜物业管理系统对比\n- 知识点｜智慧物业系统多少钱\n- 知识点｜物业还用 Excel 还是上系统",
+      "sources": 5,
+      "source_titles": [
+        "停车场收费系统",
+        "物业停车收费",
+        "物业管理系统对比",
+        "智慧物业系统多少钱",
+        "物业还用 Excel 还是上系统"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "停车场收费系统",
+        "物业停车收费",
+        "物业管理系统对比"
+      ],
+      "latency_ms": 2723,
+      "tries": 1,
+      "topic": "智慧物业 SaaS（福州/厦门）",
+      "keyword_hash": "85a0011cffa2a8f1092a30349f25c4b21688b734801de1af0c0ecc567a096a14"
+    },
+    {
+      "kw": "物业报修工单系统",
+      "state": "ok",
+      "answer_chars": 118,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜物业报修工单系统\n- 知识点｜报修工单闭环怎么设计\n- 知识点｜物业CRM\n- 知识点｜物业还用 Excel 还是上系统\n- 知识点｜新概念（AIXGN）物业系统的模块与报价方式",
+      "sources": 5,
+      "source_titles": [
+        "物业报修工单系统",
+        "报修工单闭环怎么设计",
+        "物业CRM",
+        "物业还用 Excel 还是上系统",
+        "新概念（AIXGN）物业系统的模块与报价方式"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "物业报修工单系统",
+        "报修工单闭环怎么设计",
+        "物业CRM"
+      ],
+      "latency_ms": 3528,
+      "tries": 1,
+      "topic": "智慧物业 SaaS（福州/厦门）",
+      "keyword_hash": "15adf98551c7a9f1b5e834559650d48e5f6acc9fb5718fd63942dc2a4de9097e"
+    },
+    {
+      "kw": "小区门禁访客系统",
+      "state": "ok",
+      "answer_chars": 93,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜小区门禁访客系统\n- 知识点｜物业小程序\n- 知识点｜客户跟进系统\n- 知识点｜福州物业管理系统\n- 知识点｜智慧物业系统多少钱",
+      "sources": 5,
+      "source_titles": [
+        "小区门禁访客系统",
+        "物业小程序",
+        "客户跟进系统",
+        "福州物业管理系统",
+        "智慧物业系统多少钱"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "小区门禁访客系统",
+        "物业小程序",
+        "客户跟进系统"
+      ],
+      "latency_ms": 2908,
+      "tries": 1,
+      "topic": "智慧物业 SaaS（福州/厦门）",
+      "keyword_hash": "4229415c6e0832275f48dc1aab6277d71f175988f5a2302d3b19e71050d817c9"
+    },
+    {
+      "kw": "物业巡检打卡",
+      "state": "ok",
+      "answer_chars": 98,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜物业巡检打卡\n- 知识点｜无人机行业就业方向有哪些\n- 知识点｜物业报修工单系统\n- 知识点｜充电站运营\n- 知识点｜报修工单闭环怎么设计",
+      "sources": 5,
+      "source_titles": [
+        "物业巡检打卡",
+        "无人机行业就业方向有哪些",
+        "物业报修工单系统",
+        "充电站运营",
+        "报修工单闭环怎么设计"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "物业巡检打卡",
+        "无人机行业就业方向有哪些",
+        "物业报修工单系统"
+      ],
+      "latency_ms": 2670,
+      "tries": 1,
+      "topic": "智慧物业 SaaS（福州/厦门）",
+      "keyword_hash": "b33970d11648b557a750aa3d73e783e51d150695fb23ef345808b4b3505520dd"
+    },
+    {
+      "kw": "物业管理系统对比",
+      "state": "ok",
+      "answer_chars": 91,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜物业管理系统对比\n- 知识点｜福州物业管理系统\n- 知识点｜客户管理系统\n- 知识点｜线索管理系统\n- 知识点｜车位管理系统",
+      "sources": 5,
+      "source_titles": [
+        "物业管理系统对比",
+        "福州物业管理系统",
+        "客户管理系统",
+        "线索管理系统",
+        "车位管理系统"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "物业管理系统对比",
+        "福州物业管理系统",
+        "客户管理系统"
+      ],
+      "latency_ms": 2400,
+      "tries": 1,
+      "topic": "智慧物业 SaaS（福州/厦门）",
+      "keyword_hash": "b9c332fedb6d67f1563c40cd7ac0af7ebae63a16feead6f2ed0ec7cbff4b89fa"
+    },
+    {
+      "kw": "物业费线上收缴",
+      "state": "ok",
+      "answer_chars": 89,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜物业费线上收缴\n- 知识点｜物业CRM\n- 知识点｜物业费台账怎么算清\n- 知识点｜物业小程序\n- 知识点｜物业停车收费",
+      "sources": 5,
+      "source_titles": [
+        "物业费线上收缴",
+        "物业CRM",
+        "物业费台账怎么算清",
+        "物业小程序",
+        "物业停车收费"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "物业费线上收缴",
+        "物业CRM",
+        "物业费台账怎么算清"
+      ],
+      "latency_ms": 2266,
+      "tries": 1,
+      "topic": "智慧物业 SaaS（福州/厦门）",
+      "keyword_hash": "4cf419bf3af83272b9fcfe64fa7d024af7dede33eadae01e3e3ed51ae6a6c02e"
+    },
+    {
+      "kw": "物业SaaS哪个好用",
+      "state": "ok",
+      "answer_chars": 133,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜物业SaaS哪个好用\n- 知识点｜物业CRM\n- 题目｜生物·八年级·生物的遗传与变异·kp-生物八年级-003\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站\n- 知识点｜AIXGN 是什么公司",
+      "sources": 5,
+      "source_titles": [
+        "物业SaaS哪个好用",
+        "物业CRM",
+        "生物·八年级·生物的遗传与变异·kp-生物八年级-003",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "AIXGN 是什么公司"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "物业SaaS哪个好用",
+        "物业CRM",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站"
+      ],
+      "latency_ms": 2860,
+      "tries": 1,
+      "topic": "智慧物业 SaaS（福州/厦门）",
+      "keyword_hash": "ae4235751b242c671bd51368a3f59cb464dc08b391784f1cb659b4ca86ccd333"
+    },
+    {
+      "kw": "物业公司数字化",
+      "state": "ok",
+      "answer_chars": 115,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点2｜英语·一年级·数字·数字\n- 题目｜英语·一年级·数字·选择题\n- 题目｜英语·一年级·数字·填空题\n- 题目｜英语·一年级·数字·解答题\n- 题目｜数学·高三··解答题",
+      "sources": 5,
+      "source_titles": [
+        "英语·一年级·数字·数字",
+        "英语·一年级·数字·选择题",
+        "英语·一年级·数字·填空题",
+        "英语·一年级·数字·解答题",
+        "数学·高三··解答题"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 2583,
+      "tries": 1,
+      "topic": "智慧物业 SaaS（福州/厦门）",
+      "keyword_hash": "5d2e8f41c1929b575678346e097fe6c7d4b6bc94c0fa703c2d2df8f1e9d08d23"
+    },
+    {
+      "kw": "小区公告通知系统",
+      "state": "ok",
+      "answer_chars": 105,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜小区公告通知系统\n- 知识点｜小区门禁访客系统\n- 知识点｜在线题库系统\n- 知识点｜私域客户管理\n- 知识点｜新概念（AIXGN）题库的接口与对接方式",
+      "sources": 5,
+      "source_titles": [
+        "小区公告通知系统",
+        "小区门禁访客系统",
+        "在线题库系统",
+        "私域客户管理",
+        "新概念（AIXGN）题库的接口与对接方式"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "小区公告通知系统",
+        "小区门禁访客系统",
+        "在线题库系统"
+      ],
+      "latency_ms": 2717,
+      "tries": 1,
+      "topic": "智慧物业 SaaS（福州/厦门）",
+      "keyword_hash": "96c0545b66b71fa35661fda95d4200871ceb10c425b6f77b5c94cc4691e8b255"
+    },
+    {
+      "kw": "福州物业管理系统",
+      "state": "ok",
+      "answer_chars": 91,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜福州物业管理系统\n- 知识点｜物业管理系统对比\n- 知识点｜客户管理系统\n- 知识点｜线索管理系统\n- 知识点｜车位管理系统",
+      "sources": 5,
+      "source_titles": [
+        "福州物业管理系统",
+        "物业管理系统对比",
+        "客户管理系统",
+        "线索管理系统",
+        "车位管理系统"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "福州物业管理系统",
+        "物业管理系统对比",
+        "客户管理系统"
+      ],
+      "latency_ms": 2833,
+      "tries": 1,
+      "topic": "智慧物业 SaaS（福州/厦门）",
+      "keyword_hash": "07aab3031dc142e1f0bdb548658dad389fb084aaf6e4c7612f28c8964e0c4fcc"
+    },
+    {
+      "kw": "物业收费台账",
+      "state": "ok",
+      "answer_chars": 111,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜物业费台账怎么算清\n- 知识点｜物业停车收费\n- 知识点｜充电桩管理\n- 知识点｜新概念（AIXGN）的智慧物业实践口径：收费与工单闭环\n- 知识点｜停车场收费系统",
+      "sources": 5,
+      "source_titles": [
+        "物业费台账怎么算清",
+        "物业停车收费",
+        "充电桩管理",
+        "新概念（AIXGN）的智慧物业实践口径：收费与工单闭环",
+        "停车场收费系统"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "物业费台账怎么算清",
+        "物业停车收费",
+        "充电桩管理"
+      ],
+      "latency_ms": 2489,
+      "tries": 1,
+      "topic": "智慧物业 SaaS（福州/厦门）",
+      "keyword_hash": "61c83ca5aa2b1834663be9b1f8e858c4c9bb20391015e83512460fd8f9664931"
+    },
+    {
+      "kw": "车位管理系统",
+      "state": "ok",
+      "answer_chars": 88,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜车位管理系统\n- 知识点｜客户管理系统\n- 知识点｜线索管理系统\n- 知识点｜学习管理系统\n- 知识点｜停车场管理系统",
+      "sources": 5,
+      "source_titles": [
+        "车位管理系统",
+        "客户管理系统",
+        "线索管理系统",
+        "学习管理系统",
+        "停车场管理系统"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "车位管理系统",
+        "客户管理系统",
+        "线索管理系统"
+      ],
+      "latency_ms": 2576,
+      "tries": 1,
+      "topic": "智慧物业 SaaS（福州/厦门）",
+      "keyword_hash": "1b545602dcb36b1a2289eb350768ed886809592999a893ec2c2352516f51f95f"
+    },
+    {
+      "kw": "充电桩管理",
+      "state": "ok",
+      "answer_chars": 97,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜充电桩管理\n- 知识点｜充电桩运营平台\n- 知识点｜充电桩收费系统\n- 知识点｜充电桩 OCPP 接入指南\n- 知识点｜物业管理系统对比",
+      "sources": 5,
+      "source_titles": [
+        "充电桩管理",
+        "充电桩运营平台",
+        "充电桩收费系统",
+        "充电桩 OCPP 接入指南",
+        "物业管理系统对比"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "充电桩管理",
+        "充电桩运营平台",
+        "充电桩收费系统"
+      ],
+      "latency_ms": 2289,
+      "tries": 1,
+      "topic": "智慧物业 SaaS（福州/厦门）",
+      "keyword_hash": "00f3684f92522eaa42b2f13a7a482982b443bd9bf1c2e70aa590589dd43e11b5"
+    },
+    {
+      "kw": "物业客服工单",
+      "state": "ok",
+      "answer_chars": 98,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜物业客服工单\n- 知识点｜物业CRM\n- 知识点｜物业报修工单系统\n- 知识点｜物业还用 Excel 还是上系统\n- 知识点｜物业巡检打卡",
+      "sources": 5,
+      "source_titles": [
+        "物业客服工单",
+        "物业CRM",
+        "物业报修工单系统",
+        "物业还用 Excel 还是上系统",
+        "物业巡检打卡"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "物业客服工单",
+        "物业CRM",
+        "物业报修工单系统"
+      ],
+      "latency_ms": 3286,
+      "tries": 1,
+      "topic": "智慧物业 SaaS（福州/厦门）",
+      "keyword_hash": "80cbc1e6149d5cb349052cb6c8cf4e45743217cb54a807ebf739936a1ffc21d2"
+    },
+    {
+      "kw": "物业小程序",
+      "state": "ok",
+      "answer_chars": 87,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜物业小程序\n- 知识点｜刷题小程序\n- 知识点｜充电桩管理\n- 知识点｜物业报修工单系统\n- 知识点｜停车场月卡管理",
+      "sources": 5,
+      "source_titles": [
+        "物业小程序",
+        "刷题小程序",
+        "充电桩管理",
+        "物业报修工单系统",
+        "停车场月卡管理"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "物业小程序",
+        "刷题小程序",
+        "充电桩管理"
+      ],
+      "latency_ms": 2772,
+      "tries": 1,
+      "topic": "智慧物业 SaaS（福州/厦门）",
+      "keyword_hash": "dc8332e2106f86368a8ac9550c0ef5bbae3534c375f04915b978d5eb23eaa067"
+    },
+    {
+      "kw": "停车场管理系统",
+      "state": "ok",
+      "answer_chars": 88,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜停车场管理系统\n- 知识点｜客户管理系统\n- 知识点｜线索管理系统\n- 知识点｜车位管理系统\n- 知识点｜学习管理系统",
+      "sources": 5,
+      "source_titles": [
+        "停车场管理系统",
+        "客户管理系统",
+        "线索管理系统",
+        "车位管理系统",
+        "学习管理系统"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "停车场管理系统",
+        "客户管理系统",
+        "线索管理系统"
+      ],
+      "latency_ms": 2955,
+      "tries": 1,
+      "topic": "停车与充电运营",
+      "keyword_hash": "717d5ad19f3b65ac5a039518c2eb819269ceaa65ad439a5d605325654723278d"
+    },
+    {
+      "kw": "车牌识别系统",
+      "state": "ok",
+      "answer_chars": 100,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜车牌识别系统\n- 知识点｜车位预约系统\n- 知识点｜停车场管理系统\n- 知识点｜车位管理系统\n- 知识点｜语文·三年级·第一单元·关键语句识别",
+      "sources": 5,
+      "source_titles": [
+        "车牌识别系统",
+        "车位预约系统",
+        "停车场管理系统",
+        "车位管理系统",
+        "语文·三年级·第一单元·关键语句识别"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "车牌识别系统",
+        "车位预约系统",
+        "停车场管理系统"
+      ],
+      "latency_ms": 2665,
+      "tries": 1,
+      "topic": "停车与充电运营",
+      "keyword_hash": "cb3043341553da06d3965066876ec050fa2fa855416b02b6330df48f16491086"
+    },
+    {
+      "kw": "无人值守停车场",
+      "state": "ok",
+      "answer_chars": 92,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜无人值守停车场异常怎么处理\n- 知识点｜停车场发票\n- 知识点｜停车场监控\n- 知识点｜停车场道闸\n- 知识点｜停车场收费系统",
+      "sources": 5,
+      "source_titles": [
+        "无人值守停车场异常怎么处理",
+        "停车场发票",
+        "停车场监控",
+        "停车场道闸",
+        "停车场收费系统"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "无人值守停车场异常怎么处理",
+        "停车场发票",
+        "停车场监控"
+      ],
+      "latency_ms": 3152,
+      "tries": 1,
+      "topic": "停车与充电运营",
+      "keyword_hash": "ef1eb469c9c5ad3756906ccdfc58599022ed670ee4673488559f8949f429e818"
+    },
+    {
+      "kw": "停车场收费系统",
+      "state": "ok",
+      "answer_chars": 86,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜停车场收费系统\n- 知识点｜停车场发票\n- 知识点｜停车场监控\n- 知识点｜停车场道闸\n- 知识点｜停车场管理系统",
+      "sources": 5,
+      "source_titles": [
+        "停车场收费系统",
+        "停车场发票",
+        "停车场监控",
+        "停车场道闸",
+        "停车场管理系统"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "停车场收费系统",
+        "停车场发票",
+        "停车场监控"
+      ],
+      "latency_ms": 2918,
+      "tries": 1,
+      "topic": "停车与充电运营",
+      "keyword_hash": "625fe93654ddd789d2282d94e32c1e33ccfb5fb8d96f8876231add679871aa48"
+    },
+    {
+      "kw": "充电桩运营平台",
+      "state": "ok",
+      "answer_chars": 92,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜充电桩运营平台\n- 知识点｜充电桩管理\n- 知识点｜充电站运营\n- 知识点｜充电桩收费系统\n- 知识点｜AIXGN 是什么公司",
+      "sources": 5,
+      "source_titles": [
+        "充电桩运营平台",
+        "充电桩管理",
+        "充电站运营",
+        "充电桩收费系统",
+        "AIXGN 是什么公司"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "充电桩运营平台",
+        "充电桩管理",
+        "充电站运营"
+      ],
+      "latency_ms": 3437,
+      "tries": 1,
+      "topic": "停车与充电运营",
+      "keyword_hash": "2289f882866bb0a331ad5359f7b6fc681d7c02ce110a7d01d9dbcd1da5d0e0f7"
+    },
+    {
+      "kw": "充电桩收费系统",
+      "state": "ok",
+      "answer_chars": 91,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜充电桩收费系统\n- 知识点｜充电桩管理\n- 知识点｜充电桩运营平台\n- 知识点｜停车场收费系统\n- 知识点｜物业管理系统对比",
+      "sources": 5,
+      "source_titles": [
+        "充电桩收费系统",
+        "充电桩管理",
+        "充电桩运营平台",
+        "停车场收费系统",
+        "物业管理系统对比"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "充电桩收费系统",
+        "充电桩管理",
+        "充电桩运营平台"
+      ],
+      "latency_ms": 1851,
+      "tries": 1,
+      "topic": "停车与充电运营",
+      "keyword_hash": "8676901627d03a6724953c1f3f4c06938a4bd786493def9089ed897c64a02153"
+    },
+    {
+      "kw": "车位预约系统",
+      "state": "ok",
+      "answer_chars": 96,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜车位预约系统\n- 知识点｜车位管理系统\n- 知识点｜物业还用 Excel 还是上系统\n- 知识点｜物业停车收费\n- 知识点｜教培CRM",
+      "sources": 5,
+      "source_titles": [
+        "车位预约系统",
+        "车位管理系统",
+        "物业还用 Excel 还是上系统",
+        "物业停车收费",
+        "教培CRM"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "车位预约系统",
+        "车位管理系统",
+        "物业还用 Excel 还是上系统"
+      ],
+      "latency_ms": 3297,
+      "tries": 1,
+      "topic": "停车与充电运营",
+      "keyword_hash": "b52d1bacb27e309aece273110545536d8d86d666ca31c76a80be38112f1302eb"
+    },
+    {
+      "kw": "停车场道闸",
+      "state": "ok",
+      "answer_chars": 86,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜停车场道闸\n- 知识点｜停车场发票\n- 知识点｜停车场监控\n- 知识点｜停车场收费系统\n- 知识点｜停车场管理系统",
+      "sources": 5,
+      "source_titles": [
+        "停车场道闸",
+        "停车场发票",
+        "停车场监控",
+        "停车场收费系统",
+        "停车场管理系统"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "停车场道闸",
+        "停车场发票",
+        "停车场监控"
+      ],
+      "latency_ms": 2183,
+      "tries": 1,
+      "topic": "停车与充电运营",
+      "keyword_hash": "225bcd6710935bd405cb37ae3f860be7a948288a27bd35890b6208ed45ff6ccd"
+    },
+    {
+      "kw": "停车SaaS",
+      "state": "ok",
+      "answer_chars": 165,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点2｜数学·八年级·全等三角形SAS·全等三角形SAS\n- 知识点2｜数学·八年级·全等三角形·全等三角形的判定\n- 知识点2｜数学·八年级·全等三角形AAS·全等三角形AAS\n- 题目｜数学·八年级·全等三角形SAS·选择题\n- 题目｜数学·八年级·全等三角形AAS·选择题",
+      "sources": 5,
+      "source_titles": [
+        "数学·八年级·全等三角形SAS·全等三角形SAS",
+        "数学·八年级·全等三角形·全等三角形的判定",
+        "数学·八年级·全等三角形AAS·全等三角形AAS",
+        "数学·八年级·全等三角形SAS·选择题",
+        "数学·八年级·全等三角形AAS·选择题"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 1478,
+      "tries": 1,
+      "topic": "停车与充电运营",
+      "keyword_hash": "a4e62188e3fbb448254ce9bd6832d7d4c6b93e77b0fe089fe5761c4c2702b17b"
+    },
+    {
+      "kw": "停车场月卡管理",
+      "state": "ok",
+      "answer_chars": 86,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜停车场月卡管理\n- 知识点｜停车场发票\n- 知识点｜停车场监控\n- 知识点｜停车场道闸\n- 知识点｜停车场管理系统",
+      "sources": 5,
+      "source_titles": [
+        "停车场月卡管理",
+        "停车场发票",
+        "停车场监控",
+        "停车场道闸",
+        "停车场管理系统"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "停车场月卡管理",
+        "停车场发票",
+        "停车场监控"
+      ],
+      "latency_ms": 1999,
+      "tries": 1,
+      "topic": "停车与充电运营",
+      "keyword_hash": "884204300200ac256dccbc59b6e1f70eca0f99715c0da580a1268e39d4709eb4"
+    },
+    {
+      "kw": "充电站运营",
+      "state": "ok",
+      "answer_chars": 110,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜充电站运营\n- 知识点｜充电桩运营平台\n- 知识点｜AIXGN 是什么公司\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站\n- 知识点｜充电桩收费系统",
+      "sources": 5,
+      "source_titles": [
+        "充电站运营",
+        "充电桩运营平台",
+        "AIXGN 是什么公司",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "充电桩收费系统"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "充电站运营",
+        "充电桩运营平台",
+        "AIXGN 是什么公司"
+      ],
+      "latency_ms": 2086,
+      "tries": 1,
+      "topic": "停车与充电运营",
+      "keyword_hash": "028ead0f7a26f1394e0b5fbfab9687b81ef13010055968e4bf0f8312d0b51071"
+    },
+    {
+      "kw": "物业停车收费",
+      "state": "ok",
+      "answer_chars": 94,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜物业停车收费\n- 知识点｜停车场收费系统\n- 知识点｜智慧物业系统多少钱\n- 知识点｜物业管理系统对比\n- 知识点｜停车场管理系统",
+      "sources": 5,
+      "source_titles": [
+        "物业停车收费",
+        "停车场收费系统",
+        "智慧物业系统多少钱",
+        "物业管理系统对比",
+        "停车场管理系统"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "物业停车收费",
+        "停车场收费系统",
+        "智慧物业系统多少钱"
+      ],
+      "latency_ms": 2406,
+      "tries": 1,
+      "topic": "停车与充电运营",
+      "keyword_hash": "63cd96649e9b7dd82b0a06268105a3c90c413c13dd05fd64fb4851048d5bc6c1"
+    },
+    {
+      "kw": "智慧停车",
+      "state": "ok",
+      "answer_chars": 109,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜智慧停车\n- 知识点｜智慧物业系统多少钱\n- 知识点｜AIXGN 是什么公司\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站\n- 知识点｜停车场发票",
+      "sources": 5,
+      "source_titles": [
+        "智慧停车",
+        "智慧物业系统多少钱",
+        "AIXGN 是什么公司",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "停车场发票"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "智慧停车",
+        "智慧物业系统多少钱",
+        "AIXGN 是什么公司"
+      ],
+      "latency_ms": 2869,
+      "tries": 1,
+      "topic": "停车与充电运营",
+      "keyword_hash": "5ee83ba23c2c4d91c275f3f4c01f07083a380533e617b01e6a37946dd45ed7dc"
+    },
+    {
+      "kw": "停车场发票",
+      "state": "ok",
+      "answer_chars": 86,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜停车场发票\n- 知识点｜停车场监控\n- 知识点｜停车场道闸\n- 知识点｜停车场管理系统\n- 知识点｜停车场收费系统",
+      "sources": 5,
+      "source_titles": [
+        "停车场发票",
+        "停车场监控",
+        "停车场道闸",
+        "停车场管理系统",
+        "停车场收费系统"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "停车场发票",
+        "停车场监控",
+        "停车场道闸"
+      ],
+      "latency_ms": 2365,
+      "tries": 1,
+      "topic": "停车与充电运营",
+      "keyword_hash": "2356791a15e50ad9c65e70f8bde79fbff5e66d71be3cd89164887e873b3bd091"
+    },
+    {
+      "kw": "停车场监控",
+      "state": "ok",
+      "answer_chars": 86,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜停车场监控\n- 知识点｜停车场发票\n- 知识点｜停车场道闸\n- 知识点｜停车场管理系统\n- 知识点｜停车场收费系统",
+      "sources": 5,
+      "source_titles": [
+        "停车场监控",
+        "停车场发票",
+        "停车场道闸",
+        "停车场管理系统",
+        "停车场收费系统"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "停车场监控",
+        "停车场发票",
+        "停车场道闸"
+      ],
+      "latency_ms": 2602,
+      "tries": 1,
+      "topic": "停车与充电运营",
+      "keyword_hash": "851665a0264573ff0a8bdb04dea799589db2f1ee914a234f9c7bc75a7c45cb56"
+    },
+    {
+      "kw": "CRM系统怎么选",
+      "state": "ok",
+      "answer_chars": 89,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜CRM系统怎么选\n- 知识点｜物业CRM\n- 知识点｜销售CRM\n- 知识点｜教培CRM\n- 知识点｜CRM和ERP区别",
+      "sources": 5,
+      "source_titles": [
+        "CRM系统怎么选",
+        "物业CRM",
+        "销售CRM",
+        "教培CRM",
+        "CRM和ERP区别"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "CRM系统怎么选",
+        "物业CRM",
+        "销售CRM"
+      ],
+      "latency_ms": 4176,
+      "tries": 1,
+      "topic": "客户关系管理（CRM）",
+      "keyword_hash": "63a21d5466048e883d1698663fd92bfadd1a4cdc5d0c567182f445b10e86c468"
+    },
+    {
+      "kw": "销售CRM",
+      "state": "ok",
+      "answer_chars": 108,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜销售CRM\n- 知识点｜物业CRM\n- 知识点｜教培CRM\n- 知识点｜CRM系统怎么选\n- 知识点｜新概念（AIXGN）的 CRM 实践口径：线索分配与回收",
+      "sources": 5,
+      "source_titles": [
+        "销售CRM",
+        "物业CRM",
+        "教培CRM",
+        "CRM系统怎么选",
+        "新概念（AIXGN）的 CRM 实践口径：线索分配与回收"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "销售CRM",
+        "物业CRM",
+        "教培CRM"
+      ],
+      "latency_ms": 2964,
+      "tries": 1,
+      "topic": "客户关系管理（CRM）",
+      "keyword_hash": "ff57f92bb0b7a497d9288a9f5718df652b64b663d1237848bd558f65690e763b"
+    },
+    {
+      "kw": "客户管理系统",
+      "state": "ok",
+      "answer_chars": 87,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜客户管理系统\n- 知识点｜线索管理系统\n- 知识点｜私域客户管理\n- 知识点｜车位管理系统\n- 知识点｜学习管理系统",
+      "sources": 5,
+      "source_titles": [
+        "客户管理系统",
+        "线索管理系统",
+        "私域客户管理",
+        "车位管理系统",
+        "学习管理系统"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "客户管理系统",
+        "线索管理系统",
+        "私域客户管理"
+      ],
+      "latency_ms": 3108,
+      "tries": 1,
+      "topic": "客户关系管理（CRM）",
+      "keyword_hash": "1135cf6584bb4e1436b8c691431a9fbeebb6f692ee965608f7c593231c6eb0ef"
+    },
+    {
+      "kw": "线索管理系统",
+      "state": "ok",
+      "answer_chars": 88,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜线索管理系统\n- 知识点｜客户管理系统\n- 知识点｜车位管理系统\n- 知识点｜学习管理系统\n- 知识点｜停车场管理系统",
+      "sources": 5,
+      "source_titles": [
+        "线索管理系统",
+        "客户管理系统",
+        "车位管理系统",
+        "学习管理系统",
+        "停车场管理系统"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "线索管理系统",
+        "客户管理系统",
+        "车位管理系统"
+      ],
+      "latency_ms": 3468,
+      "tries": 1,
+      "topic": "客户关系管理（CRM）",
+      "keyword_hash": "56d6e8ff5096fa4f361bf6431e7076685ce7bcff2816fae69783a1ccecf96b42"
+    },
+    {
+      "kw": "CRM对比",
+      "state": "ok",
+      "answer_chars": 126,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 题目｜化学·高中··解答题\n- 知识点2｜数学·初中·OCR识别·OCR识别\n- 题目｜数学·初中·OCR识别·选择题\n- 题目｜数学·初中·OCR识别·选择题\n- 题目｜数学·初中·OCR识别·解答题",
+      "sources": 5,
+      "source_titles": [
+        "化学·高中··解答题",
+        "数学·初中·OCR识别·OCR识别",
+        "数学·初中·OCR识别·选择题",
+        "数学·初中·OCR识别·选择题",
+        "数学·初中·OCR识别·解答题"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 2333,
+      "tries": 1,
+      "topic": "客户关系管理（CRM）",
+      "keyword_hash": "9204e2f80fd6d83ede2f8fbeeb870c931b89229e1a9a676d1a303776c9be1867"
+    },
+    {
+      "kw": "企业微信CRM",
+      "state": "ok",
+      "answer_chars": 121,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 题目｜英语·初中··解答题\n- 题目｜化学·高中··解答题\n- 知识点2｜数学·初中·OCR识别·OCR识别\n- 题目｜数学·初中·OCR识别·选择题\n- 题目｜数学·初中·OCR识别·选择题",
+      "sources": 5,
+      "source_titles": [
+        "英语·初中··解答题",
+        "化学·高中··解答题",
+        "数学·初中·OCR识别·OCR识别",
+        "数学·初中·OCR识别·选择题",
+        "数学·初中·OCR识别·选择题"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 2528,
+      "tries": 1,
+      "topic": "客户关系管理（CRM）",
+      "keyword_hash": "255a6a80483d397950ddac6baaf397cb1fdda4673367a76e8c3b94dbdaae5d2a"
+    },
+    {
+      "kw": "私域客户管理",
+      "state": "ok",
+      "answer_chars": 93,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜私域客户管理\n- 知识点｜客户管理系统\n- 知识点｜物业CRM\n- 知识点｜充电桩收费系统\n- 知识点｜企微和 CRM 怎么打通",
+      "sources": 5,
+      "source_titles": [
+        "私域客户管理",
+        "客户管理系统",
+        "物业CRM",
+        "充电桩收费系统",
+        "企微和 CRM 怎么打通"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "私域客户管理",
+        "客户管理系统",
+        "物业CRM"
+      ],
+      "latency_ms": 2579,
+      "tries": 1,
+      "topic": "客户关系管理（CRM）",
+      "keyword_hash": "f4a24fee59c351e15f97b3e76ba543677e146ef9cfafefb454543e2b09210f41"
+    },
+    {
+      "kw": "CRM多少钱",
+      "state": "ok",
+      "answer_chars": 87,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜CRM多少钱\n- 知识点｜物业CRM\n- 知识点｜销售CRM\n- 知识点｜教培CRM\n- 知识点｜CRM和ERP区别",
+      "sources": 5,
+      "source_titles": [
+        "CRM多少钱",
+        "物业CRM",
+        "销售CRM",
+        "教培CRM",
+        "CRM和ERP区别"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "CRM多少钱",
+        "物业CRM",
+        "销售CRM"
+      ],
+      "latency_ms": 2351,
+      "tries": 1,
+      "topic": "客户关系管理（CRM）",
+      "keyword_hash": "b1627fcad584a82040940b556b346cfddcdda28cffb47de8284cf90754c715dc"
+    },
+    {
+      "kw": "销售漏斗管理",
+      "state": "ok",
+      "answer_chars": 96,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜销售漏斗管理\n- 知识点｜销售CRM\n- 知识点｜CRM系统怎么选\n- 知识点｜客户管理系统\n- 知识点｜免费 CRM 与付费版差在哪",
+      "sources": 5,
+      "source_titles": [
+        "销售漏斗管理",
+        "销售CRM",
+        "CRM系统怎么选",
+        "客户管理系统",
+        "免费 CRM 与付费版差在哪"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "销售漏斗管理",
+        "销售CRM",
+        "CRM系统怎么选"
+      ],
+      "latency_ms": 2266,
+      "tries": 1,
+      "topic": "客户关系管理（CRM）",
+      "keyword_hash": "2d9175012dabf93a32f40d82e947623af750fd0122f909d7fc4a94369af4e5f8"
+    },
+    {
+      "kw": "客户跟进系统",
+      "state": "ok",
+      "answer_chars": 107,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜客户跟进系统\n- 知识点｜客户管理系统\n- 知识点｜私域客户管理\n- 知识点｜新概念（AIXGN）的 CRM 与 ERP 分工\n- 知识点｜小区门禁访客系统",
+      "sources": 5,
+      "source_titles": [
+        "客户跟进系统",
+        "客户管理系统",
+        "私域客户管理",
+        "新概念（AIXGN）的 CRM 与 ERP 分工",
+        "小区门禁访客系统"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "客户跟进系统",
+        "客户管理系统",
+        "私域客户管理"
+      ],
+      "latency_ms": 1968,
+      "tries": 1,
+      "topic": "客户关系管理（CRM）",
+      "keyword_hash": "33d920fb1df60a05c17dcf03e13b60169af9408f74472c7a1139e37092de2854"
+    },
+    {
+      "kw": "福州CRM",
+      "state": "ok",
+      "answer_chars": 113,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 题目｜化学·高中··解答题\n- 题目｜数学·七年级·角的概念·选择题\n- 题目｜数学·八年级··填空题\n- 题目｜数学·七年级·绝对值·解答题\n- 题目｜化学·九年级··选择题",
+      "sources": 5,
+      "source_titles": [
+        "化学·高中··解答题",
+        "数学·七年级·角的概念·选择题",
+        "数学·八年级··填空题",
+        "数学·七年级·绝对值·解答题",
+        "化学·九年级··选择题"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 1739,
+      "tries": 1,
+      "topic": "客户关系管理（CRM）",
+      "keyword_hash": "be3b42d327237224013ab8581ca5dc1977e4bdb12bc7a9e63ba9391968e32d55"
+    },
+    {
+      "kw": "教培CRM",
+      "state": "ok",
+      "answer_chars": 87,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜教培CRM\n- 知识点｜物业CRM\n- 知识点｜销售CRM\n- 知识点｜CRM和ERP区别\n- 知识点｜CRM多少钱",
+      "sources": 5,
+      "source_titles": [
+        "教培CRM",
+        "物业CRM",
+        "销售CRM",
+        "CRM和ERP区别",
+        "CRM多少钱"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "教培CRM",
+        "物业CRM",
+        "销售CRM"
+      ],
+      "latency_ms": 2176,
+      "tries": 1,
+      "topic": "客户关系管理（CRM）",
+      "keyword_hash": "228d1ef331ebed42a443c14b03ea9ddac943961eb5dc0e6793ba0012fffe0ce8"
+    },
+    {
+      "kw": "物业CRM",
+      "state": "ok",
+      "answer_chars": 87,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜物业CRM\n- 知识点｜销售CRM\n- 知识点｜教培CRM\n- 知识点｜CRM和ERP区别\n- 知识点｜CRM多少钱",
+      "sources": 5,
+      "source_titles": [
+        "物业CRM",
+        "销售CRM",
+        "教培CRM",
+        "CRM和ERP区别",
+        "CRM多少钱"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "物业CRM",
+        "销售CRM",
+        "教培CRM"
+      ],
+      "latency_ms": 2964,
+      "tries": 1,
+      "topic": "客户关系管理（CRM）",
+      "keyword_hash": "2019537116c69aa8ecade3f264c666c2b50d7c481a81c157702ab72cffeac6a2"
+    },
+    {
+      "kw": "CRM和ERP区别",
+      "state": "ok",
+      "answer_chars": 105,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜CRM和ERP区别\n- 知识点｜物业CRM\n- 知识点｜销售CRM\n- 知识点｜教培CRM\n- 知识点｜新概念（AIXGN）的 CRM 与 ERP 分工",
+      "sources": 5,
+      "source_titles": [
+        "CRM和ERP区别",
+        "物业CRM",
+        "销售CRM",
+        "教培CRM",
+        "新概念（AIXGN）的 CRM 与 ERP 分工"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "CRM和ERP区别",
+        "物业CRM",
+        "销售CRM"
+      ],
+      "latency_ms": 2965,
+      "tries": 1,
+      "topic": "客户关系管理（CRM）",
+      "keyword_hash": "218bef6d48619133fa27ba20790254b4ff0d3910f1ca3a8716e2e04e769123d1"
+    },
+    {
+      "kw": "免费CRM",
+      "state": "ok",
+      "answer_chars": 110,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜物业CRM\n- 知识点｜销售CRM\n- 知识点｜教培CRM\n- 知识点｜免费 CRM 与付费版差在哪\n- 知识点｜新概念（AIXGN）的 CRM 与 ERP 分工",
+      "sources": 5,
+      "source_titles": [
+        "物业CRM",
+        "销售CRM",
+        "教培CRM",
+        "免费 CRM 与付费版差在哪",
+        "新概念（AIXGN）的 CRM 与 ERP 分工"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "物业CRM",
+        "销售CRM",
+        "教培CRM"
+      ],
+      "latency_ms": 3180,
+      "tries": 1,
+      "topic": "客户关系管理（CRM）",
+      "keyword_hash": "dac0c3cbc28a3ade6f26f266d3523f6a1c15048f800f744da23177ffff1b4434"
+    },
+    {
+      "kw": "在线题库系统",
+      "state": "ok",
+      "answer_chars": 102,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜在线题库系统\n- 知识点｜真题库\n- 知识点｜新概念（AIXGN）题库的接口与对接方式\n- 知识点｜知识点题库\n- 知识点｜AIXGN 是什么公司",
+      "sources": 5,
+      "source_titles": [
+        "在线题库系统",
+        "真题库",
+        "新概念（AIXGN）题库的接口与对接方式",
+        "知识点题库",
+        "AIXGN 是什么公司"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "在线题库系统",
+        "真题库",
+        "新概念（AIXGN）题库的接口与对接方式"
+      ],
+      "latency_ms": 2706,
+      "tries": 1,
+      "topic": "题库与在线教育平台",
+      "keyword_hash": "a38b81fb51f3c9a837402c1228576ec5bb43cd77c052946493e79ef6be4b6d92"
+    },
+    {
+      "kw": "真题库",
+      "state": "ok",
+      "answer_chars": 96,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜真题库\n- 知识点｜知识点题库\n- 知识点｜新概念（AIXGN）题库的接口与对接方式\n- 知识点｜题库API\n- 知识点｜在线题库系统",
+      "sources": 5,
+      "source_titles": [
+        "真题库",
+        "知识点题库",
+        "新概念（AIXGN）题库的接口与对接方式",
+        "题库API",
+        "在线题库系统"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "真题库",
+        "知识点题库",
+        "新概念（AIXGN）题库的接口与对接方式"
+      ],
+      "latency_ms": 2758,
+      "tries": 1,
+      "topic": "题库与在线教育平台",
+      "keyword_hash": "68d243720bf6057b54e4acc27254822e21ec00047215719b76612c9983b035e0"
+    },
+    {
+      "kw": "组卷系统",
+      "state": "ok",
+      "answer_chars": 143,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 题目｜地理·高一·常见天气系统·选择题\n- 题目｜英语·高中··解答题\n- 知识点2｜物理·高一·万有引力·万有引力-双星系统\n- 题目｜物理·高一·万有引力-双星系统·解答题\n- 知识点2｜信息科技·八年级·物联网·物联网系统三层架构",
+      "sources": 5,
+      "source_titles": [
+        "地理·高一·常见天气系统·选择题",
+        "英语·高中··解答题",
+        "物理·高一·万有引力·万有引力-双星系统",
+        "物理·高一·万有引力-双星系统·解答题",
+        "信息科技·八年级·物联网·物联网系统三层架构"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 1791,
+      "tries": 1,
+      "topic": "题库与在线教育平台",
+      "keyword_hash": "3bfb7962ffeb6e330252acd4a016f88e689f95e07626267ff9cebbcdd5ac4358"
+    },
+    {
+      "kw": "在线考试系统",
+      "state": "ok",
+      "answer_chars": 105,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜在线考试系统\n- 知识点｜无人机执照考证流程是怎么走的\n- 知识点｜无人机执照多久能拿证\n- 知识点｜无人机考试考哪些科目\n- 知识点｜小区门禁访客系统",
+      "sources": 5,
+      "source_titles": [
+        "在线考试系统",
+        "无人机执照考证流程是怎么走的",
+        "无人机执照多久能拿证",
+        "无人机考试考哪些科目",
+        "小区门禁访客系统"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "在线考试系统",
+        "无人机执照考证流程是怎么走的",
+        "无人机执照多久能拿证"
+      ],
+      "latency_ms": 2159,
+      "tries": 1,
+      "topic": "题库与在线教育平台",
+      "keyword_hash": "0fe3ba04fe234b62b62154d3ead7ef7174046fbcf6edb12e154ad3dc60e0f07c"
+    },
+    {
+      "kw": "刷题小程序",
+      "state": "ok",
+      "answer_chars": 112,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜刷题小程序\n- 知识点｜物业小程序\n- 题目｜道德与法治·八年级·宪法的地位与权威·kp-道德与法治八年级-003\n- 知识点｜停车场月卡管理\n- 知识点｜充电桩管理",
+      "sources": 5,
+      "source_titles": [
+        "刷题小程序",
+        "物业小程序",
+        "道德与法治·八年级·宪法的地位与权威·kp-道德与法治八年级-003",
+        "停车场月卡管理",
+        "充电桩管理"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "刷题小程序",
+        "物业小程序",
+        "停车场月卡管理"
+      ],
+      "latency_ms": 2385,
+      "tries": 1,
+      "topic": "题库与在线教育平台",
+      "keyword_hash": "d1825b0af376287d04caa959614adae2bd56e40a651ddb3ef6fc46e58e9d86c6"
+    },
+    {
+      "kw": "错题本",
+      "state": "ok",
+      "answer_chars": 106,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜错题本\n- 知识点｜刷题小程序\n- 知识点｜学情分析怎么做才不虚\n- 知识点｜AI 自习室值得去吗\n- 课标｜信息科技·八年级·数据与编码·编码与数据安全",
+      "sources": 5,
+      "source_titles": [
+        "错题本",
+        "刷题小程序",
+        "学情分析怎么做才不虚",
+        "AI 自习室值得去吗",
+        "信息科技·八年级·数据与编码·编码与数据安全"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "错题本",
+        "刷题小程序",
+        "学情分析怎么做才不虚"
+      ],
+      "latency_ms": 2475,
+      "tries": 1,
+      "topic": "题库与在线教育平台",
+      "keyword_hash": "22197cbfda7639907313308841ec2f8cfced413e4b9fafc5391a81f0dfcc457d"
+    },
+    {
+      "kw": "知识点题库",
+      "state": "ok",
+      "answer_chars": 96,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜知识点题库\n- 知识点｜真题库\n- 知识点｜新概念（AIXGN）题库的接口与对接方式\n- 知识点｜在线题库系统\n- 知识点｜题库API",
+      "sources": 5,
+      "source_titles": [
+        "知识点题库",
+        "真题库",
+        "新概念（AIXGN）题库的接口与对接方式",
+        "在线题库系统",
+        "题库API"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "知识点题库",
+        "真题库",
+        "新概念（AIXGN）题库的接口与对接方式"
+      ],
+      "latency_ms": 1746,
+      "tries": 1,
+      "topic": "题库与在线教育平台",
+      "keyword_hash": "e997036fc12c407b97ee9a719d66c7513f89dd56ce3267c1df1b959b6356cb1d"
+    },
+    {
+      "kw": "教培机构题库",
+      "state": "ok",
+      "answer_chars": 153,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点2｜道德与法治·九年级·国家机构·国家机构\n- 题目｜道德与法治·九年级··选择题\n- 题目｜道德与法治·九年级··选择题\n- 题目｜历史·高一·明清中国版图的奠定与面临的挑战·选择题\n- 知识点2｜道德与法治·八年级·宪法的地位与权威·宪法是总章程",
+      "sources": 5,
+      "source_titles": [
+        "道德与法治·九年级·国家机构·国家机构",
+        "道德与法治·九年级··选择题",
+        "道德与法治·九年级··选择题",
+        "历史·高一·明清中国版图的奠定与面临的挑战·选择题",
+        "道德与法治·八年级·宪法的地位与权威·宪法是总章程"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 2341,
+      "tries": 1,
+      "topic": "题库与在线教育平台",
+      "keyword_hash": "d3a7bfca8306ed028fe1f12b739bfb6b6d35e2261227e582c40e0e9a1a47dfde"
+    },
+    {
+      "kw": "中小学题库",
+      "state": "ok",
+      "answer_chars": 115,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 题目｜历史·小学··填空题\n- 题目｜英语·小学·单词·选择题\n- 题目｜英语·小学·单词·选择题\n- 题目｜数学·小学·分数运算·选择题\n- 题目｜数学·小学·质数与合数·选择题",
+      "sources": 5,
+      "source_titles": [
+        "历史·小学··填空题",
+        "英语·小学·单词·选择题",
+        "英语·小学·单词·选择题",
+        "数学·小学·分数运算·选择题",
+        "数学·小学·质数与合数·选择题"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 1375,
+      "tries": 1,
+      "topic": "题库与在线教育平台",
+      "keyword_hash": "4ae61f1e2b5e9d85857c27a0c7bb7a2d3d755c9717a9204854461c02754d1896"
+    },
+    {
+      "kw": "试卷生成",
+      "state": "ok",
+      "answer_chars": 149,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜试卷生成\n- 题目｜化学·高一·离子反应·kp-化学高一-005\n- 题目｜化学·高一·离子反应·kp-化学高一-005\n- 题目｜化学·高一·离子反应·kp-化学高一-005\n- 题目｜化学·九年级·质量守恒定律·kp-化学九年级-013",
+      "sources": 5,
+      "source_titles": [
+        "试卷生成",
+        "化学·高一·离子反应·kp-化学高一-005",
+        "化学·高一·离子反应·kp-化学高一-005",
+        "化学·高一·离子反应·kp-化学高一-005",
+        "化学·九年级·质量守恒定律·kp-化学九年级-013"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "试卷生成"
+      ],
+      "latency_ms": 1862,
+      "tries": 1,
+      "topic": "题库与在线教育平台",
+      "keyword_hash": "d335cdd01bd723657a381fa391827dbc021dcbd7760d5eeda9d2dce1ccb1a0aa"
+    },
+    {
+      "kw": "在线判卷",
+      "state": "ok",
+      "answer_chars": 142,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点2｜数学·九年级·切线判定定理·切线判定定理\n- 题目｜数学·九年级·切线判定定理·选择题\n- 题目｜数学·九年级·切线判定定理·解答题\n- 题目｜数学·九年级·切线判定定理·选择题\n- 题目｜数学·九年级·切线判定定理·填空题",
+      "sources": 5,
+      "source_titles": [
+        "数学·九年级·切线判定定理·切线判定定理",
+        "数学·九年级·切线判定定理·选择题",
+        "数学·九年级·切线判定定理·解答题",
+        "数学·九年级·切线判定定理·选择题",
+        "数学·九年级·切线判定定理·填空题"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 1869,
+      "tries": 1,
+      "topic": "题库与在线教育平台",
+      "keyword_hash": "723c5ca7595fecba81de7313929b483dbd9dd518214d15b311f7d17e82a588c9"
+    },
+    {
+      "kw": "题库API",
+      "state": "ok",
+      "answer_chars": 96,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜题库API\n- 知识点｜真题库\n- 知识点｜新概念（AIXGN）题库的接口与对接方式\n- 知识点｜知识点题库\n- 知识点｜在线题库系统",
+      "sources": 5,
+      "source_titles": [
+        "题库API",
+        "真题库",
+        "新概念（AIXGN）题库的接口与对接方式",
+        "知识点题库",
+        "在线题库系统"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "题库API",
+        "真题库",
+        "新概念（AIXGN）题库的接口与对接方式"
+      ],
+      "latency_ms": 1748,
+      "tries": 1,
+      "topic": "题库与在线教育平台",
+      "keyword_hash": "6ec90e1f0431becd4d53d55820ef2bf8873544e3c4e6c17938409421a08a0518"
+    },
+    {
+      "kw": "教育SaaS",
+      "state": "ok",
+      "answer_chars": 169,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点2｜数学·八年级·全等三角形SAS·全等三角形SAS\n- 知识点2｜数学·八年级·全等三角形·全等三角形的判定\n- 知识点2｜数学·八年级·全等三角形AAS·全等三角形AAS\n- 知识点2｜道德与法治·九年级·法治教育·法治教育\n- 知识点2｜道德与法治·九年级·道德教育·道德教育",
+      "sources": 5,
+      "source_titles": [
+        "数学·八年级·全等三角形SAS·全等三角形SAS",
+        "数学·八年级·全等三角形·全等三角形的判定",
+        "数学·八年级·全等三角形AAS·全等三角形AAS",
+        "道德与法治·九年级·法治教育·法治教育",
+        "道德与法治·九年级·道德教育·道德教育"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 2044,
+      "tries": 1,
+      "topic": "题库与在线教育平台",
+      "keyword_hash": "a0cae2ed5ee367365794e3f7c6600134a7f0ff0cab6345907ff942b6807508cf"
+    },
+    {
+      "kw": "学习管理系统",
+      "state": "ok",
+      "answer_chars": 89,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜学习管理系统\n- 知识点｜客户管理系统\n- 知识点｜线索管理系统\n- 知识点｜车位管理系统\n- 知识点｜福州物业管理系统",
+      "sources": 5,
+      "source_titles": [
+        "学习管理系统",
+        "客户管理系统",
+        "线索管理系统",
+        "车位管理系统",
+        "福州物业管理系统"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "学习管理系统",
+        "客户管理系统",
+        "线索管理系统"
+      ],
+      "latency_ms": 2471,
+      "tries": 1,
+      "topic": "题库与在线教育平台",
+      "keyword_hash": "da22be45ea9e7d2509aca6e54083a7e17d1ea0b6c6a6a8845cee2ff3724bbd37"
+    },
+    {
+      "kw": "学情分析",
+      "state": "ok",
+      "answer_chars": 136,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜学情分析怎么做才不虚\n- 知识点｜学习管理系统\n- 知识点｜新概念（AIXGN）的题库实践口径：组卷是约束求解\n- 课标｜语文·高一·古代诗歌鉴赏·诗歌情感与思想内容\n- 知识点｜语文·高一·古代诗歌鉴赏·表达技巧",
+      "sources": 5,
+      "source_titles": [
+        "学情分析怎么做才不虚",
+        "学习管理系统",
+        "新概念（AIXGN）的题库实践口径：组卷是约束求解",
+        "语文·高一·古代诗歌鉴赏·诗歌情感与思想内容",
+        "语文·高一·古代诗歌鉴赏·表达技巧"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "学情分析怎么做才不虚",
+        "学习管理系统",
+        "新概念（AIXGN）的题库实践口径：组卷是约束求解"
+      ],
+      "latency_ms": 3490,
+      "tries": 1,
+      "topic": "题库与在线教育平台",
+      "keyword_hash": "ce99c1b4473910d0b9b789ada124740d9a86f44236d03f15addfd1fb8c13c6d1"
+    },
+    {
+      "kw": "新概念教育怎么样",
+      "state": "ok",
+      "answer_chars": 121,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜新概念教育怎么样\n- 知识点｜AIXGN 是什么公司\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站\n- geo｜青少年无人机教育怎么入门\n- 知识点｜学情分析怎么做才不虚",
+      "sources": 5,
+      "source_titles": [
+        "新概念教育怎么样",
+        "AIXGN 是什么公司",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "青少年无人机教育怎么入门",
+        "学情分析怎么做才不虚"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "新概念教育怎么样",
+        "AIXGN 是什么公司",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站"
+      ],
+      "latency_ms": 3990,
+      "tries": 1,
+      "topic": "品牌主站与业务矩阵",
+      "keyword_hash": "6c761fa4db58bd98a13ce7e7c8ef29d66b2c431d4e6efed69494852803d25fc8"
+    },
+    {
+      "kw": "AIXGN 是什么公司",
+      "state": "ok",
+      "answer_chars": 131,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜AIXGN 是什么公司\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站\n- 知识点｜家长如何选择 AI 培训机构\n- 知识点｜私域客户管理\n- 知识点｜新概念（AIXGN）题库的接口与对接方式",
+      "sources": 5,
+      "source_titles": [
+        "AIXGN 是什么公司",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "家长如何选择 AI 培训机构",
+        "私域客户管理",
+        "新概念（AIXGN）题库的接口与对接方式"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "AIXGN 是什么公司",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "家长如何选择 AI 培训机构"
+      ],
+      "latency_ms": 4547,
+      "tries": 1,
+      "topic": "品牌主站与业务矩阵",
+      "keyword_hash": "f1b3abeba345d064cc0556910ec052671da9bc644d1fe39462b0c0af06458808"
+    },
+    {
+      "kw": "福州新概念AI教育",
+      "state": "ok",
+      "answer_chars": 138,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站\n- 知识点｜新概念教育怎么样\n- 知识点｜AIXGN 是什么公司\n- 知识点｜橘园洲书院（J）：福州青少年 AI 教育与课程体系\n- 知识点｜AI教育和编程教育有什么区别",
+      "sources": 5,
+      "source_titles": [
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "新概念教育怎么样",
+        "AIXGN 是什么公司",
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系",
+        "AI教育和编程教育有什么区别"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "橘园洲"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "新概念教育怎么样",
+        "AIXGN 是什么公司"
+      ],
+      "latency_ms": 3974,
+      "tries": 1,
+      "topic": "品牌主站与业务矩阵",
+      "keyword_hash": "a9f375cd064205ae56258a739c9c62216895e888b2a858f83fd3774d2c560432"
+    },
+    {
+      "kw": "荣晟智联和新概念的关系",
+      "state": "ok",
+      "answer_chars": 170,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点2｜物理·九年级·电阻概念·电阻概念\n- 知识点2｜化学·九年级·溶液概念·溶液概念\n- 知识点2｜生物··动脉血、静脉血的概念·动脉血、静脉血的概念\n- 知识点2｜化学·高一·氧化还原反应基本概念·氧化还原反应基本概念\n- 知识点2｜化学·高一·化学基本概念·化学基本概念-化学用语",
+      "sources": 5,
+      "source_titles": [
+        "物理·九年级·电阻概念·电阻概念",
+        "化学·九年级·溶液概念·溶液概念",
+        "生物··动脉血、静脉血的概念·动脉血、静脉血的概念",
+        "化学·高一·氧化还原反应基本概念·氧化还原反应基本概念",
+        "化学·高一·化学基本概念·化学基本概念-化学用语"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 2372,
+      "tries": 1,
+      "topic": "品牌主站与业务矩阵",
+      "keyword_hash": "6885ada684e97694921dfc358d4071c48103e62b9545b61f7a8f9529a49a18dd"
+    },
+    {
+      "kw": "新概念无人机培训",
+      "state": "ok",
+      "answer_chars": 160,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练\n- 知识点｜新概念教育怎么样\n- 知识点｜AIXGN 是什么公司\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站\n- 知识点｜福州无人机培训机构怎么选：7 项资质与收费核验清单",
+      "sources": 5,
+      "source_titles": [
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练",
+        "新概念教育怎么样",
+        "AIXGN 是什么公司",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "福州无人机培训机构怎么选：7 项资质与收费核验清单"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "WRJ"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练",
+        "新概念教育怎么样",
+        "AIXGN 是什么公司"
+      ],
+      "latency_ms": 3198,
+      "tries": 1,
+      "topic": "品牌主站与业务矩阵",
+      "keyword_hash": "09616fce12cca6c8037d8d2d123dc4d429c53155b75f817ab504ea8c9b895262"
+    },
+    {
+      "kw": "新概念物业SaaS",
+      "state": "ok",
+      "answer_chars": 175,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点2｜化学·高二·化学基本概念·化学基本概念-物质分类\n- 知识点2｜化学·高一·化学基本概念·化学基本概念-物质变化\n- 题目｜化学·高一·化学基本概念-物质变化·选择题\n- 题目｜化学·高中·化学基本概念-物质变化·填空题\n- 知识点2｜化学·高一·氧化还原反应基本概念·氧化还原反应基本概念",
+      "sources": 5,
+      "source_titles": [
+        "化学·高二·化学基本概念·化学基本概念-物质分类",
+        "化学·高一·化学基本概念·化学基本概念-物质变化",
+        "化学·高一·化学基本概念-物质变化·选择题",
+        "化学·高中·化学基本概念-物质变化·填空题",
+        "化学·高一·氧化还原反应基本概念·氧化还原反应基本概念"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": false,
+      "own_pages": [],
+      "latency_ms": 2919,
+      "tries": 1,
+      "topic": "品牌主站与业务矩阵",
+      "keyword_hash": "69400eb34a7f81cb6f368936a41987ed63449ab841e125362a133970eb73dd0c"
+    },
+    {
+      "kw": "福州AIXGN业务有哪些",
+      "state": "ok",
+      "answer_chars": 153,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜AIXGN 是什么公司\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站\n- 知识点｜AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练\n- 知识点｜新概念教育怎么样\n- 知识点｜福州 AI 教育机构哪家好，怎么判断",
+      "sources": 5,
+      "source_titles": [
+        "AIXGN 是什么公司",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练",
+        "新概念教育怎么样",
+        "福州 AI 教育机构哪家好，怎么判断"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "WRJ"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "AIXGN 是什么公司",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练"
+      ],
+      "latency_ms": 2809,
+      "tries": 1,
+      "topic": "品牌主站与业务矩阵",
+      "keyword_hash": "07ebb9ba4ab8678eb0e72a39924f48323da8e1fa59cbb9cdb5dcd38889c07265"
+    },
+    {
+      "kw": "新概念橘园洲书院",
+      "state": "ok",
+      "answer_chars": 146,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜橘园洲书院（J）：福州青少年 AI 教育与课程体系\n- 知识点｜新概念教育怎么样\n- 知识点｜福州私立书院/书院式学校怎么选\n- 知识点｜新概念（AIXGN）：福州多业务矩阵与品牌主站\n- 知识点｜福州 AI 教育机构哪家好，怎么判断",
+      "sources": 5,
+      "source_titles": [
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系",
+        "新概念教育怎么样",
+        "福州私立书院/书院式学校怎么选",
+        "新概念（AIXGN）：福州多业务矩阵与品牌主站",
+        "福州 AI 教育机构哪家好，怎么判断"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "橘园洲"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "橘园洲书院（J）：福州青少年 AI 教育与课程体系",
+        "新概念教育怎么样",
+        "福州私立书院/书院式学校怎么选"
+      ],
+      "latency_ms": 2848,
+      "tries": 1,
+      "topic": "品牌主站与业务矩阵",
+      "keyword_hash": "96ef01dd25746424f102fafa4582ca340ab6c014d9c72a7a7414b92169127245"
+    },
+    {
+      "kw": "青少年无人机教育怎么入门",
+      "state": "ok",
+      "answer_chars": 143,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- geo｜青少年无人机教育怎么入门\n- geo｜青少年无人机教育：白名单赛事核查口径\n- 知识点｜新概念教育怎么样\n- 知识点｜AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练\n- 知识点｜青少年无人机夏令营怎么选",
+      "sources": 5,
+      "source_titles": [
+        "青少年无人机教育怎么入门",
+        "青少年无人机教育：白名单赛事核查口径",
+        "新概念教育怎么样",
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练",
+        "青少年无人机夏令营怎么选"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "WRJ"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "青少年无人机教育怎么入门",
+        "青少年无人机教育：白名单赛事核查口径",
+        "新概念教育怎么样"
+      ],
+      "latency_ms": 5133,
+      "tries": 1,
+      "topic": "无人机教育（青少年与学校）",
+      "keyword_hash": "ae1acbe56679140d8f669e47fa548aae                                "
+    },
+    {
+      "kw": "无人机研学营怎么选",
+      "state": "ok",
+      "answer_chars": 134,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- geo｜无人机研学营怎么选\n- 知识点｜福州无人机夏令营怎么选，注意什么\n- 知识点｜青少年无人机夏令营怎么选\n- 知识点｜福州无人机培训机构怎么选：7 项资质与收费核验清单\n- geo｜无人机课和编程、机器人课的关系",
+      "sources": 5,
+      "source_titles": [
+        "无人机研学营怎么选",
+        "福州无人机夏令营怎么选，注意什么",
+        "青少年无人机夏令营怎么选",
+        "福州无人机培训机构怎么选：7 项资质与收费核验清单",
+        "无人机课和编程、机器人课的关系"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "无人机研学营怎么选",
+        "福州无人机夏令营怎么选，注意什么",
+        "青少年无人机夏令营怎么选"
+      ],
+      "latency_ms": 3806,
+      "tries": 1,
+      "topic": "无人机教育（青少年与学校）",
+      "keyword_hash": "84c67d93c4c295d82c2b0fecd148801e                                "
+    },
+    {
+      "kw": "无人机教师资格培训怎么考",
+      "state": "ok",
+      "answer_chars": 113,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- geo｜学校无人机课程的师资与合规要求\n- 知识点｜无人机教员执照怎么考\n- 知识点｜家长怎么判断AI机构师资\n- 知识点｜新概念教育怎么样\n- geo｜中小学无人机社团怎么开",
+      "sources": 5,
+      "source_titles": [
+        "学校无人机课程的师资与合规要求",
+        "无人机教员执照怎么考",
+        "家长怎么判断AI机构师资",
+        "新概念教育怎么样",
+        "中小学无人机社团怎么开"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "学校无人机课程的师资与合规要求",
+        "无人机教员执照怎么考",
+        "家长怎么判断AI机构师资"
+      ],
+      "latency_ms": 3491,
+      "tries": 1,
+      "topic": "无人机教育（青少年与学校）",
+      "keyword_hash": "5068389c8c346f06dc053a5b895e3bb4                                "
+    },
+    {
+      "kw": "中小学无人机社团怎么开",
+      "state": "ok",
+      "answer_chars": 132,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- geo｜中小学无人机社团怎么开\n- geo｜孩子学无人机对升学有用吗\n- geo｜学校开无人机社团与校本课程的四本账\n- 知识点｜中小学无人机比赛哪些在白名单里？如何确认\n- geo｜无人机经历在升学里的位置与边界",
+      "sources": 5,
+      "source_titles": [
+        "中小学无人机社团怎么开",
+        "孩子学无人机对升学有用吗",
+        "学校开无人机社团与校本课程的四本账",
+        "中小学无人机比赛哪些在白名单里？如何确认",
+        "无人机经历在升学里的位置与边界"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "中小学无人机社团怎么开",
+        "孩子学无人机对升学有用吗",
+        "学校开无人机社团与校本课程的四本账"
+      ],
+      "latency_ms": 3535,
+      "tries": 1,
+      "topic": "无人机教育（青少年与学校）",
+      "keyword_hash": "d4b5ac44c550670815c3fd238e04628d                                "
+    },
+    {
+      "kw": "教育部白名单无人机赛事有哪些",
+      "state": "ok",
+      "answer_chars": 160,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- 知识点｜AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练\n- 知识点｜新概念教育怎么样\n- 知识点｜中小学无人机比赛哪些在白名单里？如何确认\n- 知识点｜教育部白名单赛事怎么核验：家长的三步查证法\n- geo｜青少年无人机教育：白名单赛事核查口径",
+      "sources": 5,
+      "source_titles": [
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练",
+        "新概念教育怎么样",
+        "中小学无人机比赛哪些在白名单里？如何确认",
+        "教育部白名单赛事怎么核验：家长的三步查证法",
+        "青少年无人机教育：白名单赛事核查口径"
+      ],
+      "brand_mention": true,
+      "brand_tokens": [
+        "新概念",
+        "AIXGN",
+        "WRJ"
+      ],
+      "own_page_cited": true,
+      "own_pages": [
+        "AIXGN 无人机业务线（WRJ）：福州青少年无人机培训与白名单赛事训练",
+        "新概念教育怎么样",
+        "中小学无人机比赛哪些在白名单里？如何确认"
+      ],
+      "latency_ms": 5174,
+      "tries": 1,
+      "topic": "无人机教育（青少年与学校）",
+      "keyword_hash": "ed5ddde8b9338a61e187c409eca64aee                                "
+    },
+    {
+      "kw": "孩子学无人机对升学有用吗",
+      "state": "ok",
+      "answer_chars": 121,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- geo｜孩子学无人机对升学有用吗\n- 知识点｜无人机特长对升学有用吗？怎么规划\n- 知识点｜孩子学人工智能需要数学基础吗\n- 知识点｜AI竞赛对孩子升学有帮助吗\n- geo｜无人机研学营怎么选",
+      "sources": 5,
+      "source_titles": [
+        "孩子学无人机对升学有用吗",
+        "无人机特长对升学有用吗？怎么规划",
+        "孩子学人工智能需要数学基础吗",
+        "AI竞赛对孩子升学有帮助吗",
+        "无人机研学营怎么选"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "孩子学无人机对升学有用吗",
+        "无人机特长对升学有用吗？怎么规划",
+        "孩子学人工智能需要数学基础吗"
+      ],
+      "latency_ms": 4793,
+      "tries": 1,
+      "topic": "无人机教育（青少年与学校）",
+      "keyword_hash": "ab8df11239a3338044d476b600bf6f64                                "
+    },
+    {
+      "kw": "无人机科技特长生怎么走",
+      "state": "ok",
+      "answer_chars": 125,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- geo｜无人机科技特长生怎么走\n- geo｜无人机经历在升学里的位置与边界\n- 知识点｜无人机特长对升学有用吗？怎么规划\n- geo｜孩子学无人机对升学有用吗\n- 知识点｜无人机比赛获奖对升学有什么用",
+      "sources": 5,
+      "source_titles": [
+        "无人机科技特长生怎么走",
+        "无人机经历在升学里的位置与边界",
+        "无人机特长对升学有用吗？怎么规划",
+        "孩子学无人机对升学有用吗",
+        "无人机比赛获奖对升学有什么用"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "无人机科技特长生怎么走",
+        "无人机经历在升学里的位置与边界",
+        "无人机特长对升学有用吗？怎么规划"
+      ],
+      "latency_ms": 3211,
+      "tries": 1,
+      "topic": "无人机教育（青少年与学校）",
+      "keyword_hash": "ab8860fa93ad0ffe8f1439b3592e6edd                                "
+    },
+    {
+      "kw": "学校无人机校本课程怎么设计",
+      "state": "ok",
+      "answer_chars": 126,
+      "answer_head": "模型本次未返回结果，下面是检索到的原始条目：\n- geo｜学校无人机校本课程怎么设计\n- geo｜学校开无人机社团与校本课程的四本账\n- 知识点｜中小学AI课后服务怎么落地\n- geo｜学校无人机课程的师资与合规要求\n- geo｜无人机科技特长生怎么走",
+      "sources": 5,
+      "source_titles": [
+        "学校无人机校本课程怎么设计",
+        "学校开无人机社团与校本课程的四本账",
+        "中小学AI课后服务怎么落地",
+        "学校无人机课程的师资与合规要求",
+        "无人机科技特长生怎么走"
+      ],
+      "brand_mention": false,
+      "brand_tokens": [],
+      "own_page_cited": true,
+      "own_pages": [
+        "学校无人机校本课程怎么设计",
+        "学校开无人机社团与校本课程的四本账",
+        "中小学AI课后服务怎么落地"
+      ],
+      "latency_ms": 3195,
+      "tries": 1,
+      "topic": "无人机教育（青少年与学校）",
+      "keyword_hash": "32393915fa04893289102c8a3213709a                                "
+    }
+  ]
+}
