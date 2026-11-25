@@ -30,6 +30,11 @@ final class AdminUiRegistry
                 'patterns' => ['admin.dashboard', 'admin.analytics', 'admin.analytics.*'], 'recent_tone' => 'blue',
             ],
             [
+                'key' => 'match_hall', 'group' => 'data', 'label_key' => 'admin.nav.match_hall',
+                'icon' => 'users', 'route' => 'admin.match-hall', 'protected' => false,
+                'patterns' => ['admin.match-hall'], 'recent_tone' => 'green',
+            ],
+            [
                 'key' => 'tasks', 'group' => 'content', 'label_key' => 'admin.nav.tasks',
                 'icon' => 'workflow', 'route' => 'admin.tasks.index', 'protected' => false,
                 'patterns' => ['admin.tasks.*'], 'recent_tone' => 'green',

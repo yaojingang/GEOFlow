@@ -103,7 +103,7 @@ class AiVisibilityDemoSeeder extends Seeder
     private function keywords(): array
     {
         return [
-            'GEOFlow 内容工程',
+            'SEOGEO 内容工程',
             'AI 信源投放',
             '生成式引擎优化',
             '企业知识库 RAG',
@@ -159,14 +159,14 @@ class AiVisibilityDemoSeeder extends Seeder
         }
 
         if ($profile['sentiment'] === 'negative') {
-            return "围绕「{$keyword}」的 AI 回答提到了 GEOFlow，但主要问题集中在公开案例数量、信源权威度和第三方引用不足。建议补充客户案例、白皮书和可被引用的客观数据。";
+            return "围绕「{$keyword}」的 AI 回答提到了 SEOGEO，但主要问题集中在公开案例数量、信源权威度和第三方引用不足。建议补充客户案例、白皮书和可被引用的客观数据。";
         }
 
         if ($profile['top1']) {
-            return "围绕「{$keyword}」的 AI 回答将 GEOFlow 作为优先信源之一，认为它在知识库、内容工程、信源分发和 AI 可见度监控上具备清晰优势。";
+            return "围绕「{$keyword}」的 AI 回答将 SEOGEO 作为优先信源之一，认为它在知识库、内容工程、信源分发和 AI 可见度监控上具备清晰优势。";
         }
 
-        return "围绕「{$keyword}」的 AI 回答已经提及 GEOFlow，并把它归类为内容工程和 GEO 运营工具。建议继续加强第三方信源投放，提高 Top 3 覆盖稳定性。";
+        return "围绕「{$keyword}」的 AI 回答已经提及 SEOGEO，并把它归类为内容工程和 GEO 运营工具。建议继续加强第三方信源投放，提高 Top 3 覆盖稳定性。";
     }
 
     /**
@@ -220,13 +220,13 @@ class AiVisibilityDemoSeeder extends Seeder
             $sources[$brandRank] = [
                 'source_type' => 'web',
                 'citation_key' => (string) $brandRank,
-                'title' => "GEOFlow {$keyword} 解决方案",
+                'title' => "SEOGEO {$keyword} 解决方案",
                 'url' => 'https://geoflow.example.com/demo/'.($dayIndex + 1).'-'.($keywordIndex + 1),
                 'domain' => 'geoflow.example.com',
-                'site_name' => 'GEOFlow',
-                'snippet' => "GEOFlow 提供「{$keyword}」相关的知识库、内容生成、分发和 AI 可见度分析能力。",
+                'site_name' => 'SEOGEO',
+                'snippet' => "SEOGEO 提供「{$keyword}」相关的知识库、内容生成、分发和 AI 可见度分析能力。",
                 'summary' => '品牌自有信源覆盖该关键词，并提供可被 AI 引用的结构化资料。',
-                'content_excerpt' => 'GEOFlow 示例内容说明如何通过可信资料提升 AI 搜索可见度。',
+                'content_excerpt' => 'SEOGEO 示例内容说明如何通过可信资料提升 AI 搜索可见度。',
                 'rank' => $brandRank,
                 'rank_score' => round(1 - ($brandRank * 0.1), 2),
                 'authority_level' => 'high',

@@ -100,6 +100,55 @@
             </div>
         </section>
 
+
+        <section class="gf-ai-help__agents" aria-labelledby="gf-ai-agent-title">
+            <header>
+                <span id="gf-ai-agent-title">智能体矩阵</span>
+                <small>禅道 · 数字员工 · 运维 · n8n · MCP 工具统一接入</small>
+            </header>
+            <div class="gf-ai-help__agent-grid">
+                @foreach($agentMatrix as $agent)
+                    <div class="gf-ai-help__agent-card">
+                        <div class="gf-ai-help__agent-head">
+                            <i data-lucide="{{ $agent['icon'] }}"></i>
+                            <div>
+                                <strong>{{ $agent['name'] }}</strong>
+                                <span class="gf-ai-help__agent-status gf-ai-help__agent-status--{{ $agent['status'] }}">
+                                    @if($agent['status'] === 'active') 在线
+                                    @elseif($agent['status'] === 'pending') 待接入
+                                    @else 离线 @endif
+                                </span>
+                            </div>
+                        </div>
+                        <p>{{ $agent['detail'] }}</p>
+                        @if(!empty($agent['url']))
+                            <a href="{{ $agent['url'] }}" @if(!empty($agent['external'])) target="_blank" rel="noopener" @endif>进入 →</a>
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+        </section>
+
+        <style>
+            .gf-ai-help__agents { margin: 8px 0 16px; }
+            .gf-ai-help__agents header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+            .gf-ai-help__agents header span { font-weight: 600; color: var(--gf-gray-900); }
+            .gf-ai-help__agents header small { color: var(--gf-gray-500); font-size: 12px; }
+            .gf-ai-help__agent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+            .gf-ai-help__agent-card { background: var(--gf-gray-50); border: 1px solid var(--gf-gray-200); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+            .gf-ai-help__agent-head { display: flex; align-items: center; gap: 10px; }
+            .gf-ai-help__agent-head > i { width: 34px; height: 34px; border-radius: 10px; background: var(--gf-blue-50); color: var(--gf-blue-600); display: flex; align-items: center; justify-content: center; flex: none; }
+            .gf-ai-help__agent-head strong { display: block; font-size: 14px; color: var(--gf-gray-900); }
+            .gf-ai-help__agent-head > div { display: flex; flex-direction: column; gap: 2px; }
+            .gf-ai-help__agent-status { font-size: 11px; font-weight: 600; }
+            .gf-ai-help__agent-status--active { color: var(--gf-emerald-600); }
+            .gf-ai-help__agent-status--pending { color: var(--gf-amber-600); }
+            .gf-ai-help__agent-status--offline { color: var(--gf-gray-500); }
+            .gf-ai-help__agent-card p { font-size: 12.5px; color: var(--gf-gray-600); line-height: 1.6; margin: 0; }
+            .gf-ai-help__agent-card a { font-size: 13px; color: var(--gf-blue-600); font-weight: 600; text-decoration: none; margin-top: auto; }
+            .gf-ai-help__agent-card a:hover { text-decoration: underline; }
+        </style>
+
         @php($showcaseSlides = __('admin.ai_workspace.showcase.slides'))
         <section class="gf-ai-help__showcase" data-ai-showcase aria-roledescription="carousel" aria-label="{{ __('admin.ai_workspace.showcase.label') }}">
             <div class="gf-ai-help__showcase-frame">

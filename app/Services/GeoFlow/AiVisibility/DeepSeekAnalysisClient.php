@@ -71,20 +71,44 @@ final class DeepSeekAnalysisClient
         ];
 
         $startedAt = hrtime(true);
+        // 2026-11-11：改为非流式直连 OpenAI 兼容接口，规避 SDK 的 SSE 流式与自建代理不兼容（502/499）
+        $timeoutSeconds = isset($options['timeout'])
+            ? max(30, (int) $options['timeout'])
+            : max(60, (int) config('geoflow.ai_visibility.analysis_http_timeout_seconds', 300));
         try {
-            $response = $agent->prompt($fullPrompt, [], $providerName, $modelId, isset($options['timeout']) ? (int) $options['timeout'] : null);
+            $response = \Illuminate\Support\Facades\Http::withToken($apiKey)
+                ->acceptJson()
+                ->asJson()
+                ->timeout($timeoutSeconds)
+                ->post(rtrim($providerUrl, '/').'/chat/completions', [
+                    'model' => $modelId,
+                    'messages' => [
+                        ['role' => 'system', 'content' => '你是 GEO/AI 可见性分析助手。请基于输入的 AI 回答和信源做可执行分析，明确区分事实、推断和投放建议。'],
+                        ['role' => 'user', 'content' => $fullPrompt],
+                    ],
+                    'max_tokens' => $maxTokens > 0 ? $maxTokens : 4096,
+                ]);
         } catch (Throwable $exception) {
             throw new RuntimeException('DeepSeek 分析失败: '.OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl), 0, $exception);
         }
         $latencyMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
 
-        $rawText = (string) ($response->text ?? '');
+        if (! $response->successful()) {
+            throw new RuntimeException(sprintf(
+                'DeepSeek 分析失败: HTTP %d %s',
+                $response->status(),
+                trim(substr((string) $response->body(), 0, 300))
+            ));
+        }
+
+        $data = $response->json();
+        $rawText = (string) ($data['choices'][0]['message']['content'] ?? '');
         $answerText = OpenAiRuntimeProvider::normalizeGeneratedText($rawText);
         if ($answerText === '') {
             throw new RuntimeException('DeepSeek 分析返回空内容');
         }
 
-        $usage = $this->extractUsage($response);
+        $usage = is_array($data['usage'] ?? null) ? $data['usage'] : [];
 
         return $this->normalizer->normalizeTextAnalysis(
             providerType: AiVisibilityRun::PROVIDER_DEEPSEEK_ANALYSIS,

@@ -321,6 +321,7 @@ return [
     // AI 可见性查询底层能力：豆包 Ark Responses、豆包 Search Custom、DeepSeek 二次分析共用。
     'ai_visibility' => [
         'http_timeout_seconds' => max(5, (int) env('GEOFLOW_AI_VISIBILITY_HTTP_TIMEOUT', 60)),
+        'analysis_http_timeout_seconds' => max(60, (int) env('GEOFLOW_AI_VISIBILITY_ANALYSIS_TIMEOUT', 600)),
         'http_connect_timeout_seconds' => max(1, (int) env('GEOFLOW_AI_VISIBILITY_CONNECT_TIMEOUT', 10)),
         'http_retry_attempts' => max(1, (int) env('GEOFLOW_AI_VISIBILITY_HTTP_RETRY_ATTEMPTS', 2)),
         'http_retry_sleep_ms' => max(0, (int) env('GEOFLOW_AI_VISIBILITY_HTTP_RETRY_SLEEP_MS', 300)),

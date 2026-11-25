@@ -35,6 +35,7 @@
         </div>
     @endif
     <div class="gf-topbar__actions">
+        <a class="gf-button gf-button--small" href="https://geo.aixgn.cn/seogeo/" target="_blank" rel="noopener noreferrer" title="站点巡检 / 工单 / 关键词排名"><i data-lucide="shield-check"></i><span>SEO 控制台</span></a>
         <button class="gf-button gf-button--small gf-pwa-install" type="button" data-pwa-install hidden aria-label="{{ __('admin.ui_v3.install_workbench_label') }}"><i data-lucide="app-window"></i><span>{{ __('admin.ui_v3.install_workbench') }}</span></button>
         <div class="gf-popover-wrap">
             @if ($isSuperAdmin && config('geoflow.update_center_enabled', true))

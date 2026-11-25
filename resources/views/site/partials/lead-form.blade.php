@@ -76,4 +76,5 @@
         </button>
         </fieldset>
     </form>
+<script src="{{ asset('js/utm-capture.js') }}" defer></script>
 </div>

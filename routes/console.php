@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schedule;
 
-Schedule::job(new RecoverUrlChanges)->everyMinute()->withoutOverlapping(2)->onOneServer();
+Schedule::job(new RecoverUrlChanges)->everyFiveMinutes()->withoutOverlapping(2)->onOneServer();
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -122,17 +122,17 @@ Schedule::command('geoflow:recover-knowledge-syncs')
     ->withoutOverlapping(10);
 
 Schedule::command('geoflow:recover-ai-workspace')
-    ->everyMinute()
+    ->everyFiveMinutes()
     ->onOneServer()
     ->withoutOverlapping(10);
 
 Schedule::command('geoflow:recover-url-imports')
-    ->everyMinute()
+    ->everyFiveMinutes()
     ->onOneServer()
     ->withoutOverlapping(2);
 
 Schedule::command('geoflow:recover-enterprise-knowledge-drafts')
-    ->everyMinute()
+    ->everyFiveMinutes()
     ->onOneServer()
     ->withoutOverlapping(2);
 
@@ -152,22 +152,22 @@ Schedule::command('geoflow:reconcile-ai-usage-attempts --older-than=900')
     ->withoutOverlapping(10);
 
 Schedule::command('geoflow:reconcile-ai-quality')
-    ->everyMinute()
+    ->everyFiveMinutes()
     ->onOneServer()
     ->withoutOverlapping(2);
 
 Schedule::command('geoflow:reconcile-ai-optimization')
-    ->everyMinute()
+    ->everyFiveMinutes()
     ->onOneServer()
     ->withoutOverlapping(2);
 
 Schedule::command('geoflow:converge-ai-quality')
-    ->everyFiveSeconds()
+    ->everyMinute()
     ->onOneServer()
     ->withoutOverlapping(1);
 
 Schedule::command('geoflow:ai-quality-health --json')
-    ->everyMinute()
+    ->everyFiveMinutes()
     ->onOneServer()
     ->withoutOverlapping(1);
 
@@ -210,4 +210,4 @@ Schedule::command('hosted-sites:reconcile', [
 
 Schedule::command('geoflow:check-topic-temporal-state')->everyFiveMinutes()->onOneServer()->withoutOverlapping(5);
 
-Schedule::command('geoflow:reconcile-platform-web')->everyMinute()->onOneServer()->withoutOverlapping(2);
+Schedule::command('geoflow:reconcile-platform-web')->everyFiveMinutes()->onOneServer()->withoutOverlapping(2);

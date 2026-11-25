@@ -1,161 +1,219 @@
-@php($adminUiV3Enabled = (bool) config('geoflow.admin_ui_v3_enabled', false))
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <x-pwa-head />
-    <title>{{ __('admin.login.title') }} · {{ $adminSiteName }}</title>
-    @if ($adminUiV3Enabled)
-        @vite(['resources/css/app.css', 'resources/js/pwa.js'])
-    @else
-        <script src="{{ asset('js/tailwindcss.play-cdn.js') }}"></script>
-        @vite('resources/js/pwa.js')
-    @endif
-    <script src="{{ asset('js/lucide.min.js') }}"></script>
-    @unless ($adminUiV3Enabled)
+    <title>GEOSEO 智能内容中台</title>
     <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            background: radial-gradient(circle at top left, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 32%),
-                radial-gradient(circle at bottom right, rgba(229, 231, 235, 0.72), rgba(229, 231, 235, 0) 30%),
-                linear-gradient(180deg, #f5f5f7 0%, #e5e7eb 100%);
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #0f172a;
             min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
         }
-        .login-form {
-            background: rgba(255, 255, 255, 0.82);
-            backdrop-filter: blur(24px) saturate(180%);
-            border: 1px solid rgba(209, 213, 219, 0.9);
-            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
+        .bg-glow {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.3;
+            animation: float 8s ease-in-out infinite;
         }
-        .login-badge {
-            background: linear-gradient(180deg, #6b7280 0%, #374151 100%);
+        .glow-1 { width: 600px; height: 600px; background: #10b981; top: -200px; left: -200px; }
+        .glow-2 { width: 500px; height: 500px; background: #0891b2; bottom: -150px; right: -150px; animation-delay: -4s; }
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(30px, 30px); }
         }
-        .initial-admin-hint {
-            background: linear-gradient(180deg, rgba(239, 246, 255, 0.96) 0%, rgba(255, 255, 255, 0.9) 100%);
+        .bg-grid {
+            position: absolute;
+            inset: 0;
+            background-image: 
+                linear-gradient(rgba(16, 185, 129, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(16, 185, 129, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+        .login-card {
+            position: relative;
+            width: 100%;
+            max-width: 440px;
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 24px;
+            padding: 48px 40px;
+            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5);
+        }
+        .logo-section {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .logo-icon {
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 20px;
+            background: linear-gradient(135deg, #10b981 0%, #0891b2 100%);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 30px rgba(16, 185, 129, 0.3);
+        }
+        .logo-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #f1f5f9;
+            margin-bottom: 8px;
+        }
+        .logo-subtitle {
+            font-size: 14px;
+            color: #94a3b8;
+        }
+        .divider {
+            display: flex;
+            align-items: center;
+            margin: 24px 0;
+            color: #475569;
+            font-size: 12px;
+        }
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #334155;
+        }
+        .divider span {
+            padding: 0 12px;
+        }
+        .btn-wecom {
+            width: 100%;
+            padding: 14px;
+            background: #0066ff;
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            text-decoration: none;
+        }
+        .btn-wecom:hover {
+            background: #0052cc;
+            transform: translateY(-1px);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: #94a3b8;
+            margin-bottom: 8px;
+        }
+        .form-input {
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(51, 65, 85, 0.8);
+            border-radius: 12px;
+            color: #f1f5f9;
+            font-size: 15px;
+            transition: all 0.3s;
+            outline: none;
+        }
+        .form-input:focus {
+            border-color: #10b981;
+        }
+        .btn-login {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #10b981 0%, #0891b2 100%);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .alert {
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 13px;
+            margin-bottom: 20px;
+        }
+        .alert-error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 20px;
+            font-size: 11px;
+            color: #10b981;
+            margin-bottom: 16px;
         }
     </style>
-    @endunless
 </head>
-<body class="overflow-hidden @if($adminUiV3Enabled) gf-login-v3 @endif">
-<div class="fixed right-4 top-4 z-50">
-    <select aria-label="{{ __('admin.auth.language_label') }}" onchange="window.location.href=this.value" class="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-600 shadow-sm">
-        @foreach (\App\Support\AdminWeb::supportedLocales() as $localeCode => $localeLabel)
-            <option value="{{ route('admin.locale.switch', ['locale' => $localeCode]) }}" @selected(app()->getLocale() === $localeCode)>
-                {{ $localeLabel }}
-            </option>
-        @endforeach
-    </select>
-</div>
-<div class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md px-4">
-    <div class="rounded-2xl p-8 login-form">
-        <div class="text-center mb-8">
-            <div class="login-badge w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <i data-lucide="shield-check" class="w-8 h-8 text-white"></i>
-            </div>
-            <h1 class="text-2xl font-bold text-gray-900 mb-2">{{ __('admin.login.title') }}</h1>
-            <p class="text-gray-600">{{ __('admin.login.subtitle', ['site_name' => $adminSiteName]) }}</p>
+<body>
+    <div class="bg-grid"></div>
+    <div class="bg-glow glow-1"></div>
+    <div class="bg-glow glow-2"></div>
+
+    <div class="login-card">
+        <div class="logo-section">
+            <div class="badge">GEOSEO 智能内容中台 v3.0</div>
+            <div class="logo-icon"></div>
+            <h1 class="logo-title">GEOSEO 智能中台</h1>
+            <p class="logo-subtitle">AI内容生产 · 审核 · 推广 全流程自动化</p>
         </div>
+
         @if (session('message'))
-            <div class="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
-                {{ session('message') }}
-            </div>
+            <div class="alert alert-success">{{ session('message') }}</div>
         @endif
         @if ($errors->any())
-            <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                {{ $errors->first() }}
-            </div>
+            <div class="alert alert-error">{{ $errors->first() }}</div>
         @endif
-        @if (!empty($initialAdminHint['enabled']))
-            <div id="initial-admin-hint" class="initial-admin-hint mb-6 hidden rounded-xl border border-blue-200 p-4 text-sm text-gray-700 shadow-sm" data-storage-key="{{ $initialAdminHint['storage_key'] ?? 'geoflow.initial-admin-hint' }}">
-                <div class="flex items-start gap-3">
-                    <div class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
-                        <i data-lucide="key-round" class="h-5 w-5"></i>
-                    </div>
-                    <div class="min-w-0 flex-1">
-                        <div class="flex items-start justify-between gap-3">
-                            <div>
-                                <p class="font-semibold text-gray-900">{{ __('admin.login.first_login_hint_title') }}</p>
-                                <p class="mt-1 leading-6 text-gray-600">{{ __('admin.login.first_login_hint_intro') }}</p>
-                            </div>
-                            <button type="button" data-dismiss-initial-admin-hint class="rounded-md p-1 text-gray-400 hover:bg-white hover:text-gray-600" aria-label="{{ __('admin.login.first_login_dismiss') }}">
-                                <i data-lucide="x" class="h-4 w-4"></i>
-                            </button>
-                        </div>
-                        <div class="mt-3 grid gap-2 rounded-lg border border-blue-100 bg-white/80 p-3">
-                            <div class="flex items-center justify-between gap-3">
-                                <span class="text-gray-500">{{ __('admin.login.first_login_username') }}</span>
-                                <code class="rounded bg-gray-100 px-2 py-1 font-mono text-xs text-gray-900">{{ $initialAdminHint['username'] ?? '' }}</code>
-                            </div>
-                            <div class="rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-                                {{ __('admin.login.first_login_password_from_log') }}
-                            </div>
-                        </div>
-                        <p class="mt-3 text-xs leading-5 text-red-600">{{ __('admin.login.first_login_security') }}</p>
-                    </div>
-                </div>
-            </div>
-        @endif
-        <form method="POST" action="{{ route('admin.login.attempt') }}" class="space-y-6">
+
+        <a href="https://geo.aixgn.cn/sso/start.php?r=/geoflow/geo_admin" class="btn-wecom">
+            企业微信扫码登录
+        </a>
+
+        <div class="divider">
+            <span>账号密码登录</span>
+        </div>
+
+        <form method="POST" action="{{ route('admin.login.attempt') }}">
             @csrf
-            <div>
-                <label for="username" class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.login.username') }}</label>
-                <input type="text" id="username" name="username" required value="{{ old('username') }}"
-                       class="block w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                       placeholder="{{ __('admin.login.username_placeholder') }}" autocomplete="username">
+            <div class="form-group">
+                <label class="form-label">用户名</label>
+                <input type="text" name="username" required value="{{ old('username') }}"
+                       class="form-input" placeholder="请输入用户名">
             </div>
-            <div>
-                <label for="password" class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.login.password') }}</label>
-                <input type="password" id="password" name="password" required
-                       class="block w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                       placeholder="{{ __('admin.login.password_placeholder') }}" autocomplete="current-password">
+            <div class="form-group">
+                <label class="form-label">密码</label>
+                <input type="password" name="password" required
+                       class="form-input" placeholder="请输入密码">
             </div>
-            <input type="hidden" name="remember" value="0">
-            <label class="flex items-center justify-between rounded-lg border border-gray-200 bg-white/70 px-3 py-3 text-sm text-gray-600">
-                <span class="flex items-center gap-2">
-                    <input type="checkbox" name="remember" value="1" checked class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                    <span>{{ __('admin.login.remember_30_days') }}</span>
-                </span>
-                <span class="text-xs text-gray-400">{{ __('admin.login.remember_30_days_hint') }}</span>
-            </label>
-            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg">
-                {{ __('admin.login.submit') }}
+            <button type="submit" class="btn-login">
+                进入中台控制台
             </button>
         </form>
     </div>
-    <div class="text-center mt-6">
-        <a href="{{ url('/') }}" class="text-gray-600 hover:text-gray-900 text-sm">{{ __('admin.login.back_home') }}</a>
-    </div>
-</div>
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const initialHint = document.getElementById('initial-admin-hint');
-        if (initialHint) {
-            const storageKey = initialHint.getAttribute('data-storage-key') || 'geoflow.initial-admin-hint';
-            let shouldShow = true;
-
-            try {
-                shouldShow = window.localStorage.getItem(storageKey) !== 'seen';
-                if (shouldShow) {
-                    window.localStorage.setItem(storageKey, 'seen');
-                }
-            } catch (error) {
-                shouldShow = true;
-            }
-
-            if (shouldShow) {
-                initialHint.classList.remove('hidden');
-            }
-
-            initialHint.querySelector('[data-dismiss-initial-admin-hint]')?.addEventListener('click', function () {
-                initialHint.classList.add('hidden');
-                try {
-                    window.localStorage.setItem(storageKey, 'seen');
-                } catch (error) {}
-            });
-        }
-
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-    });
-</script>
 </body>
 </html>
