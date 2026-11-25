@@ -35,10 +35,11 @@ Thumbs.db
 *.bak-*
 .env.bak*
 
-# 2026-11-25 公开快照排除：含明文密钥，不得入库
+# 2026-11-25 安全：明文密钥文件不得入库
 config/keys.json
 config/llm_keys.json
 keys_vault_probe.py
 llm_probe.py
 storage/geo-keys-status.json
-.env
+storage/geo-uptime-latest.json
+storage/geo-uptime.jsonl

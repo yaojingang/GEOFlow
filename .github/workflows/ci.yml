@@ -1,0 +1,199 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  application:
+    name: PHP, JavaScript, build, and dependency gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: '8.4'
+          extensions: mbstring, intl, pdo_sqlite, sqlite3, zip, pcntl, curl, fileinfo, sodium
+          coverage: none
+          tools: composer:v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Prepare test environment
+        run: touch .env
+
+      - name: Validate dependency manifests
+        run: composer validate --strict
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Check PHP formatting
+        run: vendor/bin/pint --test
+
+      - name: Check management operation and route coverage drift
+        run: php scripts/export-management-coverage.php --check
+
+      - name: Validate standalone CLI dependency lock
+        run: composer validate --strict --working-dir=packages/geoflow-cli
+
+      - name: Test GEOFlow skill package and compatibility helpers
+        run: |
+          python3 -B .agents/skills/geoflow/evals/test_geoflow_scripts.py
+          python3 -B .agents/skills/geoflow/evals/test_topic_support.py
+
+      - name: Build production assets
+        run: npm run build
+
+      - name: Run PHP test suite
+        run: composer test
+
+      - name: Verify signed standalone CLI in an isolated installation
+        run: php packages/geoflow-cli/smoke.php
+
+      - name: Run JavaScript test suite
+        run: npm run test:analytics
+
+      - name: Install isolated browser test tools
+        run: |
+          python3 -m venv "$RUNNER_TEMP/geoflow-browser-venv"
+          "$RUNNER_TEMP/geoflow-browser-venv/bin/pip" install playwright==1.58.0
+          "$RUNNER_TEMP/geoflow-browser-venv/bin/playwright" install --with-deps chromium
+
+      - name: Test article workflow through real browser forms
+        run: '"$RUNNER_TEMP/geoflow-browser-venv/bin/python" tests/Browser/article_workflow_smoke.py --output-dir "$RUNNER_TEMP/geoflow-workflow-browser-proof"'
+
+      - name: Upload browser workflow evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: article-workflow-browser-proof
+          path: ${{ runner.temp }}/geoflow-workflow-browser-proof
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Test topic workflows through isolated browser forms
+        run: '"$RUNNER_TEMP/geoflow-browser-venv/bin/python" tests/Browser/topic_workflow_smoke.py --output-dir "$RUNNER_TEMP/geoflow-topic-browser-proof"'
+
+      - name: Upload topic browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: topic-browser-proof
+          path: ${{ runner.temp }}/geoflow-topic-browser-proof
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Test link pool through real browser forms and public pages
+        run: '"$RUNNER_TEMP/geoflow-browser-venv/bin/python" tests/Browser/link_pool_smoke.py --output-dir "$RUNNER_TEMP/geoflow-link-pool-browser-proof"'
+
+      - name: Upload link pool browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: link-pool-browser-proof
+          path: ${{ runner.temp }}/geoflow-link-pool-browser-proof
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Test assisted platform publishing through isolated browser forms
+        run: '"$RUNNER_TEMP/geoflow-browser-venv/bin/python" tests/Browser/platform_web_smoke.py --output-dir "$RUNNER_TEMP/geoflow-platform-browser-proof"'
+
+      - name: Upload assisted platform browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: platform-browser-proof
+          path: ${{ runner.temp }}/geoflow-platform-browser-proof
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Audit PHP dependencies
+        run: composer audit --locked --no-interaction
+
+      - name: Audit standalone CLI dependencies
+        run: composer audit --locked --no-interaction --working-dir=packages/geoflow-cli
+
+      - name: Audit JavaScript dependencies
+        run: npm audit --audit-level=high --registry=https://registry.npmjs.org
+
+  postgresql:
+    name: PostgreSQL concurrency and query contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_DB: geoflow_hosted_test
+          POSTGRES_USER: geoflow_test
+          POSTGRES_PASSWORD: geoflow_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U geoflow_test -d geoflow_hosted_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: '8.4'
+          extensions: mbstring, intl, pdo_pgsql, zip, pcntl
+          coverage: none
+          tools: composer:v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Prepare test environment
+        run: touch .env
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Build production assets
+        run: npm run build
+
+      - name: Run PostgreSQL-specific tests
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_DATABASE: geoflow_hosted_test
+          DB_USERNAME: geoflow_test
+          DB_PASSWORD: geoflow_test_password
+          GEOFLOW_PG_CONCURRENCY: '1'
+        run: vendor/bin/phpunit -c phpunit.postgresql.xml
